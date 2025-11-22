@@ -1,0 +1,23 @@
+# MATLAB 暫存檔案
+*.asv
+*.m~
+
+# Simulink 自動生成檔案
+*.slxc
+*.autosave
+slprj/
+
+# 測試結果
+test_results/
+
+# 臨時測試腳本
+temp_*.m
+
+# 系統檔案
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# MATLAB 生成檔案
+*.mex*
+codegen/
