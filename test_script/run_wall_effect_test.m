@@ -46,7 +46,7 @@ p_test = p0;          % Initial position
 % Get params data from Simulink.Parameter
 params_data = params.Value;
 
-[p_dot_test, Gamma_inv_test] = wall_effect_integrated(f_test, p_test, params_data);
+[p_dot_test, Gamma_inv_test, h_bar_test] = wall_effect_integrated(f_test, p_test, params_data);
 
 % Save Gamma_inv to workspace
 Gamma_inv = Gamma_inv_test;
@@ -56,5 +56,6 @@ fprintf('Test input:\n');
 fprintf('  f = [%.2f; %.2f; %.2f] pN\n', f_test(1), f_test(2), f_test(3));
 fprintf('  p = [%.2f; %.2f; %.2f] um\n', p_test(1), p_test(2), p_test(3));
 fprintf('\nTest output:\n');
+fprintf('  h_bar = %.4f (normalized distance to wall)\n', h_bar_test);
 fprintf('  p_dot = [%.4f; %.4f; %.4f] um/sec\n', p_dot_test(1), p_dot_test(2), p_dot_test(3));
 fprintf('==================\n');

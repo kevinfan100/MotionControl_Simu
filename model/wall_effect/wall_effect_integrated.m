@@ -1,8 +1,8 @@
-function [p_dot, Gamma_inv] = wall_effect_integrated(f, p, params)
+function [p_dot, Gamma_inv, h_bar] = wall_effect_integrated(f, p, params)
 %#codegen
 % WALL_EFFECT_INTEGRATED Real-time wall effect calculation for Simulink
 %
-%   [p_dot, Gamma_inv] = wall_effect_integrated(f, p, params)
+%   [p_dot, Gamma_inv, h_bar] = wall_effect_integrated(f, p, params)
 %
 %   This function computes:
 %       Part 1: Γ⁻¹(p) - inverse drag coefficient matrix
@@ -18,10 +18,11 @@ function [p_dot, Gamma_inv] = wall_effect_integrated(f, p, params)
 %   Outputs:
 %       p_dot     - Velocity [um/sec], 3x1 vector (to Integrator)
 %       Gamma_inv - Inverse drag coefficient matrix (3x3)
+%       h_bar     - Normalized distance to wall (scalar)
 %
 %   Usage in Simulink MATLAB Function block:
-%       function [p_dot, Gamma_inv] = fcn(f, p, params)
-%           [p_dot, Gamma_inv] = wall_effect_integrated(f, p, params);
+%       function [p_dot, Gamma_inv, h_bar] = fcn(f, p, params)
+%           [p_dot, Gamma_inv, h_bar] = wall_effect_integrated(f, p, params);
 %       end
 %
 %   System equation:
