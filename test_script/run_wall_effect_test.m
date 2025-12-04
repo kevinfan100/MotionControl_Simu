@@ -39,14 +39,19 @@ fprintf('  - f_T: Thermal force (TODO, currently zeros)\n');
 fprintf('  - p: Position feedback (from Integrator)\n');
 fprintf('  - params: Parameter struct (from workspace)\n');
 
+%% ========== Quick Test (print p_dot for initial position) ==========
+fprintf('\n=== Quick Test ===\n');
+f_test = [0; 0; -1];  % Test force (downward)
+p_test = p0;          % Initial position
 
 % Get params data from Simulink.Parameter
 params_data = params.Value;
 
 [p_dot_test, Gamma_inv_test, h_bar_test] = wall_effect_integrated(f_test, p_test, params_data);
 
-% Save Gamma_inv to workspace
+% Save to workspace for Simulink
 Gamma_inv = Gamma_inv_test;
+h_bar_init = h_bar_test;
 
 %% result
 fprintf('Test input:\n');

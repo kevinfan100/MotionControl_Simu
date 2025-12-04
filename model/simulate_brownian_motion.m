@@ -5,7 +5,7 @@ function f_t = simulate_brownian_motion(h_bar, params)
 %   f_t = simulate_brownian_motion(h_bar, params)
 %
 %   Inputs:
-%       h_bar  - Normalized distance to wall (scalar) from wall_effect_integrated
+%       h_bar  - Normalized distance to wall (scalar), delayed by Memory block
 %       params - Parameter struct from calc_wall_params()
 %
 %   Outputs:
@@ -14,43 +14,18 @@ function f_t = simulate_brownian_motion(h_bar, params)
 %   Formula:
 %       σ² = (4 * k_B * T * γ_N / Δt) * [c_x²; c_y²; c_z²]
 %       where c_∥(h̄)[û + v̂] + c_⊥(h̄)ŵ = [c_x; c_y; c_z]
-
-    % ====================================================================
-    % PERSISTENT STATE VARIABLES
-    % ====================================================================
-    persistent h_bar_prev      % h_bar[k-1] - Previous h_bar value
-    persistent initialized
+%
+%   Note: h_bar should be delayed by one sample (Memory block) to break
+%         the algebraic loop in Simulink.
 
     % ====================================================================
     % EXTRACT PARAMETERS
     % ====================================================================
     w_hat   = params.w_hat;      % 3x1 normal vector to wall
-    p_z     = params.p_z;        % Distance from origin to plane [um]
-    R       = params.R;          % Particle radius [um]
-    p0      = params.p0;         % Initial position [um]
     delta_t = params.Ts;         % Sampling period (s)
 
     % Unit conversion: params.gamma_N is in [pN*sec/um], need [N*s/m] for SI
     gamma_N = params.gamma_N * 1e-6;  % Convert to SI unit (N·s/m)
-
-    % ====================================================================
-    % INITIALIZATION
-    % ====================================================================
-    if isempty(initialized)
-        initialized = true;
-        % Calculate initial h_bar from p0 (no h_bar input available yet)
-        h_init = p0' * w_hat - p_z;
-        h_bar_prev = h_init / R;
-    end
-
-    % ====================================================================
-    % DETERMINE h_bar TO USE
-    % ====================================================================
-    % Use previous h_bar to break algebraic loop
-    h_bar_used = h_bar_prev;
-
-    % Update persistent for next iteration
-    h_bar_prev = h_bar;
 
     % ====================================================================
     % PHYSICAL CONSTANTS (fixed)
@@ -63,12 +38,12 @@ function f_t = simulate_brownian_motion(h_bar, params)
     % ====================================================================
     % Clamp h_bar to prevent singularity
     h_bar_min = 1.05;
-    if h_bar_used < h_bar_min
-        h_bar_used = h_bar_min;
+    if h_bar < h_bar_min
+        h_bar = h_bar_min;
     end
 
     % Calculate correction functions from h_bar
-    inv_h = 1 / h_bar_used;
+    inv_h = 1 / h_bar;
 
     c_para = (1 - (9/16)*inv_h + (1/8)*inv_h^3 - (45/256)*inv_h^4 - (1/16)*inv_h^5)^(-1);
 
