@@ -107,6 +107,12 @@ set_param([modelName '/p_discrete_out'], 'VariableName', 'p_discrete');
 set_param([modelName '/p_discrete_out'], 'SaveFormat', 'Timeseries');
 set_param([modelName '/p_discrete_out'], 'Position', [700, 240, 780, 270]);
 
+%% Output: Gamma_inv to Workspace
+add_block('simulink/Sinks/To Workspace', [modelName '/Gamma_inv_out']);
+set_param([modelName '/Gamma_inv_out'], 'VariableName', 'Gamma_inv_sim');
+set_param([modelName '/Gamma_inv_out'], 'SaveFormat', 'Timeseries');
+set_param([modelName '/Gamma_inv_out'], 'Position', [550, 280, 630, 310]);
+
 %% ==================== Connect Blocks ====================
 % NOTE: MATLAB Function Block starts with only 1 input/output.
 %       After configuring the function code, additional ports will appear.
@@ -141,6 +147,7 @@ add_line(modelName, 'Sampler/1', 'p_discrete_out/1');
 %       the MATLAB Function Block code:
 %   - Integrator/1 -> Gamma_inv_Block/2 (p feedback)
 %   - params_const/1 -> Gamma_inv_Block/3 (params)
+%   - Gamma_inv_Block/2 -> Gamma_inv_out/1 (Gamma_inv output)
 %   - Gamma_inv_Block/3 -> h_bar_Scope/1 (h_bar output)
 
 %% Save model
