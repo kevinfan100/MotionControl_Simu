@@ -1,9 +1,18 @@
 # MotionControl_Simu 專案規範
 
 ## 專案概述
-實現帶有 Wall Effect 的運動控制 MATLAB/Simulink 模擬系統，用於測試位置相關拖曳係數矩陣的即時估計。
+實現帶有 Wall Effect 的磁珠運動控制 MATLAB/Simulink 模擬系統。
 
 **技術棧**: MATLAB R2024b/R2025b + Simulink
+
+### 簡化假設
+- 內迴路完美：f_d = f_m（磁力控制無誤差）
+- 量測完美：p_m = p（視覺追蹤無誤差、無延遲）
+
+### 混合架構
+- **離散部分 @ 1606 Hz**：軌跡產生、控制器、Thermal Force
+- **連續部分**：Particle Dynamics（ODE solver）
+- 離散訊號經 ZOH 送入連續系統
 
 ---
 
@@ -20,15 +29,7 @@
 <type>(<scope>): <subject>
 
 Types: feat, fix, refactor, test, docs, chore
-Scope: wall-effect, simulation, control, analysis, etc.
-```
-
-**範例**：
-```
-feat(wall-effect): Implement Gamma inverse calculation
-test(wall-effect): Add correction function validation
-docs(claude): Update project specifications
-chore(deps): Update MATLAB toolbox dependencies
+Scope: wall-effect, thermal-force, trajectory, controller, simulation, etc.
 ```
 
 ---
@@ -37,24 +38,199 @@ chore(deps): Update MATLAB toolbox dependencies
 
 ```
 MotionControl_Simu/
-├── model/                         # 核心模型
-│   ├── wall_effect/               # Wall Effect 模組
-│   │   ├── calc_wall_params.m        # 參數計算（離線）
-│   │   └── wall_effect_integrated.m  # Wall Effect 計算（即時，含 ZOH + 積分）
-│   └── system_model.slx           # Simulink 主模型
+├── CLAUDE.md                         # 專案規範
+├── calc_simulation_params.m          # 參數計算 + Bus Object 建立
+├── calc_initial_position.m           # 起始位置計算
+├── run_simulation.m                  # 主執行腳本
 │
-├── test_script/                   # 測試腳本
-│   └── run_wall_effect_test.m     # Wall Effect 單元測試
+├── model/
+│   ├── wall_effect/
+│   │   ├── calc_correction_functions.m  # c_∥, c_⊥ 計算
+│   │   └── calc_gamma_inv.m             # Γ⁻¹ 矩陣計算
+│   │
+│   ├── thermal_force/
+│   │   └── calc_thermal_force.m         # F_th 生成
+│   │
+│   ├── trajectory/
+│   │   ├── trajectory_generator.m       # 即時軌跡計算
+│   │   └── check_trajectory_safety.m    # 安全檢查
+│   │
+│   ├── controller/
+│   │   └── motion_control_law.m         # 控制律
+│   │
+│   └── system_model.slx                 # Simulink 主模型
 │
-├── reference/                     # 參考文件
-│   └── Drag_MATLAB.pdf            # Wall Effect 數學模型說明
+├── test_script/
+│   ├── run_wall_effect_test.m
+│   ├── run_thermal_force_test.m
+│   └── run_trajectory_test.m
 │
-├── test_results/                  # 測試結果（不納入 Git）
+├── test_results/                        # 測試結果（不納入 Git）
+│   ├── wall_effect/
+│   ├── thermal_force/
+│   └── trajectory/
 │
-└── .claude/                       # Claude Code 配置
-    ├── settings.local.json        # 權限與 hooks
-    ├── commands/                  # Slash commands
-    └── sessions/                  # 工作記錄
+├── reference/
+│   ├── Drag_MATLAB.pdf
+│   ├── total_block_diagram.png
+│   └── thermal_force.png
+│
+└── .claude/
+    ├── settings.local.json
+    ├── commands/
+    ├── plans/
+    └── sessions/
+```
+
+---
+
+## 單位系統
+
+| 物理量 | 單位 | 備註 |
+|--------|------|------|
+| 長度 | μm | |
+| 力 | pN | |
+| 時間 | sec | |
+| 拖曳係數 | pN·sec/μm | |
+| k_B | 1.3806503×10⁻⁵ pN·μm/K | SI 單位 ×10¹⁸ |
+| T | 310.15 K | 37°C |
+| γ_N | 0.0425 pN·sec/μm | Stokes drag |
+| Δt | 1/1606 sec | 取樣週期 |
+
+---
+
+## 數學模型概要
+
+### 系統方程
+```
+ṗ = Γ⁻¹(p) · (f_d + F_th)
+p = ∫ ṗ dt
+```
+
+### Wall Effect
+
+#### 正交基底向量
+```matlab
+% 法向量（垂直於牆面）
+w_hat = [cos(theta)*sin(phi); sin(theta)*sin(phi); cos(phi)];
+
+% 平行於牆面的兩個方向
+u_hat = [-cos(theta)*cos(phi); -sin(theta)*cos(phi); sin(phi)];
+v_hat = [sin(theta); -cos(theta); 0];
+```
+
+#### 修正函數
+```
+c_∥(h̄) = (1 - 9/16·(1/h̄) + 1/8·(1/h̄)³ - 45/256·(1/h̄)⁴ - 1/16·(1/h̄)⁵)⁻¹
+c_⊥(h̄) = (1 - 9/8·(1/h̄) + 1/2·(1/h̄)³ - 57/100·(1/h̄)⁴ + 1/5·(1/h̄)⁵ + 7/200·(1/h̄)¹¹ - 1/25·(1/h̄)¹²)⁻¹
+```
+
+#### 移動度矩陣
+```matlab
+h = dot(p, w_hat) - pz;  % 粒子到平面距離
+h_bar = h / R;           % 正規化距離
+W = w_hat * w_hat';      % 投影矩陣
+coeff = (c_perp - c_para) / c_perp;
+Gamma_inv = (1 / (gamma_N * c_para)) * (eye(3) - coeff * W);
+```
+
+### Thermal Force
+```matlab
+C = c_para * (u_hat + v_hat) + c_perp * w_hat;
+Variance = (4 * k_B * T * gamma_N / Ts) * (C.^2);
+F_th = sqrt(Variance) .* randn(3,1);  % 離散 @ 1606 Hz
+```
+
+### 控制器（Position-Dependent Discrete-Time Motion Control）
+```matlab
+f_d[k] = (γ / Δt) · {p_d[k] - λ_c · p_d[k-1] - (1 - λ_c) · p[k]}
+```
+
+| 參數 | 說明 | 建議值 |
+|------|------|--------|
+| γ | 拖曳係數 | γ_N = 0.0425 |
+| λ_c | 閉迴路極點 | 0.5 ~ 0.9 |
+
+---
+
+## 參數結構
+
+```
+params
+├── common                          ← 所有模組共用
+│   ├── R         = 2.8             % 粒子半徑 [μm]
+│   ├── gamma_N   = 0.0425          % Stokes drag [pN·sec/μm]
+│   ├── Ts        = 1/1606          % 取樣週期 [sec]
+│   └── T_sim     = 5               % 模擬時間 [sec]
+│
+├── wall                            ← Wall Effect 模組
+│   ├── theta, phi, pz              % 高階輸入
+│   ├── h_bar_min                   % 安全距離
+│   └── w_hat, u_hat, v_hat         % 計算得出
+│
+├── traj                            ← 軌跡產生器
+│   ├── type                        % 'z_move' 或 'xy_circle'
+│   ├── delta_z, direction, speed   % z_move 參數
+│   └── radius, n_circles, period   % xy_circle 參數
+│
+├── ctrl                            ← 控制器
+│   ├── lambda_c                    % 閉迴路極點
+│   └── gamma                       % 拖曳係數
+│
+└── thermal                         ← Thermal Force
+    ├── enable                      % 啟用/停用
+    └── variance_coeff              % 預計算: 4·k_B·T·γ_N/Δt
+```
+
+參數傳遞：使用 Bus Object（參考 r_controller_package）
+
+---
+
+## 軌跡類型
+
+| 類型 | 參數 | 說明 |
+|------|------|------|
+| z_move | delta_z, direction, speed | 沿法向量 ŵ 方向移動 |
+| xy_circle | radius, n_circles, period | 在 û-v̂ 平面內繞圓 |
+
+- `direction = 'away'`：遠離牆面（+ŵ）
+- `direction = 'toward'`：靠近牆面（-ŵ）
+
+---
+
+## Simulink 設定
+
+| 參數 | 建議值 |
+|------|--------|
+| Solver | ode45 (variable-step) |
+| Max Step Size | 1e-4 sec |
+| Relative Tolerance | 1e-6 |
+| Absolute Tolerance | 1e-9 |
+
+---
+
+## 測試輸出結構
+
+```
+test_results/
+├── wall_effect/
+│   └── test_YYYYMMDD_HHMMSS/
+│       ├── correction_functions.png
+│       ├── gamma_inv_eigenvalues.png
+│       └── result.mat
+│
+├── thermal_force/
+│   └── test_YYYYMMDD_HHMMSS/
+│       ├── distribution_histogram.png
+│       ├── position_comparison.png
+│       └── result.mat
+│
+└── trajectory/
+    └── test_YYYYMMDD_HHMMSS/
+        ├── z_move_3d.png
+        ├── xy_circle_3d.png
+        ├── h_bar_safety.png
+        └── result.mat
 ```
 
 ---
@@ -80,23 +256,14 @@ MotionControl_Simu/
 3. **測試結果不 commit 到 Git**（已在 .gitignore 中排除）
 4. **臨時檔案用完即刪**（`temp_*.m`）
 5. **程式碼遵循 MATLAB 風格指南**
+6. **h̄_min = 1.5**（安全邊界，避免 h̄ ≤ 1）
 
 ---
 
-## 數學模型概要
+## 參考文件
 
-（詳細內容將在後續討論中補充）
-
-### 系統方程
-```
-ṗ = Γ⁻¹(p) · F
-p = ∫ ṗ dt
-```
-
-其中 Γ⁻¹(p) 是位置相關的移動度矩陣（考慮 Wall Effect）。
-
----
-
-## 開發指南
-
-（將在後續討論中補充）
+- `reference/Drag_MATLAB.pdf` - Wall Effect 數學模型
+- `reference/total_block_diagram.png` - 完整系統架構圖
+- `reference/thermal_force.png` - Thermal Force 公式
+- `r_controller_package` - 參數管理與測試輸出架構參考
+- Meng & Menq (2023) - 控制器設計來源
