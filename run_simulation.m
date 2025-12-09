@@ -15,29 +15,32 @@ clear; close all; clc;
 %% SECTION 1: High-Level Parameter Configuration
 % === Wall Parameters ===
 theta = 0;          % Azimuth angle [rad]
-phi = pi/3;            % Elevation angle [rad]
-pz = 2;             % Wall displacement [um]
+phi = 0;            % Elevation angle [rad]
+pz = 0;             % Wall displacement [um]
 h_bar_min = 2;      % Minimum safe normalized distance
 
 % === Trajectory Parameters ===
 traj_type = 'z_move';   % 'z_move' or 'xy_circle'
-h_margin = 15;           % Safety margin [um]
-delta_z = 8;            % z_move: travel distance [um]
+h_margin = 6;           % Safety margin [um]
+delta_z = 5;            % z_move: travel distance [um]
 direction = 'toward';   % z_move: 'away' or 'toward'
-speed = 40;              % z_move: travel speed [um/sec]
+speed = 0.5;              % z_move: travel speed [um/sec]
 radius = 5;             % xy_circle: radius [um]
 period = 1;             % xy_circle: period [sec]
 n_circles = 3;          % xy_circle: number of circles
 
 % === Controller Parameters ===
-ctrl_enable = true;    % true = closed-loop, false = open-loop
+ctrl_enable = false;    % true = closed-loop, false = open-loop
 lambda_c = 0.4;         % Closed-loop pole (0 < lambda_c < 1)
 
 % === Thermal Force ===
-thermal_enable = false;  % Enable Brownian motion disturbance
+thermal_enable = true;  % Enable Brownian motion disturbance
 
 % === Simulation Parameters ===
 T_margin = 0.5;         % Buffer time after trajectory completes [sec]
+
+% === Open-loop Thermal Analysis Parameters ===
+openloop_cutoff_freq = 3;  % Drift/Noise cutoff frequency [Hz] (adjustable)
 
 % Auto-calculate simulation time based on trajectory
 if strcmp(traj_type, 'z_move')
@@ -123,6 +126,7 @@ assignin('base', 'params', params);
 assignin('base', 'p0', p0);
 
 % Run Simulink model
+% Note: Random seed for thermal force is set in params.thermal.seed
 simOut = sim('model/system_model', 'StopTime', num2str(T_sim), ...
     'SaveTime', 'on', 'TimeSaveName', 'tout', ...
     'SaveOutput', 'on', 'OutputSaveName', 'yout');
@@ -553,3 +557,384 @@ fprintf('  Max h/R: %.2f\n', max(h_bar_log));
 fprintf('\n');
 fprintf('Results saved to: %s\n', output_dir);
 fprintf('================================================================\n');
+
+%% SECTION 7: Open-loop Thermal Force Analysis (as Tabs)
+% Triggered when: ctrl_enable = false AND thermal_enable = true
+% Analyzes p_m (position response) characteristics
+% F_th STD is calculated from theoretical formula
+
+is_openloop_thermal = (params.Value.ctrl.enable < 0.5) && ...
+                      (params.Value.thermal.enable > 0.5);
+
+if is_openloop_thermal
+    fprintf('\n');
+    fprintf('================================================================\n');
+    fprintf('  Open-loop Thermal Force Analysis\n');
+    fprintf('================================================================\n\n');
+
+    % Get sample rate
+    Fs = 1 / Ts;
+
+    % Calculate theoretical F_th STD from formula:
+    % F_th ~ N(0, Variance), Variance = (4 * k_B * T * gamma_N / Ts) * C^2
+    % STD = sqrt(Variance) = sqrt(4 * k_B * T * gamma_N / Ts) * |C|
+    k_B = params.Value.thermal.k_B;
+    T_temp = params.Value.thermal.T;
+    gamma_N = params.Value.common.gamma_N;
+    variance_coeff = 4 * k_B * T_temp * gamma_N / Ts;
+
+    % Get correction coefficients at initial position
+    h_bar_init = (dot(p0, params.Value.wall.w_hat) - params.Value.wall.pz) / params.Value.common.R;
+    [c_para, c_perp] = calc_correction_functions(h_bar_init);
+    C_vec = c_para * (params.Value.wall.u_hat + params.Value.wall.v_hat) + c_perp * params.Value.wall.w_hat;
+    std_Fth_theory = sqrt(variance_coeff) * abs(C_vec);  % [3x1] pN
+
+    % Prepare p_m data for analysis (convert to column vectors, nm)
+    p_m_x_nm = p_m_log(1, :)' * 1000;  % um -> nm
+    p_m_y_nm = p_m_log(2, :)' * 1000;
+    p_m_z_nm = p_m_log(3, :)' * 1000;
+    time_vec = t_sample';
+
+    % FFT Analysis for p_m only
+    fprintf('Performing FFT analysis (cutoff = %.1f Hz)...\n', openloop_cutoff_freq);
+
+    [std_pm_x, drift_pm_x, ~, freq_pm_x, spectrum_pm_x] = ...
+        fft_drift_noise_separation(p_m_x_nm, time_vec, openloop_cutoff_freq);
+    [std_pm_y, drift_pm_y, ~, freq_pm_y, spectrum_pm_y] = ...
+        fft_drift_noise_separation(p_m_y_nm, time_vec, openloop_cutoff_freq);
+    [std_pm_z, drift_pm_z, ~, freq_pm_z, spectrum_pm_z] = ...
+        fft_drift_noise_separation(p_m_z_nm, time_vec, openloop_cutoff_freq);
+
+    % Calculate Drift Peak-to-Peak
+    pp_pm_x = max(drift_pm_x) - min(drift_pm_x);
+    pp_pm_y = max(drift_pm_y) - min(drift_pm_y);
+    pp_pm_z = max(drift_pm_z) - min(drift_pm_z);
+
+    fprintf('  Done.\n\n');
+
+    % Adjust data length if needed (FFT may truncate odd-length data)
+    N_fft = length(drift_pm_x);
+    time_plot = time_vec(1:N_fft);
+    p_m_x_plot = p_m_x_nm(1:N_fft);
+    p_m_y_plot = p_m_y_nm(1:N_fft);
+    p_m_z_plot = p_m_z_nm(1:N_fft);
+    duration_plot = time_plot(end);
+
+    % ==================== Tab 7: Open-loop Time Response ====================
+    tab7 = uitab(tabgroup, 'Title', 'Open-loop Time');
+
+    % Subplot positions (pixel-based for uiaxes, assuming 1200x800 figure)
+    fig_w = 1200; fig_h = 800;
+    pos7_top = [0.10*fig_w, 0.70*fig_h, 0.85*fig_w, 0.25*fig_h];
+    pos7_mid = [0.10*fig_w, 0.40*fig_h, 0.85*fig_w, 0.25*fig_h];
+    pos7_bot = [0.10*fig_w, 0.08*fig_h, 0.85*fig_w, 0.25*fig_h];
+
+    % Remove initial offset (drift's first point) for better visualization
+    % This allows direct comparison of fluctuations across all axes
+    offset_x = drift_pm_x(1);
+    offset_y = drift_pm_y(1);
+    offset_z = drift_pm_z(1);
+    p_m_x_centered = p_m_x_plot - offset_x;
+    p_m_y_centered = p_m_y_plot - offset_y;
+    p_m_z_centered = p_m_z_plot - offset_z;
+    drift_x_centered = drift_pm_x - offset_x;
+    drift_y_centered = drift_pm_y - offset_y;
+    drift_z_centered = drift_pm_z - offset_z;
+
+    % Calculate unified Y-axis range based on max deviation across all axes
+    max_dev_x = max(abs(p_m_x_centered));
+    max_dev_y = max(abs(p_m_y_centered));
+    max_dev_z = max(abs(p_m_z_centered));
+    max_dev = max([max_dev_x, max_dev_y, max_dev_z]);
+    y_limit = max_dev * 1.15;  % Add 15% margin
+
+    % Calculate nice tick interval
+    tick_interval = 10 ^ floor(log10(y_limit));
+    if y_limit / tick_interval < 2
+        tick_interval = tick_interval / 2;
+    elseif y_limit / tick_interval > 5
+        tick_interval = tick_interval * 2;
+    end
+
+    % --- X Position ---
+    ax7_x = uiaxes(tab7, 'Position', pos7_top);
+    h7x = plot(ax7_x, time_plot, p_m_x_centered, 'b-', 'LineWidth', 1.2);
+    h7x.Color(4) = 0.5;
+    hold(ax7_x, 'on');
+    plot(ax7_x, time_plot, drift_x_centered, 'k-', 'LineWidth', 1.8);
+    hold(ax7_x, 'off');
+    ax7_x.FontSize = 14; ax7_x.FontWeight = 'bold'; ax7_x.LineWidth = 1.5;
+    ax7_x.Box = 'on';
+    ylabel(ax7_x, '\Deltap_{m,x} (nm)', 'FontSize', 16, 'FontWeight', 'bold');
+    title(ax7_x, 'Open-loop Position Response (Thermal Force Only, DC removed)', 'FontSize', 18, 'FontWeight', 'bold');
+    xlim(ax7_x, [0, duration_plot]);
+    ylim(ax7_x, [-y_limit, y_limit]);
+    ax7_x.YTick = -ceil(y_limit/tick_interval)*tick_interval : tick_interval : ceil(y_limit/tick_interval)*tick_interval;
+    ax7_x.XTickLabel = [];
+    text(ax7_x, 0.98, 0.95, sprintf('STD = %.2f nm', std_pm_x), ...
+        'Units', 'normalized', 'HorizontalAlignment', 'right', ...
+        'VerticalAlignment', 'top', 'FontSize', 14, 'FontWeight', 'bold', ...
+        'BackgroundColor', 'white', 'EdgeColor', 'black', 'LineWidth', 1.5);
+
+    % --- Y Position ---
+    ax7_y = uiaxes(tab7, 'Position', pos7_mid);
+    h7y = plot(ax7_y, time_plot, p_m_y_centered, 'g-', 'LineWidth', 1.2);
+    h7y.Color(4) = 0.5;
+    hold(ax7_y, 'on');
+    plot(ax7_y, time_plot, drift_y_centered, 'k-', 'LineWidth', 1.8);
+    hold(ax7_y, 'off');
+    ax7_y.FontSize = 14; ax7_y.FontWeight = 'bold'; ax7_y.LineWidth = 1.5;
+    ax7_y.Box = 'on';
+    ylabel(ax7_y, '\Deltap_{m,y} (nm)', 'FontSize', 16, 'FontWeight', 'bold');
+    xlim(ax7_y, [0, duration_plot]);
+    ylim(ax7_y, [-y_limit, y_limit]);
+    ax7_y.YTick = -ceil(y_limit/tick_interval)*tick_interval : tick_interval : ceil(y_limit/tick_interval)*tick_interval;
+    ax7_y.XTickLabel = [];
+    text(ax7_y, 0.98, 0.95, sprintf('STD = %.2f nm', std_pm_y), ...
+        'Units', 'normalized', 'HorizontalAlignment', 'right', ...
+        'VerticalAlignment', 'top', 'FontSize', 14, 'FontWeight', 'bold', ...
+        'BackgroundColor', 'white', 'EdgeColor', 'black', 'LineWidth', 1.5);
+
+    % --- Z Position ---
+    ax7_z = uiaxes(tab7, 'Position', pos7_bot);
+    h7z = plot(ax7_z, time_plot, p_m_z_centered, 'r-', 'LineWidth', 1.2);
+    h7z.Color(4) = 0.5;
+    hold(ax7_z, 'on');
+    plot(ax7_z, time_plot, drift_z_centered, 'k-', 'LineWidth', 1.8);
+    hold(ax7_z, 'off');
+    ax7_z.FontSize = 14; ax7_z.FontWeight = 'bold'; ax7_z.LineWidth = 1.5;
+    ax7_z.Box = 'on';
+    xlabel(ax7_z, 'Time (s)', 'FontSize', 16, 'FontWeight', 'bold');
+    ylabel(ax7_z, '\Deltap_{m,z} (nm)', 'FontSize', 16, 'FontWeight', 'bold');
+    xlim(ax7_z, [0, duration_plot]);
+    ylim(ax7_z, [-y_limit, y_limit]);
+    ax7_z.YTick = -ceil(y_limit/tick_interval)*tick_interval : tick_interval : ceil(y_limit/tick_interval)*tick_interval;
+    text(ax7_z, 0.98, 0.95, sprintf('STD = %.2f nm', std_pm_z), ...
+        'Units', 'normalized', 'HorizontalAlignment', 'right', ...
+        'VerticalAlignment', 'top', 'FontSize', 14, 'FontWeight', 'bold', ...
+        'BackgroundColor', 'white', 'EdgeColor', 'black', 'LineWidth', 1.5);
+
+    fprintf('  Tab 7: Open-loop Time Response\n');
+
+    % ==================== Tab 8: Open-loop FFT Spectrum ====================
+    tab8 = uitab(tabgroup, 'Title', 'Open-loop FFT');
+
+    % Calculate common Y-axis limits for all spectra (for easier comparison)
+    all_spectrum = [spectrum_pm_x(2:end); spectrum_pm_y(2:end); spectrum_pm_z(2:end)];
+    y_min_fft = min(all_spectrum(all_spectrum > 0)) * 0.5;
+    y_max_fft = max(all_spectrum) * 2;
+
+    % --- X Spectrum ---
+    ax8_x = uiaxes(tab8, 'Position', pos7_top);
+    loglog(ax8_x, freq_pm_x(2:end), spectrum_pm_x(2:end), 'b-', 'LineWidth', 1.5);
+    ax8_x.FontSize = 14; ax8_x.FontWeight = 'bold'; ax8_x.LineWidth = 1.5;
+    ax8_x.Box = 'on';
+    ylabel(ax8_x, 'X Amp. (nm)', 'FontSize', 16, 'FontWeight', 'bold');
+    title(ax8_x, 'Position FFT Spectrum (Open-loop)', 'FontSize', 18, 'FontWeight', 'bold');
+    xlim(ax8_x, [freq_pm_x(2), Fs/2]);
+    ylim(ax8_x, [y_min_fft, y_max_fft]);
+    ax8_x.XTickLabel = [];
+
+    % --- Y Spectrum ---
+    ax8_y = uiaxes(tab8, 'Position', pos7_mid);
+    loglog(ax8_y, freq_pm_y(2:end), spectrum_pm_y(2:end), 'g-', 'LineWidth', 1.5);
+    ax8_y.FontSize = 14; ax8_y.FontWeight = 'bold'; ax8_y.LineWidth = 1.5;
+    ax8_y.Box = 'on';
+    ylabel(ax8_y, 'Y Amp. (nm)', 'FontSize', 16, 'FontWeight', 'bold');
+    xlim(ax8_y, [freq_pm_x(2), Fs/2]);
+    ylim(ax8_y, [y_min_fft, y_max_fft]);
+    ax8_y.XTickLabel = [];
+
+    % --- Z Spectrum ---
+    ax8_z = uiaxes(tab8, 'Position', pos7_bot);
+    loglog(ax8_z, freq_pm_z(2:end), spectrum_pm_z(2:end), 'r-', 'LineWidth', 1.5);
+    ax8_z.FontSize = 14; ax8_z.FontWeight = 'bold'; ax8_z.LineWidth = 1.5;
+    ax8_z.Box = 'on';
+    xlabel(ax8_z, 'Frequency (Hz)', 'FontSize', 16, 'FontWeight', 'bold');
+    ylabel(ax8_z, 'Z Amp. (nm)', 'FontSize', 16, 'FontWeight', 'bold');
+    xlim(ax8_z, [freq_pm_x(2), Fs/2]);
+    ylim(ax8_z, [y_min_fft, y_max_fft]);
+
+    fprintf('  Tab 8: Open-loop FFT Spectrum\n');
+
+    % ==================== Statistics Output ====================
+    fprintf('\n');
+    fprintf('========================================\n');
+    fprintf('  Open-loop Thermal Analysis Results\n');
+    fprintf('========================================\n\n');
+
+    fprintf('Thermal Force (F_th) - Theoretical STD:\n');
+    fprintf('  X: STD = %.4f pN\n', std_Fth_theory(1));
+    fprintf('  Y: STD = %.4f pN\n', std_Fth_theory(2));
+    fprintf('  Z: STD = %.4f pN\n\n', std_Fth_theory(3));
+
+    fprintf('Position Response (p_m) - Measured:\n');
+    fprintf('  X: STD = %.2f nm, Drift P-P = %.2f nm\n', std_pm_x, pp_pm_x);
+    fprintf('  Y: STD = %.2f nm, Drift P-P = %.2f nm\n', std_pm_y, pp_pm_y);
+    fprintf('  Z: STD = %.2f nm, Drift P-P = %.2f nm\n\n', std_pm_z, pp_pm_z);
+
+    fprintf('Analysis Parameters:\n');
+    fprintf('  Cutoff Frequency: %.1f Hz\n', openloop_cutoff_freq);
+    fprintf('  Sample Rate: %.0f Hz\n', Fs);
+    fprintf('  Duration: %.2f sec\n', duration_plot);
+    fprintf('  FFT Resolution: %.4f Hz\n', Fs / N_fft);
+    fprintf('========================================\n');
+
+    % ==================== Save Open-loop Analysis Figures ====================
+    % Tab 7: Time Response
+    fig_export = figure('Visible', 'off', 'Position', [100, 100, 1000, 800]);
+
+    subplot(3,1,1);
+    h1 = plot(time_plot, p_m_x_centered, 'b-', 'LineWidth', 1.2); h1.Color(4) = 0.5;
+    hold on; plot(time_plot, drift_x_centered, 'k-', 'LineWidth', 1.8); hold off;
+    ylabel('\Deltap_{m,x} (nm)'); title('Open-loop Position Response (Thermal Force Only, DC removed)');
+    xlim([0, duration_plot]); ylim([-y_limit, y_limit]);
+    text(0.98, 0.95, sprintf('STD = %.2f nm', std_pm_x), 'Units', 'normalized', ...
+        'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
+        'BackgroundColor', 'white', 'EdgeColor', 'black');
+    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
+
+    subplot(3,1,2);
+    h2 = plot(time_plot, p_m_y_centered, 'g-', 'LineWidth', 1.2); h2.Color(4) = 0.5;
+    hold on; plot(time_plot, drift_y_centered, 'k-', 'LineWidth', 1.8); hold off;
+    ylabel('\Deltap_{m,y} (nm)');
+    xlim([0, duration_plot]); ylim([-y_limit, y_limit]);
+    text(0.98, 0.95, sprintf('STD = %.2f nm', std_pm_y), 'Units', 'normalized', ...
+        'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
+        'BackgroundColor', 'white', 'EdgeColor', 'black');
+    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
+
+    subplot(3,1,3);
+    h3 = plot(time_plot, p_m_z_centered, 'r-', 'LineWidth', 1.2); h3.Color(4) = 0.5;
+    hold on; plot(time_plot, drift_z_centered, 'k-', 'LineWidth', 1.8); hold off;
+    xlabel('Time (s)'); ylabel('\Deltap_{m,z} (nm)');
+    xlim([0, duration_plot]); ylim([-y_limit, y_limit]);
+    text(0.98, 0.95, sprintf('STD = %.2f nm', std_pm_z), 'Units', 'normalized', ...
+        'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
+        'BackgroundColor', 'white', 'EdgeColor', 'black');
+    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
+
+    exportgraphics(fig_export, fullfile(output_dir, '7_openloop_time_response.png'), 'Resolution', 150);
+    close(fig_export);
+
+    % Tab 8: FFT Spectrum
+    fig_export = figure('Visible', 'off', 'Position', [100, 100, 1000, 800]);
+
+    subplot(3,1,1);
+    loglog(freq_pm_x(2:end), spectrum_pm_x(2:end), 'b-', 'LineWidth', 1.5);
+    ylabel('X Amp. (nm)'); title('Position FFT Spectrum (Open-loop)');
+    xlim([freq_pm_x(2), Fs/2]); ylim([y_min_fft, y_max_fft]);
+    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
+
+    subplot(3,1,2);
+    loglog(freq_pm_y(2:end), spectrum_pm_y(2:end), 'g-', 'LineWidth', 1.5);
+    ylabel('Y Amp. (nm)');
+    xlim([freq_pm_x(2), Fs/2]); ylim([y_min_fft, y_max_fft]);
+    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
+
+    subplot(3,1,3);
+    loglog(freq_pm_z(2:end), spectrum_pm_z(2:end), 'r-', 'LineWidth', 1.5);
+    xlabel('Frequency (Hz)'); ylabel('Z Amp. (nm)');
+    xlim([freq_pm_x(2), Fs/2]); ylim([y_min_fft, y_max_fft]);
+    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
+
+    exportgraphics(fig_export, fullfile(output_dir, '8_openloop_fft_spectrum.png'), 'Resolution', 150);
+    close(fig_export);
+
+    fprintf('\n  Open-loop figures saved (7, 8)\n');
+
+end
+
+%% ========== Local Functions ==========
+
+function [std_noise, data_drift, data_noise, f, P1] = ...
+    fft_drift_noise_separation(data, time, cutoff_freq)
+% FFT_DRIFT_NOISE_SEPARATION - Separate drift and noise using FFT
+%
+%   Separates low-frequency drift and high-frequency noise components
+%   using FFT-based filtering with endpoint extension for improved drift
+%   estimation.
+%
+%   Inputs:
+%       data        - Time series data (column vector)
+%       time        - Time axis (column vector)
+%       cutoff_freq - Cutoff frequency for drift/noise separation [Hz]
+%
+%   Outputs:
+%       std_noise   - Standard deviation of noise component
+%       data_drift  - Low-frequency drift component
+%       data_noise  - High-frequency noise component
+%       f           - Frequency axis for spectrum
+%       P1          - Single-sided amplitude spectrum
+
+    N = length(data);
+
+    % Ensure N is even
+    if mod(N, 2) == 1
+        data = data(1:end-1);
+        time = time(1:end-1);
+        N = N - 1;
+    end
+
+    % Sample rate
+    Fs = 1 / mean(diff(time));
+
+    % ========== Stage 1: FFT on original data ==========
+    data_mean = mean(data);
+    data_demean = data - data_mean;
+
+    % Direct FFT
+    Y_original = fft(data_demean);
+
+    % Frequency axis
+    f = Fs * (0:(N/2)) / N;
+    f = f(:);  % Ensure column vector
+
+    % Single-sided amplitude spectrum
+    P2 = abs(Y_original / N);
+    P1 = P2(1:N/2+1);
+    P1(2:end-1) = 2 * P1(2:end-1);
+
+    % Find cutoff frequency index
+    cutoff_idx = find(f <= cutoff_freq, 1, 'last');
+    if isempty(cutoff_idx)
+        cutoff_idx = 1;
+    end
+
+    % ========== Stage 2: Extract Noise ==========
+    Y_highfreq = Y_original;
+    Y_highfreq(1:cutoff_idx) = 0;
+    Y_highfreq(N-cutoff_idx+2:N) = 0;
+
+    % IFFT to get noise
+    data_noise = ifft(Y_highfreq, 'symmetric');
+
+    % Calculate noise standard deviation
+    std_noise = std(data_noise);
+
+    % ========== Stage 3: Extract Drift (with extension + windowing) ==========
+    % Endpoint extension
+    extend_len = round(N * 0.1);
+    left_extend = linspace(0, data_demean(1), extend_len)';
+    right_extend = linspace(data_demean(end), 0, extend_len)';
+    data_extended = [left_extend; data_demean; right_extend];
+    N_ext = length(data_extended);
+
+    % Tukey window
+    alpha = 0.1;
+    window = tukeywin(N_ext, alpha);
+    data_windowed = data_extended .* window;
+
+    % FFT for drift
+    Y_drift = fft(data_windowed);
+
+    % Low-pass filter
+    Y_drift_lowfreq = Y_drift;
+    cutoff_idx_ext = round(cutoff_idx * N_ext / N);
+    Y_drift_lowfreq(cutoff_idx_ext+1:N_ext-cutoff_idx_ext+1) = 0;
+
+    % IFFT and extract original region
+    drift_extended = ifft(Y_drift_lowfreq, 'symmetric');
+    data_drift = drift_extended(extend_len+1:extend_len+N) + data_mean;
+
+end

@@ -23,6 +23,7 @@ function F_th = calc_thermal_force(p, params)
 %       params.thermal.k_B     - Boltzmann constant [pN*um/K]
 %       params.thermal.T       - Temperature [K]
 %       params.thermal.Ts      - Sampling period [sec]
+%       params.thermal.seed    - Random seed for reproducibility
 %
 %   Physical model:
 %       The thermal force is modeled as white noise with position-dependent
@@ -36,6 +37,15 @@ function F_th = calc_thermal_force(p, params)
 %
 %   Reference:
 %       thermal_force.png - Thermal force formula
+
+    % Initialize random seed on first call (persistent variable)
+    persistent rng_initialized
+    if isempty(rng_initialized)
+        if isfield(params.thermal, 'seed')
+            rng(params.thermal.seed);
+        end
+        rng_initialized = true;
+    end
 
     % Extract parameters
     w_hat = params.wall.w_hat;

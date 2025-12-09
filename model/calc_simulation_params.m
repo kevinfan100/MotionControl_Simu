@@ -147,6 +147,7 @@ function params = calc_simulation_params(config)
     params_data.thermal.T = T_temp;
     params_data.thermal.Ts = Ts;
     params_data.thermal.variance_coeff = 4 * k_B * T_temp * gamma_N / Ts;
+    params_data.thermal.seed = randi(2^31-1);  % Random seed for thermal force
 
     %% ========================================
     %% SECTION 4: Create Nested Bus Objects
@@ -227,7 +228,7 @@ function params = calc_simulation_params(config)
     assignin('base', 'CtrlBus', CtrlBus);
 
     % --- ThermalBus ---
-    elems_thermal = Simulink.BusElement.empty(0, 5);
+    elems_thermal = Simulink.BusElement.empty(0, 6);
     elems_thermal(1) = Simulink.BusElement; elems_thermal(1).Name = 'enable';
     elems_thermal(1).Dimensions = [1 1]; elems_thermal(1).DataType = 'double';
     elems_thermal(2) = Simulink.BusElement; elems_thermal(2).Name = 'k_B';
@@ -238,6 +239,8 @@ function params = calc_simulation_params(config)
     elems_thermal(4).Dimensions = [1 1]; elems_thermal(4).DataType = 'double';
     elems_thermal(5) = Simulink.BusElement; elems_thermal(5).Name = 'variance_coeff';
     elems_thermal(5).Dimensions = [1 1]; elems_thermal(5).DataType = 'double';
+    elems_thermal(6) = Simulink.BusElement; elems_thermal(6).Name = 'seed';
+    elems_thermal(6).Dimensions = [1 1]; elems_thermal(6).DataType = 'double';
 
     ThermalBus = Simulink.Bus;
     ThermalBus.Elements = elems_thermal;
