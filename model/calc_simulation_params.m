@@ -1,0 +1,271 @@
+function params = calc_simulation_params(config)
+%CALC_SIMULATION_PARAMS Calculate simulation parameters and create Simulink Bus Objects
+%
+%   params = calc_simulation_params(config)
+%
+%   This function:
+%   1. Calculates all simulation parameters from config
+%   2. Converts string parameters to numeric (Simulink compatible)
+%   3. Creates Simulink Bus Object definitions
+%   4. Returns Simulink.Parameter object
+%
+%   Inputs:
+%       config - Configuration structure with user-adjustable parameters
+%
+%   Outputs:
+%       params - Simulink.Parameter with DataType 'Bus: ParamsBus'
+%
+%   Config fields (all optional, defaults shown):
+%       % Wall parameters
+%       theta       = 0         % Azimuth angle [rad]
+%       phi         = 0         % Elevation angle [rad]
+%       pz          = 0         % Wall displacement [um]
+%       h_bar_min   = 1.5       % Minimum safe normalized distance
+%
+%       % Trajectory parameters
+%       traj_type   = 'z_move'  % 'z_move' or 'xy_circle'
+%       h_margin    = 5         % Additional safety margin [um]
+%       delta_z     = 10        % z_move: displacement [um]
+%       direction   = 'away'    % z_move: 'away' or 'toward'
+%       speed       = 5         % z_move: velocity [um/sec]
+%       radius      = 5         % xy_circle: radius [um]
+%       period      = 1         % xy_circle: period [sec]
+%       n_circles   = 3         % xy_circle: number of circles
+%
+%       % Controller parameters
+%       ctrl_enable = true      % Enable controller (false = open-loop)
+%       lambda_c    = 0.7       % Closed-loop pole (0 < lambda_c < 1)
+%
+%       % Thermal force parameters
+%       thermal_enable = true   % Enable thermal force
+%
+%       % Simulation parameters
+%       T_sim       = 5         % Simulation time [sec]
+
+    %% ========================================
+    %% SECTION 1: Fixed physical constants
+    %% ========================================
+    R = 2.25;                    % Particle radius [um]
+    gamma_N = 0.0425;            % Stokes drag coefficient [pN*sec/um]
+    Ts = 1/1606;                 % Sampling period [sec]
+    k_B = 1.3806503e-5;          % Boltzmann constant [pN*um/K]
+    T_temp = 310.15;             % Temperature [K] (37 C)
+
+    %% ========================================
+    %% SECTION 2: Default values and merge
+    %% ========================================
+    defaults = struct(...
+        'theta', 0, ...
+        'phi', 0, ...
+        'pz', 0, ...
+        'h_bar_min', 1.5, ...
+        'traj_type', 'z_move', ...
+        'h_margin', 5, ...
+        'delta_z', 10, ...
+        'direction', 'away', ...
+        'speed', 5, ...
+        'radius', 5, ...
+        'period', 1, ...
+        'n_circles', 3, ...
+        'ctrl_enable', true, ...
+        'lambda_c', 0.7, ...
+        'thermal_enable', true, ...
+        'T_sim', 5 ...
+    );
+
+    if nargin < 1 || isempty(config)
+        config = struct();
+    end
+
+    fields = fieldnames(defaults);
+    for i = 1:length(fields)
+        if ~isfield(config, fields{i})
+            config.(fields{i}) = defaults.(fields{i});
+        end
+    end
+
+    %% ========================================
+    %% SECTION 3: Calculate derived parameters
+    %% ========================================
+
+    % --- common sub-structure ---
+    params_data.common.R = R;
+    params_data.common.gamma_N = gamma_N;
+    params_data.common.Ts = Ts;
+    params_data.common.T_sim = config.T_sim;
+
+    % --- wall sub-structure ---
+    theta = config.theta;
+    phi = config.phi;
+
+    params_data.wall.theta = theta;
+    params_data.wall.phi = phi;
+    params_data.wall.pz = config.pz;
+    params_data.wall.h_bar_min = config.h_bar_min;
+    params_data.wall.w_hat = [cos(theta)*sin(phi); sin(theta)*sin(phi); cos(phi)];
+    params_data.wall.u_hat = [-cos(theta)*cos(phi); -sin(theta)*cos(phi); sin(phi)];
+    params_data.wall.v_hat = [sin(theta); -cos(theta); 0];
+
+    % --- traj sub-structure (numeric encoding for Simulink) ---
+    % type: 'z_move' -> 0, 'xy_circle' -> 1
+    switch config.traj_type
+        case 'z_move'
+            params_data.traj.type = 0;
+        case 'xy_circle'
+            params_data.traj.type = 1;
+        otherwise
+            error('Unknown trajectory type: %s', config.traj_type);
+    end
+
+    params_data.traj.h_margin = config.h_margin;
+    params_data.traj.delta_z = config.delta_z;
+
+    % direction: 'away' -> 0, 'toward' -> 1
+    switch config.direction
+        case 'away'
+            params_data.traj.direction = 0;
+        case 'toward'
+            params_data.traj.direction = 1;
+        otherwise
+            error('Unknown direction: %s', config.direction);
+    end
+
+    params_data.traj.speed = config.speed;
+    params_data.traj.radius = config.radius;
+    params_data.traj.period = config.period;
+    params_data.traj.n_circles = config.n_circles;
+
+    % --- ctrl sub-structure ---
+    params_data.ctrl.enable = double(config.ctrl_enable);  % Convert to double
+    params_data.ctrl.lambda_c = config.lambda_c;
+    params_data.ctrl.gamma = gamma_N;
+    params_data.ctrl.Ts = Ts;
+
+    % --- thermal sub-structure ---
+    params_data.thermal.enable = double(config.thermal_enable);  % Convert to double
+    params_data.thermal.k_B = k_B;
+    params_data.thermal.T = T_temp;
+    params_data.thermal.Ts = Ts;
+    params_data.thermal.variance_coeff = 4 * k_B * T_temp * gamma_N / Ts;
+
+    %% ========================================
+    %% SECTION 4: Create Nested Bus Objects
+    %% ========================================
+
+    % --- CommonBus ---
+    elems_common = Simulink.BusElement.empty(0, 4);
+    elems_common(1) = Simulink.BusElement; elems_common(1).Name = 'R';
+    elems_common(1).Dimensions = [1 1]; elems_common(1).DataType = 'double';
+    elems_common(2) = Simulink.BusElement; elems_common(2).Name = 'gamma_N';
+    elems_common(2).Dimensions = [1 1]; elems_common(2).DataType = 'double';
+    elems_common(3) = Simulink.BusElement; elems_common(3).Name = 'Ts';
+    elems_common(3).Dimensions = [1 1]; elems_common(3).DataType = 'double';
+    elems_common(4) = Simulink.BusElement; elems_common(4).Name = 'T_sim';
+    elems_common(4).Dimensions = [1 1]; elems_common(4).DataType = 'double';
+
+    CommonBus = Simulink.Bus;
+    CommonBus.Elements = elems_common;
+    assignin('base', 'CommonBus', CommonBus);
+
+    % --- WallBus ---
+    elems_wall = Simulink.BusElement.empty(0, 7);
+    elems_wall(1) = Simulink.BusElement; elems_wall(1).Name = 'theta';
+    elems_wall(1).Dimensions = [1 1]; elems_wall(1).DataType = 'double';
+    elems_wall(2) = Simulink.BusElement; elems_wall(2).Name = 'phi';
+    elems_wall(2).Dimensions = [1 1]; elems_wall(2).DataType = 'double';
+    elems_wall(3) = Simulink.BusElement; elems_wall(3).Name = 'pz';
+    elems_wall(3).Dimensions = [1 1]; elems_wall(3).DataType = 'double';
+    elems_wall(4) = Simulink.BusElement; elems_wall(4).Name = 'h_bar_min';
+    elems_wall(4).Dimensions = [1 1]; elems_wall(4).DataType = 'double';
+    elems_wall(5) = Simulink.BusElement; elems_wall(5).Name = 'w_hat';
+    elems_wall(5).Dimensions = [3 1]; elems_wall(5).DataType = 'double';
+    elems_wall(6) = Simulink.BusElement; elems_wall(6).Name = 'u_hat';
+    elems_wall(6).Dimensions = [3 1]; elems_wall(6).DataType = 'double';
+    elems_wall(7) = Simulink.BusElement; elems_wall(7).Name = 'v_hat';
+    elems_wall(7).Dimensions = [3 1]; elems_wall(7).DataType = 'double';
+
+    WallBus = Simulink.Bus;
+    WallBus.Elements = elems_wall;
+    assignin('base', 'WallBus', WallBus);
+
+    % --- TrajBus ---
+    elems_traj = Simulink.BusElement.empty(0, 8);
+    elems_traj(1) = Simulink.BusElement; elems_traj(1).Name = 'type';
+    elems_traj(1).Dimensions = [1 1]; elems_traj(1).DataType = 'double';
+    elems_traj(2) = Simulink.BusElement; elems_traj(2).Name = 'h_margin';
+    elems_traj(2).Dimensions = [1 1]; elems_traj(2).DataType = 'double';
+    elems_traj(3) = Simulink.BusElement; elems_traj(3).Name = 'delta_z';
+    elems_traj(3).Dimensions = [1 1]; elems_traj(3).DataType = 'double';
+    elems_traj(4) = Simulink.BusElement; elems_traj(4).Name = 'direction';
+    elems_traj(4).Dimensions = [1 1]; elems_traj(4).DataType = 'double';
+    elems_traj(5) = Simulink.BusElement; elems_traj(5).Name = 'speed';
+    elems_traj(5).Dimensions = [1 1]; elems_traj(5).DataType = 'double';
+    elems_traj(6) = Simulink.BusElement; elems_traj(6).Name = 'radius';
+    elems_traj(6).Dimensions = [1 1]; elems_traj(6).DataType = 'double';
+    elems_traj(7) = Simulink.BusElement; elems_traj(7).Name = 'period';
+    elems_traj(7).Dimensions = [1 1]; elems_traj(7).DataType = 'double';
+    elems_traj(8) = Simulink.BusElement; elems_traj(8).Name = 'n_circles';
+    elems_traj(8).Dimensions = [1 1]; elems_traj(8).DataType = 'double';
+
+    TrajBus = Simulink.Bus;
+    TrajBus.Elements = elems_traj;
+    assignin('base', 'TrajBus', TrajBus);
+
+    % --- CtrlBus ---
+    elems_ctrl = Simulink.BusElement.empty(0, 4);
+    elems_ctrl(1) = Simulink.BusElement; elems_ctrl(1).Name = 'enable';
+    elems_ctrl(1).Dimensions = [1 1]; elems_ctrl(1).DataType = 'double';
+    elems_ctrl(2) = Simulink.BusElement; elems_ctrl(2).Name = 'lambda_c';
+    elems_ctrl(2).Dimensions = [1 1]; elems_ctrl(2).DataType = 'double';
+    elems_ctrl(3) = Simulink.BusElement; elems_ctrl(3).Name = 'gamma';
+    elems_ctrl(3).Dimensions = [1 1]; elems_ctrl(3).DataType = 'double';
+    elems_ctrl(4) = Simulink.BusElement; elems_ctrl(4).Name = 'Ts';
+    elems_ctrl(4).Dimensions = [1 1]; elems_ctrl(4).DataType = 'double';
+
+    CtrlBus = Simulink.Bus;
+    CtrlBus.Elements = elems_ctrl;
+    assignin('base', 'CtrlBus', CtrlBus);
+
+    % --- ThermalBus ---
+    elems_thermal = Simulink.BusElement.empty(0, 5);
+    elems_thermal(1) = Simulink.BusElement; elems_thermal(1).Name = 'enable';
+    elems_thermal(1).Dimensions = [1 1]; elems_thermal(1).DataType = 'double';
+    elems_thermal(2) = Simulink.BusElement; elems_thermal(2).Name = 'k_B';
+    elems_thermal(2).Dimensions = [1 1]; elems_thermal(2).DataType = 'double';
+    elems_thermal(3) = Simulink.BusElement; elems_thermal(3).Name = 'T';
+    elems_thermal(3).Dimensions = [1 1]; elems_thermal(3).DataType = 'double';
+    elems_thermal(4) = Simulink.BusElement; elems_thermal(4).Name = 'Ts';
+    elems_thermal(4).Dimensions = [1 1]; elems_thermal(4).DataType = 'double';
+    elems_thermal(5) = Simulink.BusElement; elems_thermal(5).Name = 'variance_coeff';
+    elems_thermal(5).Dimensions = [1 1]; elems_thermal(5).DataType = 'double';
+
+    ThermalBus = Simulink.Bus;
+    ThermalBus.Elements = elems_thermal;
+    assignin('base', 'ThermalBus', ThermalBus);
+
+    % --- ParamsBus (parent) ---
+    elems_params = Simulink.BusElement.empty(0, 5);
+    elems_params(1) = Simulink.BusElement; elems_params(1).Name = 'common';
+    elems_params(1).Dimensions = [1 1]; elems_params(1).DataType = 'Bus: CommonBus';
+    elems_params(2) = Simulink.BusElement; elems_params(2).Name = 'wall';
+    elems_params(2).Dimensions = [1 1]; elems_params(2).DataType = 'Bus: WallBus';
+    elems_params(3) = Simulink.BusElement; elems_params(3).Name = 'traj';
+    elems_params(3).Dimensions = [1 1]; elems_params(3).DataType = 'Bus: TrajBus';
+    elems_params(4) = Simulink.BusElement; elems_params(4).Name = 'ctrl';
+    elems_params(4).Dimensions = [1 1]; elems_params(4).DataType = 'Bus: CtrlBus';
+    elems_params(5) = Simulink.BusElement; elems_params(5).Name = 'thermal';
+    elems_params(5).Dimensions = [1 1]; elems_params(5).DataType = 'Bus: ThermalBus';
+
+    ParamsBus = Simulink.Bus;
+    ParamsBus.Description = 'Motion Control Simulation Parameters';
+    ParamsBus.Elements = elems_params;
+    assignin('base', 'ParamsBus', ParamsBus);
+
+    %% ========================================
+    %% SECTION 5: Package as Simulink.Parameter
+    %% ========================================
+    params = Simulink.Parameter(params_data);
+    params.DataType = 'Bus: ParamsBus';
+    params.Description = 'Motion Control Parameters for Simulink';
+
+end
