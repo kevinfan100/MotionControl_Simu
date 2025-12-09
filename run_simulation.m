@@ -15,18 +15,18 @@ clear; close all; clc;
 %% SECTION 1: High-Level Parameter Configuration
 % === Wall Parameters ===
 theta = 0;          % Azimuth angle [rad]
-phi = 0;            % Elevation angle [rad]
-pz = 0;             % Wall displacement [um]
+phi = pi/3;            % Elevation angle [rad]
+pz = 2;             % Wall displacement [um]
 h_bar_min = 2;      % Minimum safe normalized distance
 
 % === Trajectory Parameters ===
-traj_type = 'xy_circle';   % 'z_move' or 'xy_circle'
-h_margin = 10;           % Safety margin [um]
-delta_z = 5;            % z_move: travel distance [um]
+traj_type = 'z_move';   % 'z_move' or 'xy_circle'
+h_margin = 15;           % Safety margin [um]
+delta_z = 8;            % z_move: travel distance [um]
 direction = 'toward';   % z_move: 'away' or 'toward'
-speed = 50;              % z_move: travel speed [um/sec]
-radius = 10;             % xy_circle: radius [um]
-period = 0.1;             % xy_circle: period [sec]
+speed = 40;              % z_move: travel speed [um/sec]
+radius = 5;             % xy_circle: radius [um]
+period = 1;             % xy_circle: period [sec]
 n_circles = 3;          % xy_circle: number of circles
 
 % === Controller Parameters ===
@@ -34,7 +34,7 @@ ctrl_enable = true;    % true = closed-loop, false = open-loop
 lambda_c = 0.4;         % Closed-loop pole (0 < lambda_c < 1)
 
 % === Thermal Force ===
-thermal_enable = true;  % Enable Brownian motion disturbance
+thermal_enable = false;  % Enable Brownian motion disturbance
 
 % === Simulation Parameters ===
 T_margin = 0.5;         % Buffer time after trajectory completes [sec]
@@ -47,7 +47,7 @@ else  % xy_circle
 end
 T_sim = T_traj + T_margin;
 
-% === Figure Style Settings ===
+% === Figure Style Settings (r_controller style) ===
 colors = [
     0.0000, 0.4470, 0.7410;  % Blue
     0.8500, 0.3250, 0.0980;  % Orange
@@ -59,11 +59,11 @@ colors = [
 axis_linewidth = 1.5;
 xlabel_fontsize = 14;
 ylabel_fontsize = 14;
-title_fontsize = 16;
+title_fontsize = 15;
 tick_fontsize = 12;
 legend_fontsize = 11;
-line_width_main = 2.0;
-line_width_ref = 1.5;
+line_width_main = 3.0;
+line_width_ref = 2.5;
 
 %% SECTION 2: Package Configuration and Calculate Parameters
 config = struct(...
@@ -202,163 +202,196 @@ axis(ax1, 'equal');
 
 fprintf('  Tab 1: 3D Trajectory\n');
 
-% ==================== Tab 2: Tracking Error ====================
-tab2 = uitab(tabgroup, 'Title', 'Tracking Error');
-ax2 = uiaxes(tab2);
-ax2.Units = 'normalized';
-ax2.Position = [0.08 0.10 0.88 0.82];
+% ==================== Tab 2: X-Axis Analysis ====================
+tab2 = uitab(tabgroup, 'Title', 'X-Axis Analysis');
 
-plot(ax2, t_sample, error * 1000, 'k-', 'LineWidth', line_width_main);
+% Calculate X-axis error in nm
+error_x = (p_m_log(1, :) - p_d_log(1, :)) * 1000;
 
-xlabel(ax2, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax2, '||e|| [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax2, sprintf('Tracking Error (RMSE = %.4f um = %.2f nm)', rms(error), rms(error)*1000), ...
-    'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax2.LineWidth = axis_linewidth;
-ax2.FontSize = tick_fontsize;
-ax2.FontWeight = 'bold';
-ax2.Box = 'on';
-grid(ax2, 'on');
+% Subplot positions [left bottom width height]
+pos_top = [0.10 0.70 0.85 0.25];
+pos_mid = [0.10 0.40 0.85 0.25];
+pos_bot = [0.10 0.08 0.85 0.25];
 
-% Add statistics annotation
-stats_str = sprintf('Max: %.2f nm\nMean: %.2f nm\nFinal: %.2f nm', ...
-    max(error)*1000, mean(error)*1000, error(end)*1000);
-text(ax2, 0.95, 0.95, stats_str, 'Units', 'normalized', ...
-    'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
-    'FontSize', legend_fontsize, 'FontWeight', 'bold', ...
-    'BackgroundColor', [1 1 1 0.8], 'EdgeColor', [0.3 0.3 0.3], 'Margin', 5);
+% --- Subplot 1: X Position Tracking ---
+ax2_pos = uiaxes(tab2, 'Position', [pos_top(1)*1200, pos_top(2)*800, pos_top(3)*1200, pos_top(4)*800]);
+plot(ax2_pos, t_sample, p_m_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
+hold(ax2_pos, 'on');
+plot(ax2_pos, t_sample, p_d_log(1, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_ref);
+hold(ax2_pos, 'off');
+legend(ax2_pos, {'p_{m,x}', 'p_{d,x}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+ylabel(ax2_pos, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax2_pos, 'X-Axis Position Tracking', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ax2_pos.LineWidth = axis_linewidth; ax2_pos.FontSize = tick_fontsize; ax2_pos.FontWeight = 'bold';
+ax2_pos.Box = 'on'; grid(ax2_pos, 'on');
+ax2_pos.XTickLabel = [];
 
-fprintf('  Tab 2: Tracking Error\n');
+% --- Subplot 2: X Tracking Error ---
+ax2_err = uiaxes(tab2, 'Position', [pos_mid(1)*1200, pos_mid(2)*800, pos_mid(3)*1200, pos_mid(4)*800]);
+plot(ax2_err, t_sample, error_x, 'k-', 'LineWidth', line_width_main);
+ylabel(ax2_err, 'e_x [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax2_err, 'X-Axis Error', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ax2_err.LineWidth = axis_linewidth; ax2_err.FontSize = tick_fontsize; ax2_err.FontWeight = 'bold';
+ax2_err.Box = 'on'; grid(ax2_err, 'on');
+ax2_err.XTickLabel = [];
 
-% ==================== Tab 3: Position vs Time ====================
-tab3 = uitab(tabgroup, 'Title', 'Position');
-ax3 = uiaxes(tab3);
-ax3.Units = 'normalized';
-ax3.Position = [0.08 0.10 0.88 0.82];
+% --- Subplot 3: X Control Force ---
+ax2_force = uiaxes(tab2, 'Position', [pos_bot(1)*1200, pos_bot(2)*800, pos_bot(3)*1200, pos_bot(4)*800]);
+plot(ax2_force, t_sample, f_d_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
+xlabel(ax2_force, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
+ylabel(ax2_force, 'f_x [pN]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax2_force, 'X-Axis Control Force', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ax2_force.LineWidth = axis_linewidth; ax2_force.FontSize = tick_fontsize; ax2_force.FontWeight = 'bold';
+ax2_force.Box = 'on'; grid(ax2_force, 'on');
 
-plot(ax3, t_sample, p_d_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_ref);
-hold(ax3, 'on');
-plot(ax3, t_sample, p_d_log(2, :), '-', 'Color', colors(2, :), 'LineWidth', line_width_ref);
-plot(ax3, t_sample, p_d_log(3, :), '-', 'Color', colors(3, :), 'LineWidth', line_width_ref);
-plot(ax3, t_sample, p_m_log(1, :), '--', 'Color', colors(1, :), 'LineWidth', line_width_main);
-plot(ax3, t_sample, p_m_log(2, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_main);
-plot(ax3, t_sample, p_m_log(3, :), '--', 'Color', colors(3, :), 'LineWidth', line_width_main);
-hold(ax3, 'off');
+% Link X axes
+linkaxes([ax2_pos, ax2_err, ax2_force], 'x');
 
-legend(ax3, {'x_d', 'y_d', 'z_d', 'x_m', 'y_m', 'z_m'}, ...
-    'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold', 'NumColumns', 2);
-xlabel(ax3, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax3, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax3, 'Position vs Time', 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax3.LineWidth = axis_linewidth;
-ax3.FontSize = tick_fontsize;
-ax3.FontWeight = 'bold';
-ax3.Box = 'on';
-grid(ax3, 'on');
+fprintf('  Tab 2: X-Axis Analysis\n');
 
-fprintf('  Tab 3: Position\n');
+% ==================== Tab 3: Y-Axis Analysis ====================
+tab3 = uitab(tabgroup, 'Title', 'Y-Axis Analysis');
 
-% ==================== Tab 4: Control Force ====================
-tab4 = uitab(tabgroup, 'Title', 'Control Force');
-ax4 = uiaxes(tab4);
-ax4.Units = 'normalized';
-ax4.Position = [0.08 0.10 0.88 0.82];
+% Calculate Y-axis error in nm
+error_y = (p_m_log(2, :) - p_d_log(2, :)) * 1000;
 
-plot(ax4, t_sample, f_d_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
-hold(ax4, 'on');
-plot(ax4, t_sample, f_d_log(2, :), '-', 'Color', colors(2, :), 'LineWidth', line_width_main);
-plot(ax4, t_sample, f_d_log(3, :), '-', 'Color', colors(3, :), 'LineWidth', line_width_main);
-hold(ax4, 'off');
+% --- Subplot 1: Y Position Tracking ---
+ax3_pos = uiaxes(tab3, 'Position', [pos_top(1)*1200, pos_top(2)*800, pos_top(3)*1200, pos_top(4)*800]);
+plot(ax3_pos, t_sample, p_m_log(2, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
+hold(ax3_pos, 'on');
+plot(ax3_pos, t_sample, p_d_log(2, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_ref);
+hold(ax3_pos, 'off');
+legend(ax3_pos, {'p_{m,y}', 'p_{d,y}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+ylabel(ax3_pos, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax3_pos, 'Y-Axis Position Tracking', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ax3_pos.LineWidth = axis_linewidth; ax3_pos.FontSize = tick_fontsize; ax3_pos.FontWeight = 'bold';
+ax3_pos.Box = 'on'; grid(ax3_pos, 'on');
+ax3_pos.XTickLabel = [];
 
-legend(ax4, {'f_x', 'f_y', 'f_z'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
-xlabel(ax4, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax4, 'Force [pN]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax4, sprintf('Control Force (%s)', ctrl_mode_str), 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax4.LineWidth = axis_linewidth;
-ax4.FontSize = tick_fontsize;
-ax4.FontWeight = 'bold';
-ax4.Box = 'on';
-grid(ax4, 'on');
+% --- Subplot 2: Y Tracking Error ---
+ax3_err = uiaxes(tab3, 'Position', [pos_mid(1)*1200, pos_mid(2)*800, pos_mid(3)*1200, pos_mid(4)*800]);
+plot(ax3_err, t_sample, error_y, 'k-', 'LineWidth', line_width_main);
+ylabel(ax3_err, 'e_y [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax3_err, 'Y-Axis Error', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ax3_err.LineWidth = axis_linewidth; ax3_err.FontSize = tick_fontsize; ax3_err.FontWeight = 'bold';
+ax3_err.Box = 'on'; grid(ax3_err, 'on');
+ax3_err.XTickLabel = [];
 
-% Add statistics
-f_max = max(abs(f_d_log), [], 2);
-stats_str = sprintf('Max |f_x|: %.4f pN\nMax |f_y|: %.4f pN\nMax |f_z|: %.4f pN', f_max(1), f_max(2), f_max(3));
-text(ax4, 0.95, 0.95, stats_str, 'Units', 'normalized', ...
-    'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
-    'FontSize', legend_fontsize, 'FontWeight', 'bold', ...
-    'BackgroundColor', [1 1 1 0.8], 'EdgeColor', [0.3 0.3 0.3], 'Margin', 5);
+% --- Subplot 3: Y Control Force ---
+ax3_force = uiaxes(tab3, 'Position', [pos_bot(1)*1200, pos_bot(2)*800, pos_bot(3)*1200, pos_bot(4)*800]);
+plot(ax3_force, t_sample, f_d_log(2, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
+xlabel(ax3_force, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
+ylabel(ax3_force, 'f_y [pN]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax3_force, 'Y-Axis Control Force', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ax3_force.LineWidth = axis_linewidth; ax3_force.FontSize = tick_fontsize; ax3_force.FontWeight = 'bold';
+ax3_force.Box = 'on'; grid(ax3_force, 'on');
 
-fprintf('  Tab 4: Control Force\n');
+% Link X axes
+linkaxes([ax3_pos, ax3_err, ax3_force], 'x');
 
-% ==================== Tab 5: Thermal Force ====================
-tab5 = uitab(tabgroup, 'Title', 'Thermal Force');
+fprintf('  Tab 3: Y-Axis Analysis\n');
+
+% ==================== Tab 4: Z-Axis Analysis ====================
+tab4 = uitab(tabgroup, 'Title', 'Z-Axis Analysis');
+
+% Calculate Z-axis error in nm
+error_z = (p_m_log(3, :) - p_d_log(3, :)) * 1000;
+
+% --- Subplot 1: Z Position Tracking ---
+ax4_pos = uiaxes(tab4, 'Position', [pos_top(1)*1200, pos_top(2)*800, pos_top(3)*1200, pos_top(4)*800]);
+plot(ax4_pos, t_sample, p_m_log(3, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
+hold(ax4_pos, 'on');
+plot(ax4_pos, t_sample, p_d_log(3, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_ref);
+hold(ax4_pos, 'off');
+legend(ax4_pos, {'p_{m,z}', 'p_{d,z}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+ylabel(ax4_pos, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax4_pos, 'Z-Axis Position Tracking', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ax4_pos.LineWidth = axis_linewidth; ax4_pos.FontSize = tick_fontsize; ax4_pos.FontWeight = 'bold';
+ax4_pos.Box = 'on'; grid(ax4_pos, 'on');
+ax4_pos.XTickLabel = [];
+
+% --- Subplot 2: Z Tracking Error ---
+ax4_err = uiaxes(tab4, 'Position', [pos_mid(1)*1200, pos_mid(2)*800, pos_mid(3)*1200, pos_mid(4)*800]);
+plot(ax4_err, t_sample, error_z, 'k-', 'LineWidth', line_width_main);
+ylabel(ax4_err, 'e_z [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax4_err, 'Z-Axis Error', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ax4_err.LineWidth = axis_linewidth; ax4_err.FontSize = tick_fontsize; ax4_err.FontWeight = 'bold';
+ax4_err.Box = 'on'; grid(ax4_err, 'on');
+ax4_err.XTickLabel = [];
+
+% --- Subplot 3: Z Control Force ---
+ax4_force = uiaxes(tab4, 'Position', [pos_bot(1)*1200, pos_bot(2)*800, pos_bot(3)*1200, pos_bot(4)*800]);
+plot(ax4_force, t_sample, f_d_log(3, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
+xlabel(ax4_force, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
+ylabel(ax4_force, 'f_z [pN]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax4_force, 'Z-Axis Control Force', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ax4_force.LineWidth = axis_linewidth; ax4_force.FontSize = tick_fontsize; ax4_force.FontWeight = 'bold';
+ax4_force.Box = 'on'; grid(ax4_force, 'on');
+
+% Link X axes
+linkaxes([ax4_pos, ax4_err, ax4_force], 'x');
+
+fprintf('  Tab 4: Z-Axis Analysis\n');
+
+% ==================== Tab 5: Position vs Time ====================
+tab5 = uitab(tabgroup, 'Title', 'Position');
 ax5 = uiaxes(tab5);
 ax5.Units = 'normalized';
 ax5.Position = [0.08 0.10 0.88 0.82];
 
-plot(ax5, t_sample, F_th_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', 1.0);
+plot(ax5, t_sample, p_d_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_ref);
 hold(ax5, 'on');
-plot(ax5, t_sample, F_th_log(2, :), '-', 'Color', colors(2, :), 'LineWidth', 1.0);
-plot(ax5, t_sample, F_th_log(3, :), '-', 'Color', colors(3, :), 'LineWidth', 1.0);
+plot(ax5, t_sample, p_d_log(2, :), '-', 'Color', colors(2, :), 'LineWidth', line_width_ref);
+plot(ax5, t_sample, p_d_log(3, :), '-', 'Color', colors(3, :), 'LineWidth', line_width_ref);
+plot(ax5, t_sample, p_m_log(1, :), '--', 'Color', colors(1, :), 'LineWidth', line_width_main);
+plot(ax5, t_sample, p_m_log(2, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_main);
+plot(ax5, t_sample, p_m_log(3, :), '--', 'Color', colors(3, :), 'LineWidth', line_width_main);
 hold(ax5, 'off');
 
-legend(ax5, {'F_{th,x}', 'F_{th,y}', 'F_{th,z}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+legend(ax5, {'x_d', 'y_d', 'z_d', 'x_m', 'y_m', 'z_m'}, ...
+    'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold', 'NumColumns', 2);
 xlabel(ax5, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax5, 'Force [pN]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax5, sprintf('Thermal Force (Brownian Motion) - %s', thermal_str), 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ylabel(ax5, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax5, 'Position vs Time', 'FontSize', title_fontsize, 'FontWeight', 'bold');
 ax5.LineWidth = axis_linewidth;
 ax5.FontSize = tick_fontsize;
 ax5.FontWeight = 'bold';
 ax5.Box = 'on';
 grid(ax5, 'on');
 
-% Add statistics
-F_std = std(F_th_log, 0, 2);
-stats_str = sprintf('Std F_x: %.4f pN\nStd F_y: %.4f pN\nStd F_z: %.4f pN', F_std(1), F_std(2), F_std(3));
-text(ax5, 0.95, 0.95, stats_str, 'Units', 'normalized', ...
-    'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
-    'FontSize', legend_fontsize, 'FontWeight', 'bold', ...
-    'BackgroundColor', [1 1 1 0.8], 'EdgeColor', [0.3 0.3 0.3], 'Margin', 5);
+fprintf('  Tab 5: Position\n');
 
-fprintf('  Tab 5: Thermal Force\n');
-
-% ==================== Tab 6: Wall Distance (h/R) ====================
-tab6 = uitab(tabgroup, 'Title', 'Wall Distance');
+% ==================== Tab 6: Control Force ====================
+tab6 = uitab(tabgroup, 'Title', 'Control Force');
 ax6 = uiaxes(tab6);
 ax6.Units = 'normalized';
 ax6.Position = [0.08 0.10 0.88 0.82];
 
-plot(ax6, t_sample, h_bar_log, 'b-', 'LineWidth', line_width_main);
+plot(ax6, t_sample, f_d_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
 hold(ax6, 'on');
-yline(ax6, params.Value.wall.h_bar_min, 'r--', 'LineWidth', line_width_ref);
+plot(ax6, t_sample, f_d_log(2, :), '-', 'Color', colors(2, :), 'LineWidth', line_width_main);
+plot(ax6, t_sample, f_d_log(3, :), '-', 'Color', colors(3, :), 'LineWidth', line_width_main);
 hold(ax6, 'off');
 
-legend(ax6, {'h/R(t)', sprintf('h/R_{min}=%.1f', params.Value.wall.h_bar_min)}, ...
-    'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+legend(ax6, {'f_x', 'f_y', 'f_z'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
 xlabel(ax6, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax6, 'h/R', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax6, 'Normalized Distance from Wall', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ylabel(ax6, 'Force [pN]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax6, sprintf('Control Force (%s)', ctrl_mode_str), 'FontSize', title_fontsize, 'FontWeight', 'bold');
 ax6.LineWidth = axis_linewidth;
 ax6.FontSize = tick_fontsize;
 ax6.FontWeight = 'bold';
 ax6.Box = 'on';
 grid(ax6, 'on');
 
-% Add safety status
-if min(h_bar_log) >= params.Value.wall.h_bar_min
-    safety_str = 'SAFE';
-    safety_color = [0 0.5 0];
-else
-    safety_str = 'UNSAFE';
-    safety_color = [0.8 0 0];
-end
-stats_str = sprintf('Status: %s\nMin h/R: %.2f\nMax h/R: %.2f', safety_str, min(h_bar_log), max(h_bar_log));
+% Add statistics
+f_max = max(abs(f_d_log), [], 2);
+stats_str = sprintf('Max |f_x|: %.4f pN\nMax |f_y|: %.4f pN\nMax |f_z|: %.4f pN', f_max(1), f_max(2), f_max(3));
 text(ax6, 0.95, 0.95, stats_str, 'Units', 'normalized', ...
     'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
-    'FontSize', legend_fontsize, 'FontWeight', 'bold', 'Color', safety_color, ...
+    'FontSize', legend_fontsize, 'FontWeight', 'bold', ...
     'BackgroundColor', [1 1 1 0.8], 'EdgeColor', [0.3 0.3 0.3], 'Margin', 5);
 
-fprintf('  Tab 6: Wall Distance\n');
+fprintf('  Tab 6: Control Force\n');
 
 %% SECTION 6: Save Results
 fprintf('\nSaving results...\n');
@@ -388,31 +421,67 @@ axis(ax_exp, 'equal');
 exportgraphics(fig_export, fullfile(output_dir, '1_trajectory_3d.png'), 'Resolution', 150);
 clf(fig_export);
 
-% Export Tab 2: Tracking Error
-ax_exp = axes(fig_export, 'Position', [0.12 0.12 0.82 0.80]);
-plot(ax_exp, t_sample, error * 1000, 'k-', 'LineWidth', line_width_main);
-xlabel(ax_exp, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax_exp, '||e|| [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax_exp, sprintf('Tracking Error (RMSE = %.2f nm)', rms(error)*1000), 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax_exp.LineWidth = axis_linewidth; ax_exp.FontSize = tick_fontsize; ax_exp.FontWeight = 'bold'; ax_exp.Box = 'on'; grid(ax_exp, 'on');
-exportgraphics(fig_export, fullfile(output_dir, '2_tracking_error.png'), 'Resolution', 150);
-clf(fig_export);
+% Export Tab 2-4: Axis Analysis (3x1 subplots each)
+axis_names = {'X', 'Y', 'Z'};
+axis_errors = {error_x, error_y, error_z};
 
-% Export Tab 3: Position
+for axis_idx = 1:3
+    fig_export.Position = [100 100 800 900];  % Taller for 3x1 subplots
+
+    % Subplot 1: Position Tracking
+    ax_pos = subplot(3, 1, 1);
+    plot(ax_pos, t_sample, p_m_log(axis_idx, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
+    hold(ax_pos, 'on');
+    plot(ax_pos, t_sample, p_d_log(axis_idx, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_ref);
+    hold(ax_pos, 'off');
+    legend(ax_pos, {sprintf('p_{m,%s}', lower(axis_names{axis_idx})), sprintf('p_{d,%s}', lower(axis_names{axis_idx}))}, ...
+        'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+    ylabel(ax_pos, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+    title(ax_pos, sprintf('%s-Axis Position Tracking', axis_names{axis_idx}), 'FontSize', title_fontsize, 'FontWeight', 'bold');
+    ax_pos.LineWidth = axis_linewidth; ax_pos.FontSize = tick_fontsize; ax_pos.FontWeight = 'bold';
+    ax_pos.Box = 'on'; grid(ax_pos, 'on');
+
+    % Subplot 2: Tracking Error
+    ax_err = subplot(3, 1, 2);
+    plot(ax_err, t_sample, axis_errors{axis_idx}, 'k-', 'LineWidth', line_width_main);
+    ylabel(ax_err, sprintf('e_%s [nm]', lower(axis_names{axis_idx})), 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+    title(ax_err, sprintf('%s-Axis Error', axis_names{axis_idx}), ...
+        'FontSize', title_fontsize, 'FontWeight', 'bold');
+    ax_err.LineWidth = axis_linewidth; ax_err.FontSize = tick_fontsize; ax_err.FontWeight = 'bold';
+    ax_err.Box = 'on'; grid(ax_err, 'on');
+
+    % Subplot 3: Control Force
+    ax_force = subplot(3, 1, 3);
+    plot(ax_force, t_sample, f_d_log(axis_idx, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
+    xlabel(ax_force, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
+    ylabel(ax_force, sprintf('f_%s [pN]', lower(axis_names{axis_idx})), 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+    title(ax_force, sprintf('%s-Axis Control Force', axis_names{axis_idx}), 'FontSize', title_fontsize, 'FontWeight', 'bold');
+    ax_force.LineWidth = axis_linewidth; ax_force.FontSize = tick_fontsize; ax_force.FontWeight = 'bold';
+    ax_force.Box = 'on'; grid(ax_force, 'on');
+
+    exportgraphics(fig_export, fullfile(output_dir, sprintf('%d_%s_axis_analysis.png', axis_idx+1, lower(axis_names{axis_idx}))), 'Resolution', 150);
+    clf(fig_export);
+end
+
+fig_export.Position = [100 100 1000 700];  % Reset to normal size
+
+% Export Tab 5: Position
 ax_exp = axes(fig_export, 'Position', [0.12 0.12 0.82 0.80]);
-plot(ax_exp, t_sample, p_m_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main); hold(ax_exp, 'on');
-plot(ax_exp, t_sample, p_m_log(2, :), '-', 'Color', colors(2, :), 'LineWidth', line_width_main);
-plot(ax_exp, t_sample, p_m_log(3, :), '-', 'Color', colors(3, :), 'LineWidth', line_width_main);
-plot(ax_exp, t_sample, p_d_log(3, :), '--k', 'LineWidth', line_width_ref); hold(ax_exp, 'off');
-legend(ax_exp, {'x', 'y', 'z', 'z_d'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+plot(ax_exp, t_sample, p_d_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_ref); hold(ax_exp, 'on');
+plot(ax_exp, t_sample, p_d_log(2, :), '-', 'Color', colors(2, :), 'LineWidth', line_width_ref);
+plot(ax_exp, t_sample, p_d_log(3, :), '-', 'Color', colors(3, :), 'LineWidth', line_width_ref);
+plot(ax_exp, t_sample, p_m_log(1, :), '--', 'Color', colors(1, :), 'LineWidth', line_width_main);
+plot(ax_exp, t_sample, p_m_log(2, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_main);
+plot(ax_exp, t_sample, p_m_log(3, :), '--', 'Color', colors(3, :), 'LineWidth', line_width_main); hold(ax_exp, 'off');
+legend(ax_exp, {'x_d', 'y_d', 'z_d', 'x_m', 'y_m', 'z_m'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold', 'NumColumns', 2);
 xlabel(ax_exp, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
 ylabel(ax_exp, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
 title(ax_exp, 'Position vs Time', 'FontSize', title_fontsize, 'FontWeight', 'bold');
 ax_exp.LineWidth = axis_linewidth; ax_exp.FontSize = tick_fontsize; ax_exp.FontWeight = 'bold'; ax_exp.Box = 'on'; grid(ax_exp, 'on');
-exportgraphics(fig_export, fullfile(output_dir, '3_position.png'), 'Resolution', 150);
+exportgraphics(fig_export, fullfile(output_dir, '5_position.png'), 'Resolution', 150);
 clf(fig_export);
 
-% Export Tab 4: Control Force
+% Export Tab 6: Control Force
 ax_exp = axes(fig_export, 'Position', [0.12 0.12 0.82 0.80]);
 plot(ax_exp, t_sample, f_d_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main); hold(ax_exp, 'on');
 plot(ax_exp, t_sample, f_d_log(2, :), '-', 'Color', colors(2, :), 'LineWidth', line_width_main);
@@ -422,32 +491,7 @@ xlabel(ax_exp, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
 ylabel(ax_exp, 'Force [pN]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
 title(ax_exp, sprintf('Control Force (%s)', ctrl_mode_str), 'FontSize', title_fontsize, 'FontWeight', 'bold');
 ax_exp.LineWidth = axis_linewidth; ax_exp.FontSize = tick_fontsize; ax_exp.FontWeight = 'bold'; ax_exp.Box = 'on'; grid(ax_exp, 'on');
-exportgraphics(fig_export, fullfile(output_dir, '4_control_force.png'), 'Resolution', 150);
-clf(fig_export);
-
-% Export Tab 5: Thermal Force
-ax_exp = axes(fig_export, 'Position', [0.12 0.12 0.82 0.80]);
-plot(ax_exp, t_sample, F_th_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', 1.0); hold(ax_exp, 'on');
-plot(ax_exp, t_sample, F_th_log(2, :), '-', 'Color', colors(2, :), 'LineWidth', 1.0);
-plot(ax_exp, t_sample, F_th_log(3, :), '-', 'Color', colors(3, :), 'LineWidth', 1.0); hold(ax_exp, 'off');
-legend(ax_exp, {'F_{th,x}', 'F_{th,y}', 'F_{th,z}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
-xlabel(ax_exp, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax_exp, 'Force [pN]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax_exp, sprintf('Thermal Force - %s', thermal_str), 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax_exp.LineWidth = axis_linewidth; ax_exp.FontSize = tick_fontsize; ax_exp.FontWeight = 'bold'; ax_exp.Box = 'on'; grid(ax_exp, 'on');
-exportgraphics(fig_export, fullfile(output_dir, '5_thermal_force.png'), 'Resolution', 150);
-clf(fig_export);
-
-% Export Tab 6: Wall Distance
-ax_exp = axes(fig_export, 'Position', [0.12 0.12 0.82 0.80]);
-plot(ax_exp, t_sample, h_bar_log, 'b-', 'LineWidth', line_width_main); hold(ax_exp, 'on');
-yline(ax_exp, params.Value.wall.h_bar_min, 'r--', 'LineWidth', line_width_ref); hold(ax_exp, 'off');
-legend(ax_exp, {'h/R(t)', sprintf('h/R_{min}=%.1f', params.Value.wall.h_bar_min)}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
-xlabel(ax_exp, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax_exp, 'h/R', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax_exp, 'Normalized Distance from Wall', 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax_exp.LineWidth = axis_linewidth; ax_exp.FontSize = tick_fontsize; ax_exp.FontWeight = 'bold'; ax_exp.Box = 'on'; grid(ax_exp, 'on');
-exportgraphics(fig_export, fullfile(output_dir, '6_wall_distance.png'), 'Resolution', 150);
+exportgraphics(fig_export, fullfile(output_dir, '6_control_force.png'), 'Resolution', 150);
 
 close(fig_export);
 fprintf('  Figures saved (.png)\n');
@@ -460,10 +504,16 @@ result.f_d = f_d_log;
 result.F_th = F_th_log;
 result.h_bar = h_bar_log;
 result.error = error;
+result.error_x = error_x;
+result.error_y = error_y;
+result.error_z = error_z;
 result.params = params.Value;
 result.p0 = p0;
 result.config = config;
 result.tracking_error_rmse = rms(error);
+result.tracking_error_rmse_x = rms(error_x);
+result.tracking_error_rmse_y = rms(error_y);
+result.tracking_error_rmse_z = rms(error_z);
 result.meta.timestamp = datestr(now);
 result.meta.ctrl_mode = ctrl_mode_str;
 result.meta.thermal_mode = thermal_str;
@@ -484,19 +534,22 @@ fprintf('  Thermal: %s\n', thermal_str);
 fprintf('  Trajectory: %s\n', traj_type_str);
 fprintf('  Duration: %.1f sec (%d samples)\n', T_sim, N_samples);
 fprintf('\n');
-fprintf('Tracking Performance:\n');
-fprintf('  RMSE: %.4f um (%.2f nm)\n', rms(error), rms(error)*1000);
+fprintf('Tracking Performance (3D):\n');
 fprintf('  Max error: %.4f um (%.2f nm)\n', max(error), max(error)*1000);
-fprintf('  Final error: %.4f um (%.2f nm)\n', error(end), error(end)*1000);
 fprintf('\n');
-fprintf('Safety:\n');
-fprintf('  Status: %s\n', safety_str);
-fprintf('  Min h/R: %.2f (threshold: %.1f)\n', min(h_bar_log), params.Value.wall.h_bar_min);
-fprintf('  Max h/R: %.2f\n', max(h_bar_log));
+fprintf('Tracking Performance (per axis):\n');
+fprintf('  X-axis Max: %.2f nm\n', max(abs(error_x)));
+fprintf('  Y-axis Max: %.2f nm\n', max(abs(error_y)));
+fprintf('  Z-axis Max: %.2f nm\n', max(abs(error_z)));
 fprintf('\n');
 fprintf('Control Force:\n');
+fprintf('  Max |f_x|: %.4f pN\n', max(abs(f_d_log(1, :))));
+fprintf('  Max |f_y|: %.4f pN\n', max(abs(f_d_log(2, :))));
 fprintf('  Max |f_z|: %.4f pN\n', max(abs(f_d_log(3, :))));
-fprintf('  Mean |f_z|: %.4f pN\n', mean(abs(f_d_log(3, :))));
+fprintf('\n');
+fprintf('Wall Distance:\n');
+fprintf('  Min h/R: %.2f (threshold: %.1f)\n', min(h_bar_log), params.Value.wall.h_bar_min);
+fprintf('  Max h/R: %.2f\n', max(h_bar_log));
 fprintf('\n');
 fprintf('Results saved to: %s\n', output_dir);
 fprintf('================================================================\n');
