@@ -1,9 +1,11 @@
 # MotionControl_Simu 專案規範
 
 ## 專案概述
-實現帶有 Wall Effect 的磁珠運動控制 MATLAB/Simulink 模擬系統。
+實現帶有 Wall Effect 的磁珠運動控制 MATLAB/Simulink 模擬系統，用於測試位置相關拖曳係數矩陣的即時估計。
 
 **技術棧**: MATLAB R2024b/R2025b + Simulink
+
+**實作狀態**: Phase 1 完成 (2024-12)
 
 ### 簡化假設
 - 內迴路完美：f_d = f_m（磁力控制無誤差）
@@ -13,6 +15,18 @@
 - **離散部分 @ 1606 Hz**：軌跡產生、控制器、Thermal Force
 - **連續部分**：Particle Dynamics（ODE solver）
 - 離散訊號經 ZOH 送入連續系統
+
+### 快速參考：確認的參數值
+
+| 參數 | 值 | 單位 | 說明 |
+|------|-----|------|------|
+| R | **2.25** | μm | 粒子半徑 |
+| γ_N | 0.0425 | pN·sec/μm | Stokes drag |
+| Δt | 1/1606 | sec | 取樣週期 |
+| k_B | 1.3806503×10⁻⁵ | pN·μm/K | 波茲曼常數 |
+| T | 310.15 | K | 溫度 (37°C) |
+| h̄_min | 1.5 | - | 最小安全距離 |
+| h_margin | 5 | μm | 額外安全餘量 |
 
 ---
 
@@ -39,9 +53,12 @@ Scope: wall-effect, thermal-force, trajectory, controller, simulation, etc.
 ```
 MotionControl_Simu/
 ├── CLAUDE.md                         # 專案規範
-├── calc_simulation_params.m          # 參數計算 + Bus Object 建立
-├── calc_initial_position.m           # 起始位置計算
-├── run_simulation.m                  # 主執行腳本
+├── calc_simulation_params.m          # 參數計算
+├── create_simulation_buses.m         # Bus Object 建立（Simulink 用）
+├── convert_params_for_simulink.m     # 參數轉換（字串→數值編碼）
+├── build_system_model.m              # Simulink 模型建構腳本
+├── run_simulation.m                  # 主執行腳本（純 MATLAB）
+├── run_simulation_slx.m              # Simulink 執行腳本
 │
 ├── model/
 │   ├── wall_effect/
@@ -52,6 +69,7 @@ MotionControl_Simu/
 │   │   └── calc_thermal_force.m         # F_th 生成
 │   │
 │   ├── trajectory/
+│   │   ├── calc_initial_position.m      # 起始位置計算
 │   │   ├── trajectory_generator.m       # 即時軌跡計算
 │   │   └── check_trajectory_safety.m    # 安全檢查
 │   │
@@ -68,7 +86,8 @@ MotionControl_Simu/
 ├── test_results/                        # 測試結果（不納入 Git）
 │   ├── wall_effect/
 │   ├── thermal_force/
-│   └── trajectory/
+│   ├── trajectory/
+│   └── simulation/
 │
 ├── reference/
 │   ├── Drag_MATLAB.pdf
@@ -158,31 +177,47 @@ f_d[k] = (γ / Δt) · {p_d[k] - λ_c · p_d[k-1] - (1 - λ_c) · p[k]}
 ```
 params
 ├── common                          ← 所有模組共用
-│   ├── R         = 2.8             % 粒子半徑 [μm]
+│   ├── R         = 2.25            % 粒子半徑 [μm]
 │   ├── gamma_N   = 0.0425          % Stokes drag [pN·sec/μm]
 │   ├── Ts        = 1/1606          % 取樣週期 [sec]
 │   └── T_sim     = 5               % 模擬時間 [sec]
 │
 ├── wall                            ← Wall Effect 模組
 │   ├── theta, phi, pz              % 高階輸入
-│   ├── h_bar_min                   % 安全距離
+│   ├── h_bar_min = 1.5             % 安全距離
 │   └── w_hat, u_hat, v_hat         % 計算得出
 │
 ├── traj                            ← 軌跡產生器
 │   ├── type                        % 'z_move' 或 'xy_circle'
+│   ├── h_margin  = 5               % 額外安全餘量 [μm]
 │   ├── delta_z, direction, speed   % z_move 參數
 │   └── radius, n_circles, period   % xy_circle 參數
 │
 ├── ctrl                            ← 控制器
-│   ├── lambda_c                    % 閉迴路極點
-│   └── gamma                       % 拖曳係數
+│   ├── enable                      % 啟用/停用（閉迴路/開迴路）
+│   ├── lambda_c  = 0.7             % 閉迴路極點
+│   └── gamma     = gamma_N         % 拖曳係數
 │
 └── thermal                         ← Thermal Force
     ├── enable                      % 啟用/停用
+    ├── k_B, T, Ts                  % 常數
     └── variance_coeff              % 預計算: 4·k_B·T·γ_N/Δt
 ```
 
-參數傳遞：使用 Bus Object（參考 r_controller_package）
+### Bus Object 結構（Simulink 用）
+
+```
+ParamsBus
+├── common (CommonBus)
+├── wall (WallBus)
+├── traj (TrajBus)      ← type/direction 為數值編碼
+├── ctrl (CtrlBus)
+└── thermal (ThermalBus)
+```
+
+字串→數值編碼（Simulink 限制）：
+- `type`: `'z_move'` → `0`, `'xy_circle'` → `1`
+- `direction`: `'away'` → `0`, `'toward'` → `1`
 
 ---
 
