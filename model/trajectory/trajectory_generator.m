@@ -30,14 +30,14 @@ function p_d = trajectory_generator(t, p0, params)
 %       params.traj.period     - Circle period [sec]
 %       params.traj.n_circles  - Number of circles
 %
-%   Trajectory descriptions:
-%       'z_move': Linear motion along wall normal direction
-%           - 'away': moves in +w_hat direction (away from wall)
-%           - 'toward': moves in -w_hat direction (toward wall)
+%   Trajectory descriptions (WORLD COORDINATES):
+%       'z_move': Linear motion along world Z axis
+%           - 'away': moves in +Z direction (upward)
+%           - 'toward': moves in -Z direction (downward)
 %           - Saturates at delta_z displacement
 %
-%       'xy_circle': Circular motion in plane parallel to wall
-%           - Circle in u_hat-v_hat plane
+%       'xy_circle': Circular motion in world XY plane
+%           - Circle in X-Y plane
 %           - Starts at p0, circles around, returns to p0
 %           - Total time = period * n_circles
 
@@ -53,31 +53,35 @@ end
 
 
 function p_d = trajectory_z_move(t, p0, params)
-%TRAJECTORY_Z_MOVE Linear motion along wall normal direction
-    w_hat = params.wall.w_hat;
+%TRAJECTORY_Z_MOVE Linear motion along world Z axis
+    % World coordinate Z axis
+    z_hat = [0; 0; 1];
+
     delta_z = params.traj.delta_z;
-    direction = params.traj.direction;  % 0 = away, 1 = toward
+    direction = params.traj.direction;  % 0 = away (up), 1 = toward (down)
     speed = params.traj.speed;
 
-    % Determine direction sign (0 = away, 1 = toward)
+    % Determine direction sign (0 = away/up, 1 = toward/down)
     if direction < 0.5  % away
-        dir_sign = 1;    % Move away from wall (+w_hat)
+        dir_sign = 1;    % Move upward (+Z)
     else  % toward
-        dir_sign = -1;   % Move toward wall (-w_hat)
+        dir_sign = -1;   % Move downward (-Z)
     end
 
     % Calculate displacement with saturation
     displacement = min(speed * t, delta_z);
 
     % Calculate desired position
-    p_d = p0 + dir_sign * displacement * w_hat;
+    p_d = p0 + dir_sign * displacement * z_hat;
 end
 
 
 function p_d = trajectory_xy_circle(t, p0, params)
-%TRAJECTORY_XY_CIRCLE Circular motion in plane parallel to wall
-    u_hat = params.wall.u_hat;
-    v_hat = params.wall.v_hat;
+%TRAJECTORY_XY_CIRCLE Circular motion in world XY plane
+    % World coordinate axes
+    x_hat = [1; 0; 0];
+    y_hat = [0; 1; 0];
+
     radius = params.traj.radius;
     period = params.traj.period;
     n_circles = params.traj.n_circles;
@@ -89,11 +93,11 @@ function p_d = trajectory_xy_circle(t, p0, params)
         % Angular frequency
         omega = 2 * pi / period;
 
-        % Circular motion in u_hat-v_hat plane
+        % Circular motion in X-Y plane
         % At t=0: p_d = p0 (starts at origin of circle path)
         % Uses (cos(omega*t) - 1) to ensure p_d(0) = p0
-        p_d = p0 + radius * (cos(omega * t) - 1) * u_hat ...
-                 + radius * sin(omega * t) * v_hat;
+        p_d = p0 + radius * (cos(omega * t) - 1) * x_hat ...
+                 + radius * sin(omega * t) * y_hat;
     else
         % After completing all circles, stay at starting position
         p_d = p0;

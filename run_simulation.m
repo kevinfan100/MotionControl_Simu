@@ -17,20 +17,20 @@ clear; close all; clc;
 theta = 0;          % Azimuth angle [rad]
 phi = 0;            % Elevation angle [rad]
 pz = 0;             % Wall displacement [um]
-h_bar_min = 2;      % Minimum safe normalized distance
+h_bar_min = 1;      % Minimum safe normalized distance
 
 % === Trajectory Parameters ===
 traj_type = 'z_move';   % 'z_move' or 'xy_circle'
-h_margin = 6;           % Safety margin [um]
-delta_z = 5;            % z_move: travel distance [um]
+h_margin = 100;           % Safety margin [um]
+delta_z = 99;            % z_move: travel distance [um]
 direction = 'toward';   % z_move: 'away' or 'toward'
-speed = 0.5;              % z_move: travel speed [um/sec]
+speed = 5;              % z_move: travel speed [um/sec]
 radius = 5;             % xy_circle: radius [um]
 period = 1;             % xy_circle: period [sec]
 n_circles = 3;          % xy_circle: number of circles
 
 % === Controller Parameters ===
-ctrl_enable = false;    % true = closed-loop, false = open-loop
+ctrl_enable = true;    % true = closed-loop, false = open-loop
 lambda_c = 0.4;         % Closed-loop pole (0 < lambda_c < 1)
 
 % === Thermal Force ===
@@ -41,6 +41,10 @@ T_margin = 0.5;         % Buffer time after trajectory completes [sec]
 
 % === Open-loop Thermal Analysis Parameters ===
 openloop_cutoff_freq = 3;  % Drift/Noise cutoff frequency [Hz] (adjustable)
+
+% === Closed-loop Thermal Analysis Parameters ===
+closedloop_window_size = 100;   % Sliding window size [samples] (~31ms at 1606 Hz)
+closedloop_cutoff_freq = 5;   % High-pass cutoff frequency [Hz]
 
 % Auto-calculate simulation time based on trajectory
 if strcmp(traj_type, 'z_move')
@@ -188,9 +192,35 @@ plot3(ax1, p_d_log(1, :), p_d_log(2, :), p_d_log(3, :), 'b-', 'LineWidth', line_
 hold(ax1, 'on');
 plot3(ax1, p_m_log(1, :), p_m_log(2, :), p_m_log(3, :), 'r--', 'LineWidth', line_width_ref);
 plot3(ax1, p0(1), p0(2), p0(3), 'go', 'MarkerSize', 12, 'MarkerFaceColor', 'g', 'LineWidth', 2);
+
+% --- Add wall plane visualization ---
+w_hat = params.Value.wall.w_hat;
+u_hat = params.Value.wall.u_hat;
+v_hat = params.Value.wall.v_hat;
+pz_wall = params.Value.wall.pz;
+
+% Wall center point
+wall_center = pz_wall * w_hat;
+
+% Calculate plane size based on trajectory bounding box
+all_pos = [p_d_log, p_m_log];
+traj_range = max([range(all_pos(1,:)), range(all_pos(2,:)), range(all_pos(3,:))]);
+plane_size = max(traj_range * 1.5, 10);  % At least 10 um
+
+% Wall plane corners (in u-v plane centered at wall_center)
+corners = [
+    wall_center + plane_size/2 * u_hat + plane_size/2 * v_hat, ...
+    wall_center - plane_size/2 * u_hat + plane_size/2 * v_hat, ...
+    wall_center - plane_size/2 * u_hat - plane_size/2 * v_hat, ...
+    wall_center + plane_size/2 * u_hat - plane_size/2 * v_hat ...
+];
+
+% Draw wall plane (semi-transparent gray)
+fill3(ax1, corners(1,:), corners(2,:), corners(3,:), ...
+    [0.7 0.7 0.7], 'FaceAlpha', 0.3, 'EdgeColor', [0.4 0.4 0.4], 'LineWidth', 1.5);
 hold(ax1, 'off');
 
-legend(ax1, {'p_d (desired)', 'p_m (measured)', 'Start'}, ...
+legend(ax1, {'p_d (desired)', 'p_m (measured)', 'Start', 'Wall'}, ...
     'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
 xlabel(ax1, 'x [um]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
 ylabel(ax1, 'y [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
@@ -413,8 +443,11 @@ plot3(ax_exp, p_d_log(1, :), p_d_log(2, :), p_d_log(3, :), 'b-', 'LineWidth', li
 hold(ax_exp, 'on');
 plot3(ax_exp, p_m_log(1, :), p_m_log(2, :), p_m_log(3, :), 'r--', 'LineWidth', line_width_ref);
 plot3(ax_exp, p0(1), p0(2), p0(3), 'go', 'MarkerSize', 12, 'MarkerFaceColor', 'g', 'LineWidth', 2);
+% Add wall plane
+fill3(ax_exp, corners(1,:), corners(2,:), corners(3,:), ...
+    [0.7 0.7 0.7], 'FaceAlpha', 0.3, 'EdgeColor', [0.4 0.4 0.4], 'LineWidth', 1.5);
 hold(ax_exp, 'off');
-legend(ax_exp, {'p_d (desired)', 'p_m (measured)', 'Start'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+legend(ax_exp, {'p_d (desired)', 'p_m (measured)', 'Start', 'Wall'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
 xlabel(ax_exp, 'x [um]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
 ylabel(ax_exp, 'y [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
 zlabel(ax_exp, 'z [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
@@ -845,6 +878,280 @@ if is_openloop_thermal
 
 end
 
+%% SECTION 8: Closed-loop Thermal Force Analysis (as Tabs)
+% Triggered when: ctrl_enable = true AND thermal_enable = true
+% Analyzes p_m high-frequency components (thermal noise) using sliding window
+% Verifies that position perturbation STD is independent of h/R (Einstein relation)
+
+is_closedloop_thermal = (params.Value.ctrl.enable > 0.5) && ...
+                        (params.Value.thermal.enable > 0.5);
+
+if is_closedloop_thermal
+    fprintf('\n');
+    fprintf('================================================================\n');
+    fprintf('  Closed-loop Thermal Force Analysis\n');
+    fprintf('================================================================\n\n');
+
+    % Get sample rate
+    Fs = 1 / Ts;
+
+    % Extract Z-axis tracking error (most relevant for wall effect analysis)
+    error_z_nm = (p_m_log(3, :) - p_d_log(3, :))' * 1000;  % um -> nm
+
+    % High-pass filter to extract thermal noise component
+    fprintf('Applying high-pass filter (cutoff = %.1f Hz)...\n', closedloop_cutoff_freq);
+    noise_z = highpass_fft(error_z_nm, Fs, closedloop_cutoff_freq);
+
+    % Sliding window STD calculation
+    % Only analyze during trajectory motion (exclude deceleration and stop)
+    % Determine analysis end time based on actual z-axis movement
+    p_m_z = p_m_log(3, :);
+    z_start = p_m_z(1);
+    z_traveled = abs(p_m_z - z_start);
+
+    % Find when z has traveled delta_z (trajectory complete)
+    idx_traj_end = find(z_traveled >= delta_z * 0.98, 1, 'first');  % 98% of target distance
+    if isempty(idx_traj_end)
+        % Fallback: use 90% of trajectory time
+        T_traj_analysis = T_traj * 0.90;
+    else
+        T_traj_analysis = t_sample(idx_traj_end);
+    end
+    N_samples_motion = find(t_sample <= T_traj_analysis, 1, 'last');
+
+    fprintf('Calculating sliding window STD (window = %d samples)...\n', closedloop_window_size);
+    fprintf('  Analyzing motion period only: 0 ~ %.2f sec (%d samples)\n', T_traj_analysis, N_samples_motion);
+
+    window_size = closedloop_window_size;
+    step_size = floor(window_size / 2);  % 50% overlap
+    N_windows = floor((N_samples_motion - window_size) / step_size) + 1;
+
+    h_bar_window = zeros(N_windows, 1);
+    std_noise_window = zeros(N_windows, 1);
+    time_window = zeros(N_windows, 1);
+
+    for i = 1:N_windows
+        idx_start = (i-1) * step_size + 1;
+        idx_end = idx_start + window_size - 1;
+        idx = idx_start:idx_end;
+
+        % Mean h/R for this window
+        h_bar_window(i) = mean(h_bar_log(idx));
+
+        % STD of noise in this window
+        std_noise_window(i) = std(noise_z(idx));
+
+        % Center time of window
+        time_window(i) = mean(t_sample(idx));
+    end
+
+    % Calculate theoretical STD prediction (should be independent of h/R)
+    % From Einstein relation: Var(delta_p) = 2 * D * delta_t
+    % D = k_B * T / gamma = k_B * T * Gamma_inv
+    % For window: STD = sqrt(2 * k_B * T * Ts * window_size / gamma_N)
+    k_B = params.Value.thermal.k_B;
+    T_temp = params.Value.thermal.T;
+    gamma_N = params.Value.common.gamma_N;
+
+    % Theoretical position STD per sample (simplified, ignoring wall effect)
+    % delta_p per step ~ sqrt(2 * D * Ts) where D = k_B * T / gamma_N
+    D_bulk = k_B * T_temp / gamma_N;  % Diffusion coefficient [um^2/s]
+    std_per_step = sqrt(2 * D_bulk * Ts) * 1000;  % nm per step
+    std_theory_window = std_per_step * sqrt(window_size);  % nm per window
+
+    % Calculate correlation coefficient (R^2)
+    p_coeff = polyfit(h_bar_window, std_noise_window, 1);
+    std_fit = polyval(p_coeff, h_bar_window);
+    SS_res = sum((std_noise_window - std_fit).^2);
+    SS_tot = sum((std_noise_window - mean(std_noise_window)).^2);
+    R_squared = 1 - SS_res / SS_tot;
+
+    fprintf('  Done. %d windows analyzed.\n\n', N_windows);
+
+    % ==================== Tab 9: Tracking Error (Time Domain) ====================
+    tab9 = uitab(tabgroup, 'Title', 'CL Tracking Error');
+
+    % Subplot positions
+    fig_w = 1200; fig_h = 800;
+    pos9_top = [0.10*fig_w, 0.55*fig_h, 0.85*fig_w, 0.38*fig_h];
+    pos9_bot = [0.10*fig_w, 0.08*fig_h, 0.85*fig_w, 0.38*fig_h];
+
+    % --- Top: Full tracking error with high-pass filtered noise ---
+    ax9_top = uiaxes(tab9, 'Position', pos9_top);
+    h9a = plot(ax9_top, t_sample, error_z_nm, '-', 'Color', [0.7 0.7 0.7], 'LineWidth', 1.0);
+    hold(ax9_top, 'on');
+    plot(ax9_top, t_sample, noise_z, 'k-', 'LineWidth', 1.5);
+    hold(ax9_top, 'off');
+    legend(ax9_top, {'Raw error e_z', 'High-freq noise'}, 'Location', 'best', ...
+        'FontSize', legend_fontsize, 'FontWeight', 'bold');
+    ylabel(ax9_top, 'e_z [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+    title(ax9_top, sprintf('Z-Axis Tracking Error (Closed-loop, HP cutoff = %.0f Hz)', closedloop_cutoff_freq), ...
+        'FontSize', title_fontsize, 'FontWeight', 'bold');
+    ax9_top.LineWidth = axis_linewidth;
+    ax9_top.FontSize = tick_fontsize;
+    ax9_top.FontWeight = 'bold';
+    ax9_top.Box = 'on';
+    grid(ax9_top, 'on');
+    xlim(ax9_top, [0, t_sample(end)]);
+
+    % Add STD annotation
+    overall_std = std(noise_z);
+    text(ax9_top, 0.98, 0.95, sprintf('Overall STD = %.2f nm', overall_std), ...
+        'Units', 'normalized', 'HorizontalAlignment', 'right', ...
+        'VerticalAlignment', 'top', 'FontSize', legend_fontsize, 'FontWeight', 'bold', ...
+        'BackgroundColor', [1 1 1 0.8], 'EdgeColor', [0.3 0.3 0.3], 'Margin', 5);
+
+    % --- Bottom: h/R vs time ---
+    ax9_bot = uiaxes(tab9, 'Position', pos9_bot);
+    plot(ax9_bot, t_sample, h_bar_log, 'b-', 'LineWidth', line_width_main);
+    xlabel(ax9_bot, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
+    ylabel(ax9_bot, 'h/R', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+    title(ax9_bot, 'Normalized Wall Distance', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+    ax9_bot.LineWidth = axis_linewidth;
+    ax9_bot.FontSize = tick_fontsize;
+    ax9_bot.FontWeight = 'bold';
+    ax9_bot.Box = 'on';
+    grid(ax9_bot, 'on');
+    xlim(ax9_bot, [0, t_sample(end)]);
+
+    % Add h/R range annotation
+    text(ax9_bot, 0.98, 0.95, sprintf('h/R: %.2f ~ %.2f', min(h_bar_log), max(h_bar_log)), ...
+        'Units', 'normalized', 'HorizontalAlignment', 'right', ...
+        'VerticalAlignment', 'top', 'FontSize', legend_fontsize, 'FontWeight', 'bold', ...
+        'BackgroundColor', [1 1 1 0.8], 'EdgeColor', [0.3 0.3 0.3], 'Margin', 5);
+
+    fprintf('  Tab 9: Closed-loop Tracking Error\n');
+
+    % ==================== Tab 10: STD vs h/R ====================
+    tab10 = uitab(tabgroup, 'Title', 'STD vs h/R');
+
+    ax10 = uiaxes(tab10);
+    ax10.Units = 'normalized';
+    ax10.Position = [0.12 0.12 0.82 0.78];
+
+    % Scatter plot of STD vs h/R (only scatter points)
+    scatter(ax10, h_bar_window, std_noise_window, 60, colors(1,:), 'filled', 'MarkerFaceAlpha', 0.7);
+
+    xlabel(ax10, 'h/R', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
+    ylabel(ax10, 'Position Noise STD [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+    title(ax10, 'Position STD vs Wall Distance', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+    ax10.LineWidth = axis_linewidth;
+    ax10.FontSize = tick_fontsize;
+    ax10.FontWeight = 'bold';
+    ax10.Box = 'on';
+    grid(ax10, 'on');
+
+    % Calculate slope percentage for console output
+    slope_percent = abs(p_coeff(1) / mean(std_noise_window)) * 100;
+
+    fprintf('  Tab 10: STD vs h/R\n');
+
+    % ==================== Console Statistics Output ====================
+    fprintf('\n');
+    fprintf('========================================\n');
+    fprintf('  Closed-loop Thermal Analysis Results\n');
+    fprintf('========================================\n\n');
+
+    fprintf('Analysis Parameters:\n');
+    fprintf('  Window size: %d samples (%.1f ms)\n', window_size, window_size * Ts * 1000);
+    fprintf('  High-pass cutoff: %.0f Hz\n', closedloop_cutoff_freq);
+    fprintf('  Number of windows: %d\n', N_windows);
+    fprintf('  h/R range: %.2f ~ %.2f\n\n', min(h_bar_window), max(h_bar_window));
+
+    fprintf('Position Noise STD:\n');
+    fprintf('  Mean: %.2f nm\n', mean(std_noise_window));
+    [min_std, min_idx] = min(std_noise_window);
+    [max_std, max_idx] = max(std_noise_window);
+    fprintf('  Min:  %.2f nm (at h/R = %.2f)\n', min_std, h_bar_window(min_idx));
+    fprintf('  Max:  %.2f nm (at h/R = %.2f)\n\n', max_std, h_bar_window(max_idx));
+
+    fprintf('Theoretical Prediction:\n');
+    fprintf('  Bulk diffusion STD: %.2f nm/window\n', std_theory_window);
+    fprintf('  (Note: Theory assumes no wall effect)\n\n');
+
+    fprintf('Correlation Analysis:\n');
+    fprintf('  Linear fit slope: %.4f nm/(h/R)\n', p_coeff(1));
+    fprintf('  Slope / Mean: %.1f%%\n', slope_percent);
+    fprintf('  R^2: %.4f\n\n', R_squared);
+
+    % Interpretation
+    if slope_percent < 10
+        conclusion = 'STD is INDEPENDENT of h/R (Einstein relation verified)';
+    else
+        conclusion = 'STD shows h/R dependence (further investigation needed)';
+    end
+    fprintf('Conclusion:\n');
+    fprintf('  %s\n', conclusion);
+    fprintf('========================================\n');
+
+    % ==================== Save Closed-loop Analysis Figures ====================
+    % Tab 9: Tracking Error
+    fig_export = figure('Visible', 'off', 'Position', [100, 100, 1000, 700]);
+
+    subplot(2,1,1);
+    plot(t_sample, error_z_nm, '-', 'Color', [0.7 0.7 0.7], 'LineWidth', 1.0);
+    hold on;
+    plot(t_sample, noise_z, 'k-', 'LineWidth', 1.5);
+    hold off;
+    legend({'Raw error e_z', 'High-freq noise'}, 'Location', 'best');
+    ylabel('e_z [nm]');
+    title(sprintf('Z-Axis Tracking Error (Closed-loop, HP cutoff = %.0f Hz)', closedloop_cutoff_freq));
+    xlim([0, t_sample(end)]);
+    text(0.98, 0.95, sprintf('Overall STD = %.2f nm', overall_std), 'Units', 'normalized', ...
+        'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
+        'BackgroundColor', 'white', 'EdgeColor', 'black');
+    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
+    grid on;
+
+    subplot(2,1,2);
+    plot(t_sample, h_bar_log, 'b-', 'LineWidth', 2);
+    xlabel('Time [sec]');
+    ylabel('h/R');
+    title('Normalized Wall Distance');
+    xlim([0, t_sample(end)]);
+    text(0.98, 0.95, sprintf('h/R: %.2f ~ %.2f', min(h_bar_log), max(h_bar_log)), ...
+        'Units', 'normalized', 'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
+        'BackgroundColor', 'white', 'EdgeColor', 'black');
+    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
+    grid on;
+
+    exportgraphics(fig_export, fullfile(output_dir, '9_closedloop_tracking_error.png'), 'Resolution', 150);
+    close(fig_export);
+
+    % Tab 10: STD vs h/R
+    fig_export = figure('Visible', 'off', 'Position', [100, 100, 900, 650]);
+
+    scatter(h_bar_window, std_noise_window, 60, colors(1,:), 'filled', 'MarkerFaceAlpha', 0.7);
+
+    xlabel('h/R');
+    ylabel('Position Noise STD [nm]');
+    title('Position STD vs Wall Distance');
+    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
+    grid on;
+
+    exportgraphics(fig_export, fullfile(output_dir, '10_std_vs_hbar.png'), 'Resolution', 150);
+    close(fig_export);
+
+    fprintf('\n  Closed-loop figures saved (9, 10)\n');
+
+    % Save additional closed-loop analysis data
+    result.closedloop_analysis.h_bar_window = h_bar_window;
+    result.closedloop_analysis.std_noise_window = std_noise_window;
+    result.closedloop_analysis.time_window = time_window;
+    result.closedloop_analysis.noise_z = noise_z;
+    result.closedloop_analysis.window_size = window_size;
+    result.closedloop_analysis.cutoff_freq = closedloop_cutoff_freq;
+    result.closedloop_analysis.R_squared = R_squared;
+    result.closedloop_analysis.slope = p_coeff(1);
+    result.closedloop_analysis.mean_std = mean(std_noise_window);
+    result.closedloop_analysis.std_theory = std_theory_window;
+
+    % Re-save result.mat with additional data
+    save(fullfile(output_dir, 'result.mat'), 'result');
+    fprintf('  Analysis data appended to result.mat\n');
+
+end
+
 %% ========== Local Functions ==========
 
 function [std_noise, data_drift, data_noise, f, P1] = ...
@@ -936,5 +1243,73 @@ function [std_noise, data_drift, data_noise, f, P1] = ...
     % IFFT and extract original region
     drift_extended = ifft(Y_drift_lowfreq, 'symmetric');
     data_drift = drift_extended(extend_len+1:extend_len+N) + data_mean;
+
+end
+
+
+function data_hp = highpass_fft(data, Fs, cutoff_freq)
+% HIGHPASS_FFT - High-pass filter using FFT
+%
+%   Extracts high-frequency components above the cutoff frequency.
+%   Uses FFT-based filtering with smooth transition to avoid ringing.
+%
+%   Inputs:
+%       data        - Time series data (column vector)
+%       Fs          - Sample rate [Hz]
+%       cutoff_freq - High-pass cutoff frequency [Hz]
+%
+%   Outputs:
+%       data_hp     - High-pass filtered data
+
+    N = length(data);
+
+    % Ensure even length
+    if mod(N, 2) == 1
+        data = [data; data(end)];
+        N = N + 1;
+        truncate = true;
+    else
+        truncate = false;
+    end
+
+    % Remove mean
+    data_mean = mean(data);
+    data_demean = data - data_mean;
+
+    % FFT
+    Y = fft(data_demean);
+
+    % Frequency axis
+    f = (0:N-1)' * Fs / N;
+
+    % Create high-pass filter (smooth transition using cosine taper)
+    transition_width = cutoff_freq * 0.3;  % 30% of cutoff as transition band
+    H = zeros(N, 1);
+    for k = 1:N
+        freq = f(k);
+        if freq > Fs/2
+            freq = Fs - freq;  % Mirror for negative frequencies
+        end
+
+        if freq >= cutoff_freq
+            H(k) = 1;
+        elseif freq >= cutoff_freq - transition_width
+            % Smooth cosine transition
+            H(k) = 0.5 * (1 - cos(pi * (freq - (cutoff_freq - transition_width)) / transition_width));
+        else
+            H(k) = 0;
+        end
+    end
+
+    % Apply filter
+    Y_hp = Y .* H;
+
+    % IFFT
+    data_hp = ifft(Y_hp, 'symmetric');
+
+    % Truncate if needed
+    if truncate
+        data_hp = data_hp(1:end-1);
+    end
 
 end
