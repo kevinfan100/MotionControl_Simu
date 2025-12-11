@@ -34,6 +34,7 @@ lambda_c = 0.4;         % Closed-loop pole (0 < lambda_c < 1)
 
 noise_filter_enable = false;   % Enable low-pass filter on controller feedback
 noise_filter_cutoff = min(frequency * 20, 1606 / 10);       % Cutoff frequency [Hz]
+noise_filter_order = 1;        % Filter order (number of cascaded stages, 1-5)
 
 % === Thermal Force ===
 thermal_enable = true;  % Enable Brownian motion disturbance
@@ -82,6 +83,7 @@ config = struct(...
     'ctrl_enable', ctrl_enable, 'lambda_c', lambda_c, ...
     'noise_filter_enable', noise_filter_enable, ...
     'noise_filter_cutoff', noise_filter_cutoff, ...
+    'noise_filter_order', noise_filter_order, ...
     'thermal_enable', thermal_enable, 'T_sim', T_sim ...
 );
 
@@ -176,14 +178,25 @@ error = vecnorm(p_m_log - p_d_log, 2, 1);
 N_samples = length(t_sample);
 
 % Post-processing: Calculate p_m_filtered (for visualization when noise_filter_enable = true)
-% This replicates the IIR filter used in motion_control_law.m
+% This replicates the cascaded IIR filter used in motion_control_law.m
 if noise_filter_enable
     alpha = params.Value.ctrl.filter_alpha;
-    p_m_filtered = zeros(size(p_m_log));
-    p_m_filtered(:, 1) = p_m_log(:, 1);  % Initial condition
+    filter_order = params.Value.ctrl.filter_order;
+
+    % Initialize: each stage needs its own state [3 x N_samples x filter_order]
+    stages = zeros(3, N_samples, filter_order);
+    stages(:, 1, :) = repmat(p_m_log(:, 1), 1, 1, filter_order);
+
     for k = 2:N_samples
-        p_m_filtered(:, k) = alpha * p_m_log(:, k) + (1 - alpha) * p_m_filtered(:, k-1);
+        input = p_m_log(:, k);
+        for s = 1:filter_order
+            stages(:, k, s) = alpha * input + (1 - alpha) * stages(:, k-1, s);
+            input = stages(:, k, s);
+        end
     end
+
+    % Final output is the last stage
+    p_m_filtered = stages(:, :, filter_order);
 else
     p_m_filtered = p_m_log;  % When filter disabled, use raw p_m
 end
