@@ -19,12 +19,12 @@ function params = calc_simulation_params(config)
 %       % Wall parameters
 %       theta       = 0         % Azimuth angle [rad]
 %       phi         = 0         % Elevation angle [rad]
-%       pz          = 0         % Wall displacement [um]
-%       h_bar_min   = 1.5       % Minimum safe normalized distance
+%       pz          = 0         % Wall displacement along w_hat [um]
+%       h_min       = 3.375     % Minimum safe distance [um] (default: 1.5 * R)
 %
 %       % Trajectory parameters
 %       traj_type   = 'z_move'  % 'z_move' or 'xy_circle'
-%       h_margin    = 5         % Additional safety margin [um]
+%       h_init      = 5         % Initial distance from wall [um]
 %       delta_z     = 10        % z_move: displacement [um]
 %       direction   = 'away'    % z_move: 'away' or 'toward'
 %       speed       = 5         % z_move: velocity [um/sec]
@@ -51,16 +51,16 @@ function params = calc_simulation_params(config)
     k_B = 1.3806503e-5;          % Boltzmann constant [pN*um/K]
     T_temp = 310.15;             % Temperature [K] (37 C)
 
-    
+
     %% SECTION 2: Default values and merge
-    
+
     defaults = struct(...
         'theta', 0, ...
         'phi', 0, ...
         'pz', 0, ...
-        'h_bar_min', 1.5, ...
+        'h_min', 1.5 * R, ...        % Minimum safe distance [um] (h_bar_min=1.5 * R=2.25)
         'traj_type', 'z_move', ...
-        'h_margin', 5, ...
+        'h_init', 5, ...             % Initial distance from wall [um]
         'delta_z', 10, ...
         'direction', 'away', ...
         'speed', 5, ...
@@ -101,7 +101,8 @@ function params = calc_simulation_params(config)
     params_data.wall.theta = theta;
     params_data.wall.phi = phi;
     params_data.wall.pz = config.pz;
-    params_data.wall.h_bar_min = config.h_bar_min;
+    params_data.wall.h_min = config.h_min;                 % [um] minimum safe distance
+    params_data.wall.h_bar_min = config.h_min / R;         % [unitless] for Wall Effect calc
     params_data.wall.w_hat = [cos(theta)*sin(phi); sin(theta)*sin(phi); cos(phi)];
     params_data.wall.u_hat = [-cos(theta)*cos(phi); -sin(theta)*cos(phi); sin(phi)];
     params_data.wall.v_hat = [sin(theta); -cos(theta); 0];
@@ -117,7 +118,7 @@ function params = calc_simulation_params(config)
             error('Unknown trajectory type: %s', config.traj_type);
     end
 
-    params_data.traj.h_margin = config.h_margin;
+    params_data.traj.h_init = config.h_init;                 % [um] initial distance from wall
     params_data.traj.delta_z = config.delta_z;
 
     % direction: 'away' -> 0, 'toward' -> 1
@@ -169,21 +170,23 @@ function params = calc_simulation_params(config)
     assignin('base', 'CommonBus', CommonBus);
 
     % --- WallBus ---
-    elems_wall = Simulink.BusElement.empty(0, 7);
+    elems_wall = Simulink.BusElement.empty(0, 8);
     elems_wall(1) = Simulink.BusElement; elems_wall(1).Name = 'theta';
     elems_wall(1).Dimensions = [1 1]; elems_wall(1).DataType = 'double';
     elems_wall(2) = Simulink.BusElement; elems_wall(2).Name = 'phi';
     elems_wall(2).Dimensions = [1 1]; elems_wall(2).DataType = 'double';
     elems_wall(3) = Simulink.BusElement; elems_wall(3).Name = 'pz';
     elems_wall(3).Dimensions = [1 1]; elems_wall(3).DataType = 'double';
-    elems_wall(4) = Simulink.BusElement; elems_wall(4).Name = 'h_bar_min';
+    elems_wall(4) = Simulink.BusElement; elems_wall(4).Name = 'h_min';
     elems_wall(4).Dimensions = [1 1]; elems_wall(4).DataType = 'double';
-    elems_wall(5) = Simulink.BusElement; elems_wall(5).Name = 'w_hat';
-    elems_wall(5).Dimensions = [3 1]; elems_wall(5).DataType = 'double';
-    elems_wall(6) = Simulink.BusElement; elems_wall(6).Name = 'u_hat';
+    elems_wall(5) = Simulink.BusElement; elems_wall(5).Name = 'h_bar_min';
+    elems_wall(5).Dimensions = [1 1]; elems_wall(5).DataType = 'double';
+    elems_wall(6) = Simulink.BusElement; elems_wall(6).Name = 'w_hat';
     elems_wall(6).Dimensions = [3 1]; elems_wall(6).DataType = 'double';
-    elems_wall(7) = Simulink.BusElement; elems_wall(7).Name = 'v_hat';
+    elems_wall(7) = Simulink.BusElement; elems_wall(7).Name = 'u_hat';
     elems_wall(7).Dimensions = [3 1]; elems_wall(7).DataType = 'double';
+    elems_wall(8) = Simulink.BusElement; elems_wall(8).Name = 'v_hat';
+    elems_wall(8).Dimensions = [3 1]; elems_wall(8).DataType = 'double';
 
     WallBus = Simulink.Bus;
     WallBus.Elements = elems_wall;
@@ -193,7 +196,7 @@ function params = calc_simulation_params(config)
     elems_traj = Simulink.BusElement.empty(0, 8);
     elems_traj(1) = Simulink.BusElement; elems_traj(1).Name = 'type';
     elems_traj(1).Dimensions = [1 1]; elems_traj(1).DataType = 'double';
-    elems_traj(2) = Simulink.BusElement; elems_traj(2).Name = 'h_margin';
+    elems_traj(2) = Simulink.BusElement; elems_traj(2).Name = 'h_init';
     elems_traj(2).Dimensions = [1 1]; elems_traj(2).DataType = 'double';
     elems_traj(3) = Simulink.BusElement; elems_traj(3).Name = 'delta_z';
     elems_traj(3).Dimensions = [1 1]; elems_traj(3).DataType = 'double';

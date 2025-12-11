@@ -15,14 +15,14 @@ clear; close all; clc;
 %% SECTION 1: High-Level Parameter Configuration
 % === Wall Parameters ===
 theta = 0;          % Azimuth angle [rad]
-phi = pi/6;            % Elevation angle [rad]
-pz = 0;             % Wall displacement [um]
-h_bar_min = 1.11;      % Minimum safe normalized distance
+phi = 0;         % Elevation angle [rad]
+pz = 0;             % Wall displacement along w_hat [um]
+h_min = 1.1 * 2.25;      % Minimum safe distance [um] (default: 1.1 * R)
 
 % === Trajectory Parameters ===
 traj_type = 'z_move';   % 'z_move' or 'xy_circle'
-h_margin = 10;           % Safety margin [um]
-delta_z = 9;            % z_move: travel distance [um]
+h_init = 10;            % Initial distance from wall [um]
+delta_z = 7.5;            % z_move: travel distance [um]
 direction = 'toward';   % z_move: 'away' or 'toward'
 speed = 1;              % z_move: travel speed [um/sec]
 radius = 5;             % xy_circle: radius [um]
@@ -74,8 +74,8 @@ line_width_ref = 2.5;
 
 %% SECTION 2: Package Configuration and Calculate Parameters
 config = struct(...
-    'theta', theta, 'phi', phi, 'pz', pz, 'h_bar_min', h_bar_min, ...
-    'traj_type', traj_type, 'h_margin', h_margin, ...
+    'theta', theta, 'phi', phi, 'pz', pz, 'h_min', h_min, ...
+    'traj_type', traj_type, 'h_init', h_init, ...
     'delta_z', delta_z, 'direction', direction, 'speed', speed, ...
     'radius', radius, 'period', period, 'n_circles', n_circles, ...
     'ctrl_enable', ctrl_enable, 'lambda_c', lambda_c, ...
@@ -99,10 +99,11 @@ fprintf('Initial position: [%.3f, %.3f, %.3f] um\n', p0);
 fprintf('Initial h/R: %.2f\n', (dot(p0, params.Value.wall.w_hat) - params.Value.wall.pz) / params.Value.common.R);
 
 % Safety check
-[is_safe, h_bar_min_actual, t_critical] = check_trajectory_safety(p0, params.Value);
+[is_safe, h_min_actual, t_critical] = check_trajectory_safety(p0, params.Value);
 
 if ~is_safe
-    warning('Trajectory unsafe! Min h/R = %.2f at t = %.3f sec', h_bar_min_actual, t_critical);
+    warning('Trajectory unsafe! Min h = %.2f um at t = %.3f sec (threshold: %.2f um)', ...
+        h_min_actual, t_critical, params.Value.wall.h_min);
     fprintf('Continuing anyway for demonstration...\n');
 end
 

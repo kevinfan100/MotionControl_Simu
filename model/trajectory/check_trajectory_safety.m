@@ -1,40 +1,42 @@
-function [is_safe, h_bar_min_actual, t_critical] = check_trajectory_safety(p0, params)
-%CHECK_TRAJECTORY_SAFETY Check if trajectory remains safe (h/R > h_bar_min)
+function [is_safe, h_min_actual, t_critical] = check_trajectory_safety(p0, params)
+%CHECK_TRAJECTORY_SAFETY Check if trajectory remains safe (h >= h_min)
 %
-%   [is_safe, h_bar_min_actual, t_critical] = check_trajectory_safety(p0, params)
+%   [is_safe, h_min_actual, t_critical] = check_trajectory_safety(p0, params)
 %
 %   Checks the entire trajectory to ensure the particle never gets too
 %   close to the wall. Samples the trajectory at discrete time points
-%   and calculates h/R at each point.
+%   and calculates distance h at each point.
 %
 %   Inputs:
-%       p0     - Initial position [3x1 vector, um]
+%       p0     - Initial position [3x1 vector, um] in world coordinates
 %       params - Parameter structure from calc_simulation_params
 %
 %   Outputs:
-%       is_safe        - true if trajectory is safe, false otherwise
-%       h_bar_min_actual - Minimum h/R value along trajectory
-%       t_critical     - Time at which minimum h/R occurs [sec]
+%       is_safe      - true if trajectory is safe, false otherwise
+%       h_min_actual - Minimum distance h along trajectory [um]
+%       t_critical   - Time at which minimum h occurs [sec]
 %
 %   Required params fields:
-%       params.wall.w_hat      - Wall normal vector [3x1]
-%       params.wall.pz         - Wall displacement [um]
-%       params.wall.h_bar_min  - Minimum safe normalized distance
-%       params.common.R        - Particle radius [um]
-%       params.common.T_sim    - Simulation time [sec]
-%       params.common.Ts       - Sampling period [sec]
-%       params.traj.type       - Trajectory type (0=z_move, 1=xy_circle)
+%       params.wall.w_hat    - Wall normal vector [3x1, unitless]
+%       params.wall.pz       - Wall displacement along w_hat [um]
+%       params.wall.h_min    - Minimum safe distance [um]
+%       params.common.T_sim  - Simulation time [sec]
+%       params.common.Ts     - Sampling period [sec]
+%       params.traj.type     - Trajectory type (0=z_move, 1=xy_circle)
 %       (plus trajectory-specific parameters)
 %
 %   Safety criterion:
-%       h/R >= h_bar_min for all t in [0, T_sim]
-%       where h = (p(t) . w_hat - pz) is the distance from wall
+%       h >= h_min for all t in [0, T_sim]
+%       where h = p(t) . w_hat - pz is the distance from wall [um]
+%
+%   Coordinate system:
+%       - Trajectory p_d(t) is in world coordinates
+%       - Distance h is computed using wall normal projection
 
     % Extract parameters
     w_hat = params.wall.w_hat;
     pz = params.wall.pz;
-    h_bar_min_threshold = params.wall.h_bar_min;
-    R = params.common.R;
+    h_min_threshold = params.wall.h_min;
     T_sim = params.common.T_sim;
     Ts = params.common.Ts;
 
@@ -42,22 +44,21 @@ function [is_safe, h_bar_min_actual, t_critical] = check_trajectory_safety(p0, p
     t_check = 0:Ts:T_sim;
     N = length(t_check);
 
-    % Calculate h/R at each time point
-    h_bar = zeros(1, N);
+    % Calculate h at each time point
+    h = zeros(1, N);
 
     for i = 1:N
-        % Get desired position at time t
+        % Get desired position at time t (world coordinates)
         p_d = trajectory_generator(t_check(i), p0, params);
 
-        % Calculate h/R
-        h = dot(p_d, w_hat) - pz;
-        h_bar(i) = h / R;
+        % Calculate distance from wall [um]
+        h(i) = dot(p_d, w_hat) - pz;
     end
 
-    % Find minimum h/R
-    [h_bar_min_actual, idx_min] = min(h_bar);
+    % Find minimum h
+    [h_min_actual, idx_min] = min(h);
     t_critical = t_check(idx_min);
 
     % Check safety
-    is_safe = h_bar_min_actual >= h_bar_min_threshold;
+    is_safe = h_min_actual >= h_min_threshold;
 end
