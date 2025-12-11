@@ -25,18 +25,6 @@ function F_th = calc_thermal_force(p, params)
 %       params.thermal.Ts      - Sampling period [sec]
 %       params.thermal.seed    - Random seed for reproducibility
 %
-%   Physical model:
-%       The thermal force is modeled as white noise with position-dependent
-%       variance that accounts for wall effects on the diffusion coefficient.
-%
-%       F_th ~ N(0, Variance)
-%       Variance = (4 * k_B * T * gamma_N / Ts) * [c_x^2; c_y^2; c_z^2]
-%
-%       where c_x, c_y, c_z are the correction coefficients in world
-%       coordinates, computed from c_para and c_perp.
-%
-%   Reference:
-%       thermal_force.png - Thermal force formula
 
     % Initialize random seed on first call (persistent variable)
     persistent rng_initialized
@@ -65,15 +53,13 @@ function F_th = calc_thermal_force(p, params)
     % Calculate correction coefficients using Wall Effect module
     [c_para, c_perp] = calc_correction_functions(h_bar);
 
-    % Calculate C vector (correction coefficients in world coordinates)
     % C = c_para * (u_hat + v_hat) + c_perp * w_hat
-    % This distributes the corrections along the basis vectors
     C = c_para * (u_hat + v_hat) + c_perp * w_hat;
 
     % Calculate variance for each direction
-    % Variance = (4 * k_B * T * gamma_N / Ts) * C.^2 
+    % Variance = (4 * k_B * T * gamma_N / Ts) * C 
     variance_coeff = 4 * k_B * T * gamma_N / Ts;
-    Variance = variance_coeff * (C.^2);
+    Variance = variance_coeff * abs(C);
 
     % Generate random thermal force
     % F_th ~ N(0, Variance) => F_th = sqrt(Variance) .* randn(3,1)

@@ -17,17 +17,6 @@ function p0 = calc_initial_position(params)
 %       params.wall.w_hat      - Wall normal vector [3x1, unitless]
 %       params.wall.pz         - Wall displacement along w_hat [um]
 %       params.traj.h_init     - Initial distance from wall [um]
-%
-%   Initial position calculation:
-%       p0 = (pz + h_init) * w_hat
-%
-%       The particle is placed along the wall normal direction at
-%       distance h_init from the wall surface.
-%
-%   Coordinate system:
-%       - Uses wall coordinates (w_hat) for calculation
-%       - Output p0 is in world coordinates (x, y, z)
-%       - XY offset is (0, 0) along wall-parallel directions
 
     % Extract parameters
     w_hat = params.wall.w_hat;

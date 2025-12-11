@@ -23,14 +23,13 @@ function params = calc_simulation_params(config)
 %       h_min       = 3.375     % Minimum safe distance [um] (default: 1.5 * R)
 %
 %       % Trajectory parameters
-%       traj_type   = 'z_move'  % 'z_move' or 'xy_circle'
+%       traj_type   = 'z_sine'  % 'z_sine' or 'xy_circle'
 %       h_init      = 5         % Initial distance from wall [um]
-%       delta_z     = 10        % z_move: displacement [um]
-%       direction   = 'away'    % z_move: 'away' or 'toward'
-%       speed       = 5         % z_move: velocity [um/sec]
+%       amplitude   = 5         % z_sine: oscillation amplitude [um]
+%       frequency   = 1         % z_sine: oscillation frequency [Hz]
+%       n_cycles    = 3         % z_sine/xy_circle: number of cycles
 %       radius      = 5         % xy_circle: radius [um]
 %       period      = 1         % xy_circle: period [sec]
-%       n_circles   = 3         % xy_circle: number of circles
 %
 %       % Controller parameters
 %       ctrl_enable = true      % Enable controller (false = open-loop)
@@ -58,15 +57,14 @@ function params = calc_simulation_params(config)
         'theta', 0, ...
         'phi', 0, ...
         'pz', 0, ...
-        'h_min', 1.5 * R, ...        % Minimum safe distance [um] (h_bar_min=1.5 * R=2.25)
-        'traj_type', 'z_move', ...
+        'h_min', 1.5 * R, ...        % Minimum safe distance [um] (h_bar_min=1.5 * R=3.375)
+        'traj_type', 'z_sine', ...
         'h_init', 5, ...             % Initial distance from wall [um]
-        'delta_z', 10, ...
-        'direction', 'away', ...
-        'speed', 5, ...
-        'radius', 5, ...
-        'period', 1, ...
-        'n_circles', 3, ...
+        'amplitude', 5, ...          % z_sine: oscillation amplitude [um]
+        'frequency', 1, ...          % z_sine: oscillation frequency [Hz]
+        'n_cycles', 3, ...           % z_sine/xy_circle: number of cycles
+        'radius', 5, ...             % xy_circle: radius [um]
+        'period', 1, ...             % xy_circle: period [sec]
         'ctrl_enable', true, ...
         'lambda_c', 0.7, ...
         'thermal_enable', true, ...
@@ -108,9 +106,9 @@ function params = calc_simulation_params(config)
     params_data.wall.v_hat = [sin(theta); -cos(theta); 0];
 
     % --- traj sub-structure (numeric encoding for Simulink) ---
-    % type: 'z_move' -> 0, 'xy_circle' -> 1
+    % type: 'z_sine' -> 0, 'xy_circle' -> 1
     switch config.traj_type
-        case 'z_move'
+        case 'z_sine'
             params_data.traj.type = 0;
         case 'xy_circle'
             params_data.traj.type = 1;
@@ -118,23 +116,12 @@ function params = calc_simulation_params(config)
             error('Unknown trajectory type: %s', config.traj_type);
     end
 
-    params_data.traj.h_init = config.h_init;                 % [um] initial distance from wall
-    params_data.traj.delta_z = config.delta_z;
-
-    % direction: 'away' -> 0, 'toward' -> 1
-    switch config.direction
-        case 'away'
-            params_data.traj.direction = 0;
-        case 'toward'
-            params_data.traj.direction = 1;
-        otherwise
-            error('Unknown direction: %s', config.direction);
-    end
-
-    params_data.traj.speed = config.speed;
-    params_data.traj.radius = config.radius;
-    params_data.traj.period = config.period;
-    params_data.traj.n_circles = config.n_circles;
+    params_data.traj.h_init = config.h_init;           % [um] initial distance from wall
+    params_data.traj.amplitude = config.amplitude;     % [um] z_sine oscillation amplitude
+    params_data.traj.frequency = config.frequency;     % [Hz] z_sine oscillation frequency
+    params_data.traj.n_cycles = config.n_cycles;       % number of cycles (z_sine/xy_circle)
+    params_data.traj.radius = config.radius;           % [um] xy_circle radius
+    params_data.traj.period = config.period;           % [sec] xy_circle period
 
     % --- ctrl sub-structure ---
     params_data.ctrl.enable = double(config.ctrl_enable);  % Convert to double
@@ -193,23 +180,21 @@ function params = calc_simulation_params(config)
     assignin('base', 'WallBus', WallBus);
 
     % --- TrajBus ---
-    elems_traj = Simulink.BusElement.empty(0, 8);
+    elems_traj = Simulink.BusElement.empty(0, 7);
     elems_traj(1) = Simulink.BusElement; elems_traj(1).Name = 'type';
     elems_traj(1).Dimensions = [1 1]; elems_traj(1).DataType = 'double';
     elems_traj(2) = Simulink.BusElement; elems_traj(2).Name = 'h_init';
     elems_traj(2).Dimensions = [1 1]; elems_traj(2).DataType = 'double';
-    elems_traj(3) = Simulink.BusElement; elems_traj(3).Name = 'delta_z';
+    elems_traj(3) = Simulink.BusElement; elems_traj(3).Name = 'amplitude';
     elems_traj(3).Dimensions = [1 1]; elems_traj(3).DataType = 'double';
-    elems_traj(4) = Simulink.BusElement; elems_traj(4).Name = 'direction';
+    elems_traj(4) = Simulink.BusElement; elems_traj(4).Name = 'frequency';
     elems_traj(4).Dimensions = [1 1]; elems_traj(4).DataType = 'double';
-    elems_traj(5) = Simulink.BusElement; elems_traj(5).Name = 'speed';
+    elems_traj(5) = Simulink.BusElement; elems_traj(5).Name = 'n_cycles';
     elems_traj(5).Dimensions = [1 1]; elems_traj(5).DataType = 'double';
     elems_traj(6) = Simulink.BusElement; elems_traj(6).Name = 'radius';
     elems_traj(6).Dimensions = [1 1]; elems_traj(6).DataType = 'double';
     elems_traj(7) = Simulink.BusElement; elems_traj(7).Name = 'period';
     elems_traj(7).Dimensions = [1 1]; elems_traj(7).DataType = 'double';
-    elems_traj(8) = Simulink.BusElement; elems_traj(8).Name = 'n_circles';
-    elems_traj(8).Dimensions = [1 1]; elems_traj(8).DataType = 'double';
 
     TrajBus = Simulink.Bus;
     TrajBus.Elements = elems_traj;

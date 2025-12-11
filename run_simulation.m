@@ -20,14 +20,13 @@ pz = 0;             % Wall displacement along w_hat [um]
 h_min = 1.1 * 2.25;      % Minimum safe distance [um] (default: 1.1 * R)
 
 % === Trajectory Parameters ===
-traj_type = 'z_move';   % 'z_move' or 'xy_circle'
-h_init = 10;            % Initial distance from wall [um]
-delta_z = 7.5;            % z_move: travel distance [um]
-direction = 'toward';   % z_move: 'away' or 'toward'
-speed = 1;              % z_move: travel speed [um/sec]
+traj_type = 'z_sine';   % 'z_sine' or 'xy_circle'
+h_init = 5;            % Initial distance from wall [um]
+amplitude = 2.5;          % z_sine: oscillation amplitude [um]
+frequency = 0.1;          % z_sine: oscillation frequency [Hz]
+n_cycles = 2;           % z_sine/xy_circle: number of cycles
 radius = 5;             % xy_circle: radius [um]
 period = 1;             % xy_circle: period [sec]
-n_circles = 3;          % xy_circle: number of circles
 
 % === Controller Parameters ===
 ctrl_enable = true;    % true = closed-loop, false = open-loop
@@ -37,7 +36,7 @@ lambda_c = 0.4;         % Closed-loop pole (0 < lambda_c < 1)
 thermal_enable = true;  % Enable Brownian motion disturbance
 
 % === Simulation Parameters ===
-T_margin = 0.5;         % Buffer time after trajectory completes [sec]
+T_margin = 0.3;         % Buffer time after trajectory completes [sec]
 
 % === Open-loop Thermal Analysis Parameters ===
 openloop_cutoff_freq = 3;  % Drift/Noise cutoff frequency [Hz] (adjustable)
@@ -47,10 +46,10 @@ closedloop_window_size = 100;   % Sliding window size [samples] (~31ms at 1606 H
 closedloop_cutoff_freq = 5;   % High-pass cutoff frequency [Hz]
 
 % Auto-calculate simulation time based on trajectory
-if strcmp(traj_type, 'z_move')
-    T_traj = delta_z / speed;
+if strcmp(traj_type, 'z_sine')
+    T_traj = n_cycles / frequency;
 else  % xy_circle
-    T_traj = period * n_circles;
+    T_traj = period * n_cycles;
 end
 T_sim = T_traj + T_margin;
 
@@ -76,8 +75,8 @@ line_width_ref = 2.5;
 config = struct(...
     'theta', theta, 'phi', phi, 'pz', pz, 'h_min', h_min, ...
     'traj_type', traj_type, 'h_init', h_init, ...
-    'delta_z', delta_z, 'direction', direction, 'speed', speed, ...
-    'radius', radius, 'period', period, 'n_circles', n_circles, ...
+    'amplitude', amplitude, 'frequency', frequency, 'n_cycles', n_cycles, ...
+    'radius', radius, 'period', period, ...
     'ctrl_enable', ctrl_enable, 'lambda_c', lambda_c, ...
     'thermal_enable', thermal_enable, 'T_sim', T_sim ...
 );
@@ -117,7 +116,7 @@ thermal_str = 'Disabled';
 if params.Value.thermal.enable > 0.5
     thermal_str = 'Enabled';
 end
-traj_type_str = 'z_move';
+traj_type_str = 'z_sine';
 if params.Value.traj.type > 0.5
     traj_type_str = 'xy_circle';
 end
@@ -904,20 +903,8 @@ if is_closedloop_thermal
     noise_z = highpass_fft(error_z_nm, Fs, closedloop_cutoff_freq);
 
     % Sliding window STD calculation
-    % Only analyze during trajectory motion (exclude deceleration and stop)
-    % Determine analysis end time based on actual z-axis movement
-    p_m_z = p_m_log(3, :);
-    z_start = p_m_z(1);
-    z_traveled = abs(p_m_z - z_start);
-
-    % Find when z has traveled delta_z (trajectory complete)
-    idx_traj_end = find(z_traveled >= delta_z * 0.98, 1, 'first');  % 98% of target distance
-    if isempty(idx_traj_end)
-        % Fallback: use 90% of trajectory time
-        T_traj_analysis = T_traj * 0.90;
-    else
-        T_traj_analysis = t_sample(idx_traj_end);
-    end
+    % Analyze during trajectory motion period (use 90% of T_traj to exclude end transients)
+    T_traj_analysis = T_traj * 0.90;
     N_samples_motion = find(t_sample <= T_traj_analysis, 1, 'last');
 
     fprintf('Calculating sliding window STD (window = %d samples)...\n', closedloop_window_size);

@@ -15,64 +15,63 @@ function p_d = trajectory_generator(t, p0, params)
 %       p_d    - Desired position [3x1 vector, um]
 %
 %   Required params fields:
-%       params.traj.type       - Trajectory type ('z_move' or 'xy_circle')
-%       params.wall.w_hat      - Wall normal vector [3x1]
-%       params.wall.u_hat      - Wall parallel vector 1 [3x1]
-%       params.wall.v_hat      - Wall parallel vector 2 [3x1]
+%       params.traj.type       - Trajectory type ('z_sine' or 'xy_circle')
 %
-%   For 'z_move' type:
-%       params.traj.delta_z    - Travel distance [um]
-%       params.traj.direction  - 'away' or 'toward'
-%       params.traj.speed      - Travel speed [um/sec]
+%   For 'z_sine' type:
+%       params.traj.amplitude  - Oscillation amplitude [um]
+%       params.traj.frequency  - Oscillation frequency [Hz]
+%       params.traj.n_cycles   - Number of cycles
 %
 %   For 'xy_circle' type:
 %       params.traj.radius     - Circle radius [um]
 %       params.traj.period     - Circle period [sec]
-%       params.traj.n_circles  - Number of circles
+%       params.traj.n_cycles   - Number of circles
 %
 %   Trajectory descriptions (WORLD COORDINATES):
-%       'z_move': Linear motion along world Z axis
-%           - 'away': moves in +Z direction (upward)
-%           - 'toward': moves in -Z direction (downward)
-%           - Saturates at delta_z displacement
+%       'z_sine': Sinusoidal motion along world Z axis
+%           - z(t) = p0_z + amplitude * sin(2*pi*frequency*t)
+%           - Total time = n_cycles / frequency
+%           - Returns to p0 after completion
 %
 %       'xy_circle': Circular motion in world XY plane
 %           - Circle in X-Y plane
 %           - Starts at p0, circles around, returns to p0
-%           - Total time = period * n_circles
+%           - Total time = period * n_cycles
 
-    % Get trajectory type (0 = z_move, 1 = xy_circle)
+    % Get trajectory type (0 = z_sine, 1 = xy_circle)
     traj_type = params.traj.type;
 
-    if traj_type < 0.5  % z_move
-        p_d = trajectory_z_move(t, p0, params);
+    if traj_type < 0.5  % z_sine
+        p_d = trajectory_z_sine(t, p0, params);
     else  % xy_circle
         p_d = trajectory_xy_circle(t, p0, params);
     end
 end
 
 
-function p_d = trajectory_z_move(t, p0, params)
-%TRAJECTORY_Z_MOVE Linear motion along world Z axis
+function p_d = trajectory_z_sine(t, p0, params)
+%TRAJECTORY_Z_SINE Sinusoidal motion along world Z axis
     % World coordinate Z axis
     z_hat = [0; 0; 1];
 
-    delta_z = params.traj.delta_z;
-    direction = params.traj.direction;  % 0 = away (up), 1 = toward (down)
-    speed = params.traj.speed;
+    amplitude = params.traj.amplitude;
+    frequency = params.traj.frequency;
+    n_cycles = params.traj.n_cycles;
 
-    % Determine direction sign (0 = away/up, 1 = toward/down)
-    if direction < 0.5  % away
-        dir_sign = 1;    % Move upward (+Z)
-    else  % toward
-        dir_sign = -1;   % Move downward (-Z)
+    % Total trajectory time
+    T_total = n_cycles / frequency;
+
+    if t <= T_total
+        % Angular frequency
+        omega = 2 * pi * frequency;
+
+        % Sinusoidal displacement along Z axis
+        displacement = amplitude * sin(omega * t);
+        p_d = p0 + displacement * z_hat;
+    else
+        % After completing all cycles, stay at starting position
+        p_d = p0;
     end
-
-    % Calculate displacement with saturation
-    displacement = min(speed * t, delta_z);
-
-    % Calculate desired position
-    p_d = p0 + dir_sign * displacement * z_hat;
 end
 
 
@@ -84,10 +83,10 @@ function p_d = trajectory_xy_circle(t, p0, params)
 
     radius = params.traj.radius;
     period = params.traj.period;
-    n_circles = params.traj.n_circles;
+    n_cycles = params.traj.n_cycles;
 
     % Total trajectory time
-    T_total = period * n_circles;
+    T_total = period * n_cycles;
 
     if t <= T_total
         % Angular frequency

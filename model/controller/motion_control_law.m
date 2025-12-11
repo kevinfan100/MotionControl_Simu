@@ -3,10 +3,6 @@ function f_d = motion_control_law(p_d, p_m, params)
 %
 %   f_d = motion_control_law(p_d, p_m, params)
 %
-%   Implements the control law for magnetic bead position control.
-%   Based on Meng & Menq (2023) "Ultra-Precise High-Speed Untethered
-%   Manipulation", Equation 17 (simplified version).
-%
 %   Control Law:
 %       f_d[k] = (gamma / Ts) * {p_d[k] - lambda_c * p_d[k-1] - (1-lambda_c) * p_m[k]}
 %
@@ -23,11 +19,6 @@ function f_d = motion_control_law(p_d, p_m, params)
 %       params.ctrl.gamma    - Drag coefficient [pN*sec/um]
 %       params.ctrl.lambda_c - Closed-loop pole (0 < lambda_c < 1)
 %       params.ctrl.Ts       - Sampling period [sec]
-%
-%   State management:
-%       Uses persistent variable p_d_prev to store previous desired position.
-%       On first call, initializes p_d_prev = p_d, which gives f_d[0] = 0
-%       when p_d[0] = p_m[0] (system starts at rest at initial position).
 %
 %   Control modes:
 %       enable = true (1):  Closed-loop control active

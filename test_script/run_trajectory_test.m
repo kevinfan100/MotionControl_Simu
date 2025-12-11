@@ -1,12 +1,12 @@
 %% run_trajectory_test.m - Trajectory Generator Module Validation Test
 %
 % This script validates the Trajectory Generator module by:
-% 1. Visualizing z_move trajectory in 3D with wall plane
+% 1. Visualizing z_sine trajectory in 3D with wall plane
 % 2. Visualizing xy_circle trajectory in 3D with wall plane
 % 3. Showing h_bar(t) safety curves for both trajectories
 %
 % Output: 3 PNG files
-%   1. z_move_3d.png - 3D trajectory with wall plane
+%   1. z_sine_3d.png - 3D trajectory with wall plane
 %   2. xy_circle_3d.png - 3D trajectory with wall plane
 %   3. h_bar_safety.png - h_bar vs time for both trajectories
 
@@ -15,6 +15,7 @@ clear; close all; clc;
 %% Add paths (relative to project root)
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
 project_root = fileparts(script_dir);
+addpath(fullfile(project_root, 'model'));
 addpath(fullfile(project_root, 'model', 'wall_effect'));
 addpath(fullfile(project_root, 'model', 'thermal_force'));
 addpath(fullfile(project_root, 'model', 'trajectory'));
@@ -29,12 +30,12 @@ pz = 0;
 % Common simulation parameters
 T_sim = 5;
 
-% z_move parameters
+% z_sine parameters
 z_config = struct(...
     'theta', theta, 'phi', phi, 'pz', pz, 'h_min', 3.375, ...
-    'traj_type', 'z_move', 'h_init', 5, ...
-    'delta_z', 10, 'direction', 'away', 'speed', 5, ...
-    'radius', 5, 'period', 1, 'n_circles', 3, ...
+    'traj_type', 'z_sine', 'h_init', 5, ...
+    'amplitude', 3, 'frequency', 1, 'n_cycles', 3, ...
+    'radius', 5, 'period', 1, ...
     'lambda_c', 0.7, 'thermal_enable', false, 'T_sim', T_sim ...
 );
 
@@ -42,8 +43,8 @@ z_config = struct(...
 xy_config = struct(...
     'theta', theta, 'phi', phi, 'pz', pz, 'h_min', 3.375, ...
     'traj_type', 'xy_circle', 'h_init', 5, ...
-    'delta_z', 10, 'direction', 'away', 'speed', 5, ...
-    'radius', 5, 'period', 1, 'n_circles', 3, ...
+    'amplitude', 3, 'frequency', 1, 'n_cycles', 3, ...
+    'radius', 5, 'period', 1, ...
     'lambda_c', 0.7, 'thermal_enable', false, 'T_sim', T_sim ...
 );
 
@@ -105,7 +106,7 @@ mkdir(output_dir);
 %% Helper function for wall plane
 wall_half_size = 15;  % Half size of wall plane visualization
 
-%% Figure 1: z_move 3D Trajectory
+%% Figure 1: z_sine 3D Trajectory
 fig1 = figure('Position', [100 100 800 600], 'Visible', 'off');
 
 % Plot trajectory
@@ -137,7 +138,7 @@ hold off;
 xlabel('x [um]', 'FontSize', xlabel_fontsize);
 ylabel('y [um]', 'FontSize', ylabel_fontsize);
 zlabel('z [um]', 'FontSize', ylabel_fontsize);
-title('z\_move Trajectory (direction: away)', 'FontSize', title_fontsize);
+title(sprintf('z\\_sine Trajectory (amplitude=%.1f um, freq=%.1f Hz)', params_z.traj.amplitude, params_z.traj.frequency), 'FontSize', title_fontsize);
 legend({'Trajectory', 'Start', 'End', 'Wall', 'w (normal)', 'u (parallel)', 'v (parallel)'}, ...
     'Location', 'northeast', 'FontSize', legend_fontsize);
 grid on;
@@ -148,7 +149,7 @@ xlim([-wall_half_size wall_half_size]);
 ylim([-wall_half_size wall_half_size]);
 zlim([0 25]);
 
-exportgraphics(fig1, fullfile(output_dir, 'z_move_3d.png'), 'Resolution', 150);
+exportgraphics(fig1, fullfile(output_dir, 'z_sine_3d.png'), 'Resolution', 150);
 close(fig1);
 
 %% Figure 2: xy_circle 3D Trajectory
@@ -174,7 +175,7 @@ hold off;
 xlabel('x [um]', 'FontSize', xlabel_fontsize);
 ylabel('y [um]', 'FontSize', ylabel_fontsize);
 zlabel('z [um]', 'FontSize', ylabel_fontsize);
-title(sprintf('xy\\_circle Trajectory (radius=%.1f um, %d circles)', params_xy.traj.radius, params_xy.traj.n_circles), ...
+title(sprintf('xy\\_circle Trajectory (radius=%.1f um, %d cycles)', params_xy.traj.radius, params_xy.traj.n_cycles), ...
     'FontSize', title_fontsize);
 legend({'Trajectory', 'Start', 'Wall', 'w (normal)', 'u (parallel)', 'v (parallel)'}, ...
     'Location', 'northeast', 'FontSize', legend_fontsize);
@@ -200,7 +201,7 @@ yline(params_z.wall.h_bar_min, 'r--', 'LineWidth', 1.5);
 hold off;
 xlabel('Time [sec]', 'FontSize', xlabel_fontsize);
 ylabel('h/R', 'FontSize', ylabel_fontsize);
-title(sprintf('z\\_move: h/R vs Time (min=%.2f, safe=%d)', h_bar_min_z, is_safe_z), 'FontSize', title_fontsize);
+title(sprintf('z\\_sine: h/R vs Time (min=%.2f, safe=%d)', h_bar_min_z, is_safe_z), 'FontSize', title_fontsize);
 legend({'h/R(t)', sprintf('h/R_{min}=%.1f', params_z.wall.h_bar_min)}, ...
     'Location', 'northeast', 'FontSize', legend_fontsize);
 grid on;
@@ -247,21 +248,17 @@ fprintf('\n=== Trajectory Test Summary ===\n');
 fprintf('Simulation time: T_sim = %.1f sec\n', T_sim);
 fprintf('Sampling rate: fs = %.0f Hz\n', 1/Ts);
 
-fprintf('\nz_move trajectory:\n');
+fprintf('\nz_sine trajectory:\n');
 fprintf('  Start: [%.2f, %.2f, %.2f] um\n', p0_z);
-fprintf('  End:   [%.2f, %.2f, %.2f] um\n', traj_z(:, end));
-fprintf('  Displacement: %.2f um\n', norm(traj_z(:, end) - p0_z));
-dir_str = 'away';
-if params_z.traj.direction > 0.5
-    dir_str = 'toward';
-end
-fprintf('  Direction: %s\n', dir_str);
+fprintf('  Amplitude: %.2f um\n', params_z.traj.amplitude);
+fprintf('  Frequency: %.2f Hz\n', params_z.traj.frequency);
+fprintf('  Cycles: %d\n', params_z.traj.n_cycles);
 fprintf('  Safety: %s (min h/R = %.2f)\n', yesno(is_safe_z), h_bar_min_z);
 
 fprintf('\nxy_circle trajectory:\n');
 fprintf('  Center: [%.2f, %.2f, %.2f] um\n', p0_xy);
 fprintf('  Radius: %.2f um\n', params_xy.traj.radius);
-fprintf('  Circles: %d (period=%.2f sec)\n', params_xy.traj.n_circles, params_xy.traj.period);
+fprintf('  Cycles: %d (period=%.2f sec)\n', params_xy.traj.n_cycles, params_xy.traj.period);
 fprintf('  Safety: %s (min h/R = %.2f)\n', yesno(is_safe_xy), h_bar_min_xy);
 
 fprintf('\nResults saved to: %s\n', output_dir);

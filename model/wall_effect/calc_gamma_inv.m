@@ -3,9 +3,6 @@ function [Gamma_inv, h_bar] = calc_gamma_inv(p, params)
 %
 %   [Gamma_inv, h_bar] = calc_gamma_inv(p, params)
 %
-%   Calculates the position-dependent inverse drag coefficient matrix
-%   (mobility matrix) that accounts for wall effects.
-%
 %   Inputs:
 %       p      - Particle position [3x1 vector, um]
 %       params - Parameter structure from calc_simulation_params
@@ -20,15 +17,6 @@ function [Gamma_inv, h_bar] = calc_gamma_inv(p, params)
 %       params.common.R        - Particle radius [um]
 %       params.common.gamma_N  - Stokes drag coefficient [pN*sec/um]
 %
-%   Physical interpretation:
-%       The mobility matrix Gamma_inv relates force to velocity:
-%           p_dot = Gamma_inv * F
-%
-%       Near a wall, mobility is reduced (harder to move) and becomes
-%       anisotropic (different in parallel vs perpendicular directions).
-%
-%   Reference:
-%       Drag_MATLAB.pdf - Wall Effect mathematical model
 
     % Extract parameters
     w_hat = params.wall.w_hat;
@@ -36,7 +24,6 @@ function [Gamma_inv, h_bar] = calc_gamma_inv(p, params)
     R = params.common.R;
     gamma_N = params.common.gamma_N;
 
-    % Calculate distance from wall to particle center
     % h = (p . w_hat) - pz
     % This is the signed distance along the wall normal
     h = dot(p, w_hat) - pz;
@@ -47,13 +34,10 @@ function [Gamma_inv, h_bar] = calc_gamma_inv(p, params)
     % Calculate correction coefficients
     [c_para, c_perp] = calc_correction_functions(h_bar);
 
-    % Calculate projection matrix onto wall normal
     % W = w_hat * w_hat' is the projection onto the normal direction
     W = w_hat * w_hat';
 
-    % Calculate mobility coefficient for the perpendicular direction
     % coeff = (c_perp - c_para) / c_perp
-    % This represents the additional reduction in perpendicular mobility
     coeff = (c_perp - c_para) / c_perp;
 
     % Construct the inverse drag coefficient matrix
