@@ -27,7 +27,7 @@ function [c_para, c_perp] = calc_correction_functions(h_bar)
 %       Drag_MATLAB.pdf - Wall Effect mathematical model
 
     % Input validation
-    if h_bar <= 1
+    if h_bar < 1
         error('calc_correction_functions:invalidInput', ...
             'h_bar must be > 1 (particle must not touch wall). Got h_bar = %.4f', h_bar);
     end

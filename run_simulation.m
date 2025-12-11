@@ -24,8 +24,8 @@ h_min = 1 * 2.25;      % Minimum safe distance [um] (default: 1.1 * R)
 traj_type = 'z_sine';   % 'z_sine' or 'xy_circle'
 h_init = 5;            % Initial distance from wall [um]
 amplitude = 2.5;          % z_sine: oscillation amplitude [um]
-frequency = 10;          % z_sine: oscillation frequency [Hz]
-n_cycles = 2;           % z_sine/xy_circle: number of cycles
+frequency = 1;          % z_sine: oscillation frequency [Hz]
+n_cycles = 3;           % z_sine/xy_circle: number of cycles
 radius = 5;             % xy_circle: radius [um]
 period = 1;             % xy_circle: period [sec]
 
@@ -33,8 +33,8 @@ period = 1;             % xy_circle: period [sec]
 ctrl_enable = true;    % true = closed-loop, false = open-loop
 lambda_c = 0.4;         % Closed-loop pole (0 < lambda_c < 1)
 
-noise_filter_enable = true;   % Enable low-pass filter on controller feedback
-noise_filter_cutoff = min(frequency * 20, 1606 / 10);       % Cutoff frequency [Hz]
+noise_filter_enable = false;   % Enable low-pass filter on controller feedback
+noise_filter_cutoff = min(frequency * 10, 1606 / 10);       % Cutoff frequency [Hz]
 
 % === Thermal Force ===
 thermal_enable = true;  % Enable Brownian motion disturbance
@@ -46,7 +46,7 @@ T_margin = 0.3;         % Buffer time after trajectory completes [sec]
 openloop_cutoff_freq = min(frequency * 20, 1606 / 10);  % Drift/Noise cutoff frequency [Hz] (adjustable)
 
 % === Closed-loop Thermal Analysis Parameters ===
-closedloop_cutoff_freq = min(frequency * 20, 1606 / 10);   % High-pass cutoff frequency [Hz]
+closedloop_cutoff_freq = min(frequency * 10, 1606 / 10);   % High-pass cutoff frequency [Hz]
 
 % Auto-calculate simulation time based on trajectory
 if strcmp(traj_type, 'z_sine')
