@@ -34,6 +34,8 @@ function params = calc_simulation_params(config)
 %       % Controller parameters
 %       ctrl_enable = true      % Enable controller (false = open-loop)
 %       lambda_c    = 0.7       % Closed-loop pole (0 < lambda_c < 1)
+%       noise_filter_enable = false  % Enable low-pass filter on feedback
+%       noise_filter_cutoff = 5      % Cutoff frequency [Hz]
 %
 %       % Thermal force parameters
 %       thermal_enable = true   % Enable thermal force
@@ -67,6 +69,8 @@ function params = calc_simulation_params(config)
         'period', 1, ...             % xy_circle: period [sec]
         'ctrl_enable', true, ...
         'lambda_c', 0.7, ...
+        'noise_filter_enable', false, ...  % Noise filter switch
+        'noise_filter_cutoff', 5, ...      % Cutoff frequency [Hz]
         'thermal_enable', true, ...
         'T_sim', 5 ...
     );
@@ -128,6 +132,11 @@ function params = calc_simulation_params(config)
     params_data.ctrl.lambda_c = config.lambda_c;
     params_data.ctrl.gamma = gamma_N;
     params_data.ctrl.Ts = Ts;
+    params_data.ctrl.noise_filter_enable = double(config.noise_filter_enable);
+    params_data.ctrl.noise_filter_cutoff = config.noise_filter_cutoff;
+    % Pre-calculate filter coefficient: alpha = Ts / (Ts + 1/(2*pi*fc))
+    fc = config.noise_filter_cutoff;
+    params_data.ctrl.filter_alpha = Ts / (Ts + 1/(2*pi*fc));
 
     % --- thermal sub-structure ---
     params_data.thermal.enable = double(config.thermal_enable);  % Convert to double
@@ -201,7 +210,7 @@ function params = calc_simulation_params(config)
     assignin('base', 'TrajBus', TrajBus);
 
     % --- CtrlBus ---
-    elems_ctrl = Simulink.BusElement.empty(0, 4);
+    elems_ctrl = Simulink.BusElement.empty(0, 7);
     elems_ctrl(1) = Simulink.BusElement; elems_ctrl(1).Name = 'enable';
     elems_ctrl(1).Dimensions = [1 1]; elems_ctrl(1).DataType = 'double';
     elems_ctrl(2) = Simulink.BusElement; elems_ctrl(2).Name = 'lambda_c';
@@ -210,6 +219,12 @@ function params = calc_simulation_params(config)
     elems_ctrl(3).Dimensions = [1 1]; elems_ctrl(3).DataType = 'double';
     elems_ctrl(4) = Simulink.BusElement; elems_ctrl(4).Name = 'Ts';
     elems_ctrl(4).Dimensions = [1 1]; elems_ctrl(4).DataType = 'double';
+    elems_ctrl(5) = Simulink.BusElement; elems_ctrl(5).Name = 'noise_filter_enable';
+    elems_ctrl(5).Dimensions = [1 1]; elems_ctrl(5).DataType = 'double';
+    elems_ctrl(6) = Simulink.BusElement; elems_ctrl(6).Name = 'noise_filter_cutoff';
+    elems_ctrl(6).Dimensions = [1 1]; elems_ctrl(6).DataType = 'double';
+    elems_ctrl(7) = Simulink.BusElement; elems_ctrl(7).Name = 'filter_alpha';
+    elems_ctrl(7).Dimensions = [1 1]; elems_ctrl(7).DataType = 'double';
 
     CtrlBus = Simulink.Bus;
     CtrlBus.Elements = elems_ctrl;

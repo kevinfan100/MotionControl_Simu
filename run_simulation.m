@@ -23,7 +23,7 @@ h_min = 1.1 * 2.25;      % Minimum safe distance [um] (default: 1.1 * R)
 traj_type = 'z_sine';   % 'z_sine' or 'xy_circle'
 h_init = 5;            % Initial distance from wall [um]
 amplitude = 2.5;          % z_sine: oscillation amplitude [um]
-frequency = 0.1;          % z_sine: oscillation frequency [Hz]
+frequency = 1;          % z_sine: oscillation frequency [Hz]
 n_cycles = 2;           % z_sine/xy_circle: number of cycles
 radius = 5;             % xy_circle: radius [um]
 period = 1;             % xy_circle: period [sec]
@@ -32,6 +32,9 @@ period = 1;             % xy_circle: period [sec]
 ctrl_enable = true;    % true = closed-loop, false = open-loop
 lambda_c = 0.4;         % Closed-loop pole (0 < lambda_c < 1)
 
+noise_filter_enable = false;   % Enable low-pass filter on controller feedback
+noise_filter_cutoff = min(frequency * 20, 1606 / 10);       % Cutoff frequency [Hz]
+
 % === Thermal Force ===
 thermal_enable = true;  % Enable Brownian motion disturbance
 
@@ -39,11 +42,10 @@ thermal_enable = true;  % Enable Brownian motion disturbance
 T_margin = 0.3;         % Buffer time after trajectory completes [sec]
 
 % === Open-loop Thermal Analysis Parameters ===
-openloop_cutoff_freq = 3;  % Drift/Noise cutoff frequency [Hz] (adjustable)
+openloop_cutoff_freq = min(frequency * 20, 1606 / 10);  % Drift/Noise cutoff frequency [Hz] (adjustable)
 
 % === Closed-loop Thermal Analysis Parameters ===
-closedloop_window_size = 100;   % Sliding window size [samples] (~31ms at 1606 Hz)
-closedloop_cutoff_freq = 5;   % High-pass cutoff frequency [Hz]
+closedloop_cutoff_freq = min(frequency * 20, 1606 / 10);   % High-pass cutoff frequency [Hz]
 
 % Auto-calculate simulation time based on trajectory
 if strcmp(traj_type, 'z_sine')
@@ -78,6 +80,8 @@ config = struct(...
     'amplitude', amplitude, 'frequency', frequency, 'n_cycles', n_cycles, ...
     'radius', radius, 'period', period, ...
     'ctrl_enable', ctrl_enable, 'lambda_c', lambda_c, ...
+    'noise_filter_enable', noise_filter_enable, ...
+    'noise_filter_cutoff', noise_filter_cutoff, ...
     'thermal_enable', thermal_enable, 'T_sim', T_sim ...
 );
 
@@ -171,6 +175,19 @@ error = vecnorm(p_m_log - p_d_log, 2, 1);
 
 N_samples = length(t_sample);
 
+% Post-processing: Calculate p_m_filtered (for visualization when noise_filter_enable = true)
+% This replicates the IIR filter used in motion_control_law.m
+if noise_filter_enable
+    alpha = params.Value.ctrl.filter_alpha;
+    p_m_filtered = zeros(size(p_m_log));
+    p_m_filtered(:, 1) = p_m_log(:, 1);  % Initial condition
+    for k = 2:N_samples
+        p_m_filtered(:, k) = alpha * p_m_log(:, k) + (1 - alpha) * p_m_filtered(:, k-1);
+    end
+else
+    p_m_filtered = p_m_log;  % When filter disabled, use raw p_m
+end
+
 fprintf('Simulation completed.\n');
 
 %% SECTION 5: Results Visualization (Tabbed Figure)
@@ -239,8 +256,8 @@ fprintf('  Tab 1: 3D Trajectory\n');
 % ==================== Tab 2: X-Axis Analysis ====================
 tab2 = uitab(tabgroup, 'Title', 'X-Axis Analysis');
 
-% Calculate X-axis error in nm
-error_x = (p_m_log(1, :) - p_d_log(1, :)) * 1000;
+% Calculate X-axis error in nm (use p_m_filtered for controller's perspective)
+error_x = (p_m_filtered(1, :) - p_d_log(1, :)) * 1000;
 
 % Subplot positions [left bottom width height]
 pos_top = [0.10 0.70 0.85 0.25];
@@ -249,11 +266,15 @@ pos_bot = [0.10 0.08 0.85 0.25];
 
 % --- Subplot 1: X Position Tracking ---
 ax2_pos = uiaxes(tab2, 'Position', [pos_top(1)*1200, pos_top(2)*800, pos_top(3)*1200, pos_top(4)*800]);
-plot(ax2_pos, t_sample, p_m_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
+plot(ax2_pos, t_sample, p_m_filtered(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
 hold(ax2_pos, 'on');
 plot(ax2_pos, t_sample, p_d_log(1, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_ref);
 hold(ax2_pos, 'off');
-legend(ax2_pos, {'p_{m,x}', 'p_{d,x}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+if noise_filter_enable
+    legend(ax2_pos, {'p_{m,x} (filtered)', 'p_{d,x}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+else
+    legend(ax2_pos, {'p_{m,x}', 'p_{d,x}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+end
 ylabel(ax2_pos, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
 title(ax2_pos, 'X-Axis Position Tracking', 'FontSize', title_fontsize, 'FontWeight', 'bold');
 ax2_pos.LineWidth = axis_linewidth; ax2_pos.FontSize = tick_fontsize; ax2_pos.FontWeight = 'bold';
@@ -264,7 +285,7 @@ ax2_pos.XTickLabel = [];
 ax2_err = uiaxes(tab2, 'Position', [pos_mid(1)*1200, pos_mid(2)*800, pos_mid(3)*1200, pos_mid(4)*800]);
 plot(ax2_err, t_sample, error_x, 'k-', 'LineWidth', line_width_main);
 ylabel(ax2_err, 'e_x [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax2_err, 'X-Axis Error', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+title(ax2_err, 'X-Axis Error (Controller View)', 'FontSize', title_fontsize, 'FontWeight', 'bold');
 ax2_err.LineWidth = axis_linewidth; ax2_err.FontSize = tick_fontsize; ax2_err.FontWeight = 'bold';
 ax2_err.Box = 'on'; grid(ax2_err, 'on');
 ax2_err.XTickLabel = [];
@@ -286,16 +307,20 @@ fprintf('  Tab 2: X-Axis Analysis\n');
 % ==================== Tab 3: Y-Axis Analysis ====================
 tab3 = uitab(tabgroup, 'Title', 'Y-Axis Analysis');
 
-% Calculate Y-axis error in nm
-error_y = (p_m_log(2, :) - p_d_log(2, :)) * 1000;
+% Calculate Y-axis error in nm (use p_m_filtered for controller's perspective)
+error_y = (p_m_filtered(2, :) - p_d_log(2, :)) * 1000;
 
 % --- Subplot 1: Y Position Tracking ---
 ax3_pos = uiaxes(tab3, 'Position', [pos_top(1)*1200, pos_top(2)*800, pos_top(3)*1200, pos_top(4)*800]);
-plot(ax3_pos, t_sample, p_m_log(2, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
+plot(ax3_pos, t_sample, p_m_filtered(2, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
 hold(ax3_pos, 'on');
 plot(ax3_pos, t_sample, p_d_log(2, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_ref);
 hold(ax3_pos, 'off');
-legend(ax3_pos, {'p_{m,y}', 'p_{d,y}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+if noise_filter_enable
+    legend(ax3_pos, {'p_{m,y} (filtered)', 'p_{d,y}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+else
+    legend(ax3_pos, {'p_{m,y}', 'p_{d,y}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+end
 ylabel(ax3_pos, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
 title(ax3_pos, 'Y-Axis Position Tracking', 'FontSize', title_fontsize, 'FontWeight', 'bold');
 ax3_pos.LineWidth = axis_linewidth; ax3_pos.FontSize = tick_fontsize; ax3_pos.FontWeight = 'bold';
@@ -306,7 +331,7 @@ ax3_pos.XTickLabel = [];
 ax3_err = uiaxes(tab3, 'Position', [pos_mid(1)*1200, pos_mid(2)*800, pos_mid(3)*1200, pos_mid(4)*800]);
 plot(ax3_err, t_sample, error_y, 'k-', 'LineWidth', line_width_main);
 ylabel(ax3_err, 'e_y [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax3_err, 'Y-Axis Error', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+title(ax3_err, 'Y-Axis Error (Controller View)', 'FontSize', title_fontsize, 'FontWeight', 'bold');
 ax3_err.LineWidth = axis_linewidth; ax3_err.FontSize = tick_fontsize; ax3_err.FontWeight = 'bold';
 ax3_err.Box = 'on'; grid(ax3_err, 'on');
 ax3_err.XTickLabel = [];
@@ -328,16 +353,20 @@ fprintf('  Tab 3: Y-Axis Analysis\n');
 % ==================== Tab 4: Z-Axis Analysis ====================
 tab4 = uitab(tabgroup, 'Title', 'Z-Axis Analysis');
 
-% Calculate Z-axis error in nm
-error_z = (p_m_log(3, :) - p_d_log(3, :)) * 1000;
+% Calculate Z-axis error in nm (use p_m_filtered for controller's perspective)
+error_z = (p_m_filtered(3, :) - p_d_log(3, :)) * 1000;
 
 % --- Subplot 1: Z Position Tracking ---
 ax4_pos = uiaxes(tab4, 'Position', [pos_top(1)*1200, pos_top(2)*800, pos_top(3)*1200, pos_top(4)*800]);
-plot(ax4_pos, t_sample, p_m_log(3, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
+plot(ax4_pos, t_sample, p_m_filtered(3, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
 hold(ax4_pos, 'on');
 plot(ax4_pos, t_sample, p_d_log(3, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_ref);
 hold(ax4_pos, 'off');
-legend(ax4_pos, {'p_{m,z}', 'p_{d,z}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+if noise_filter_enable
+    legend(ax4_pos, {'p_{m,z} (filtered)', 'p_{d,z}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+else
+    legend(ax4_pos, {'p_{m,z}', 'p_{d,z}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
+end
 ylabel(ax4_pos, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
 title(ax4_pos, 'Z-Axis Position Tracking', 'FontSize', title_fontsize, 'FontWeight', 'bold');
 ax4_pos.LineWidth = axis_linewidth; ax4_pos.FontSize = tick_fontsize; ax4_pos.FontWeight = 'bold';
@@ -348,7 +377,7 @@ ax4_pos.XTickLabel = [];
 ax4_err = uiaxes(tab4, 'Position', [pos_mid(1)*1200, pos_mid(2)*800, pos_mid(3)*1200, pos_mid(4)*800]);
 plot(ax4_err, t_sample, error_z, 'k-', 'LineWidth', line_width_main);
 ylabel(ax4_err, 'e_z [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax4_err, 'Z-Axis Error', 'FontSize', title_fontsize, 'FontWeight', 'bold');
+title(ax4_err, 'Z-Axis Error (Controller View)', 'FontSize', title_fontsize, 'FontWeight', 'bold');
 ax4_err.LineWidth = axis_linewidth; ax4_err.FontSize = tick_fontsize; ax4_err.FontWeight = 'bold';
 ax4_err.Box = 'on'; grid(ax4_err, 'on');
 ax4_err.XTickLabel = [];
@@ -426,6 +455,77 @@ text(ax6, 0.95, 0.95, stats_str, 'Units', 'normalized', ...
     'BackgroundColor', [1 1 1 0.8], 'EdgeColor', [0.3 0.3 0.3], 'Margin', 5);
 
 fprintf('  Tab 6: Control Force\n');
+
+% ==================== Tab 7: FFT Spectrum Analysis ====================
+% Shows p_m FFT spectrum for verifying cutoff frequency selection
+% Uses same format as Open-loop FFT for consistency
+tab7_fft = uitab(tabgroup, 'Title', 'FFT Spectrum');
+
+% Use fft_drift_noise_separation for proper spectrum calculation (same as open-loop)
+Fs = 1 / Ts;
+time_vec_fft = t_sample(:);  % Column vector for fft function
+
+% Convert p_m to nm for FFT analysis
+p_m_x_nm = p_m_log(1, :)' * 1000;  % um -> nm, column vector
+p_m_y_nm = p_m_log(2, :)' * 1000;
+p_m_z_nm = p_m_log(3, :)' * 1000;
+
+% Calculate FFT spectrum using fft_drift_noise_separation
+[~, ~, ~, freq_x, spectrum_x] = fft_drift_noise_separation(p_m_x_nm, time_vec_fft, noise_filter_cutoff);
+[~, ~, ~, freq_y, spectrum_y] = fft_drift_noise_separation(p_m_y_nm, time_vec_fft, noise_filter_cutoff);
+[~, ~, ~, freq_z, spectrum_z] = fft_drift_noise_separation(p_m_z_nm, time_vec_fft, noise_filter_cutoff);
+
+% Calculate common Y-axis limits for all spectra (for easier comparison)
+all_spectrum = [spectrum_x(2:end); spectrum_y(2:end); spectrum_z(2:end)];
+y_min_fft = min(all_spectrum(all_spectrum > 0)) * 0.5;
+y_max_fft = max(all_spectrum) * 2;
+
+% Subplot positions (pixel coordinates for uiaxes)
+pos_fft_top = [120 560 1020 200];
+pos_fft_mid = [120 320 1020 200];
+pos_fft_bot = [120 64 1020 200];
+
+% --- X-axis FFT (loglog like open-loop) ---
+ax_fft_x = uiaxes(tab7_fft, 'Position', pos_fft_top);
+loglog(ax_fft_x, freq_x(2:end), spectrum_x(2:end), 'b-', 'LineWidth', 1.5);
+hold(ax_fft_x, 'on');
+xline(ax_fft_x, noise_filter_cutoff, 'r--', 'LineWidth', 2, 'Label', sprintf('cutoff = %.0f Hz', noise_filter_cutoff));
+hold(ax_fft_x, 'off');
+ylabel(ax_fft_x, 'X Amp. (nm)', 'FontSize', 16, 'FontWeight', 'bold');
+title(ax_fft_x, 'Position FFT Spectrum (Closed-loop)', 'FontSize', 18, 'FontWeight', 'bold');
+ax_fft_x.FontSize = 14; ax_fft_x.FontWeight = 'bold'; ax_fft_x.LineWidth = 1.5;
+ax_fft_x.Box = 'on';
+xlim(ax_fft_x, [freq_x(2), Fs/2]);
+ylim(ax_fft_x, [y_min_fft, y_max_fft]);
+ax_fft_x.XTickLabel = [];
+
+% --- Y-axis FFT ---
+ax_fft_y = uiaxes(tab7_fft, 'Position', pos_fft_mid);
+loglog(ax_fft_y, freq_y(2:end), spectrum_y(2:end), 'g-', 'LineWidth', 1.5);
+hold(ax_fft_y, 'on');
+xline(ax_fft_y, noise_filter_cutoff, 'r--', 'LineWidth', 2);
+hold(ax_fft_y, 'off');
+ylabel(ax_fft_y, 'Y Amp. (nm)', 'FontSize', 16, 'FontWeight', 'bold');
+ax_fft_y.FontSize = 14; ax_fft_y.FontWeight = 'bold'; ax_fft_y.LineWidth = 1.5;
+ax_fft_y.Box = 'on';
+xlim(ax_fft_y, [freq_x(2), Fs/2]);
+ylim(ax_fft_y, [y_min_fft, y_max_fft]);
+ax_fft_y.XTickLabel = [];
+
+% --- Z-axis FFT ---
+ax_fft_z = uiaxes(tab7_fft, 'Position', pos_fft_bot);
+loglog(ax_fft_z, freq_z(2:end), spectrum_z(2:end), 'r-', 'LineWidth', 1.5);
+hold(ax_fft_z, 'on');
+xline(ax_fft_z, noise_filter_cutoff, 'r--', 'LineWidth', 2);
+hold(ax_fft_z, 'off');
+xlabel(ax_fft_z, 'Frequency (Hz)', 'FontSize', 16, 'FontWeight', 'bold');
+ylabel(ax_fft_z, 'Z Amp. (nm)', 'FontSize', 16, 'FontWeight', 'bold');
+ax_fft_z.FontSize = 14; ax_fft_z.FontWeight = 'bold'; ax_fft_z.LineWidth = 1.5;
+ax_fft_z.Box = 'on';
+xlim(ax_fft_z, [freq_x(2), Fs/2]);
+ylim(ax_fft_z, [y_min_fft, y_max_fft]);
+
+fprintf('  Tab 7: FFT Spectrum\n');
 
 %% SECTION 6: Save Results
 fprintf('\nSaving results...\n');
@@ -902,59 +1002,9 @@ if is_closedloop_thermal
     fprintf('Applying high-pass filter (cutoff = %.1f Hz)...\n', closedloop_cutoff_freq);
     noise_z = highpass_fft(error_z_nm, Fs, closedloop_cutoff_freq);
 
-    % Sliding window STD calculation
-    % Analyze during trajectory motion period (use 90% of T_traj to exclude end transients)
-    T_traj_analysis = T_traj * 0.90;
-    N_samples_motion = find(t_sample <= T_traj_analysis, 1, 'last');
-
-    fprintf('Calculating sliding window STD (window = %d samples)...\n', closedloop_window_size);
-    fprintf('  Analyzing motion period only: 0 ~ %.2f sec (%d samples)\n', T_traj_analysis, N_samples_motion);
-
-    window_size = closedloop_window_size;
-    step_size = floor(window_size / 2);  % 50% overlap
-    N_windows = floor((N_samples_motion - window_size) / step_size) + 1;
-
-    h_bar_window = zeros(N_windows, 1);
-    std_noise_window = zeros(N_windows, 1);
-    time_window = zeros(N_windows, 1);
-
-    for i = 1:N_windows
-        idx_start = (i-1) * step_size + 1;
-        idx_end = idx_start + window_size - 1;
-        idx = idx_start:idx_end;
-
-        % Mean h/R for this window
-        h_bar_window(i) = mean(h_bar_log(idx));
-
-        % STD of noise in this window
-        std_noise_window(i) = std(noise_z(idx));
-
-        % Center time of window
-        time_window(i) = mean(t_sample(idx));
-    end
-
-    % Calculate theoretical STD prediction (should be independent of h/R)
-    % From Einstein relation: Var(delta_p) = 2 * D * delta_t
-    % D = k_B * T / gamma = k_B * T * Gamma_inv
-    % For window: STD = sqrt(2 * k_B * T * Ts * window_size / gamma_N)
-    k_B = params.Value.thermal.k_B;
-    T_temp = params.Value.thermal.T;
-    gamma_N = params.Value.common.gamma_N;
-
-    % Theoretical position STD per sample (simplified, ignoring wall effect)
-    % delta_p per step ~ sqrt(2 * D * Ts) where D = k_B * T / gamma_N
-    D_bulk = k_B * T_temp / gamma_N;  % Diffusion coefficient [um^2/s]
-    std_per_step = sqrt(2 * D_bulk * Ts) * 1000;  % nm per step
-    std_theory_window = std_per_step * sqrt(window_size);  % nm per window
-
-    % Calculate correlation coefficient (R^2)
-    p_coeff = polyfit(h_bar_window, std_noise_window, 1);
-    std_fit = polyval(p_coeff, h_bar_window);
-    SS_res = sum((std_noise_window - std_fit).^2);
-    SS_tot = sum((std_noise_window - mean(std_noise_window)).^2);
-    R_squared = 1 - SS_res / SS_tot;
-
-    fprintf('  Done. %d windows analyzed.\n\n', N_windows);
+    % Calculate overall STD
+    overall_std = std(noise_z);
+    fprintf('  Done. Overall STD = %.2f nm\n\n', overall_std);
 
     % ==================== Tab 9: Tracking Error (Time Domain) ====================
     tab9 = uitab(tabgroup, 'Title', 'CL Tracking Error');
@@ -964,16 +1014,11 @@ if is_closedloop_thermal
     pos9_top = [0.10*fig_w, 0.55*fig_h, 0.85*fig_w, 0.38*fig_h];
     pos9_bot = [0.10*fig_w, 0.08*fig_h, 0.85*fig_w, 0.38*fig_h];
 
-    % --- Top: Full tracking error with high-pass filtered noise ---
+    % --- Top: High-frequency noise component only ---
     ax9_top = uiaxes(tab9, 'Position', pos9_top);
-    h9a = plot(ax9_top, t_sample, error_z_nm, '-', 'Color', [0.7 0.7 0.7], 'LineWidth', 1.0);
-    hold(ax9_top, 'on');
     plot(ax9_top, t_sample, noise_z, 'k-', 'LineWidth', 1.5);
-    hold(ax9_top, 'off');
-    legend(ax9_top, {'Raw error e_z', 'High-freq noise'}, 'Location', 'best', ...
-        'FontSize', legend_fontsize, 'FontWeight', 'bold');
-    ylabel(ax9_top, 'e_z [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-    title(ax9_top, sprintf('Z-Axis Tracking Error (Closed-loop, HP cutoff = %.0f Hz)', closedloop_cutoff_freq), ...
+    ylabel(ax9_top, 'High-freq noise [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+    title(ax9_top, sprintf('Z-Axis High-Frequency Noise (HP cutoff = %.0f Hz)', closedloop_cutoff_freq), ...
         'FontSize', title_fontsize, 'FontWeight', 'bold');
     ax9_top.LineWidth = axis_linewidth;
     ax9_top.FontSize = tick_fontsize;
@@ -1010,80 +1055,14 @@ if is_closedloop_thermal
 
     fprintf('  Tab 9: Closed-loop Tracking Error\n');
 
-    % ==================== Tab 10: STD vs h/R ====================
-    tab10 = uitab(tabgroup, 'Title', 'STD vs h/R');
-
-    ax10 = uiaxes(tab10);
-    ax10.Units = 'normalized';
-    ax10.Position = [0.12 0.12 0.82 0.78];
-
-    % Scatter plot of STD vs h/R (only scatter points)
-    scatter(ax10, h_bar_window, std_noise_window, 60, colors(1,:), 'filled', 'MarkerFaceAlpha', 0.7);
-
-    xlabel(ax10, 'h/R', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-    ylabel(ax10, 'Position Noise STD [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-    title(ax10, 'Position STD vs Wall Distance', 'FontSize', title_fontsize, 'FontWeight', 'bold');
-    ax10.LineWidth = axis_linewidth;
-    ax10.FontSize = tick_fontsize;
-    ax10.FontWeight = 'bold';
-    ax10.Box = 'on';
-    grid(ax10, 'on');
-
-    % Calculate slope percentage for console output
-    slope_percent = abs(p_coeff(1) / mean(std_noise_window)) * 100;
-
-    fprintf('  Tab 10: STD vs h/R\n');
-
-    % ==================== Console Statistics Output ====================
-    fprintf('\n');
-    fprintf('========================================\n');
-    fprintf('  Closed-loop Thermal Analysis Results\n');
-    fprintf('========================================\n\n');
-
-    fprintf('Analysis Parameters:\n');
-    fprintf('  Window size: %d samples (%.1f ms)\n', window_size, window_size * Ts * 1000);
-    fprintf('  High-pass cutoff: %.0f Hz\n', closedloop_cutoff_freq);
-    fprintf('  Number of windows: %d\n', N_windows);
-    fprintf('  h/R range: %.2f ~ %.2f\n\n', min(h_bar_window), max(h_bar_window));
-
-    fprintf('Position Noise STD:\n');
-    fprintf('  Mean: %.2f nm\n', mean(std_noise_window));
-    [min_std, min_idx] = min(std_noise_window);
-    [max_std, max_idx] = max(std_noise_window);
-    fprintf('  Min:  %.2f nm (at h/R = %.2f)\n', min_std, h_bar_window(min_idx));
-    fprintf('  Max:  %.2f nm (at h/R = %.2f)\n\n', max_std, h_bar_window(max_idx));
-
-    fprintf('Theoretical Prediction:\n');
-    fprintf('  Bulk diffusion STD: %.2f nm/window\n', std_theory_window);
-    fprintf('  (Note: Theory assumes no wall effect)\n\n');
-
-    fprintf('Correlation Analysis:\n');
-    fprintf('  Linear fit slope: %.4f nm/(h/R)\n', p_coeff(1));
-    fprintf('  Slope / Mean: %.1f%%\n', slope_percent);
-    fprintf('  R^2: %.4f\n\n', R_squared);
-
-    % Interpretation
-    if slope_percent < 10
-        conclusion = 'STD is INDEPENDENT of h/R (Einstein relation verified)';
-    else
-        conclusion = 'STD shows h/R dependence (further investigation needed)';
-    end
-    fprintf('Conclusion:\n');
-    fprintf('  %s\n', conclusion);
-    fprintf('========================================\n');
-
     % ==================== Save Closed-loop Analysis Figures ====================
     % Tab 9: Tracking Error
     fig_export = figure('Visible', 'off', 'Position', [100, 100, 1000, 700]);
 
     subplot(2,1,1);
-    plot(t_sample, error_z_nm, '-', 'Color', [0.7 0.7 0.7], 'LineWidth', 1.0);
-    hold on;
     plot(t_sample, noise_z, 'k-', 'LineWidth', 1.5);
-    hold off;
-    legend({'Raw error e_z', 'High-freq noise'}, 'Location', 'best');
-    ylabel('e_z [nm]');
-    title(sprintf('Z-Axis Tracking Error (Closed-loop, HP cutoff = %.0f Hz)', closedloop_cutoff_freq));
+    ylabel('High-freq noise [nm]');
+    title(sprintf('Z-Axis High-Frequency Noise (HP cutoff = %.0f Hz)', closedloop_cutoff_freq));
     xlim([0, t_sample(end)]);
     text(0.98, 0.95, sprintf('Overall STD = %.2f nm', overall_std), 'Units', 'normalized', ...
         'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
@@ -1106,33 +1085,12 @@ if is_closedloop_thermal
     exportgraphics(fig_export, fullfile(output_dir, '9_closedloop_tracking_error.png'), 'Resolution', 150);
     close(fig_export);
 
-    % Tab 10: STD vs h/R
-    fig_export = figure('Visible', 'off', 'Position', [100, 100, 900, 650]);
+    fprintf('\n  Closed-loop figures saved (9)\n');
 
-    scatter(h_bar_window, std_noise_window, 60, colors(1,:), 'filled', 'MarkerFaceAlpha', 0.7);
-
-    xlabel('h/R');
-    ylabel('Position Noise STD [nm]');
-    title('Position STD vs Wall Distance');
-    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
-    grid on;
-
-    exportgraphics(fig_export, fullfile(output_dir, '10_std_vs_hbar.png'), 'Resolution', 150);
-    close(fig_export);
-
-    fprintf('\n  Closed-loop figures saved (9, 10)\n');
-
-    % Save additional closed-loop analysis data
-    result.closedloop_analysis.h_bar_window = h_bar_window;
-    result.closedloop_analysis.std_noise_window = std_noise_window;
-    result.closedloop_analysis.time_window = time_window;
+    % Save closed-loop analysis data
     result.closedloop_analysis.noise_z = noise_z;
-    result.closedloop_analysis.window_size = window_size;
     result.closedloop_analysis.cutoff_freq = closedloop_cutoff_freq;
-    result.closedloop_analysis.R_squared = R_squared;
-    result.closedloop_analysis.slope = p_coeff(1);
-    result.closedloop_analysis.mean_std = mean(std_noise_window);
-    result.closedloop_analysis.std_theory = std_theory_window;
+    result.closedloop_analysis.overall_std = overall_std;
 
     % Re-save result.mat with additional data
     save(fullfile(output_dir, 'result.mat'), 'result');
