@@ -7,7 +7,7 @@ function f_d = motion_control_law(p_d, p_m, params)
 %       f_d[k] = (gamma / Ts) * {p_d[k] - lambda_c * p_d[k-1] - (1-lambda_c) * p_feedback[k]}
 %
 %   When noise_filter_enable = true:
-%       p_feedback = p_m_filtered (cascaded IIR low-pass filtered position)
+%       p_feedback = p_m_filtered (IIR low-pass filtered position)
 %   When noise_filter_enable = false:
 %       p_feedback = p_m (raw measured position)
 %
@@ -26,7 +26,6 @@ function f_d = motion_control_law(p_d, p_m, params)
 %       params.ctrl.Ts       - Sampling period [sec]
 %       params.ctrl.noise_filter_enable - Enable low-pass filter on feedback
 %       params.ctrl.filter_alpha - IIR filter coefficient
-%       params.ctrl.filter_order - Number of cascaded filter stages (1-5)
 
     % Check if control is enabled (0 = disabled, 1 = enabled)
     if params.ctrl.enable < 0.5
@@ -36,17 +35,13 @@ function f_d = motion_control_law(p_d, p_m, params)
     end
 
     % Closed-loop mode
-    persistent p_d_prev filter_states initialized
-
-    % Get filter order (clamp to 1-5)
-    filter_order = min(max(round(params.ctrl.filter_order), 1), 5);
+    persistent p_d_prev p_m_filtered_prev initialized
 
     % Initialize on first call
     if isempty(initialized)
         initialized = true;
         p_d_prev = p_d;
-        % Initialize filter states: [3 x filter_order] matrix
-        filter_states = repmat(p_m, 1, filter_order);
+        p_m_filtered_prev = p_m;
     end
 
     % Extract control parameters
@@ -56,14 +51,9 @@ function f_d = motion_control_law(p_d, p_m, params)
     filter_enable = params.ctrl.noise_filter_enable > 0.5;
     alpha = params.ctrl.filter_alpha;
 
-    % Cascaded IIR low-pass filter for p_m
-    % Each stage: y[k] = alpha * x[k] + (1 - alpha) * y[k-1]
-    input = p_m;
-    for s = 1:filter_order
-        filter_states(:, s) = alpha * input + (1 - alpha) * filter_states(:, s);
-        input = filter_states(:, s);
-    end
-    p_m_filtered = filter_states(:, filter_order);
+    % Single-stage IIR low-pass filter for p_m
+    % y[k] = alpha * x[k] + (1 - alpha) * y[k-1]
+    p_m_filtered = alpha * p_m + (1 - alpha) * p_m_filtered_prev;
 
     % Select feedback source
     if filter_enable
@@ -78,4 +68,5 @@ function f_d = motion_control_law(p_d, p_m, params)
 
     % Update states for next iteration
     p_d_prev = p_d;
+    p_m_filtered_prev = p_m_filtered;
 end

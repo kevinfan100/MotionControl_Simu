@@ -36,7 +36,6 @@ function params = calc_simulation_params(config)
 %       lambda_c    = 0.7       % Closed-loop pole (0 < lambda_c < 1)
 %       noise_filter_enable = false  % Enable low-pass filter on feedback
 %       noise_filter_cutoff = 5      % Cutoff frequency [Hz]
-%       noise_filter_order = 1       % Filter order (cascaded stages, 1-5)
 %
 %       % Thermal force parameters
 %       thermal_enable = true   % Enable thermal force
@@ -72,7 +71,6 @@ function params = calc_simulation_params(config)
         'lambda_c', 0.7, ...
         'noise_filter_enable', false, ...  % Noise filter switch
         'noise_filter_cutoff', 5, ...      % Cutoff frequency [Hz]
-        'noise_filter_order', 1, ...       % Filter order (cascaded stages, 1-5)
         'thermal_enable', true, ...
         'T_sim', 5 ...
     );
@@ -139,7 +137,6 @@ function params = calc_simulation_params(config)
     % Pre-calculate filter coefficient: alpha = Ts / (Ts + 1/(2*pi*fc))
     fc = config.noise_filter_cutoff;
     params_data.ctrl.filter_alpha = Ts / (Ts + 1/(2*pi*fc));
-    params_data.ctrl.filter_order = config.noise_filter_order;
 
     % --- thermal sub-structure ---
     params_data.thermal.enable = double(config.thermal_enable);  % Convert to double
@@ -213,7 +210,7 @@ function params = calc_simulation_params(config)
     assignin('base', 'TrajBus', TrajBus);
 
     % --- CtrlBus ---
-    elems_ctrl = Simulink.BusElement.empty(0, 8);
+    elems_ctrl = Simulink.BusElement.empty(0, 7);
     elems_ctrl(1) = Simulink.BusElement; elems_ctrl(1).Name = 'enable';
     elems_ctrl(1).Dimensions = [1 1]; elems_ctrl(1).DataType = 'double';
     elems_ctrl(2) = Simulink.BusElement; elems_ctrl(2).Name = 'lambda_c';
@@ -228,8 +225,6 @@ function params = calc_simulation_params(config)
     elems_ctrl(6).Dimensions = [1 1]; elems_ctrl(6).DataType = 'double';
     elems_ctrl(7) = Simulink.BusElement; elems_ctrl(7).Name = 'filter_alpha';
     elems_ctrl(7).Dimensions = [1 1]; elems_ctrl(7).DataType = 'double';
-    elems_ctrl(8) = Simulink.BusElement; elems_ctrl(8).Name = 'filter_order';
-    elems_ctrl(8).Dimensions = [1 1]; elems_ctrl(8).DataType = 'double';
 
     CtrlBus = Simulink.Bus;
     CtrlBus.Elements = elems_ctrl;

@@ -11,19 +11,20 @@
 % - Continuous: Particle dynamics (ODE solver with ZOH inputs)
 
 clear; close all; clc;
+clear motion_control_law;  % Reset persistent variables in controller
 
 %% SECTION 1: High-Level Parameter Configuration
 % === Wall Parameters ===
 theta = 0;          % Azimuth angle [rad]
 phi = 0;         % Elevation angle [rad]
 pz = 0;             % Wall displacement along w_hat [um]
-h_min = 1.1 * 2.25;      % Minimum safe distance [um] (default: 1.1 * R)
+h_min = 1 * 2.25;      % Minimum safe distance [um] (default: 1.1 * R)
 
 % === Trajectory Parameters ===
 traj_type = 'z_sine';   % 'z_sine' or 'xy_circle'
 h_init = 5;            % Initial distance from wall [um]
 amplitude = 2.5;          % z_sine: oscillation amplitude [um]
-frequency = 1;          % z_sine: oscillation frequency [Hz]
+frequency = 10;          % z_sine: oscillation frequency [Hz]
 n_cycles = 2;           % z_sine/xy_circle: number of cycles
 radius = 5;             % xy_circle: radius [um]
 period = 1;             % xy_circle: period [sec]
@@ -32,9 +33,8 @@ period = 1;             % xy_circle: period [sec]
 ctrl_enable = true;    % true = closed-loop, false = open-loop
 lambda_c = 0.4;         % Closed-loop pole (0 < lambda_c < 1)
 
-noise_filter_enable = false;   % Enable low-pass filter on controller feedback
+noise_filter_enable = true;   % Enable low-pass filter on controller feedback
 noise_filter_cutoff = min(frequency * 20, 1606 / 10);       % Cutoff frequency [Hz]
-noise_filter_order = 1;        % Filter order (number of cascaded stages, 1-5)
 
 % === Thermal Force ===
 thermal_enable = true;  % Enable Brownian motion disturbance
@@ -83,7 +83,6 @@ config = struct(...
     'ctrl_enable', ctrl_enable, 'lambda_c', lambda_c, ...
     'noise_filter_enable', noise_filter_enable, ...
     'noise_filter_cutoff', noise_filter_cutoff, ...
-    'noise_filter_order', noise_filter_order, ...
     'thermal_enable', thermal_enable, 'T_sim', T_sim ...
 );
 
@@ -178,25 +177,14 @@ error = vecnorm(p_m_log - p_d_log, 2, 1);
 N_samples = length(t_sample);
 
 % Post-processing: Calculate p_m_filtered (for visualization when noise_filter_enable = true)
-% This replicates the cascaded IIR filter used in motion_control_law.m
+% This replicates the single-stage IIR filter used in motion_control_law.m
 if noise_filter_enable
     alpha = params.Value.ctrl.filter_alpha;
-    filter_order = params.Value.ctrl.filter_order;
-
-    % Initialize: each stage needs its own state [3 x N_samples x filter_order]
-    stages = zeros(3, N_samples, filter_order);
-    stages(:, 1, :) = repmat(p_m_log(:, 1), 1, 1, filter_order);
-
+    p_m_filtered = zeros(3, N_samples);
+    p_m_filtered(:, 1) = p_m_log(:, 1);
     for k = 2:N_samples
-        input = p_m_log(:, k);
-        for s = 1:filter_order
-            stages(:, k, s) = alpha * input + (1 - alpha) * stages(:, k-1, s);
-            input = stages(:, k, s);
-        end
+        p_m_filtered(:, k) = alpha * p_m_log(:, k) + (1 - alpha) * p_m_filtered(:, k-1);
     end
-
-    % Final output is the last stage
-    p_m_filtered = stages(:, :, filter_order);
 else
     p_m_filtered = p_m_log;  % When filter disabled, use raw p_m
 end
@@ -539,6 +527,80 @@ xlim(ax_fft_z, [freq_x(2), Fs/2]);
 ylim(ax_fft_z, [y_min_fft, y_max_fft]);
 
 fprintf('  Tab 7: FFT Spectrum\n');
+
+% ==================== Tab 8: Drift/Noise Separation (3-axis) ====================
+% Shows deterministic (drift) and stochastic (noise) components for each axis
+tab8 = uitab(tabgroup, 'Title', 'Drift/Noise Sep.');
+
+% Use tracking error for closed-loop analysis
+error_x_nm = (p_m_log(1, :) - p_d_log(1, :))' * 1000;  % um -> nm
+error_y_nm = (p_m_log(2, :) - p_d_log(2, :))' * 1000;
+error_z_nm = (p_m_log(3, :) - p_d_log(3, :))' * 1000;
+
+% Perform drift/noise separation for each axis
+[std_x, drift_x, noise_x, ~, ~] = fft_drift_noise_separation(error_x_nm, t_sample', noise_filter_cutoff);
+[std_y, drift_y, noise_y, ~, ~] = fft_drift_noise_separation(error_y_nm, t_sample', noise_filter_cutoff);
+[std_z, drift_z, noise_z_sep, ~, ~] = fft_drift_noise_separation(error_z_nm, t_sample', noise_filter_cutoff);
+
+% Handle length mismatch (fft_drift_noise_separation may truncate odd-length data)
+N_sep = length(drift_x);
+t_sep = t_sample(1:N_sep);
+
+% Subplot positions (2 columns x 3 rows)
+fig_w = 1200; fig_h = 800;
+col1_x = 0.08; col2_x = 0.55;
+row_w = 0.40; row_h = 0.24;
+row1_y = 0.70; row2_y = 0.40; row3_y = 0.10;
+
+% --- Left column: Deterministic (Drift) ---
+ax8_drift_x = uiaxes(tab8, 'Position', [col1_x*fig_w, row1_y*fig_h, row_w*fig_w, row_h*fig_h]);
+plot(ax8_drift_x, t_sep, drift_x, 'b-', 'LineWidth', 1.5);
+ylabel(ax8_drift_x, 'X [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax8_drift_x, sprintf('Deterministic (LP < %.0f Hz)', noise_filter_cutoff), 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ax8_drift_x.FontSize = tick_fontsize; ax8_drift_x.FontWeight = 'bold';
+ax8_drift_x.LineWidth = axis_linewidth; ax8_drift_x.Box = 'on';
+grid(ax8_drift_x, 'on'); xlim(ax8_drift_x, [0, t_sep(end)]);
+
+ax8_drift_y = uiaxes(tab8, 'Position', [col1_x*fig_w, row2_y*fig_h, row_w*fig_w, row_h*fig_h]);
+plot(ax8_drift_y, t_sep, drift_y, 'Color', colors(2,:), 'LineWidth', 1.5);
+ylabel(ax8_drift_y, 'Y [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+ax8_drift_y.FontSize = tick_fontsize; ax8_drift_y.FontWeight = 'bold';
+ax8_drift_y.LineWidth = axis_linewidth; ax8_drift_y.Box = 'on';
+grid(ax8_drift_y, 'on'); xlim(ax8_drift_y, [0, t_sep(end)]);
+
+ax8_drift_z = uiaxes(tab8, 'Position', [col1_x*fig_w, row3_y*fig_h, row_w*fig_w, row_h*fig_h]);
+plot(ax8_drift_z, t_sep, drift_z, 'r-', 'LineWidth', 1.5);
+xlabel(ax8_drift_z, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
+ylabel(ax8_drift_z, 'Z [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+ax8_drift_z.FontSize = tick_fontsize; ax8_drift_z.FontWeight = 'bold';
+ax8_drift_z.LineWidth = axis_linewidth; ax8_drift_z.Box = 'on';
+grid(ax8_drift_z, 'on'); xlim(ax8_drift_z, [0, t_sep(end)]);
+
+% --- Right column: Stochastic (Noise) ---
+ax8_noise_x = uiaxes(tab8, 'Position', [col2_x*fig_w, row1_y*fig_h, row_w*fig_w, row_h*fig_h]);
+plot(ax8_noise_x, t_sep, noise_x, 'b-', 'LineWidth', 0.8);
+ylabel(ax8_noise_x, 'X [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax8_noise_x, sprintf('Stochastic (HP > %.0f Hz)', noise_filter_cutoff), 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ax8_noise_x.FontSize = tick_fontsize; ax8_noise_x.FontWeight = 'bold';
+ax8_noise_x.LineWidth = axis_linewidth; ax8_noise_x.Box = 'on';
+grid(ax8_noise_x, 'on'); xlim(ax8_noise_x, [0, t_sep(end)]);
+
+ax8_noise_y = uiaxes(tab8, 'Position', [col2_x*fig_w, row2_y*fig_h, row_w*fig_w, row_h*fig_h]);
+plot(ax8_noise_y, t_sep, noise_y, 'Color', colors(2,:), 'LineWidth', 0.8);
+ylabel(ax8_noise_y, 'Y [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+ax8_noise_y.FontSize = tick_fontsize; ax8_noise_y.FontWeight = 'bold';
+ax8_noise_y.LineWidth = axis_linewidth; ax8_noise_y.Box = 'on';
+grid(ax8_noise_y, 'on'); xlim(ax8_noise_y, [0, t_sep(end)]);
+
+ax8_noise_z = uiaxes(tab8, 'Position', [col2_x*fig_w, row3_y*fig_h, row_w*fig_w, row_h*fig_h]);
+plot(ax8_noise_z, t_sep, noise_z_sep, 'r-', 'LineWidth', 0.8);
+xlabel(ax8_noise_z, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
+ylabel(ax8_noise_z, 'Z [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+ax8_noise_z.FontSize = tick_fontsize; ax8_noise_z.FontWeight = 'bold';
+ax8_noise_z.LineWidth = axis_linewidth; ax8_noise_z.Box = 'on';
+grid(ax8_noise_z, 'on'); xlim(ax8_noise_z, [0, t_sep(end)]);
+
+fprintf('  Tab 8: Drift/Noise Separation\n');
 
 %% SECTION 6: Save Results
 fprintf('\nSaving results...\n');
@@ -1039,13 +1101,6 @@ if is_closedloop_thermal
     ax9_top.Box = 'on';
     grid(ax9_top, 'on');
     xlim(ax9_top, [0, t_sample(end)]);
-
-    % Add STD annotation
-    overall_std = std(noise_z);
-    text(ax9_top, 0.98, 0.95, sprintf('Overall STD = %.2f nm', overall_std), ...
-        'Units', 'normalized', 'HorizontalAlignment', 'right', ...
-        'VerticalAlignment', 'top', 'FontSize', legend_fontsize, 'FontWeight', 'bold', ...
-        'BackgroundColor', [1 1 1 0.8], 'EdgeColor', [0.3 0.3 0.3], 'Margin', 5);
 
     % --- Bottom: h/R vs time ---
     ax9_bot = uiaxes(tab9, 'Position', pos9_bot);
