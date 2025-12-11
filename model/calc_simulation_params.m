@@ -42,18 +42,18 @@ function params = calc_simulation_params(config)
 %       % Simulation parameters
 %       T_sim       = 5         % Simulation time [sec]
 
-    %% ========================================
+    
     %% SECTION 1: Fixed physical constants
-    %% ========================================
+    
     R = 2.25;                    % Particle radius [um]
     gamma_N = 0.0425;            % Stokes drag coefficient [pN*sec/um]
     Ts = 1/1606;                 % Sampling period [sec]
     k_B = 1.3806503e-5;          % Boltzmann constant [pN*um/K]
     T_temp = 310.15;             % Temperature [K] (37 C)
 
-    %% ========================================
+    
     %% SECTION 2: Default values and merge
-    %% ========================================
+    
     defaults = struct(...
         'theta', 0, ...
         'phi', 0, ...
@@ -84,9 +84,9 @@ function params = calc_simulation_params(config)
         end
     end
 
-    %% ========================================
+    
     %% SECTION 3: Calculate derived parameters
-    %% ========================================
+    
 
     % --- common sub-structure ---
     params_data.common.R = R;
@@ -149,9 +149,9 @@ function params = calc_simulation_params(config)
     params_data.thermal.variance_coeff = 4 * k_B * T_temp * gamma_N / Ts;
     params_data.thermal.seed = randi(2^31-1);  % Random seed for thermal force
 
-    %% ========================================
+    
     %% SECTION 4: Create Nested Bus Objects
-    %% ========================================
+    
 
     % --- CommonBus ---
     elems_common = Simulink.BusElement.empty(0, 4);
@@ -264,9 +264,9 @@ function params = calc_simulation_params(config)
     ParamsBus.Elements = elems_params;
     assignin('base', 'ParamsBus', ParamsBus);
 
-    %% ========================================
+    
     %% SECTION 5: Package as Simulink.Parameter
-    %% ========================================
+    
     params = Simulink.Parameter(params_data);
     params.DataType = 'Bus: ParamsBus';
     params.Description = 'Motion Control Parameters for Simulink';

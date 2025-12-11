@@ -1,0 +1,28 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{array}
+
+\begin{document}
+
+\section*{Basic Parameters}
+
+\renewcommand{\arraystretch}{1.8}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{>{\centering\arraybackslash}p{3cm} >{\centering\arraybackslash}p{5cm} >{\centering\arraybackslash}p{4cm}}
+\toprule
+\textbf{Symbol} & \textbf{Value} & \textbf{Unit} \\
+\midrule
+$R$ & $2.25$ & $\mu m$ \\
+$\gamma_N$ & $0.0425$ & $pN \cdot sec / \mu m$ \\
+$k_B$ & $1.3806503 \times 10^{-5}$ & $pN \cdot \mu m / K$ \\
+$T$ & $310.15$ & $K$ \\
+$\Delta t$ & $1/1612$ & $sec$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}

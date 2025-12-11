@@ -15,16 +15,16 @@ clear; close all; clc;
 %% SECTION 1: High-Level Parameter Configuration
 % === Wall Parameters ===
 theta = 0;          % Azimuth angle [rad]
-phi = 0;            % Elevation angle [rad]
+phi = pi/6;            % Elevation angle [rad]
 pz = 0;             % Wall displacement [um]
-h_bar_min = 1;      % Minimum safe normalized distance
+h_bar_min = 1.11;      % Minimum safe normalized distance
 
 % === Trajectory Parameters ===
 traj_type = 'z_move';   % 'z_move' or 'xy_circle'
-h_margin = 100;           % Safety margin [um]
-delta_z = 99;            % z_move: travel distance [um]
+h_margin = 10;           % Safety margin [um]
+delta_z = 9;            % z_move: travel distance [um]
 direction = 'toward';   % z_move: 'away' or 'toward'
-speed = 5;              % z_move: travel speed [um/sec]
+speed = 1;              % z_move: travel speed [um/sec]
 radius = 5;             % xy_circle: radius [um]
 period = 1;             % xy_circle: period [sec]
 n_circles = 3;          % xy_circle: number of circles
