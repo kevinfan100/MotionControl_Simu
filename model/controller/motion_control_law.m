@@ -26,6 +26,9 @@ function f_d = motion_control_law(p_d, p_m, params)
 %       params.ctrl.Ts       - Sampling period [sec]
 %       params.ctrl.noise_filter_enable - Enable low-pass filter on feedback
 %       params.ctrl.filter_alpha - IIR filter coefficient
+%       params.ctrl.meas_noise_enable - Enable measurement noise
+%       params.ctrl.meas_noise_std    - Measurement noise std [3x1, um]
+%       params.ctrl.meas_noise_seed   - Random seed for measurement noise
 
     % Check if control is enabled (0 = disabled, 1 = enabled)
     if params.ctrl.enable < 0.5
@@ -35,13 +38,27 @@ function f_d = motion_control_law(p_d, p_m, params)
     end
 
     % Closed-loop mode
-    persistent p_d_prev p_m_filtered_prev initialized
+    persistent p_d_prev p_m_filtered_prev initialized meas_rng_initialized
 
     % Initialize on first call
     if isempty(initialized)
         initialized = true;
         p_d_prev = p_d;
         p_m_filtered_prev = p_m;
+    end
+
+    % Initialize measurement noise RNG (independent seed)
+    if isempty(meas_rng_initialized)
+        meas_rng_initialized = true;
+        if params.ctrl.meas_noise_enable > 0.5
+            rng(params.ctrl.meas_noise_seed);
+        end
+    end
+
+    % Add measurement noise (before filtering)
+    if params.ctrl.meas_noise_enable > 0.5
+        meas_noise = params.ctrl.meas_noise_std .* randn(3, 1);
+        p_m = p_m + meas_noise;
     end
 
     % Extract control parameters

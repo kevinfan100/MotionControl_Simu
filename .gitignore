@@ -13,6 +13,9 @@ test_results/
 # 臨時測試腳本
 temp_*.m
 
+# 臨時驗證文件
+IIR_filter.mlx
+
 # 系統檔案
 .DS_Store
 Thumbs.db

@@ -22,19 +22,22 @@ h_min = 1 * 2.25;      % Minimum safe distance [um] (default: 1.1 * R)
 
 % === Trajectory Parameters ===
 traj_type = 'z_sine';   % 'z_sine' or 'xy_circle'
-h_init = 5;            % Initial distance from wall [um]
-amplitude = 2.5;          % z_sine: oscillation amplitude [um]
+h_init = 5;             % Initial distance from wall [um]
+amplitude = 2.5;        % z_sine: oscillation amplitude [um]
 frequency = 1;          % z_sine: oscillation frequency [Hz]
 n_cycles = 3;           % z_sine/xy_circle: number of cycles
 radius = 5;             % xy_circle: radius [um]
 period = 1;             % xy_circle: period [sec]
 
 % === Controller Parameters ===
-ctrl_enable = true;    % true = closed-loop, false = open-loop
+ctrl_enable = true;     % true = closed-loop, false = open-loop
 lambda_c = 0.4;         % Closed-loop pole (0 < lambda_c < 1)
 
-noise_filter_enable = false;   % Enable low-pass filter on controller feedback
-noise_filter_cutoff = min(frequency * 10, 1606 / 10);       % Cutoff frequency [Hz]
+noise_filter_enable = false;  % Enable low-pass filter on controller feedback
+noise_filter_cutoff = 10;     % Cutoff frequency [Hz] (recommend: 10x trajectory frequency)
+
+meas_noise_enable = false;    % Enable measurement noise (experimental feature)
+meas_noise_std = [0.00062; 0.000057; 0.00331];  % Measurement noise std [um] per axis (x, y, z)
 
 % === Thermal Force ===
 thermal_enable = true;  % Enable Brownian motion disturbance
@@ -43,10 +46,10 @@ thermal_enable = true;  % Enable Brownian motion disturbance
 T_margin = 0.3;         % Buffer time after trajectory completes [sec]
 
 % === Open-loop Thermal Analysis Parameters ===
-openloop_cutoff_freq = min(frequency * 20, 1606 / 10);  % Drift/Noise cutoff frequency [Hz] (adjustable)
+openloop_cutoff_freq = 5;     % Deterministic/Random cutoff frequency [Hz]
 
 % === Closed-loop Thermal Analysis Parameters ===
-closedloop_cutoff_freq = min(frequency * 10, 1606 / 10);   % High-pass cutoff frequency [Hz]
+closedloop_cutoff_freq = 10;  % High-pass cutoff frequency [Hz]
 
 % Auto-calculate simulation time based on trajectory
 if strcmp(traj_type, 'z_sine')
@@ -83,6 +86,8 @@ config = struct(...
     'ctrl_enable', ctrl_enable, 'lambda_c', lambda_c, ...
     'noise_filter_enable', noise_filter_enable, ...
     'noise_filter_cutoff', noise_filter_cutoff, ...
+    'meas_noise_enable', meas_noise_enable, ...
+    'meas_noise_std', meas_noise_std, ...
     'thermal_enable', thermal_enable, 'T_sim', T_sim ...
 );
 
@@ -462,7 +467,7 @@ fprintf('  Tab 6: Control Force\n');
 % Uses same format as Open-loop FFT for consistency
 tab7_fft = uitab(tabgroup, 'Title', 'FFT Spectrum');
 
-% Use fft_drift_noise_separation for proper spectrum calculation (same as open-loop)
+% Use fft_deterministic_random_separation for proper spectrum calculation (same as open-loop)
 Fs = 1 / Ts;
 time_vec_fft = t_sample(:);  % Column vector for fft function
 
@@ -471,10 +476,10 @@ p_m_x_nm = p_m_log(1, :)' * 1000;  % um -> nm, column vector
 p_m_y_nm = p_m_log(2, :)' * 1000;
 p_m_z_nm = p_m_log(3, :)' * 1000;
 
-% Calculate FFT spectrum using fft_drift_noise_separation
-[~, ~, ~, freq_x, spectrum_x] = fft_drift_noise_separation(p_m_x_nm, time_vec_fft, noise_filter_cutoff);
-[~, ~, ~, freq_y, spectrum_y] = fft_drift_noise_separation(p_m_y_nm, time_vec_fft, noise_filter_cutoff);
-[~, ~, ~, freq_z, spectrum_z] = fft_drift_noise_separation(p_m_z_nm, time_vec_fft, noise_filter_cutoff);
+% Calculate FFT spectrum using fft_deterministic_random_separation
+[~, ~, ~, freq_x, spectrum_x] = fft_deterministic_random_separation(p_m_x_nm, time_vec_fft, noise_filter_cutoff);
+[~, ~, ~, freq_y, spectrum_y] = fft_deterministic_random_separation(p_m_y_nm, time_vec_fft, noise_filter_cutoff);
+[~, ~, ~, freq_z, spectrum_z] = fft_deterministic_random_separation(p_m_z_nm, time_vec_fft, noise_filter_cutoff);
 
 % Calculate common Y-axis limits for all spectra (for easier comparison)
 all_spectrum = [spectrum_x(2:end); spectrum_y(2:end); spectrum_z(2:end)];
@@ -528,22 +533,22 @@ ylim(ax_fft_z, [y_min_fft, y_max_fft]);
 
 fprintf('  Tab 7: FFT Spectrum\n');
 
-% ==================== Tab 8: Drift/Noise Separation (3-axis) ====================
-% Shows deterministic (drift) and stochastic (noise) components for each axis
-tab8 = uitab(tabgroup, 'Title', 'Drift/Noise Sep.');
+% ==================== Tab 8: Deterministic/Random Separation (3-axis) ====================
+% Shows deterministic (low-freq) and random (high-freq) components of p_m for each axis
+tab8 = uitab(tabgroup, 'Title', 'Det./Rand. Sep.');
 
-% Use tracking error for closed-loop analysis
-error_x_nm = (p_m_log(1, :) - p_d_log(1, :))' * 1000;  % um -> nm
-error_y_nm = (p_m_log(2, :) - p_d_log(2, :))' * 1000;
-error_z_nm = (p_m_log(3, :) - p_d_log(3, :))' * 1000;
+% Use p_m (measured position) for separation analysis
+p_m_x_nm_sep = p_m_log(1, :)' * 1000;  % um -> nm
+p_m_y_nm_sep = p_m_log(2, :)' * 1000;
+p_m_z_nm_sep = p_m_log(3, :)' * 1000;
 
-% Perform drift/noise separation for each axis
-[std_x, drift_x, noise_x, ~, ~] = fft_drift_noise_separation(error_x_nm, t_sample', noise_filter_cutoff);
-[std_y, drift_y, noise_y, ~, ~] = fft_drift_noise_separation(error_y_nm, t_sample', noise_filter_cutoff);
-[std_z, drift_z, noise_z_sep, ~, ~] = fft_drift_noise_separation(error_z_nm, t_sample', noise_filter_cutoff);
+% Perform deterministic/random separation for each axis
+[std_rand_x, det_x, rand_x, ~, ~] = fft_deterministic_random_separation(p_m_x_nm_sep, t_sample', noise_filter_cutoff);
+[std_rand_y, det_y, rand_y, ~, ~] = fft_deterministic_random_separation(p_m_y_nm_sep, t_sample', noise_filter_cutoff);
+[std_rand_z, det_z, rand_z, ~, ~] = fft_deterministic_random_separation(p_m_z_nm_sep, t_sample', noise_filter_cutoff);
 
-% Handle length mismatch (fft_drift_noise_separation may truncate odd-length data)
-N_sep = length(drift_x);
+% Handle length mismatch (fft_deterministic_random_separation may truncate odd-length data)
+N_sep = length(det_x);
 t_sep = t_sample(1:N_sep);
 
 % Subplot positions (2 columns x 3 rows)
@@ -552,55 +557,55 @@ col1_x = 0.08; col2_x = 0.55;
 row_w = 0.40; row_h = 0.24;
 row1_y = 0.70; row2_y = 0.40; row3_y = 0.10;
 
-% --- Left column: Deterministic (Drift) ---
-ax8_drift_x = uiaxes(tab8, 'Position', [col1_x*fig_w, row1_y*fig_h, row_w*fig_w, row_h*fig_h]);
-plot(ax8_drift_x, t_sep, drift_x, 'b-', 'LineWidth', 1.5);
-ylabel(ax8_drift_x, 'X [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax8_drift_x, sprintf('Deterministic (LP < %.0f Hz)', noise_filter_cutoff), 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax8_drift_x.FontSize = tick_fontsize; ax8_drift_x.FontWeight = 'bold';
-ax8_drift_x.LineWidth = axis_linewidth; ax8_drift_x.Box = 'on';
-grid(ax8_drift_x, 'on'); xlim(ax8_drift_x, [0, t_sep(end)]);
+% --- Left column: Deterministic (low-frequency) ---
+ax8_det_x = uiaxes(tab8, 'Position', [col1_x*fig_w, row1_y*fig_h, row_w*fig_w, row_h*fig_h]);
+plot(ax8_det_x, t_sep, det_x, 'b-', 'LineWidth', 1.5);
+ylabel(ax8_det_x, 'X [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax8_det_x, sprintf('Deterministic (LP < %.0f Hz)', noise_filter_cutoff), 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ax8_det_x.FontSize = tick_fontsize; ax8_det_x.FontWeight = 'bold';
+ax8_det_x.LineWidth = axis_linewidth; ax8_det_x.Box = 'on';
+grid(ax8_det_x, 'on'); xlim(ax8_det_x, [0, t_sep(end)]);
 
-ax8_drift_y = uiaxes(tab8, 'Position', [col1_x*fig_w, row2_y*fig_h, row_w*fig_w, row_h*fig_h]);
-plot(ax8_drift_y, t_sep, drift_y, 'Color', colors(2,:), 'LineWidth', 1.5);
-ylabel(ax8_drift_y, 'Y [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-ax8_drift_y.FontSize = tick_fontsize; ax8_drift_y.FontWeight = 'bold';
-ax8_drift_y.LineWidth = axis_linewidth; ax8_drift_y.Box = 'on';
-grid(ax8_drift_y, 'on'); xlim(ax8_drift_y, [0, t_sep(end)]);
+ax8_det_y = uiaxes(tab8, 'Position', [col1_x*fig_w, row2_y*fig_h, row_w*fig_w, row_h*fig_h]);
+plot(ax8_det_y, t_sep, det_y, 'Color', colors(2,:), 'LineWidth', 1.5);
+ylabel(ax8_det_y, 'Y [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+ax8_det_y.FontSize = tick_fontsize; ax8_det_y.FontWeight = 'bold';
+ax8_det_y.LineWidth = axis_linewidth; ax8_det_y.Box = 'on';
+grid(ax8_det_y, 'on'); xlim(ax8_det_y, [0, t_sep(end)]);
 
-ax8_drift_z = uiaxes(tab8, 'Position', [col1_x*fig_w, row3_y*fig_h, row_w*fig_w, row_h*fig_h]);
-plot(ax8_drift_z, t_sep, drift_z, 'r-', 'LineWidth', 1.5);
-xlabel(ax8_drift_z, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax8_drift_z, 'Z [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-ax8_drift_z.FontSize = tick_fontsize; ax8_drift_z.FontWeight = 'bold';
-ax8_drift_z.LineWidth = axis_linewidth; ax8_drift_z.Box = 'on';
-grid(ax8_drift_z, 'on'); xlim(ax8_drift_z, [0, t_sep(end)]);
+ax8_det_z = uiaxes(tab8, 'Position', [col1_x*fig_w, row3_y*fig_h, row_w*fig_w, row_h*fig_h]);
+plot(ax8_det_z, t_sep, det_z, 'r-', 'LineWidth', 1.5);
+xlabel(ax8_det_z, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
+ylabel(ax8_det_z, 'Z [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+ax8_det_z.FontSize = tick_fontsize; ax8_det_z.FontWeight = 'bold';
+ax8_det_z.LineWidth = axis_linewidth; ax8_det_z.Box = 'on';
+grid(ax8_det_z, 'on'); xlim(ax8_det_z, [0, t_sep(end)]);
 
-% --- Right column: Stochastic (Noise) ---
-ax8_noise_x = uiaxes(tab8, 'Position', [col2_x*fig_w, row1_y*fig_h, row_w*fig_w, row_h*fig_h]);
-plot(ax8_noise_x, t_sep, noise_x, 'b-', 'LineWidth', 0.8);
-ylabel(ax8_noise_x, 'X [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax8_noise_x, sprintf('Stochastic (HP > %.0f Hz)', noise_filter_cutoff), 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax8_noise_x.FontSize = tick_fontsize; ax8_noise_x.FontWeight = 'bold';
-ax8_noise_x.LineWidth = axis_linewidth; ax8_noise_x.Box = 'on';
-grid(ax8_noise_x, 'on'); xlim(ax8_noise_x, [0, t_sep(end)]);
+% --- Right column: Random (high-frequency) ---
+ax8_rand_x = uiaxes(tab8, 'Position', [col2_x*fig_w, row1_y*fig_h, row_w*fig_w, row_h*fig_h]);
+plot(ax8_rand_x, t_sep, rand_x, 'b-', 'LineWidth', 0.8);
+ylabel(ax8_rand_x, 'X [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+title(ax8_rand_x, sprintf('Random (HP > %.0f Hz)', noise_filter_cutoff), 'FontSize', title_fontsize, 'FontWeight', 'bold');
+ax8_rand_x.FontSize = tick_fontsize; ax8_rand_x.FontWeight = 'bold';
+ax8_rand_x.LineWidth = axis_linewidth; ax8_rand_x.Box = 'on';
+grid(ax8_rand_x, 'on'); xlim(ax8_rand_x, [0, t_sep(end)]);
 
-ax8_noise_y = uiaxes(tab8, 'Position', [col2_x*fig_w, row2_y*fig_h, row_w*fig_w, row_h*fig_h]);
-plot(ax8_noise_y, t_sep, noise_y, 'Color', colors(2,:), 'LineWidth', 0.8);
-ylabel(ax8_noise_y, 'Y [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-ax8_noise_y.FontSize = tick_fontsize; ax8_noise_y.FontWeight = 'bold';
-ax8_noise_y.LineWidth = axis_linewidth; ax8_noise_y.Box = 'on';
-grid(ax8_noise_y, 'on'); xlim(ax8_noise_y, [0, t_sep(end)]);
+ax8_rand_y = uiaxes(tab8, 'Position', [col2_x*fig_w, row2_y*fig_h, row_w*fig_w, row_h*fig_h]);
+plot(ax8_rand_y, t_sep, rand_y, 'Color', colors(2,:), 'LineWidth', 0.8);
+ylabel(ax8_rand_y, 'Y [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+ax8_rand_y.FontSize = tick_fontsize; ax8_rand_y.FontWeight = 'bold';
+ax8_rand_y.LineWidth = axis_linewidth; ax8_rand_y.Box = 'on';
+grid(ax8_rand_y, 'on'); xlim(ax8_rand_y, [0, t_sep(end)]);
 
-ax8_noise_z = uiaxes(tab8, 'Position', [col2_x*fig_w, row3_y*fig_h, row_w*fig_w, row_h*fig_h]);
-plot(ax8_noise_z, t_sep, noise_z_sep, 'r-', 'LineWidth', 0.8);
-xlabel(ax8_noise_z, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax8_noise_z, 'Z [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-ax8_noise_z.FontSize = tick_fontsize; ax8_noise_z.FontWeight = 'bold';
-ax8_noise_z.LineWidth = axis_linewidth; ax8_noise_z.Box = 'on';
-grid(ax8_noise_z, 'on'); xlim(ax8_noise_z, [0, t_sep(end)]);
+ax8_rand_z = uiaxes(tab8, 'Position', [col2_x*fig_w, row3_y*fig_h, row_w*fig_w, row_h*fig_h]);
+plot(ax8_rand_z, t_sep, rand_z, 'r-', 'LineWidth', 0.8);
+xlabel(ax8_rand_z, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
+ylabel(ax8_rand_z, 'Z [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+ax8_rand_z.FontSize = tick_fontsize; ax8_rand_z.FontWeight = 'bold';
+ax8_rand_z.LineWidth = axis_linewidth; ax8_rand_z.Box = 'on';
+grid(ax8_rand_z, 'on'); xlim(ax8_rand_z, [0, t_sep(end)]);
 
-fprintf('  Tab 8: Drift/Noise Separation\n');
+fprintf('  Tab 8: Deterministic/Random Separation\n');
 
 %% SECTION 6: Save Results
 fprintf('\nSaving results...\n');
@@ -806,22 +811,22 @@ if is_openloop_thermal
     % FFT Analysis for p_m only
     fprintf('Performing FFT analysis (cutoff = %.1f Hz)...\n', openloop_cutoff_freq);
 
-    [std_pm_x, drift_pm_x, ~, freq_pm_x, spectrum_pm_x] = ...
-        fft_drift_noise_separation(p_m_x_nm, time_vec, openloop_cutoff_freq);
-    [std_pm_y, drift_pm_y, ~, freq_pm_y, spectrum_pm_y] = ...
-        fft_drift_noise_separation(p_m_y_nm, time_vec, openloop_cutoff_freq);
-    [std_pm_z, drift_pm_z, ~, freq_pm_z, spectrum_pm_z] = ...
-        fft_drift_noise_separation(p_m_z_nm, time_vec, openloop_cutoff_freq);
+    [std_pm_x, det_pm_x, ~, freq_pm_x, spectrum_pm_x] = ...
+        fft_deterministic_random_separation(p_m_x_nm, time_vec, openloop_cutoff_freq);
+    [std_pm_y, det_pm_y, ~, freq_pm_y, spectrum_pm_y] = ...
+        fft_deterministic_random_separation(p_m_y_nm, time_vec, openloop_cutoff_freq);
+    [std_pm_z, det_pm_z, ~, freq_pm_z, spectrum_pm_z] = ...
+        fft_deterministic_random_separation(p_m_z_nm, time_vec, openloop_cutoff_freq);
 
-    % Calculate Drift Peak-to-Peak
-    pp_pm_x = max(drift_pm_x) - min(drift_pm_x);
-    pp_pm_y = max(drift_pm_y) - min(drift_pm_y);
-    pp_pm_z = max(drift_pm_z) - min(drift_pm_z);
+    % Calculate Deterministic Peak-to-Peak
+    pp_pm_x = max(det_pm_x) - min(det_pm_x);
+    pp_pm_y = max(det_pm_y) - min(det_pm_y);
+    pp_pm_z = max(det_pm_z) - min(det_pm_z);
 
     fprintf('  Done.\n\n');
 
     % Adjust data length if needed (FFT may truncate odd-length data)
-    N_fft = length(drift_pm_x);
+    N_fft = length(det_pm_x);
     time_plot = time_vec(1:N_fft);
     p_m_x_plot = p_m_x_nm(1:N_fft);
     p_m_y_plot = p_m_y_nm(1:N_fft);
@@ -837,17 +842,17 @@ if is_openloop_thermal
     pos7_mid = [0.10*fig_w, 0.40*fig_h, 0.85*fig_w, 0.25*fig_h];
     pos7_bot = [0.10*fig_w, 0.08*fig_h, 0.85*fig_w, 0.25*fig_h];
 
-    % Remove initial offset (drift's first point) for better visualization
+    % Remove initial offset (deterministic's first point) for better visualization
     % This allows direct comparison of fluctuations across all axes
-    offset_x = drift_pm_x(1);
-    offset_y = drift_pm_y(1);
-    offset_z = drift_pm_z(1);
+    offset_x = det_pm_x(1);
+    offset_y = det_pm_y(1);
+    offset_z = det_pm_z(1);
     p_m_x_centered = p_m_x_plot - offset_x;
     p_m_y_centered = p_m_y_plot - offset_y;
     p_m_z_centered = p_m_z_plot - offset_z;
-    drift_x_centered = drift_pm_x - offset_x;
-    drift_y_centered = drift_pm_y - offset_y;
-    drift_z_centered = drift_pm_z - offset_z;
+    det_x_centered = det_pm_x - offset_x;
+    det_y_centered = det_pm_y - offset_y;
+    det_z_centered = det_pm_z - offset_z;
 
     % Calculate unified Y-axis range based on max deviation across all axes
     max_dev_x = max(abs(p_m_x_centered));
@@ -869,7 +874,7 @@ if is_openloop_thermal
     h7x = plot(ax7_x, time_plot, p_m_x_centered, 'b-', 'LineWidth', 1.2);
     h7x.Color(4) = 0.5;
     hold(ax7_x, 'on');
-    plot(ax7_x, time_plot, drift_x_centered, 'k-', 'LineWidth', 1.8);
+    plot(ax7_x, time_plot, det_x_centered, 'k-', 'LineWidth', 1.8);
     hold(ax7_x, 'off');
     ax7_x.FontSize = 14; ax7_x.FontWeight = 'bold'; ax7_x.LineWidth = 1.5;
     ax7_x.Box = 'on';
@@ -879,7 +884,7 @@ if is_openloop_thermal
     ylim(ax7_x, [-y_limit, y_limit]);
     ax7_x.YTick = -ceil(y_limit/tick_interval)*tick_interval : tick_interval : ceil(y_limit/tick_interval)*tick_interval;
     ax7_x.XTickLabel = [];
-    text(ax7_x, 0.98, 0.95, sprintf('STD = %.2f nm', std_pm_x), ...
+    text(ax7_x, 0.98, 0.95, sprintf('Random STD = %.2f nm', std_pm_x), ...
         'Units', 'normalized', 'HorizontalAlignment', 'right', ...
         'VerticalAlignment', 'top', 'FontSize', 14, 'FontWeight', 'bold', ...
         'BackgroundColor', 'white', 'EdgeColor', 'black', 'LineWidth', 1.5);
@@ -889,7 +894,7 @@ if is_openloop_thermal
     h7y = plot(ax7_y, time_plot, p_m_y_centered, 'g-', 'LineWidth', 1.2);
     h7y.Color(4) = 0.5;
     hold(ax7_y, 'on');
-    plot(ax7_y, time_plot, drift_y_centered, 'k-', 'LineWidth', 1.8);
+    plot(ax7_y, time_plot, det_y_centered, 'k-', 'LineWidth', 1.8);
     hold(ax7_y, 'off');
     ax7_y.FontSize = 14; ax7_y.FontWeight = 'bold'; ax7_y.LineWidth = 1.5;
     ax7_y.Box = 'on';
@@ -898,7 +903,7 @@ if is_openloop_thermal
     ylim(ax7_y, [-y_limit, y_limit]);
     ax7_y.YTick = -ceil(y_limit/tick_interval)*tick_interval : tick_interval : ceil(y_limit/tick_interval)*tick_interval;
     ax7_y.XTickLabel = [];
-    text(ax7_y, 0.98, 0.95, sprintf('STD = %.2f nm', std_pm_y), ...
+    text(ax7_y, 0.98, 0.95, sprintf('Random STD = %.2f nm', std_pm_y), ...
         'Units', 'normalized', 'HorizontalAlignment', 'right', ...
         'VerticalAlignment', 'top', 'FontSize', 14, 'FontWeight', 'bold', ...
         'BackgroundColor', 'white', 'EdgeColor', 'black', 'LineWidth', 1.5);
@@ -908,7 +913,7 @@ if is_openloop_thermal
     h7z = plot(ax7_z, time_plot, p_m_z_centered, 'r-', 'LineWidth', 1.2);
     h7z.Color(4) = 0.5;
     hold(ax7_z, 'on');
-    plot(ax7_z, time_plot, drift_z_centered, 'k-', 'LineWidth', 1.8);
+    plot(ax7_z, time_plot, det_z_centered, 'k-', 'LineWidth', 1.8);
     hold(ax7_z, 'off');
     ax7_z.FontSize = 14; ax7_z.FontWeight = 'bold'; ax7_z.LineWidth = 1.5;
     ax7_z.Box = 'on';
@@ -917,7 +922,7 @@ if is_openloop_thermal
     xlim(ax7_z, [0, duration_plot]);
     ylim(ax7_z, [-y_limit, y_limit]);
     ax7_z.YTick = -ceil(y_limit/tick_interval)*tick_interval : tick_interval : ceil(y_limit/tick_interval)*tick_interval;
-    text(ax7_z, 0.98, 0.95, sprintf('STD = %.2f nm', std_pm_z), ...
+    text(ax7_z, 0.98, 0.95, sprintf('Random STD = %.2f nm', std_pm_z), ...
         'Units', 'normalized', 'HorizontalAlignment', 'right', ...
         'VerticalAlignment', 'top', 'FontSize', 14, 'FontWeight', 'bold', ...
         'BackgroundColor', 'white', 'EdgeColor', 'black', 'LineWidth', 1.5);
@@ -977,9 +982,9 @@ if is_openloop_thermal
     fprintf('  Z: STD = %.4f pN\n\n', std_Fth_theory(3));
 
     fprintf('Position Response (p_m) - Measured:\n');
-    fprintf('  X: STD = %.2f nm, Drift P-P = %.2f nm\n', std_pm_x, pp_pm_x);
-    fprintf('  Y: STD = %.2f nm, Drift P-P = %.2f nm\n', std_pm_y, pp_pm_y);
-    fprintf('  Z: STD = %.2f nm, Drift P-P = %.2f nm\n\n', std_pm_z, pp_pm_z);
+    fprintf('  X: Random STD = %.2f nm, Deterministic P-P = %.2f nm\n', std_pm_x, pp_pm_x);
+    fprintf('  Y: Random STD = %.2f nm, Deterministic P-P = %.2f nm\n', std_pm_y, pp_pm_y);
+    fprintf('  Z: Random STD = %.2f nm, Deterministic P-P = %.2f nm\n\n', std_pm_z, pp_pm_z);
 
     fprintf('Analysis Parameters:\n');
     fprintf('  Cutoff Frequency: %.1f Hz\n', openloop_cutoff_freq);
@@ -994,35 +999,35 @@ if is_openloop_thermal
 
     subplot(3,1,1);
     h1 = plot(time_plot, p_m_x_centered, 'b-', 'LineWidth', 1.2); h1.Color(4) = 0.5;
-    hold on; plot(time_plot, drift_x_centered, 'k-', 'LineWidth', 1.8); hold off;
+    hold on; plot(time_plot, det_x_centered, 'k-', 'LineWidth', 1.8); hold off;
     ylabel('\Deltap_{m,x} (nm)'); title('Open-loop Position Response (Thermal Force Only, DC removed)');
     xlim([0, duration_plot]); ylim([-y_limit, y_limit]);
-    text(0.98, 0.95, sprintf('STD = %.2f nm', std_pm_x), 'Units', 'normalized', ...
+    text(0.98, 0.95, sprintf('Random STD = %.2f nm', std_pm_x), 'Units', 'normalized', ...
         'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
         'BackgroundColor', 'white', 'EdgeColor', 'black');
     set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
 
     subplot(3,1,2);
     h2 = plot(time_plot, p_m_y_centered, 'g-', 'LineWidth', 1.2); h2.Color(4) = 0.5;
-    hold on; plot(time_plot, drift_y_centered, 'k-', 'LineWidth', 1.8); hold off;
+    hold on; plot(time_plot, det_y_centered, 'k-', 'LineWidth', 1.8); hold off;
     ylabel('\Deltap_{m,y} (nm)');
     xlim([0, duration_plot]); ylim([-y_limit, y_limit]);
-    text(0.98, 0.95, sprintf('STD = %.2f nm', std_pm_y), 'Units', 'normalized', ...
+    text(0.98, 0.95, sprintf('Random STD = %.2f nm', std_pm_y), 'Units', 'normalized', ...
         'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
         'BackgroundColor', 'white', 'EdgeColor', 'black');
     set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
 
     subplot(3,1,3);
     h3 = plot(time_plot, p_m_z_centered, 'r-', 'LineWidth', 1.2); h3.Color(4) = 0.5;
-    hold on; plot(time_plot, drift_z_centered, 'k-', 'LineWidth', 1.8); hold off;
+    hold on; plot(time_plot, det_z_centered, 'k-', 'LineWidth', 1.8); hold off;
     xlabel('Time (s)'); ylabel('\Deltap_{m,z} (nm)');
     xlim([0, duration_plot]); ylim([-y_limit, y_limit]);
-    text(0.98, 0.95, sprintf('STD = %.2f nm', std_pm_z), 'Units', 'normalized', ...
+    text(0.98, 0.95, sprintf('Random STD = %.2f nm', std_pm_z), 'Units', 'normalized', ...
         'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
         'BackgroundColor', 'white', 'EdgeColor', 'black');
     set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
 
-    exportgraphics(fig_export, fullfile(output_dir, '7_openloop_time_response.png'), 'Resolution', 150);
+    exportgraphics(fig_export, fullfile(output_dir, '7_openloop_deterministic_random.png'), 'Resolution', 150);
     close(fig_export);
 
     % Tab 8: FFT Spectrum
@@ -1053,9 +1058,9 @@ if is_openloop_thermal
 
 end
 
-%% SECTION 8: Closed-loop Thermal Force Analysis (as Tabs)
+%% SECTION 8: Closed-loop Random Component Analysis (as Tabs)
 % Triggered when: ctrl_enable = true AND thermal_enable = true
-% Analyzes p_m high-frequency components (thermal noise) using sliding window
+% Analyzes p_m high-frequency (random) components using HP filter
 % Verifies that position perturbation STD is independent of h/R (Einstein relation)
 
 is_closedloop_thermal = (params.Value.ctrl.enable > 0.5) && ...
@@ -1064,36 +1069,36 @@ is_closedloop_thermal = (params.Value.ctrl.enable > 0.5) && ...
 if is_closedloop_thermal
     fprintf('\n');
     fprintf('================================================================\n');
-    fprintf('  Closed-loop Thermal Force Analysis\n');
+    fprintf('  Closed-loop Random Component Analysis\n');
     fprintf('================================================================\n\n');
 
     % Get sample rate
     Fs = 1 / Ts;
 
-    % Extract Z-axis tracking error (most relevant for wall effect analysis)
-    error_z_nm = (p_m_log(3, :) - p_d_log(3, :))' * 1000;  % um -> nm
+    % Extract Z-axis p_m (most relevant for wall effect analysis)
+    p_m_z_nm_cl = p_m_log(3, :)' * 1000;  % um -> nm
 
-    % High-pass filter to extract thermal noise component
+    % High-pass filter to extract random component
     fprintf('Applying high-pass filter (cutoff = %.1f Hz)...\n', closedloop_cutoff_freq);
-    noise_z = highpass_fft(error_z_nm, Fs, closedloop_cutoff_freq);
+    random_z = highpass_fft(p_m_z_nm_cl, Fs, closedloop_cutoff_freq);
 
     % Calculate overall STD
-    overall_std = std(noise_z);
-    fprintf('  Done. Overall STD = %.2f nm\n\n', overall_std);
+    overall_std = std(random_z);
+    fprintf('  Done. Random STD = %.2f nm\n\n', overall_std);
 
-    % ==================== Tab 9: Tracking Error (Time Domain) ====================
-    tab9 = uitab(tabgroup, 'Title', 'CL Tracking Error');
+    % ==================== Tab 9: Random Component (Time Domain) ====================
+    tab9 = uitab(tabgroup, 'Title', 'CL Random');
 
     % Subplot positions
     fig_w = 1200; fig_h = 800;
     pos9_top = [0.10*fig_w, 0.55*fig_h, 0.85*fig_w, 0.38*fig_h];
     pos9_bot = [0.10*fig_w, 0.08*fig_h, 0.85*fig_w, 0.38*fig_h];
 
-    % --- Top: High-frequency noise component only ---
+    % --- Top: Random (high-frequency) component ---
     ax9_top = uiaxes(tab9, 'Position', pos9_top);
-    plot(ax9_top, t_sample, noise_z, 'k-', 'LineWidth', 1.5);
-    ylabel(ax9_top, 'High-freq noise [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-    title(ax9_top, sprintf('Z-Axis High-Frequency Noise (HP cutoff = %.0f Hz)', closedloop_cutoff_freq), ...
+    plot(ax9_top, t_sample, random_z, 'k-', 'LineWidth', 1.5);
+    ylabel(ax9_top, 'Random [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
+    title(ax9_top, sprintf('Z-Axis Random Component (HP cutoff = %.0f Hz)', closedloop_cutoff_freq), ...
         'FontSize', title_fontsize, 'FontWeight', 'bold');
     ax9_top.LineWidth = axis_linewidth;
     ax9_top.FontSize = tick_fontsize;
@@ -1121,18 +1126,18 @@ if is_closedloop_thermal
         'VerticalAlignment', 'top', 'FontSize', legend_fontsize, 'FontWeight', 'bold', ...
         'BackgroundColor', [1 1 1 0.8], 'EdgeColor', [0.3 0.3 0.3], 'Margin', 5);
 
-    fprintf('  Tab 9: Closed-loop Tracking Error\n');
+    fprintf('  Tab 9: Closed-loop Random Component\n');
 
     % ==================== Save Closed-loop Analysis Figures ====================
-    % Tab 9: Tracking Error
+    % Tab 9: Random Component
     fig_export = figure('Visible', 'off', 'Position', [100, 100, 1000, 700]);
 
     subplot(2,1,1);
-    plot(t_sample, noise_z, 'k-', 'LineWidth', 1.5);
-    ylabel('High-freq noise [nm]');
-    title(sprintf('Z-Axis High-Frequency Noise (HP cutoff = %.0f Hz)', closedloop_cutoff_freq));
+    plot(t_sample, random_z, 'k-', 'LineWidth', 1.5);
+    ylabel('Random [nm]');
+    title(sprintf('Z-Axis Random Component (HP cutoff = %.0f Hz)', closedloop_cutoff_freq));
     xlim([0, t_sample(end)]);
-    text(0.98, 0.95, sprintf('Overall STD = %.2f nm', overall_std), 'Units', 'normalized', ...
+    text(0.98, 0.95, sprintf('Random STD = %.2f nm', overall_std), 'Units', 'normalized', ...
         'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
         'BackgroundColor', 'white', 'EdgeColor', 'black');
     set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
@@ -1150,15 +1155,15 @@ if is_closedloop_thermal
     set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
     grid on;
 
-    exportgraphics(fig_export, fullfile(output_dir, '9_closedloop_tracking_error.png'), 'Resolution', 150);
+    exportgraphics(fig_export, fullfile(output_dir, '9_closedloop_random.png'), 'Resolution', 150);
     close(fig_export);
 
     fprintf('\n  Closed-loop figures saved (9)\n');
 
     % Save closed-loop analysis data
-    result.closedloop_analysis.noise_z = noise_z;
+    result.closedloop_analysis.random_z = random_z;
     result.closedloop_analysis.cutoff_freq = closedloop_cutoff_freq;
-    result.closedloop_analysis.overall_std = overall_std;
+    result.closedloop_analysis.random_std = overall_std;
 
     % Re-save result.mat with additional data
     save(fullfile(output_dir, 'result.mat'), 'result');
@@ -1168,25 +1173,25 @@ end
 
 %% ========== Local Functions ==========
 
-function [std_noise, data_drift, data_noise, f, P1] = ...
-    fft_drift_noise_separation(data, time, cutoff_freq)
-% FFT_DRIFT_NOISE_SEPARATION - Separate drift and noise using FFT
+function [std_random, data_deterministic, data_random, f, P1] = ...
+    fft_deterministic_random_separation(data, time, cutoff_freq)
+% FFT_DETERMINISTIC_RANDOM_SEPARATION - Separate deterministic and random components using FFT
 %
-%   Separates low-frequency drift and high-frequency noise components
-%   using FFT-based filtering with endpoint extension for improved drift
-%   estimation.
+%   Separates low-frequency deterministic and high-frequency random components
+%   using FFT-based filtering with endpoint extension for improved deterministic
+%   component estimation.
 %
 %   Inputs:
 %       data        - Time series data (column vector)
 %       time        - Time axis (column vector)
-%       cutoff_freq - Cutoff frequency for drift/noise separation [Hz]
+%       cutoff_freq - Cutoff frequency for deterministic/random separation [Hz]
 %
 %   Outputs:
-%       std_noise   - Standard deviation of noise component
-%       data_drift  - Low-frequency drift component
-%       data_noise  - High-frequency noise component
-%       f           - Frequency axis for spectrum
-%       P1          - Single-sided amplitude spectrum
+%       std_random         - Standard deviation of random component
+%       data_deterministic - Low-frequency deterministic component
+%       data_random        - High-frequency random component
+%       f                  - Frequency axis for spectrum
+%       P1                 - Single-sided amplitude spectrum
 
     N = length(data);
 
@@ -1222,18 +1227,18 @@ function [std_noise, data_drift, data_noise, f, P1] = ...
         cutoff_idx = 1;
     end
 
-    % ========== Stage 2: Extract Noise ==========
+    % ========== Stage 2: Extract Random (high-frequency) ==========
     Y_highfreq = Y_original;
     Y_highfreq(1:cutoff_idx) = 0;
     Y_highfreq(N-cutoff_idx+2:N) = 0;
 
-    % IFFT to get noise
-    data_noise = ifft(Y_highfreq, 'symmetric');
+    % IFFT to get random component
+    data_random = ifft(Y_highfreq, 'symmetric');
 
-    % Calculate noise standard deviation
-    std_noise = std(data_noise);
+    % Calculate random component standard deviation
+    std_random = std(data_random);
 
-    % ========== Stage 3: Extract Drift (with extension + windowing) ==========
+    % ========== Stage 3: Extract Deterministic (with extension + windowing) ==========
     % Endpoint extension
     extend_len = round(N * 0.1);
     left_extend = linspace(0, data_demean(1), extend_len)';
@@ -1246,17 +1251,17 @@ function [std_noise, data_drift, data_noise, f, P1] = ...
     window = tukeywin(N_ext, alpha);
     data_windowed = data_extended .* window;
 
-    % FFT for drift
-    Y_drift = fft(data_windowed);
+    % FFT for deterministic component
+    Y_det = fft(data_windowed);
 
     % Low-pass filter
-    Y_drift_lowfreq = Y_drift;
+    Y_det_lowfreq = Y_det;
     cutoff_idx_ext = round(cutoff_idx * N_ext / N);
-    Y_drift_lowfreq(cutoff_idx_ext+1:N_ext-cutoff_idx_ext+1) = 0;
+    Y_det_lowfreq(cutoff_idx_ext+1:N_ext-cutoff_idx_ext+1) = 0;
 
     % IFFT and extract original region
-    drift_extended = ifft(Y_drift_lowfreq, 'symmetric');
-    data_drift = drift_extended(extend_len+1:extend_len+N) + data_mean;
+    det_extended = ifft(Y_det_lowfreq, 'symmetric');
+    data_deterministic = det_extended(extend_len+1:extend_len+N) + data_mean;
 
 end
 

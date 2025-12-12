@@ -71,6 +71,8 @@ function params = calc_simulation_params(config)
         'lambda_c', 0.7, ...
         'noise_filter_enable', false, ...  % Noise filter switch
         'noise_filter_cutoff', 5, ...      % Cutoff frequency [Hz]
+        'meas_noise_enable', false, ...    % Measurement noise switch
+        'meas_noise_std', [0.01; 0.01; 0.01], ...  % Measurement noise std [um] per axis
         'thermal_enable', true, ...
         'T_sim', 5 ...
     );
@@ -137,6 +139,10 @@ function params = calc_simulation_params(config)
     % Pre-calculate filter coefficient: alpha = Ts / (Ts + 1/(2*pi*fc))
     fc = config.noise_filter_cutoff;
     params_data.ctrl.filter_alpha = Ts / (Ts + 1/(2*pi*fc));
+    % Measurement noise parameters
+    params_data.ctrl.meas_noise_enable = double(config.meas_noise_enable);
+    params_data.ctrl.meas_noise_std = config.meas_noise_std;  % [3x1]
+    params_data.ctrl.meas_noise_seed = randi(2^31-1);         % Independent seed
 
     % --- thermal sub-structure ---
     params_data.thermal.enable = double(config.thermal_enable);  % Convert to double
@@ -210,7 +216,7 @@ function params = calc_simulation_params(config)
     assignin('base', 'TrajBus', TrajBus);
 
     % --- CtrlBus ---
-    elems_ctrl = Simulink.BusElement.empty(0, 7);
+    elems_ctrl = Simulink.BusElement.empty(0, 10);
     elems_ctrl(1) = Simulink.BusElement; elems_ctrl(1).Name = 'enable';
     elems_ctrl(1).Dimensions = [1 1]; elems_ctrl(1).DataType = 'double';
     elems_ctrl(2) = Simulink.BusElement; elems_ctrl(2).Name = 'lambda_c';
@@ -225,6 +231,12 @@ function params = calc_simulation_params(config)
     elems_ctrl(6).Dimensions = [1 1]; elems_ctrl(6).DataType = 'double';
     elems_ctrl(7) = Simulink.BusElement; elems_ctrl(7).Name = 'filter_alpha';
     elems_ctrl(7).Dimensions = [1 1]; elems_ctrl(7).DataType = 'double';
+    elems_ctrl(8) = Simulink.BusElement; elems_ctrl(8).Name = 'meas_noise_enable';
+    elems_ctrl(8).Dimensions = [1 1]; elems_ctrl(8).DataType = 'double';
+    elems_ctrl(9) = Simulink.BusElement; elems_ctrl(9).Name = 'meas_noise_std';
+    elems_ctrl(9).Dimensions = [3 1]; elems_ctrl(9).DataType = 'double';
+    elems_ctrl(10) = Simulink.BusElement; elems_ctrl(10).Name = 'meas_noise_seed';
+    elems_ctrl(10).Dimensions = [1 1]; elems_ctrl(10).DataType = 'double';
 
     CtrlBus = Simulink.Bus;
     CtrlBus.Elements = elems_ctrl;
