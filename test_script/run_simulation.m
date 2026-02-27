@@ -13,6 +13,11 @@
 clear; close all; clc;
 clear motion_control_law;  % Reset persistent variables in controller
 
+% Resolve project root (one level up from test_script/)
+[script_dir, ~, ~] = fileparts(mfilename('fullpath'));
+project_root = fileparts(script_dir);
+cd(project_root);
+
 %% SECTION 1: High-Level Parameter Configuration
 % === Wall Parameters ===
 theta = 0;          % Azimuth angle [rad]
@@ -91,12 +96,12 @@ config = struct(...
     'thermal_enable', thermal_enable, 'T_sim', T_sim ...
 );
 
-% Add paths
-addpath('model');
-addpath('model/wall_effect');
-addpath('model/thermal_force');
-addpath('model/trajectory');
-addpath('model/controller');
+% Add paths (relative to project root)
+addpath(fullfile(project_root, 'model'));
+addpath(fullfile(project_root, 'model', 'wall_effect'));
+addpath(fullfile(project_root, 'model', 'thermal_force'));
+addpath(fullfile(project_root, 'model', 'trajectory'));
+addpath(fullfile(project_root, 'model', 'controller'));
 
 % Calculate simulation parameters
 params = calc_simulation_params(config);
@@ -141,7 +146,7 @@ assignin('base', 'p0', p0);
 
 % Run Simulink model
 % Note: Random seed for thermal force is set in params.thermal.seed
-simOut = sim('model/system_model', 'StopTime', num2str(T_sim), ...
+simOut = sim(fullfile(project_root, 'model', 'system_model'), 'StopTime', num2str(T_sim), ...
     'SaveTime', 'on', 'TimeSaveName', 'tout', ...
     'SaveOutput', 'on', 'OutputSaveName', 'yout');
 
@@ -611,7 +616,7 @@ fprintf('  Tab 8: Deterministic/Random Separation\n');
 fprintf('\nSaving results...\n');
 
 timestamp = datestr(now, 'yyyymmdd_HHMMSS');
-output_dir = fullfile('test_results', 'simulation', ['sim_' timestamp]);
+output_dir = fullfile(project_root, 'test_results', 'simulation', ['sim_' timestamp]);
 mkdir(output_dir);
 
 % Save individual figures as PNG (using traditional figure for export)
