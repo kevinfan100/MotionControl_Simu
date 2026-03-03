@@ -7,7 +7,7 @@
 % - Particle dynamics with Wall Effect
 %
 % The simulation uses a hybrid discrete-continuous approach:
-% - Discrete: Trajectory, Controller, Thermal Force (Ts = 1/1606 sec)
+% - Discrete: Trajectory, Controller, Thermal Force (Ts = 1/1600 sec)
 % - Continuous: Particle dynamics (ODE solver with ZOH inputs)
 
 clear; close all; clc;
@@ -17,54 +17,40 @@ clear motion_control_law;  % Reset persistent variables in controller
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
 project_root = fileparts(script_dir);
 cd(project_root);
+%% SECTION 1: Load Defaults and Override Parameters
 
-%% SECTION 1: High-Level Parameter Configuration
-% === Wall Parameters ===
-theta = 0;          % Azimuth angle [rad]
-phi = 0;         % Elevation angle [rad]
-pz = 0;             % Wall displacement along w_hat [um]
-h_min = 1 * 2.25;      % Minimum safe distance [um] (default: 1.1 * R)
+% Add paths (relative to project root)
+addpath(fullfile(project_root, 'model'));
+addpath(fullfile(project_root, 'model', 'config'));
+addpath(fullfile(project_root, 'model', 'wall_effect'));
+addpath(fullfile(project_root, 'model', 'thermal_force'));
+addpath(fullfile(project_root, 'model', 'trajectory'));
+addpath(fullfile(project_root, 'model', 'controller'));
 
-% === Trajectory Parameters ===
-traj_type = 'z_sine';   % 'z_sine' or 'xy_circle'
-h_init = 5;             % Initial distance from wall [um]
-amplitude = 2.5;        % z_sine: oscillation amplitude [um]
-frequency = 1;          % z_sine: oscillation frequency [Hz]
-n_cycles = 3;           % z_sine/xy_circle: number of cycles
-radius = 5;             % xy_circle: radius [um]
-period = 1;             % xy_circle: period [sec]
+% Load defaults from user_config(), then override for this test
+config = user_config();
 
-% === Controller Parameters ===
-ctrl_enable = true;     % true = closed-loop, false = open-loop
-lambda_c = 0.4;         % Closed-loop pole (0 < lambda_c < 1)
-
-noise_filter_enable = false;  % Enable low-pass filter on controller feedback
-noise_filter_cutoff = 10;     % Cutoff frequency [Hz] (recommend: 10x trajectory frequency)
-
-meas_noise_enable = false;    % Enable measurement noise (experimental feature)
-meas_noise_std = [0.00062; 0.000057; 0.00331];  % Measurement noise std [um] per axis (x, y, z)
-
-% === Thermal Force ===
-thermal_enable = true;  % Enable Brownian motion disturbance
-
-% === Simulation Parameters ===
-T_margin = 0.3;         % Buffer time after trajectory completes [sec]
-
-% === Open-loop Thermal Analysis Parameters ===
-openloop_cutoff_freq = 5;     % Deterministic/Random cutoff frequency [Hz]
-
-% === Closed-loop Thermal Analysis Parameters ===
-closedloop_cutoff_freq = 10;  % High-pass cutoff frequency [Hz]
+% --- Overrides for this simulation run ---
+config.h_min = 1 * 2.25;           % Minimum safe distance [um]
+config.amplitude = 2.5;            % z_sine: oscillation amplitude [um]
+config.lambda_c = 0.4;             % Closed-loop pole
+config.noise_filter_cutoff = 10;   % Cutoff frequency [Hz]
+config.meas_noise_std = [0.00062; 0.000057; 0.00331];  % Measurement noise std [um]
 
 % Auto-calculate simulation time based on trajectory
-if strcmp(traj_type, 'z_sine')
-    T_traj = n_cycles / frequency;
+T_margin = 0.3;                    % Buffer time after trajectory completes [sec]
+if strcmp(config.traj_type, 'z_sine')
+    T_traj = config.n_cycles / config.frequency;
 else  % xy_circle
-    T_traj = period * n_cycles;
+    T_traj = config.period * config.n_cycles;
 end
-T_sim = T_traj + T_margin;
+config.T_sim = T_traj + T_margin;
 
-% === Figure Style Settings (r_controller style) ===
+% === Analysis Parameters (not part of Simulink params) ===
+openloop_cutoff_freq = 5;          % Deterministic/Random cutoff frequency [Hz]
+closedloop_cutoff_freq = 10;       % High-pass cutoff frequency [Hz]
+
+% === Figure Style Settings ===
 colors = [
     0.0000, 0.4470, 0.7410;  % Blue
     0.8500, 0.3250, 0.0980;  % Orange
@@ -82,26 +68,7 @@ legend_fontsize = 11;
 line_width_main = 3.0;
 line_width_ref = 2.5;
 
-%% SECTION 2: Package Configuration and Calculate Parameters
-config = struct(...
-    'theta', theta, 'phi', phi, 'pz', pz, 'h_min', h_min, ...
-    'traj_type', traj_type, 'h_init', h_init, ...
-    'amplitude', amplitude, 'frequency', frequency, 'n_cycles', n_cycles, ...
-    'radius', radius, 'period', period, ...
-    'ctrl_enable', ctrl_enable, 'lambda_c', lambda_c, ...
-    'noise_filter_enable', noise_filter_enable, ...
-    'noise_filter_cutoff', noise_filter_cutoff, ...
-    'meas_noise_enable', meas_noise_enable, ...
-    'meas_noise_std', meas_noise_std, ...
-    'thermal_enable', thermal_enable, 'T_sim', T_sim ...
-);
-
-% Add paths (relative to project root)
-addpath(fullfile(project_root, 'model'));
-addpath(fullfile(project_root, 'model', 'wall_effect'));
-addpath(fullfile(project_root, 'model', 'thermal_force'));
-addpath(fullfile(project_root, 'model', 'trajectory'));
-addpath(fullfile(project_root, 'model', 'controller'));
+%% SECTION 2: Calculate Parameters
 
 % Calculate simulation parameters
 params = calc_simulation_params(config);

@@ -4,78 +4,26 @@ function params = calc_simulation_params(config)
 %   params = calc_simulation_params(config)
 %
 %   This function:
-%   1. Calculates all simulation parameters from config
-%   2. Converts string parameters to numeric (Simulink compatible)
-%   3. Creates Simulink Bus Object definitions
-%   4. Returns Simulink.Parameter object
+%   1. Loads physical constants from physical_constants()
+%   2. Merges user config with defaults from user_config()
+%   3. Delegates to sub-calculators for each parameter group
+%   4. Creates Simulink Bus Object definitions
+%   5. Returns Simulink.Parameter object
 %
 %   Inputs:
-%       config - Configuration structure with user-adjustable parameters
+%       config - (optional) Configuration structure with user-adjustable
+%                parameters. See user_config() for available fields and defaults.
+%                Only fields that differ from defaults need to be specified.
 %
 %   Outputs:
 %       params - Simulink.Parameter with DataType 'Bus: ParamsBus'
-%
-%   Config fields (all optional, defaults shown):
-%       % Wall parameters
-%       theta       = 0         % Azimuth angle [rad]
-%       phi         = 0         % Elevation angle [rad]
-%       pz          = 0         % Wall displacement along w_hat [um]
-%       h_min       = 3.375     % Minimum safe distance [um] (default: 1.5 * R)
-%
-%       % Trajectory parameters
-%       traj_type   = 'z_sine'  % 'z_sine' or 'xy_circle'
-%       h_init      = 5         % Initial distance from wall [um]
-%       amplitude   = 5         % z_sine: oscillation amplitude [um]
-%       frequency   = 1         % z_sine: oscillation frequency [Hz]
-%       n_cycles    = 3         % z_sine/xy_circle: number of cycles
-%       radius      = 5         % xy_circle: radius [um]
-%       period      = 1         % xy_circle: period [sec]
-%
-%       % Controller parameters
-%       ctrl_enable = true      % Enable controller (false = open-loop)
-%       lambda_c    = 0.7       % Closed-loop pole (0 < lambda_c < 1)
-%       noise_filter_enable = false  % Enable low-pass filter on feedback
-%       noise_filter_cutoff = 5      % Cutoff frequency [Hz]
-%
-%       % Thermal force parameters
-%       thermal_enable = true   % Enable thermal force
-%
-%       % Simulation parameters
-%       T_sim       = 5         % Simulation time [sec]
-
-    
-    %% SECTION 1: Fixed physical constants
-    
-    R = 2.25;                    % Particle radius [um]
-    gamma_N = 0.0425;            % Stokes drag coefficient [pN*sec/um]
-    Ts = 1/1606;                 % Sampling period [sec]
-    k_B = 1.3806503e-5;          % Boltzmann constant [pN*um/K]
-    T_temp = 310.15;             % Temperature [K] (37 C)
 
 
-    %% SECTION 2: Default values and merge
+    %% SECTION 1: Load constants and merge config with defaults
 
-    defaults = struct(...
-        'theta', 0, ...
-        'phi', 0, ...
-        'pz', 0, ...
-        'h_min', 1.5 * R, ...        % Minimum safe distance [um] (h_bar_min=1.5 * R=3.375)
-        'traj_type', 'z_sine', ...
-        'h_init', 5, ...             % Initial distance from wall [um]
-        'amplitude', 5, ...          % z_sine: oscillation amplitude [um]
-        'frequency', 1, ...          % z_sine: oscillation frequency [Hz]
-        'n_cycles', 3, ...           % z_sine/xy_circle: number of cycles
-        'radius', 5, ...             % xy_circle: radius [um]
-        'period', 1, ...             % xy_circle: period [sec]
-        'ctrl_enable', true, ...
-        'lambda_c', 0.7, ...
-        'noise_filter_enable', false, ...  % Noise filter switch
-        'noise_filter_cutoff', 5, ...      % Cutoff frequency [Hz]
-        'meas_noise_enable', false, ...    % Measurement noise switch
-        'meas_noise_std', [0.01; 0.01; 0.01], ...  % Measurement noise std [um] per axis
-        'thermal_enable', true, ...
-        'T_sim', 5 ...
-    );
+    constants = physical_constants();
+
+    defaults = user_config();
 
     if nargin < 1 || isempty(config)
         config = struct();
@@ -88,73 +36,31 @@ function params = calc_simulation_params(config)
         end
     end
 
-    
-    %% SECTION 3: Calculate derived parameters
-    
+
+    %% SECTION 2: Calculate derived parameters via sub-functions
+
 
     % --- common sub-structure ---
-    params_data.common.R = R;
-    params_data.common.gamma_N = gamma_N;
-    params_data.common.Ts = Ts;
+    params_data.common.R = constants.R;
+    params_data.common.gamma_N = constants.gamma_N;
+    params_data.common.Ts = constants.Ts;
     params_data.common.T_sim = config.T_sim;
 
     % --- wall sub-structure ---
-    theta = config.theta;
-    phi = config.phi;
+    params_data.wall = calc_wall_params(config, constants);
 
-    params_data.wall.theta = theta;
-    params_data.wall.phi = phi;
-    params_data.wall.pz = config.pz;
-    params_data.wall.h_min = config.h_min;                 % [um] minimum safe distance
-    params_data.wall.h_bar_min = config.h_min / R;         % [unitless] for Wall Effect calc
-    params_data.wall.w_hat = [cos(theta)*sin(phi); sin(theta)*sin(phi); cos(phi)];
-    params_data.wall.u_hat = [-cos(theta)*cos(phi); -sin(theta)*cos(phi); sin(phi)];
-    params_data.wall.v_hat = [sin(theta); -cos(theta); 0];
-
-    % --- traj sub-structure (numeric encoding for Simulink) ---
-    % type: 'z_sine' -> 0, 'xy_circle' -> 1
-    switch config.traj_type
-        case 'z_sine'
-            params_data.traj.type = 0;
-        case 'xy_circle'
-            params_data.traj.type = 1;
-        otherwise
-            error('Unknown trajectory type: %s', config.traj_type);
-    end
-
-    params_data.traj.h_init = config.h_init;           % [um] initial distance from wall
-    params_data.traj.amplitude = config.amplitude;     % [um] z_sine oscillation amplitude
-    params_data.traj.frequency = config.frequency;     % [Hz] z_sine oscillation frequency
-    params_data.traj.n_cycles = config.n_cycles;       % number of cycles (z_sine/xy_circle)
-    params_data.traj.radius = config.radius;           % [um] xy_circle radius
-    params_data.traj.period = config.period;           % [sec] xy_circle period
+    % --- traj sub-structure ---
+    params_data.traj = calc_traj_params(config);
 
     % --- ctrl sub-structure ---
-    params_data.ctrl.enable = double(config.ctrl_enable);  % Convert to double
-    params_data.ctrl.lambda_c = config.lambda_c;
-    params_data.ctrl.gamma = gamma_N;
-    params_data.ctrl.Ts = Ts;
-    params_data.ctrl.noise_filter_enable = double(config.noise_filter_enable);
-    params_data.ctrl.noise_filter_cutoff = config.noise_filter_cutoff;
-    % Pre-calculate filter coefficient: alpha = Ts / (Ts + 1/(2*pi*fc))
-    fc = config.noise_filter_cutoff;
-    params_data.ctrl.filter_alpha = Ts / (Ts + 1/(2*pi*fc));
-    % Measurement noise parameters
-    params_data.ctrl.meas_noise_enable = double(config.meas_noise_enable);
-    params_data.ctrl.meas_noise_std = config.meas_noise_std;  % [3x1]
-    params_data.ctrl.meas_noise_seed = randi(2^31-1);         % Independent seed
+    params_data.ctrl = calc_ctrl_params(config, constants);
 
     % --- thermal sub-structure ---
-    params_data.thermal.enable = double(config.thermal_enable);  % Convert to double
-    params_data.thermal.k_B = k_B;
-    params_data.thermal.T = T_temp;
-    params_data.thermal.Ts = Ts;
-    params_data.thermal.variance_coeff = 4 * k_B * T_temp * gamma_N / Ts;
-    params_data.thermal.seed = randi(2^31-1);  % Random seed for thermal force
+    params_data.thermal = calc_thermal_params(config, constants);
 
-    
-    %% SECTION 4: Create Nested Bus Objects
-    
+
+    %% SECTION 3: Create Nested Bus Objects
+
 
     % --- CommonBus ---
     elems_common = Simulink.BusElement.empty(0, 4);
@@ -279,9 +185,9 @@ function params = calc_simulation_params(config)
     ParamsBus.Elements = elems_params;
     assignin('base', 'ParamsBus', ParamsBus);
 
-    
-    %% SECTION 5: Package as Simulink.Parameter
-    
+
+    %% SECTION 4: Package as Simulink.Parameter
+
     params = Simulink.Parameter(params_data);
     params.DataType = 'Bus: ParamsBus';
     params.Description = 'Motion Control Parameters for Simulink';
