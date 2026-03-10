@@ -32,18 +32,14 @@ config = user_config();
 
 % --- Overrides for this simulation run ---
 config.h_min = 1 * 2.25;           % Minimum safe distance [um]
-config.amplitude = 2.5;            % z_sine: oscillation amplitude [um]
+config.amplitude = 2.5;            % Oscillation amplitude in h direction [um]
 config.lambda_c = 0.4;             % Closed-loop pole
 config.noise_filter_cutoff = 10;   % Cutoff frequency [Hz]
 config.meas_noise_std = [0.00062; 0.000057; 0.00331];  % Measurement noise std [um]
 
 % Auto-calculate simulation time based on trajectory
 T_margin = 0.3;                    % Buffer time after trajectory completes [sec]
-if strcmp(config.traj_type, 'z_sine')
-    T_traj = config.n_cycles / config.frequency;
-else  % xy_circle
-    T_traj = config.period * config.n_cycles;
-end
+T_traj = config.n_cycles / config.frequency;
 config.T_sim = T_traj + T_margin;
 
 % === Analysis Parameters (not part of Simulink params) ===
@@ -73,14 +69,14 @@ line_width_ref = 2.5;
 % Calculate simulation parameters
 params = calc_simulation_params(config);
 
-%% SECTION 3: Calculate Initial Position and Safety Check
-p0 = calc_initial_position(params.Value);
+%% SECTION 3: Extract Initial Position and Safety Check
+p0 = params.Value.common.p0;
 
 fprintf('Initial position: [%.3f, %.3f, %.3f] um\n', p0);
 fprintf('Initial h/R: %.2f\n', (dot(p0, params.Value.wall.w_hat) - params.Value.wall.pz) / params.Value.common.R);
 
 % Safety check
-[is_safe, h_min_actual, t_critical] = check_trajectory_safety(p0, params.Value);
+[is_safe, h_min_actual, t_critical] = check_trajectory_safety(params.Value);
 
 if ~is_safe
     warning('Trajectory unsafe! Min h = %.2f um at t = %.3f sec (threshold: %.2f um)', ...
@@ -98,10 +94,7 @@ thermal_str = 'Disabled';
 if params.Value.thermal.enable > 0.5
     thermal_str = 'Enabled';
 end
-traj_type_str = 'z_sine';
-if params.Value.traj.type > 0.5
-    traj_type_str = 'xy_circle';
-end
+traj_type_str = 'sine (along w_hat)';
 fprintf('  Mode: %s\n', ctrl_mode_str);
 fprintf('  Thermal: %s\n', thermal_str);
 fprintf('  Trajectory: %s\n', traj_type_str);

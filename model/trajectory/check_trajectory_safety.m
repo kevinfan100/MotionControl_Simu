@@ -1,14 +1,13 @@
-function [is_safe, h_min_actual, t_critical] = check_trajectory_safety(p0, params)
+function [is_safe, h_min_actual, t_critical] = check_trajectory_safety(params)
 %CHECK_TRAJECTORY_SAFETY Check if trajectory remains safe (h >= h_min)
 %
-%   [is_safe, h_min_actual, t_critical] = check_trajectory_safety(p0, params)
+%   [is_safe, h_min_actual, t_critical] = check_trajectory_safety(params)
 %
 %   Checks the entire trajectory to ensure the particle never gets too
 %   close to the wall. Samples the trajectory at discrete time points
 %   and calculates distance h at each point.
 %
 %   Inputs:
-%       p0     - Initial position [3x1 vector, um] in world coordinates
 %       params - Parameter structure from calc_simulation_params
 %
 %   Outputs:
@@ -17,21 +16,17 @@ function [is_safe, h_min_actual, t_critical] = check_trajectory_safety(p0, param
 %       t_critical   - Time at which minimum h occurs [sec]
 %
 %   Required params fields:
+%       params.common.p0     - Initial position [3x1, um]
 %       params.wall.w_hat    - Wall normal vector [3x1, unitless]
 %       params.wall.pz       - Wall displacement along w_hat [um]
 %       params.wall.h_min    - Minimum safe distance [um]
 %       params.common.T_sim  - Simulation time [sec]
 %       params.common.Ts     - Sampling period [sec]
-%       params.traj.type     - Trajectory type (0=z_move, 1=xy_circle)
-%       (plus trajectory-specific parameters)
+%       params.traj.*         - Trajectory parameters
 %
 %   Safety criterion:
 %       h >= h_min for all t in [0, T_sim]
-%       where h = p(t) . w_hat - pz is the distance from wall [um]
-%
-%   Coordinate system:
-%       - Trajectory p_d(t) is in world coordinates
-%       - Distance h is computed using wall normal projection
+%       where h = dot(p(t), w_hat) - pz is the distance from wall [um]
 
     % Extract parameters
     w_hat = params.wall.w_hat;
@@ -49,7 +44,7 @@ function [is_safe, h_min_actual, t_critical] = check_trajectory_safety(p0, param
 
     for i = 1:N
         % Get desired position at time t (world coordinates)
-        p_d = trajectory_generator(t_check(i), p0, params);
+        p_d = trajectory_generator(t_check(i), params);
 
         % Calculate distance from wall [um]
         h(i) = dot(p_d, w_hat) - pz;

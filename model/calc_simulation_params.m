@@ -52,6 +52,9 @@ function params = calc_simulation_params(config)
     % --- traj sub-structure ---
     params_data.traj = calc_traj_params(config);
 
+    % --- initial position (depends on wall + traj) ---
+    params_data.common.p0 = calc_initial_position(params_data);
+
     % --- ctrl sub-structure ---
     params_data.ctrl = calc_ctrl_params(config, constants);
 
@@ -63,7 +66,7 @@ function params = calc_simulation_params(config)
 
 
     % --- CommonBus ---
-    elems_common = Simulink.BusElement.empty(0, 4);
+    elems_common = Simulink.BusElement.empty(0, 5);
     elems_common(1) = Simulink.BusElement; elems_common(1).Name = 'R';
     elems_common(1).Dimensions = [1 1]; elems_common(1).DataType = 'double';
     elems_common(2) = Simulink.BusElement; elems_common(2).Name = 'gamma_N';
@@ -72,6 +75,8 @@ function params = calc_simulation_params(config)
     elems_common(3).Dimensions = [1 1]; elems_common(3).DataType = 'double';
     elems_common(4) = Simulink.BusElement; elems_common(4).Name = 'T_sim';
     elems_common(4).Dimensions = [1 1]; elems_common(4).DataType = 'double';
+    elems_common(5) = Simulink.BusElement; elems_common(5).Name = 'p0';
+    elems_common(5).Dimensions = [3 1]; elems_common(5).DataType = 'double';
 
     CommonBus = Simulink.Bus;
     CommonBus.Elements = elems_common;
@@ -101,21 +106,15 @@ function params = calc_simulation_params(config)
     assignin('base', 'WallBus', WallBus);
 
     % --- TrajBus ---
-    elems_traj = Simulink.BusElement.empty(0, 7);
-    elems_traj(1) = Simulink.BusElement; elems_traj(1).Name = 'type';
+    elems_traj = Simulink.BusElement.empty(0, 4);
+    elems_traj(1) = Simulink.BusElement; elems_traj(1).Name = 'h_init';
     elems_traj(1).Dimensions = [1 1]; elems_traj(1).DataType = 'double';
-    elems_traj(2) = Simulink.BusElement; elems_traj(2).Name = 'h_init';
+    elems_traj(2) = Simulink.BusElement; elems_traj(2).Name = 'amplitude';
     elems_traj(2).Dimensions = [1 1]; elems_traj(2).DataType = 'double';
-    elems_traj(3) = Simulink.BusElement; elems_traj(3).Name = 'amplitude';
+    elems_traj(3) = Simulink.BusElement; elems_traj(3).Name = 'frequency';
     elems_traj(3).Dimensions = [1 1]; elems_traj(3).DataType = 'double';
-    elems_traj(4) = Simulink.BusElement; elems_traj(4).Name = 'frequency';
+    elems_traj(4) = Simulink.BusElement; elems_traj(4).Name = 'n_cycles';
     elems_traj(4).Dimensions = [1 1]; elems_traj(4).DataType = 'double';
-    elems_traj(5) = Simulink.BusElement; elems_traj(5).Name = 'n_cycles';
-    elems_traj(5).Dimensions = [1 1]; elems_traj(5).DataType = 'double';
-    elems_traj(6) = Simulink.BusElement; elems_traj(6).Name = 'radius';
-    elems_traj(6).Dimensions = [1 1]; elems_traj(6).DataType = 'double';
-    elems_traj(7) = Simulink.BusElement; elems_traj(7).Name = 'period';
-    elems_traj(7).Dimensions = [1 1]; elems_traj(7).DataType = 'double';
 
     TrajBus = Simulink.Bus;
     TrajBus.Elements = elems_traj;

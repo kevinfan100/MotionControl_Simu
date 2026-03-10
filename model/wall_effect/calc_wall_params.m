@@ -4,15 +4,16 @@ function wall = calc_wall_params(config, constants)
 %   wall = calc_wall_params(config, constants)
 %
 %   Inputs:
-%       config    - User config with fields: theta, phi, pz, h_min
+%       config    - User config with fields: theta [deg], phi [deg], pz, h_min
 %       constants - Physical constants with field: R
 %
 %   Outputs:
 %       wall - Struct with fields:
-%           theta, phi, pz, h_min, h_bar_min, w_hat, u_hat, v_hat
+%           theta, phi (stored in rad), pz, h_min, h_bar_min, w_hat, u_hat, v_hat
 
-    theta = config.theta;
-    phi = config.phi;
+    % Convert degrees to radians
+    theta = deg2rad(config.theta);
+    phi = deg2rad(config.phi);
 
     wall.theta = theta;
     wall.phi = phi;
