@@ -1,0 +1,123 @@
+% ======================================================
+% Overleaf: Menu -> Compiler -> XeLaTeX
+% ======================================================
+\documentclass[UTF8,12pt,a4paper]{ctexart}
+
+\usepackage{amsmath,amssymb,bm}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{enumitem}
+
+\title{\textbf{Variable Naming Table}}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{itemize}[itemsep=6pt]
+
+% --- Page 1 ---
+
+\item $\mathbf{V}_k \to Vk$ \;;\; $\mathbf{V}_k^T \to Vk\_T$
+
+\item $\mathbf{u}_k \to uk$ \;;\; $\mathbf{v}_k \to vk$ \;;\; $\mathbf{w}_k \to wk$
+
+\item $thetaek \to thetak\_hat = \begin{bmatrix} thetak\_x\_hat \\ thetak\_y\_hat \end{bmatrix}$
+
+\item $dthetaek \to del\_thetak\_hat = \begin{bmatrix} del\_thetak\_x\_hat \\ del\_thetak\_y\_hat \end{bmatrix}$
+
+\item $thetamk \to thetak\_m = \begin{bmatrix} thetak\_x\_m \\ thetak\_y\_m \end{bmatrix}$
+
+\item $lamdaek \to lamdak\_hat = \begin{bmatrix} lamdak\_T\_hat \\ lamdak\_N\_hat \end{bmatrix}$
+
+\item $dlamdaek \to del\_lamdak\_hat = \begin{bmatrix} del\_lamdak\_T\_hat \\ del\_lamdak\_N\_hat \end{bmatrix}$
+
+\item $lamdamk \to lamdak\_m = \begin{bmatrix} lamdak\_T\_m \\ lamdak\_N\_m \end{bmatrix}$
+
+\item $VDek \to dis\_Vk\_hat = \begin{bmatrix} dis\_uk\_hat \\ dis\_vk\_hat \\ dis\_wk\_hat \end{bmatrix}$
+
+\item $VdDek \to dis\_del\_Vk\_hat = \begin{bmatrix} dis\_del\_uk\_hat \\ dis\_del\_vk\_hat \\ dis\_del\_wk\_hat \end{bmatrix}$
+
+\item $Vdp3ek \to V\_del\_pk\_hat$ \;;\; $Vdp2ek \to V\_del\_pk\_hat\_kS1$ \;;\; $Vdp1ek \to V\_del\_pk\_hat\_kS2$
+
+\item $dp3ek \to del\_pk\_hat$ \;;\; $dp2ek \to del\_pk\_hat\_kS1$ \;;\; $dp1ek \to del\_pk\_hat\_kS2$
+
+\item $Dek \to dis\_k\_hat$ \;;\; $dDek \to dis\_del\_k\_hat$
+
+\item ${}^V\!\hat{\delta\mathbf{p}}_1[k\!+\!1] \to V\_del\_pk\_hat\_kA1$ \;;\;
+${}^V\!\hat{\delta\mathbf{p}}_2[k\!+\!1] \to V\_del\_pk\_hat\_kS1\_kA1$ \;;\;
+${}^V\!\hat{\delta\mathbf{p}}_3[k\!+\!1] \to V\_del\_pk\_hat\_kS2\_kA1$
+
+\item ${}^V\!\hat{\mathbf{d}}[k+1] \to dis\_Vk\_hat\_kA1$ \;;\;
+${}^V\!\delta\hat{\mathbf{d}}[k+1] \to dis\_del\_Vk\_hat\_kA1$
+
+\item $\hat{\delta\mathbf{p}}_1[k\!+\!1] = dp1ek \to del\_pk\_hat\_kA1$ \;;\;
+$\hat{\delta\mathbf{p}}_2[k\!+\!1] = dp2ek \to del\_pk\_hat\_kS1\_kA1$ \;;\;
+$\hat{\delta\mathbf{p}}_3[k\!+\!1] = dp3ek \to del\_pk\_hat\_kS2\_kA1$
+
+\item $\hat{\mathbf{d}}[k+1] = Dek \to dis\_k\_hat\_kA1$ \;;\;
+$\delta\hat{\mathbf{d}}[k+1] = dDek \to dis\_del\_k\_hat\_kA1$
+
+\item $\hat{\lambda}[k+1] \to lamdak\_hat\_kA1$ \;;\;
+$\delta\hat{\lambda}[k+1] \to del\_lamdak\_hat\_kA1$
+
+\item $\hat{\theta}[k+1] \to thetak\_hat\_kA1$ \;;\;
+$\delta\hat{\theta}[k+1] \to del\_thetak\_hat\_kA1$
+
+\item $\mathbf{e}_{p,k} = epk \to err\_pk$ \;;\;
+$\mathbf{e}_{\lambda,k} = elamdak \to err\_lamdak$ \;;\;
+$\mathbf{e}_{\theta,k} = ethetak \to err\_thetak$
+
+\item $pdk1 \to pd\_kS1$ \;;\; $pdk2 \to pd\_kS2$
+
+% --- Page 2 ---
+
+\item $dpmdk1 \to del\_pm\_det\_kS1$ \;;\; $dpmrdk1 \to del\_pm\_ran\_kS1$
+
+\item $\delta\mathbf{p}_m[k] \to del\_pm\_k$
+
+\item $\delta\mathbf{p}_m^V[k] \to V\_del\_pm\_k = \begin{bmatrix} del\_um\_k \\ del\_vm\_k \\ del\_wm\_k \end{bmatrix}$
+
+\item $\bar{\delta}\mathbf{p}_m[k] \to del\_pm\_det\_k$
+
+\item $\delta\mathbf{p}_{mr}[k] \to del\_pm\_ran\_k$
+
+\item $\delta\mathbf{p}_{mrd}[k] \to del\_pm\_ran\_det\_k$ \;;\;
+$\delta\mathbf{p}_{mrr}[k] \to del\_pm\_ran\_ran\_k$ \;;\;
+$\delta\mathbf{p}_{nr}[k] \to del\_pm\_nor\_k$
+
+\item $\delta u_{nr}[k] \to del\_unr\_k$ \;;\;
+$\delta v_{nr}[k] \to del\_vnr\_k$ \;;\;
+$\delta w_{nr}[k] \to del\_wnr\_k$
+
+\item $\Delta u[k] \to del\_u\_k$ \;;\;
+$\Delta v[k] \to del\_v\_k$ \;;\;
+$\Delta w[k] \to del\_w\_k$
+
+\item $f_u[k] \to fu\_k$ \;;\;
+$f_v[k] \to fv\_k$ \;;\;
+$f_w[k] \to fw\_k$
+
+\item $\mathbf{y}_m^V[k] \to ym\_V\_k = \begin{bmatrix} del\_um\_k \\ del\_vm\_k \\ del\_wm\_k \\ lamdak\_T\_m \\ lamdak\_N\_m \\ thetak\_x\_m \\ thetak\_y\_m \end{bmatrix}$
+
+\item $\Delta\lambda_m[k] \to del\_lamdak\_m$
+
+\item $\Delta\hat{\lambda}[k] \to del\_lamdak\_hat$
+
+\item $\mathbf{G}_\lambda[k] \to Glam\_k$ \;;\;
+$\mathbf{G}_\theta[k] \to Gtheta\_k$
+
+\item $\mathbf{F}[k] \to Fk$ \;;\;
+$\mathbf{H} \to H$ \;;\;
+$\mathbf{G} \to G$ \;;\;
+$\mathbf{L}[k] \to Lk$
+
+\item $\mathbf{P}^f \to Pfk$ \;;\;
+$\mathbf{P} \to Pk$ \;;\;
+$\mathbf{Q}[k] \to Qk$ \;;\;
+$\mathbf{R}[k] \to Rk$
+
+\end{itemize}
+
+\end{document}
