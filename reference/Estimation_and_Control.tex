@@ -1,0 +1,576 @@
+% ======================================================
+% Overleaf: Menu -> Compiler -> XeLaTeX
+% ======================================================
+\documentclass[UTF8,11pt,a4paper]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2cm}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+
+% --- shortcuts ---
+\newcommand{\tp}{^{\!\mathsf{T}}}
+\newcommand{\Vk}{\mathbf{V}[k]}
+\newcommand{\VkT}{\mathbf{V}\tp\![k]}
+\newcommand{\gN}{\gamma_N}
+\newcommand{\dt}{\Delta t}
+\newcommand{\lc}{\lambda_c}
+
+% hat estimates
+\newcommand{\thhat}[1]{\hat{\theta}_{#1}[k]}    % \thhat{x} = theta_x hat[k]
+\newcommand{\thhatA}[1]{\hat{\theta}_{#1}[k\!+\!1]} % k+1
+\newcommand{\lamhat}[1]{\hat{\lambda}_{#1}[k]}   % \lamhat{T} = lambda_T hat[k]
+\newcommand{\lamhatA}[1]{\hat{\lambda}_{#1}[k\!+\!1]}
+\newcommand{\thm}[1]{\theta_{#1}^m[k]}
+\newcommand{\lamm}[1]{\lambda_{#1}^m[k]}
+
+% disturbance
+\newcommand{\dhat}[1]{\hat{d}_{#1}[k]}          % d hat component
+\newcommand{\ddhat}[1]{\delta\hat{d}_{#1}[k]}   % delta d hat component
+
+% V-frame position estimates (use display subscripts)
+\newcommand{\Vdphat}{{}^V\!\widehat{\delta\mathbf{p}}}
+\newcommand{\Vdhat}{{}^V\!\hat{\mathbf{d}}}
+\newcommand{\Vddhat}{{}^V\!\delta\hat{\mathbf{d}}}
+\newcommand{\dphat}{\widehat{\delta\mathbf{p}}}
+\title{\textbf{Estimation and Control}}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+%=====================================================================
+% Physical Constants
+%=====================================================================
+\begin{align}
+k_B &= 1.3806503 \times 10^{-5} \;\text{pN}\!\cdot\!\mu\text{m/K} \notag\\
+T &= 273.15 + 37 = 310.15 \;\text{K} \notag\\
+\gN &= 6\pi\eta R = 0.0425 \;\text{pN}\!\cdot\!\text{sec}/\mu\text{m}
+\quad (R = 2.25\;\mu\text{m}) \notag\\
+\dt &= \tfrac{1}{1606} \;\text{sec} \notag
+\end{align}
+
+\begin{align}
+&4\,k_B T = 0.017128 \;\text{pN}\!\cdot\!\mu\text{m} \notag\\[4pt]
+\sigma^2_{f_T}= \frac{4\,k_B T\,\gN}{\dt} &= (0.02698\;\text{pN})^2 \notag\\[4pt]
+\sigma^2_{\delta_{x_T}} = \frac{4\,k_B T\,\dt}{\gN} &= (0.01589\;\mu\text{m})^2 \notag\\[4pt]
+\sqrt{\frac{4\,k_B T\,\dt}{\gN}} &= 0.01589\;\mu\text{m} \notag
+\end{align}
+
+\begin{align}
+g_{\mathrm{cov}}^2 &\approx \left\{2+\frac{1}{1-\lc^2}\right\}
+\frac{4\,k_B T\,\dt}{\gN}
+= \left\{2+\frac{1}{1-\lc^2}\right\}(0.01589\;\mu\text{m})^2 \notag\\[4pt]
+g_{\mathrm{cov}} &\approx \sqrt{2+\frac{1}{1-\lc^2}}\;(0.01589\;\mu\text{m}) \notag
+\end{align}
+\begin{align}
+\%g_{\mathrm{cov}}^2 &\approx \frac{1-\lc}{1+\lc}\,(0.01589\;\mu\text{m})^2 \notag\\[2pt]
+\%g_{\mathrm{cov}} &\approx \sqrt{\frac{1-\lc}{1+\lc}}\;(0.01589\;\mu\text{m}) \notag
+\end{align}
+
+\noindent\rule{\textwidth}{0.8pt}
+
+%=====================================================================
+% Initial Values
+%=====================================================================
+\[
+a_{pd}=0.1;\quad a_{prd}=0.1;\quad a_{cov}=0.1;
+\]
+\[
+\varepsilon=0.01;\quad \lc=0.7;\quad
+g_{\mathrm{cov}}=0.01589\times\sqrt{2+\tfrac{1}{1-\lc^2}};\quad
+g_{\mathrm{cov}}^2 = g_{\mathrm{cov}}\cdot g_{\mathrm{cov}};
+\]
+
+\begin{align}
+\Vk &= \VkT = \begin{bmatrix}1&0&0\\0&1&0\\0&0&1\end{bmatrix};\quad
+\mathbf{u}[k] = \begin{bmatrix}1\\0\\0\end{bmatrix};\quad
+\mathbf{v}[k] = \begin{bmatrix}0\\1\\0\end{bmatrix};\quad
+\mathbf{w}[k] = \begin{bmatrix}0\\0\\1\end{bmatrix}; \notag
+\end{align}
+
+\begin{align}
+\hat{\bm{\theta}}[k]
+= \begin{bmatrix}\thhat{x}\\\thhat{y}\end{bmatrix}
+= \begin{bmatrix}0\\0\end{bmatrix};\quad
+\delta\hat{\bm{\theta}}[k]
+= \begin{bmatrix}\delta\thhat{x}\\\delta\thhat{y}\end{bmatrix}
+= \begin{bmatrix}0\\0\end{bmatrix};\quad
+\bm{\theta}_m[k]
+= \begin{bmatrix}\theta_{mx}[k]\\\theta_{my}[k]\end{bmatrix}
+= \begin{bmatrix}0\\0\end{bmatrix}; \notag
+\end{align}
+
+\begin{align}
+\hat{\bm{\lambda}}[k]
+= \begin{bmatrix}\lamhat{T}\\\lamhat{N}\end{bmatrix}
+= \begin{bmatrix}1\\1\end{bmatrix};\quad
+\delta\hat{\bm{\lambda}}[k]
+= \begin{bmatrix}\delta\lamhat{T}\\\delta\lamhat{N}\end{bmatrix}
+= \begin{bmatrix}0\\0\end{bmatrix};\quad
+\bm{\lambda}_m[k]
+= \begin{bmatrix}\lambda_{mT}[k]\\\lambda_{mN}[k]\end{bmatrix}
+= \begin{bmatrix}1\\1\end{bmatrix}; \notag
+\end{align}
+
+\begin{align}
+\Vdhat[k]
+= \begin{bmatrix}\dhat{u}\\\dhat{v}\\\dhat{w}\end{bmatrix}
+= \begin{bmatrix}0\\0\\0\end{bmatrix};\quad
+\Vddhat[k]
+= \begin{bmatrix}\ddhat{u}\\\ddhat{v}\\\ddhat{w}\end{bmatrix}
+= \begin{bmatrix}0\\0\\0\end{bmatrix}; \notag
+\end{align}
+
+\begin{align}
+{}^V\!\delta\hat{\mathbf{p}}_3[k] = \begin{bmatrix}0\\0\\0\end{bmatrix};\quad
+{}^V\!\delta\hat{\mathbf{p}}_2[k] = \begin{bmatrix}0\\0\\0\end{bmatrix};\quad
+{}^V\!\delta\hat{\mathbf{p}}_1[k] = \begin{bmatrix}0\\0\\0\end{bmatrix}; \notag
+\end{align}
+
+\begin{align}
+\mathbf{e}_p[k] = \begin{bmatrix}0\\0\\0\end{bmatrix};\quad
+\mathbf{e}_\lambda[k] = \begin{bmatrix}0\\0\end{bmatrix};\quad
+\mathbf{e}_\theta[k] = \begin{bmatrix}0\\0\end{bmatrix}; \notag
+\end{align}
+
+\[
+\mathbf{H} =
+\begin{bmatrix}
+\mathbf{I}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2}\\
+\mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{I}_{2\times2} & \mathbf{0}_{2\times2} & \mathbf{0}_{2\times2} & \mathbf{0}_{2\times2}\\
+\mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times2} & \mathbf{0}_{2\times2} & \mathbf{I}_{2\times2} & \mathbf{0}_{2\times2}
+\end{bmatrix}
+\]
+
+\begin{align}
+\mathbf{p}_d[k\!-\!1] &= \begin{bmatrix}0\\0\\0\end{bmatrix};\quad
+\mathbf{p}_d[k\!-\!2] = \begin{bmatrix}0\\0\\0\end{bmatrix};\quad
+{\delta}\mathbf{p}_{md}[k\!-\!1] = \begin{bmatrix}0\\0\\0\end{bmatrix};\quad
+\delta\mathbf{p}_{mr}[k\!-\!1] = \begin{bmatrix}0\\0\\0\end{bmatrix}; \notag
+\end{align}
+
+\[
+\mathbf{P}^f = [ ];
+\]
+
+\noindent\texttt{\%} $\hat{\mathbf{R}}[k\!-\!1] = g_{\mathrm{cov}}^2
+\begin{bmatrix}1&0&0\\0&1&0\\0&0&1\end{bmatrix}$;
+
+\bigskip
+
+%=====================================================================
+% Input / Measurement
+%=====================================================================
+\noindent\textbf{Input:}\;
+$\mathbf{p}_d[k]=\begin{bmatrix}x_d[k]\\y_d[k]\\z_d[k]\end{bmatrix}$\;;\quad
+$\delta\mathbf{p}_d[k]=\begin{bmatrix}\delta x_d[k]\\\delta y_d[k]\\\delta z_d[k]\end{bmatrix}$
+
+\medskip
+\noindent\textbf{Measurement:}\; $\mathbf{p}_m[k]$ \;Acquired from ADC
+
+\medskip
+\noindent\texttt{\%} \textbf{Control objectives:}\;
+${}^V\!\delta\mathbf{p}[k\!+\!1] = \lc\cdot{}^V\!\delta\mathbf{p}[k]$
+
+\bigskip
+\noindent\rule{\textwidth}{0.4pt}
+\medskip
+\noindent\textbf{Real-time computation}
+\medskip
+
+%=====================================================================
+% Projection to V frame
+%=====================================================================
+\[
+\begin{bmatrix}\delta \hat{u_d}[k]\\\delta \hat{v_d}[k]\\\delta\hat{w_d}[k]\end{bmatrix}
+= \VkT \begin{bmatrix}\delta x_d[k]\\\delta y_d[k]\\\delta z_d[k]\end{bmatrix}
+\]
+
+\[
+\begin{bmatrix}\delta \hat{u_d}[k]\\\delta \hat{v_d}[k]\\\delta\hat{w_d}[k]\end{bmatrix}
+= {}^V\!\delta\hat{\mathbf{p}}_3[k]
+\begin{bmatrix}\dhat{u}\\\dhat{v}\\\dhat{w}\end{bmatrix}
+= \Vdhat[k]
+\]
+
+%=====================================================================
+% Control Law
+%=====================================================================
+\begin{align}
+\Delta u[k] &= \frac{1}{\lamhat{T}}
+\bigl\{\delta \hat{u}_d[k] + (1-\lc)\,\delta \hat{u}[k] - \dhat{u}\bigr\} \notag\\[4pt]
+\Delta v[k] &= \frac{1}{\lamhat{T}}
+\bigl\{\delta \hat{v}_d[k] + (1-\lc)\,\delta \hat{v}[k] - \dhat{v}\bigr\} \notag\\[4pt]
+\Delta w[k] &= \frac{1}{\lamhat{N}}
+\bigl\{\delta \hat{w}_d[k] + (1-\lc)\,\delta \hat{w}[k] - \dhat{w}\bigr\} \notag
+\end{align}
+
+\begin{align}
+f_u[k] = \frac{\gN}{\dt}\,\Delta u[k] \qquad
+f_v[k] = \frac{\gN}{\dt}\,\Delta v[k] \qquad
+f_w[k] = \frac{\gN}{\dt}\,\Delta w[k] \notag
+\end{align}
+
+%=====================================================================
+% 3-D Position Error Measurement
+%=====================================================================
+\medskip
+\noindent\texttt{\%} \textbf{3-D position error measurement}
+
+\medskip
+\noindent
+If $k=1$:\quad
+$\mathbf{p}_d[k\!-\!2] = \mathbf{p}_d[k]$;\;
+$\mathbf{p}_d[k\!-\!1] = \mathbf{p}_d[k]$;\;
+$\delta\mathbf{p}_m[k] = \mathbf{p}_d[k\!-\!2] - \mathbf{p}_m[k]$;
+
+\smallskip\noindent
+If $k=2$:\quad
+$\mathbf{p}_d[k\!-\!2] = \mathbf{p}_d[k\!-\!1]$;\;
+$\mathbf{p}_d[k\!-\!1] = \mathbf{p}_d[k\!-\!1]$;\;
+$\delta\mathbf{p}_m[k] = \mathbf{p}_d[k\!-\!2] - \mathbf{p}_m[k]$;
+
+\smallskip\noindent
+Otherwise:\quad
+$\mathbf{p}_d[k\!-\!2] = \mathbf{p}_d[k\!-\!2]$;\;
+$\mathbf{p}_d[k\!-\!1] = \mathbf{p}_d[k\!-\!1]$;\;
+$\delta\mathbf{p}_m[k] = \mathbf{p}_d[k\!-\!2] - \mathbf{p}_m[k]$;
+
+\smallskip\noindent
+$\mathbf{p}_d[k\!-\!2] = \mathbf{p}_d[k\!-\!1]$;\;
+$\mathbf{p}_d[k\!-\!1] = \mathbf{p}_d[k]$;
+
+\medskip
+%=====================================================================
+% Deterministic / Random Separation
+%=====================================================================
+\[
+{}^V\!\delta\mathbf{p}_m[k]
+= \begin{bmatrix}\delta u_m[k]\\\delta v_m[k]\\\delta w_m[k]\end{bmatrix}
+= \VkT\;\delta\mathbf{p}_m[k]
+\]
+
+\begin{align}
+{\delta}\mathbf{p}_{md}[k] &= (1-a_{pd})\cdot{\delta}\mathbf{p}_{md}[k\!-\!1]
++ a_{pd}\,\delta\mathbf{p}_m[k]
+&& \text{(Deterministic component)} \notag\\[2pt]
+\delta\mathbf{p}_{mr}[k] &= \delta\mathbf{p}_m[k] - {\delta}\mathbf{p}_{md}[k]
+&& \text{(Random component)} \notag\\[2pt]
+\delta\mathbf{p}_{mrd}[k] &= (1-a_{prd})\cdot\delta\mathbf{p}_{mr}[k\!-\!1]
++ a_{prd}\,\delta\mathbf{p}_{mr}[k] \notag\\[2pt]
+\delta\mathbf{p}_{mrr}[k] &= \delta\mathbf{p}_{mr}[k] - \delta\mathbf{p}_{mrd}[k] \notag
+\end{align}
+
+\noindent\texttt{\%}
+$\hat{\mathbf{R}}[k] = (1-a_{cov})\,\hat{\mathbf{R}}[k\!-\!1]
++ a_{cov}\,\delta\mathbf{p}_{mrr}[k]\,\delta\mathbf{p}_{mrr}\tp[k]$
+
+%=====================================================================
+% Real-time Measurement of lambda, theta
+%=====================================================================
+\medskip
+\noindent\texttt{\%} \textbf{Real-time measurement of} $\Lambda(\lambda_\parallel,\lambda_\perp)$
+\textbf{and} $\mathbf{V}(\theta_x,\theta_y)$:
+
+\[
+\delta\mathbf{p}_{nr}[k] = \frac{1}{g_{\mathrm{cov}}}\,\delta\mathbf{p}_{mrr}[k]
+\]
+\[
+\begin{bmatrix}\delta u_{nr}[k]\\\delta v_{nr}[k]\\\delta w_{nr}[k]\end{bmatrix}
+= \VkT\;\delta\mathbf{p}_{nr}[k]
+\]
+
+\[
+\begin{bmatrix}\lambda_{Tm}[k]\\\lambda_{Nm}[k]\end{bmatrix}
+= (1-a_{cov})
+\begin{bmatrix}\hat{\lambda}_{T}[k-1]\\\hat{\lambda}_{N}[k-1]\end{bmatrix}
++ a_{cov}
+\begin{bmatrix}\dfrac{\delta u_{nr}^2[k]+\delta v_{nr}^2[k]}{2}\\\delta w_{nr}^2[k]\end{bmatrix}
+\]
+
+\[
+\Delta\lambda_m[k] = \hat{\lambda}_{Tm}[k] - \hat{\lambda}_{Nm}[k]
+\]
+
+\medskip\noindent
+If\; $\dfrac{\Delta\lambda_m[k]}{\hat{\lambda}_{Tm}[k]} < \varepsilon$\;:
+
+\[
+\begin{bmatrix}\theta_{xm}[k]\\\theta_{ym}[k]\end{bmatrix}
+= \begin{bmatrix}\hat{\theta}_x[k+1]\\\hat{\theta}_y[k+1]\end{bmatrix}
+\]
+
+\noindent Otherwise:
+\[
+\begin{bmatrix}\theta_{xm}[k]\\\theta_{ym}[k]\end{bmatrix}
+= \begin{bmatrix}\thhatA{x}\\\thhatA{y}\end{bmatrix}
++ a_{cov}\begin{bmatrix}
+\dfrac{\delta v_{nr}[k]\cdot\delta w_{nr}[k]}{\Delta\lambda_m[k]}\\[6pt]
+\dfrac{-\delta w_{nr}[k]\cdot\delta u_{nr}[k]}{\Delta\lambda_m[k]}
+\end{bmatrix}
+\]
+
+%=====================================================================
+% Error Vectors
+%=====================================================================
+\medskip
+\noindent\texttt{\%}
+\mathbf^V{y}_m[k] = 
+\begin{bmatrix}{}^V\!\delta\mathbf{p}_{m}[k]\\\boldsymbol{\lambda}_m[k]\\\boldsymbol{\theta}_m[k]\end{bmatrix}
+=
+\begin{bmatrix}
+\delta u_m[k]\\\delta v_m[k]\\\delta w_m[k]\\
+\lambda_{Tm}[k]\\\lambda_{Nm}[k]\\
+\theta_{xm}[k]\\\theta_{ym}[k]
+\end{bmatrix}
+
+\begin{align}
+\mathbf{e}_p[k]
+&= \begin{bmatrix}\delta u_m[k]\\\delta v_m[k]\\\delta w_m[k]\end{bmatrix}
+- {}^V\!\delta\hat{\mathbf{p}}_1[k] \notag\\[6pt]
+\mathbf{e}_\lambda[k]
+&= \begin{bmatrix}\lambda_{mT}\\\lambda_{mN}\end{bmatrix}
+- \begin{bmatrix}\lamhat{T}\\\lamhat{N}\end{bmatrix}
+= a_{cov}\left\{
+\begin{bmatrix}
+\frac{\delta u_{nr}^2[k]+\delta v_{nr}^2[k]}{2}\\[4pt]
+\delta w_{nr}^2[k]
+\end{bmatrix}
+- \begin{bmatrix}\lambda_{mT}\\\lambda_{mN}\end{bmatrix}
+\right\} \notag\\[6pt]
+\mathbf{e}_\theta[k]
+&= \begin{bmatrix}\theta_{mx}\\\theta_{my}\end{bmatrix}
+- \begin{bmatrix}\thhat{x}\\\thhat{y}\end{bmatrix}
+= a_{cov}\begin{bmatrix}
+\frac{\delta v_{nr}[k]\cdot\delta w_{nr}[k]}{\Delta\lambda_m[k]}\\[4pt]
+\frac{-\delta w_{nr}[k]\cdot\delta u_{nr}[k]}{\Delta\lambda_m[k]}
+\end{bmatrix} \notag
+\end{align}
+
+%=====================================================================
+% Estimator Gain
+%=====================================================================
+
+\[
+\mathbf{P}^f\mathbf{H}\tp
+= \begin{bmatrix}
+P_{11}^f & P_{16}^f & P_{18}^f\\
+P_{21}^f & P_{26}^f & P_{28}^f\\
+P_{31}^f & P_{36}^f & P_{38}^f\\
+P_{41}^f & P_{46}^f & P_{48}^f\\
+P_{51}^f & P_{56}^f & P_{58}^f\\
+P_{61}^f & P_{66}^f & P_{68}^f\\
+P_{71}^f & P_{76}^f & P_{78}^f\\
+P_{81}^f & P_{86}^f & P_{88}^f\\
+P_{91}^f & P_{96}^f & P_{98}^f
+\end{bmatrix};\qquad
+\mathbf{H}\mathbf{P}^f\mathbf{H}\tp
+= \begin{bmatrix}
+P_{11}^f & P_{16}^f & P_{18}^f\\
+P_{61}^f & P_{66}^f & P_{68}^f\\
+P_{81}^f & P_{86}^f & P_{88}^f
+\end{bmatrix}
+\]
+
+\[
+{\mathbf{R}}[k] = \;?
+\]
+
+\[
+\mathbf{G}
+= \left\{
+\begin{bmatrix}
+P_{11}^f & P_{16}^f & P_{18}^f\\
+P_{61}^f & P_{66}^f & P_{68}^f\\
+P_{81}^f & P_{86}^f & P_{88}^f
+\end{bmatrix}
++ {\mathbf{R}}[k]
+\right\}^{-1}
+\]
+
+\[
+\mathbf{L}[k]
+= \begin{bmatrix}
+L_{11}&L_{12}&L_{13}\\
+L_{21}&L_{22}&L_{23}\\
+L_{31}&L_{32}&L_{33}\\
+L_{41}&L_{42}&L_{43}\\
+L_{51}&L_{52}&L_{53}\\
+L_{61}&L_{62}&L_{63}\\
+L_{71}&L_{72}&L_{73}\\
+L_{81}&L_{82}&L_{83}\\
+L_{91}&L_{92}&L_{93}
+\end{bmatrix}
+=
+\begin{bmatrix}
+P_{11}^f & P_{16}^f & P_{18}^f\\
+P_{21}^f & P_{26}^f & P_{28}^f\\
+P_{31}^f & P_{36}^f & P_{38}^f\\
+P_{41}^f & P_{46}^f & P_{48}^f\\
+P_{51}^f & P_{56}^f & P_{58}^f\\
+P_{61}^f & P_{66}^f & P_{68}^f\\
+P_{71}^f & P_{76}^f & P_{78}^f\\
+P_{81}^f & P_{86}^f & P_{88}^f\\
+P_{91}^f & P_{96}^f & P_{98}^f
+\end{bmatrix}
+\mathbf{G}
+\]
+
+%=====================================================================
+% State Update Equations
+%=====================================================================
+\begin{align}
+{}^V\!\delta\hat{\mathbf{p}}_1[k\!+\!1]
+&= {}^V\!\delta\hat{\mathbf{p}}_2[k] + L_{11}\,\mathbf{e}_p[k] + L_{12}\,\mathbf{e}_\lambda[k] + L_{13}\,\mathbf{e}_\theta[k] \notag\\[2pt]
+{}^V\!\delta\hat{\mathbf{p}}_2[k\!+\!1]
+&= {}^V\!\delta\hat{\mathbf{p}}_3[k] + L_{21}\,\mathbf{e}_p[k] + L_{22}\,\mathbf{e}_\lambda[k] + L_{23}\,\mathbf{e}_\theta[k] \notag\\[2pt]
+{}^V\!\delta\hat{\mathbf{p}}_3[k\!+\!1]
+&= \lc\cdot{}^V\!\delta\hat{\mathbf{p}}_3[k] + L_{31}\,\mathbf{e}_p[k] + L_{32}\,\mathbf{e}_\lambda[k] + L_{33}\,\mathbf{e}_\theta[k] \notag\\[2pt]
+\Vdhat[k\!+\!1]
+&= \Vdhat[k] + \Vddhat[k] + L_{41}\,\mathbf{e}_p[k] + L_{42}\,\mathbf{e}_\lambda[k] + L_{43}\,\mathbf{e}_\theta[k] \notag\\[2pt]
+\Vddhat[k\!+\!1]
+&= \Vddhat[k] + L_{51}\,\mathbf{e}_p[k] + L_{52}\,\mathbf{e}_\lambda[k] + L_{53}\,\mathbf{e}_\theta[k] \notag\\[2pt]
+\hat{\bm{\lambda}}[k\!+\!1]
+&= \hat{\bm{\lambda}}[k] + \delta\hat{\bm{\lambda}}[k] + L_{61}\,\mathbf{e}_p[k] + L_{62}\,\mathbf{e}_\lambda[k] + L_{63}\,\mathbf{e}_\theta[k] \notag\\[2pt]
+\delta\hat{\bm{\lambda}}[k\!+\!1]
+&= \delta\hat{\bm{\lambda}}[k] + L_{71}\,\mathbf{e}_p[k] + L_{72}\,\mathbf{e}_\lambda[k] + L_{73}\,\mathbf{e}_\theta[k] \notag\\[2pt]
+\hat{\bm{\theta}}[k\!+\!1]
+&= \hat{\bm{\theta}}[k] + \delta\hat{\bm{\theta}}[k] + L_{81}\,\mathbf{e}_p[k] + L_{82}\,\mathbf{e}_\lambda[k] + L_{83}\,\mathbf{e}_\theta[k] \notag\\[2pt]
+\delta\hat{\bm{\theta}}[k\!+\!1]
+&= \delta\hat{\bm{\theta}}[k] + L_{91}\,\mathbf{e}_p[k] + L_{92}\,\mathbf{e}_\lambda[k] + L_{93}\,\mathbf{e}_\theta[k] \notag
+\end{align}
+
+%=====================================================================
+% Projection Back to World Frame
+%=====================================================================
+\begin{align}
+\delta\hat{\mathbf{p}}_1[k\!+\!1] &= \Vk\cdot{}^V\!\delta\hat{\mathbf{p}}_1[k\!+\!1] \notag\\
+\delta\hat{\mathbf{p}}_2[k\!+\!1] &= \Vk\cdot{}^V\!\delta\hat{\mathbf{p}}_2[k\!+\!1] \notag\\
+\delta\hat{\mathbf{p}}_3[k\!+\!1] &= \Vk\cdot{}^V\!\delta\hat{\mathbf{p}}_3[k\!+\!1] \notag\\
+\hat{\mathbf{d}}[k\!+\!1] &= \Vk\cdot\Vdhat[k\!+\!1] \notag\\
+\delta\hat{\mathbf{d}}[k\!+\!1] &= \Vk\cdot\Vddhat[k\!+\!1] \notag
+\end{align}
+
+%=====================================================================
+% Glambda, Gtheta
+%=====================================================================
+\[
+\Delta\hat{\lambda}[k] = \lamhat{T} - \lamhat{N}
+\]
+
+\[
+\mathbf{G}_\lambda[k]
+= \begin{bmatrix}
+\Delta u[k] & 0\\
+\Delta v[k] & 0\\
+0 & \Delta w[k]
+\end{bmatrix};\qquad
+\mathbf{G}_\theta[k]
+= \begin{bmatrix}
+0 & -\Delta\hat{\lambda}[k]\,\Delta w[k]\\
+\Delta\hat{\lambda}[k]\,\Delta w[k] & 0\\
+\Delta\hat{\lambda}[k]\,\Delta v[k] & -\Delta\hat{\lambda}[k]\,\Delta u[k]
+\end{bmatrix}
+\]
+
+%=====================================================================
+% F[k] matrix
+%=====================================================================
+\[
+\mathbf{F}[k] = \begin{bmatrix}
+\mathbf{0}_{3\times3} & \mathbf{I}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2}\\
+\mathbf{0}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{I}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2}\\
+\mathbf{0}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{I}_{3\times3} & -\mathbf{I}_{3\times3} & \mathbf{0}_{3\times3} & -\mathbf{G}_{\lambda}[k] & \mathbf{0} & -\mathbf{G}_{\theta}[k] & \mathbf{0}_{3\times2}\\
+\mathbf{0}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{I}_{3\times3} & \mathbf{I}_{3\times3} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2}\\
+\mathbf{0}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{0}_{3\times3} & \mathbf{I}_{3\times3} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2} & \mathbf{0}_{3\times2}\\
+\mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{I}_{2\times2} & \mathbf{I}_{2\times2} & \mathbf{0}_{2\times2} & \mathbf{0}_{2\times2}\\
+\mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times2} & \mathbf{I}_{2\times2} & \mathbf{0}_{2\times2} & \mathbf{0}_{2\times2}\\
+\mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times2} & \mathbf{0}_{2\times2} & \mathbf{I}_{2\times2} & \mathbf{I}_{2\times2}\\
+\mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times3} & \mathbf{0}_{2\times2} & \mathbf{0}_{2\times2} & \mathbf{0}_{2\times2} & \mathbf{I}_{2\times2}
+\end{bmatrix}
+\]
+
+%=====================================================================
+% Update lambda_hat, theta_hat, V_k
+%=====================================================================
+\begin{align}
+\hat{\bm{\lambda}}[k]
+&= \begin{bmatrix}\lamhat{T}\\\lamhat{N}\end{bmatrix}
+= \hat{\bm{\lambda}}[k\!+\!1];\qquad
+\delta\hat{\bm{\lambda}}[k] = \delta\hat{\bm{\lambda}}[k\!+\!1] \notag\\[4pt]
+\hat{\bm{\theta}}[k]
+&= \begin{bmatrix}\thhat{x}\\\thhat{y}\end{bmatrix}
+= \hat{\bm{\theta}}[k\!+\!1];\qquad
+\delta\hat{\bm{\theta}}[k] = \delta\hat{\bm{\theta}}[k\!+\!1] \notag
+\end{align}
+
+\begin{align}
+c_x &= \cos(\thhat{x});\quad s_x = \sin(\thhat{x});\quad
+c_y = \cos(\thhat{y});\quad s_y = \sin(\thhat{y}) \notag
+\end{align}
+
+\[
+\mathbf{V}[k\!+\!1] = \Vk
+= \begin{bmatrix}
+c_y & s_y s_x & s_y c_x\\
+0 & c_x & -s_x\\
+-s_y & c_y s_x & c_y c_x
+\end{bmatrix};\qquad
+\VkT = \begin{bmatrix}
+c_y & 0 & -s_y\\
+s_y s_x & c_x & c_y s_x\\
+s_y c_x & -s_x & c_y c_x
+\end{bmatrix}
+\]
+
+%=====================================================================
+% V-frame projections
+%=====================================================================
+\begin{align}
+{}^V\!\delta\hat{\mathbf{p}}_1[k] &= \VkT\cdot\delta\hat{\mathbf{p}}_1[k] \notag\\
+{}^V\!\delta\hat{\mathbf{p}}_2[k] &= \VkT\cdot\delta\hat{\mathbf{p}}_2[k] \notag\\
+{}^V\!\delta\hat{\mathbf{p}}_3[k] &= \VkT\cdot\delta\hat{\mathbf{p}}_3[k] \notag\\
+\Vdhat[k] &= \VkT\cdot\hat{\mathbf{d}}[k] \notag\\
+\Vddhat[k] &= \VkT\cdot\delta\hat{\mathbf{d}}[k] \notag
+\end{align}
+
+%=====================================================================
+% Covariance Update
+%=====================================================================
+\[
+\mathbf{P} = (\mathbf{I} - \mathbf{L}[k]\,\mathbf{H})\,\mathbf{P}^f
+\]
+
+\[
+\mathbf{P}^f = \mathbf{F}[k]\,\mathbf{P}\,\mathbf{F}\tp[k] + \mathbf{Q}[k]
+\]
+
+\noindent\texttt{\%} $\mathbf{P}$ is the error covariance and $\mathbf{Q}[k]$ is the variance of the process noise.
+
+\begin{align}
+Q_{11}[k] &= 0 \notag\\
+Q_{22}[k] &= 0 \notag\\
+Q_{33}[k] &= \frac{4\,k_B T\,\dt}{\gN}\,\hat{\Lambda}[k]
+= (0.01589)^2
+\begin{bmatrix}\hat{\lambda}_{T}[k]&0&0\\0&\hat{\lambda}_{T}[k]&0\\0&0&\hat{\lambda}_{N}[k]\end{bmatrix} \notag\\
+Q_{44}[k] &= a_{pd}\cdot a_{prd}\cdot Q_{33}[k] \notag\\
+Q_{55}[k] &= a_{pd}\cdot a_{prd}\cdot Q_{33}[k] \notag\\
+Q_{66}[k] &= a_{cov}\cdot(0.01589)^2
+\begin{bmatrix}\hat{\lambda}_{T}[k]&0\\0&\hat{\lambda}_{N}[k]\end{bmatrix} \notag\\
+Q_{77}[k] &= Q_{66}[k] \notag\\
+Q_{88}[k1] &= \;? \notag\\
+Q_{99}[k1] &= \;? \notag
+\end{align}
+
+\end{document}
