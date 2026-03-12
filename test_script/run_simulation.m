@@ -101,6 +101,7 @@ fprintf('  Duration: %.1f sec\n', T_sim);
 % Assign parameters to base workspace for Simulink
 assignin('base', 'params', params);
 assignin('base', 'p0', p0);
+assignin('base', 'Ts', params.Value.common.Ts);  % For Simulink block sample times
 
 % Run Simulink model
 % Note: Random seed for thermal force is set in params.thermal.seed

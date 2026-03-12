@@ -5,7 +5,23 @@
       "Bash(git checkout:*)",
       "Bash(git stash:*)",
       "Bash(dir:*)",
-      "Bash(cmd /c \"dir model\\*.slx\")"
+      "Bash(cmd /c \"dir model\\*.slx\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(git fetch:*)",
+      "Bash(git merge-base:*)",
+      "Bash(git merge:*)",
+      "Bash(cd:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(git remote:*)",
+      "Bash(ls:*)",
+      "Bash(rm:*)",
+      "Bash(mv:*)",
+      "Bash(python:*)",
+      "mcp__perplexity__perplexity_ask",
+      "WebFetch(domain:pubs.acs.org)"
     ],
     "deny": [],
     "ask": []
@@ -13,14 +29,24 @@
   "hooks": {
     "Stop": [
       {
-        "type": "command",
-        "command": "powershell -c \"(New-Object Media.SoundPlayer 'C:\\Windows\\Media\\chimes.wav').PlaySync()\""
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -c \"(New-Object Media.SoundPlayer 'C:\\Windows\\Media\\chimes.wav').PlaySync()\""
+          }
+        ]
       }
     ],
     "Notification": [
       {
-        "type": "command",
-        "command": "powershell -ExecutionPolicy Bypass -File \".claude\\notification.ps1\""
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -ExecutionPolicy Bypass -File \".claude\\notification.ps1\""
+          }
+        ]
       }
     ]
   }
