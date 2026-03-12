@@ -23,8 +23,6 @@ function config = user_config()
 %       % Controller
 %       ctrl_enable = true      % Enable controller (false = open-loop)
 %       lambda_c    = 0.7       % Closed-loop pole (0 < lambda_c < 1)
-%       noise_filter_enable = false  % Enable low-pass filter on feedback
-%       noise_filter_cutoff = 5      % Cutoff frequency [Hz]
 %       meas_noise_enable = false    % Enable measurement noise injection
 %       meas_noise_std = [0.01; 0.01; 0.01]  % Noise std [um] per axis
 %
@@ -49,8 +47,6 @@ function config = user_config()
     % Controller
     config.ctrl_enable = true;
     config.lambda_c = 0.7;
-    config.noise_filter_enable = false;
-    config.noise_filter_cutoff = 5;
     config.meas_noise_enable = false;
     config.meas_noise_std = [0.01; 0.01; 0.01];
 

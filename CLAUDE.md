@@ -192,21 +192,8 @@ p0 = (pz + h_init) * w_hat
 
 ### 控制律
 ```
-f_d[k] = (gamma/Ts) * { p_d[k] - lambda_c * p_d[k-1] - (1 - lambda_c) * p_feedback[k] }
+f_d[k] = (gamma/Ts) * { p_d[k] - lambda_c * p_d[k-1] - (1 - lambda_c) * p_m[k] }
 ```
-
-### 噪音濾波器
-控制器反饋路徑包含可選的單級 IIR 低通濾波器：
-
-```matlab
-alpha = Ts / (Ts + 1/(2*pi*fc))
-y[k] = alpha * x[k] + (1 - alpha) * y[k-1]
-```
-
-| 參數 | 說明 | 預設值 |
-|------|------|--------|
-| `noise_filter_enable` | 啟用/關閉濾波器 | `false` |
-| `noise_filter_cutoff` | 截止頻率 (Hz) | `5` |
 
 ### 測量噪音注入
 | 參數 | 說明 | 預設值 |
@@ -225,8 +212,7 @@ y[k] = alpha * x[k] + (1 - alpha) * y[k-1]
 | 2-4 | X/Y/Z 軸分析 | p_m, p_d, F |
 | 5 | 位置 vs 時間 | p_m |
 | 6 | 控制力 vs 時間 | f_d |
-| 7 | 開迴路熱力分析（Deterministic/Random 分離） | F |
-| 8 | 閉迴路熱力分析 | F |
+| 7+ | 開迴路熱力分析 (條件觸發) | p_m |
 
 ---
 
@@ -236,6 +222,5 @@ y[k] = alpha * x[k] + (1 - alpha) * y[k-1]
 ```matlab
 frequency = 1;              % 軌跡頻率 (Hz)
 amplitude = 2.5;            % h 方向振幅 (um)
-noise_filter_enable = false; % 預設關閉
-closedloop_cutoff_freq = 10; % 分析截止頻率
+openloop_cutoff_freq = 5;   % 開迴路分析截止頻率
 ```
