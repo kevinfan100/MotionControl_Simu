@@ -1,0 +1,123 @@
+% ======================================================
+% Overleaf: Menu -> Compiler -> XeLaTeX
+% ======================================================
+\documentclass[UTF8,12pt,a4paper]{ctexart}
+
+\usepackage{amsmath,amssymb,bm}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{enumitem}
+
+\title{\textbf{Variable Naming Table}}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{itemize}[itemsep=6pt]
+
+% --- Page 1 ---
+
+\item $\mathbf{V}_k \to V$ \;;\; $\mathbf{V}_k^T \to V\_T$
+
+\item $\mathbf{u}_k \to u$ \;;\; $\mathbf{v}_k \to v$ \;;\; $\mathbf{w}_k \to w$
+
+\item $thetaek \to theta\_hat = \begin{bmatrix} theta\_x\_hat \\ theta\_y\_hat \end{bmatrix}$
+
+\item $dthetaek \to del\_theta\_hat = \begin{bmatrix} del\_theta\_x\_hat \\ del\_theta\_y\_hat \end{bmatrix}$
+
+\item $thetamk \to theta\_m = \begin{bmatrix} theta\_x\_m \\ theta\_y\_m \end{bmatrix}$
+
+\item $lamdaek \to lamda\_hat = \begin{bmatrix} lamda\_T\_hat \\ lamda\_N\_hat \end{bmatrix}$
+
+\item $dlamdaek \to del\_lamda\_hat = \begin{bmatrix} del\_lamda\_T\_hat \\ del\_lamda\_N\_hat \end{bmatrix}$
+
+\item $lamdamk \to lamda\_m = \begin{bmatrix} lamda\_T\_m \\ lamda\_N\_m \end{bmatrix}$
+
+\item $VDek \to V\_d\_hat = \begin{bmatrix} d\_u\_hat \\ d\_v\_hat \\ d\_w\_hat \end{bmatrix}$
+
+\item $VdDek \to V\_del\_d\_hat = \begin{bmatrix} del\_d\_u\_hat \\ del\_d\_v\_hat \\ del\_d\_w\_hat \end{bmatrix}$
+
+\item $Vdp3ek \to V\_del\_p3\_hat$ \;;\; $Vdp2ek \to V\_del\_p2\_hat$ \;;\; $Vdp1ek \to V\_del\_p1\_hat$
+
+\item $dp3ek \to del\_p3\_hat$ \;;\; $dp2ek \to del\_p2\_hat$ \;;\; $dp1ek \to del\_p1\_hat$
+
+\item $Dek \to d\_hat$ \;;\; $dDek \to del\_d\_hat$
+
+\item ${}^V\!\hat{\delta\mathbf{p}}_1[k\!+\!1] \to V\_del\_p1\_hat\_kA1$ \;;\;
+${}^V\!\hat{\delta\mathbf{p}}_2[k\!+\!1] \to V\_del\_p2\_hat\_kA1$ \;;\;
+${}^V\!\hat{\delta\mathbf{p}}_3[k\!+\!1] \to V\_del\_p3\_hat\_kA1$
+
+\item ${}^V\!\hat{\mathbf{d}}[k+1] \to V\_d\_hat\_kA1$ \;;\;
+${}^V\!\delta\hat{\mathbf{d}}[k+1] \to V\_del\_d\_hat\_kA1$
+
+\item $\hat{\delta\mathbf{p}}_1[k\!+\!1] = dp1ek \to del\_p1\_hat\_kA1$ \;;\;
+$\hat{\delta\mathbf{p}}_2[k\!+\!1] = dp2ek \to del\_p2\_hat\_kA1$ \;;\;
+$\hat{\delta\mathbf{p}}_3[k\!+\!1] = dp3ek \to del\_p3\_hat\_kA1$
+
+\item $\hat{\mathbf{d}}[k+1] = Dek \to d\_hat\_kA1$ \;;\;
+$\delta\hat{\mathbf{d}}[k+1] = dDek \to del\_d\_hat\_kA1$
+
+\item $\hat{\lambda}[k+1] \to lamda\_hat\_kA1$ \;;\;
+$\delta\hat{\lambda}[k+1] \to del\_lamda\_hat\_kA1$
+
+\item $\hat{\theta}[k+1] \to theta\_hat\_kA1$ \;;\;
+$\delta\hat{\theta}[k+1] \to del\_theta\_hat\_kA1$
+
+\item $\mathbf{e}_{p,k} = epk \to err\_p$ \;;\;
+$\mathbf{e}_{\lambda,k} = elamdak \to err\_lamda$ \;;\;
+$\mathbf{e}_{\theta,k} = ethetak \to err\_theta$
+
+\item $pdk1 \to pd\_k1$ \;;\; $pdk2 \to pd\_k2$
+
+% --- Page 2 ---
+
+\item $dpmdk1 \to del\_pmd\_k1$ \;;\; $dpmrdk1 \to del\_pmrd\_k1$
+
+\item $\delta\mathbf{p}_m[k] \to del\_pm$
+
+\item $\delta\mathbf{p}_m^V[k] \to V\_del\_pm = \begin{bmatrix} del\_um \\ del\_vm \\ del\_wm \end{bmatrix}$
+
+\item $\bar{\delta}\mathbf{p}_m[k] \to del\_pmd$
+
+\item $\delta\mathbf{p}_{mr}[k] \to del\_pmr\_k$
+
+\item $\delta\mathbf{p}_{mrd}[k] \to del\_pmrd$ \;;\;
+$\delta\mathbf{p}_{mrr}[k] \to del\_pmrr$ \;;\;
+$\delta\mathbf{p}_{nr}[k] \to del\_pnr$
+
+\item $\delta u_{nr}[k] \to del\_unr$ \;;\;
+$\delta v_{nr}[k] \to del\_vnr$ \;;\;
+$\delta w_{nr}[k] \to del\_wnr$
+
+\item $\Delta u[k] \to del\_u$ \;;\;
+$\Delta v[k] \to del\_v$ \;;\;
+$\Delta w[k] \to del\_w$
+
+\item $f_u[k] \to fu$ \;;\;
+$f_v[k] \to fv$ \;;\;
+$f_w[k] \to fw$
+
+\item $\mathbf{y}_m^V[k] \to V\_ym = \begin{bmatrix} del\_um \\ del\_vm \\ del\_wm \\ lamda\_Tm \\ lamda\_Nm \\ theta\_xm \\ theta\_ym \end{bmatrix}$
+
+\item $\Delta\lambda_m[k] \to del\_lamda\_m$
+
+\item $\Delta\hat{\lambda}[k] \to del\_lamda\_hat$
+
+\item $\mathbf{G}_\lambda[k] \to G\_lamda$ \;;\;
+$\mathbf{G}_\theta[k] \to G_\_theta$
+
+\item $\mathbf{F}[k] \to F$ \;;\;
+$\mathbf{H}[k] \to H$ \;;\;
+$\mathbf{G}[k] \to G$ \;;\;
+$\mathbf{L}[k] \to L$
+
+\item $\mathbf{P}^f \to Pf$ \;;\;
+$\mathbf{P}[k] \to P$ \;;\;
+$\mathbf{Q}[k] \to Q$ \;;\;
+$\mathbf{R}[k] \to R$
+
+\end{itemize}
+
+\end{document}

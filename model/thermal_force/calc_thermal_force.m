@@ -1,7 +1,7 @@
-function F_th = calc_thermal_force(p, params)
+function f_th = calc_thermal_force(p, params)
 %CALC_THERMAL_FORCE Generate random thermal force (Brownian motion)
 %
-%   F_th = calc_thermal_force(p, params)
+%   f_th = calc_thermal_force(p, params)
 %
 %   Generates a random thermal force based on the particle position,
 %   accounting for wall effects on the diffusion coefficient.
@@ -11,7 +11,7 @@ function F_th = calc_thermal_force(p, params)
 %       params - Parameter structure from calc_simulation_params
 %
 %   Outputs:
-%       F_th   - Random thermal force [3x1 vector, pN]
+%       f_th   - Random thermal force [3x1 vector, pN]
 %
 %   Required params fields:
 %       params.wall.w_hat      - Wall normal vector [3x1]
@@ -62,7 +62,7 @@ function F_th = calc_thermal_force(p, params)
     Variance = variance_coeff * abs(C);
 
     % Generate random thermal force
-    % F_th ~ N(0, Variance) => F_th = sqrt(Variance) .* randn(3,1)
-    F_th = sqrt(Variance) .* randn(3, 1);
+    % f_th ~ N(0, Variance) => f_th = sqrt(Variance) .* randn(3,1)
+    f_th = sqrt(Variance) .* randn(3, 1);
 
 end

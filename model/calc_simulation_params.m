@@ -121,7 +121,7 @@ function params = calc_simulation_params(config)
     assignin('base', 'TrajBus', TrajBus);
 
     % --- CtrlBus ---
-    elems_ctrl = Simulink.BusElement.empty(0, 10);
+    elems_ctrl = Simulink.BusElement.empty(0, 7);
     elems_ctrl(1) = Simulink.BusElement; elems_ctrl(1).Name = 'enable';
     elems_ctrl(1).Dimensions = [1 1]; elems_ctrl(1).DataType = 'double';
     elems_ctrl(2) = Simulink.BusElement; elems_ctrl(2).Name = 'lambda_c';
@@ -130,18 +130,12 @@ function params = calc_simulation_params(config)
     elems_ctrl(3).Dimensions = [1 1]; elems_ctrl(3).DataType = 'double';
     elems_ctrl(4) = Simulink.BusElement; elems_ctrl(4).Name = 'Ts';
     elems_ctrl(4).Dimensions = [1 1]; elems_ctrl(4).DataType = 'double';
-    elems_ctrl(5) = Simulink.BusElement; elems_ctrl(5).Name = 'noise_filter_enable';
+    elems_ctrl(5) = Simulink.BusElement; elems_ctrl(5).Name = 'meas_noise_enable';
     elems_ctrl(5).Dimensions = [1 1]; elems_ctrl(5).DataType = 'double';
-    elems_ctrl(6) = Simulink.BusElement; elems_ctrl(6).Name = 'noise_filter_cutoff';
-    elems_ctrl(6).Dimensions = [1 1]; elems_ctrl(6).DataType = 'double';
-    elems_ctrl(7) = Simulink.BusElement; elems_ctrl(7).Name = 'filter_alpha';
+    elems_ctrl(6) = Simulink.BusElement; elems_ctrl(6).Name = 'meas_noise_std';
+    elems_ctrl(6).Dimensions = [3 1]; elems_ctrl(6).DataType = 'double';
+    elems_ctrl(7) = Simulink.BusElement; elems_ctrl(7).Name = 'meas_noise_seed';
     elems_ctrl(7).Dimensions = [1 1]; elems_ctrl(7).DataType = 'double';
-    elems_ctrl(8) = Simulink.BusElement; elems_ctrl(8).Name = 'meas_noise_enable';
-    elems_ctrl(8).Dimensions = [1 1]; elems_ctrl(8).DataType = 'double';
-    elems_ctrl(9) = Simulink.BusElement; elems_ctrl(9).Name = 'meas_noise_std';
-    elems_ctrl(9).Dimensions = [3 1]; elems_ctrl(9).DataType = 'double';
-    elems_ctrl(10) = Simulink.BusElement; elems_ctrl(10).Name = 'meas_noise_seed';
-    elems_ctrl(10).Dimensions = [1 1]; elems_ctrl(10).DataType = 'double';
 
     CtrlBus = Simulink.Bus;
     CtrlBus.Elements = elems_ctrl;

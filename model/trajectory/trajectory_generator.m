@@ -21,14 +21,18 @@ function p_d = trajectory_generator(t, params)
 %       params.traj.frequency  - Oscillation frequency [Hz]
 %       params.traj.n_cycles   - Number of cycles
 %
-%   Trajectory:
-%       h(t) = h_init + amplitude * sin(2*pi*frequency*t)
-%       p_d(t) = p0 + amplitude * sin(2*pi*frequency*t) * w_hat
+%   Trajectory (one-step ahead):
+%       t_next = t + Ts
+%       p_d[k+1] = p0 + amplitude * sin(2*pi*frequency * t_next) * w_hat
 %       Total time = n_cycles / frequency
 %       Returns to p0 after completion
+%
+%   Note: Output is p_d[k+1] (one sample ahead of current time t).
+%         Use a Unit Delay (IC=p0) in Simulink to obtain p_d[k] for recording.
 
     p0 = params.common.p0;
     w_hat = params.wall.w_hat;
+    Ts = params.common.Ts;
 
     amplitude = params.traj.amplitude;
     frequency = params.traj.frequency;
@@ -37,9 +41,12 @@ function p_d = trajectory_generator(t, params)
     % Total trajectory time
     T_total = n_cycles / frequency;
 
-    if t <= T_total
+    % One-step ahead: evaluate trajectory at t + Ts
+    t_next = t + Ts;
+
+    if t_next <= T_total
         omega = 2 * pi * frequency;
-        displacement = amplitude * sin(omega * t);
+        displacement = amplitude * sin(omega * t_next);
         p_d = p0 + displacement * w_hat;
     else
         % After completing all cycles, stay at starting position
