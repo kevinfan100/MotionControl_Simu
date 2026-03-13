@@ -11,7 +11,7 @@
 % - Continuous: Particle dynamics (ODE solver with ZOH inputs)
 
 clear; close all; clc;
-clear motion_control_law;  % Reset persistent variables in controller
+clear motion_control_law trajectory_generator;  % Reset persistent variables
 
 % Resolve project root (one level up from test_script/)
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));

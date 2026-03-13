@@ -1,7 +1,7 @@
-function p_d = trajectory_generator(t, params)
+function [p_d, del_pd] = trajectory_generator(t, params)
 %TRAJECTORY_GENERATOR Generate desired position at time t
 %
-%   p_d = trajectory_generator(t, params)
+%   [p_d, del_pd] = trajectory_generator(t, params)
 %
 %   Generates sinusoidal trajectory along the wall normal direction (w_hat).
 %   The trajectory is defined in h-space (wall-normal distance) but the
@@ -12,7 +12,8 @@ function p_d = trajectory_generator(t, params)
 %       params - Parameter structure from calc_simulation_params
 %
 %   Outputs:
-%       p_d    - Desired position [3x1 vector, um] in world coordinates
+%       p_d    - Desired position p_d[k+1] [3x1 vector, um] in world coordinates
+%       del_pd - Trajectory increment p_d[k+1] - p_d[k] [3x1 vector, um]
 %
 %   Required params fields:
 %       params.common.p0       - Starting position [3x1, um, world coords]
@@ -29,6 +30,8 @@ function p_d = trajectory_generator(t, params)
 %
 %   Note: Output is p_d[k+1] (one sample ahead of current time t).
 %         Use a Unit Delay (IC=p0) in Simulink to obtain p_d[k] for recording.
+
+    persistent p_d_prev
 
     p0 = params.common.p0;
     w_hat = params.wall.w_hat;
@@ -52,4 +55,11 @@ function p_d = trajectory_generator(t, params)
         % After completing all cycles, stay at starting position
         p_d = p0;
     end
+
+    % Compute trajectory increment del_pd = p_d[k+1] - p_d[k]
+    if isempty(p_d_prev)
+        p_d_prev = p0;      % p_d[0] = p0
+    end
+    del_pd = p_d - p_d_prev;
+    p_d_prev = p_d;
 end

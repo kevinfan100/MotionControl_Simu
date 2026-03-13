@@ -5,12 +5,14 @@
 params_const (Bus:ParamsBus, Ts=inf) → [Goto params] → From params_Traj/Ctrl/Thermal/Drag
 Integrator output                    → [Goto p_m]    → From p_m_Ctrl/Thermal/Drag
 
-Clock ────────────┐
-From params_Traj ─┤→ Trajectory_Generator (DISCRETE 1/1600) → p_d ─┬→ p_d_out
-                                                                    │
-p_d ──────────────┐                                                 │
-From p_m_Ctrl ────┤→ Controller (DISCRETE 1/1600) → f_d ───┬→ f_d_out
-From params_Ctrl ─┘                                        │
+Clock ────────────┐                                    ┌→ p_d[k+1] → [Unit Delay IC=p0] → pd[k] ─┬→ p_d_out
+From params_Traj ─┤→ Trajectory_Generator (DISCRETE 1/1600) ─┤                                        │
+                                                              └→ del_pd ─┐                             │
+                                                                         │                             │
+del_pd ──────────┐                                                       │                             │
+pd[k] ───────────┤                                                                                     │
+From p_m_Ctrl ───┤→ Controller (DISCRETE 1/1600) → f_d ───┬→ f_d_out
+From params_Ctrl ┘                                        │
                                                            │
 From p_m_Thermal ────┐                                     │
 From params_Thermal ─┤→ Thermal_Force (DISCRETE 1/1600) → F_th ─┬→ F_th_out
