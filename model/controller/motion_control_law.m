@@ -1,14 +1,14 @@
-function f_d = motion_control_law(p_d, p_m, params)
+function f_d = motion_control_law(pd_A1, p_m, params)
 %MOTION_CONTROL_LAW Discrete-time motion control with EKF estimation
 %
-%   f_d = motion_control_law(p_d, p_m, params)
+%   f_d = motion_control_law(pd_A1, p_m, params)
 %
 %   Implements feedforward trajectory tracking with EKF-based estimation
 %   of wall-effect parameters (lambda, theta) and disturbance rejection.
 %   Reference: Estimation_Control.pdf
 %
 %   Inputs:
-%       p_d    - Desired position p_d[k+1] from trajectory generator [3x1, um]
+%       pd_A1  - Desired position p_d[k+1] from trajectory generator [3x1, um]
 %       p_m    - Measured position p_m[k] [3x1, um]
 %       params - Parameter structure from calc_simulation_params
 %
@@ -30,13 +30,11 @@ function f_d = motion_control_law(p_d, p_m, params)
     persistent lamda_hat del_lamda_hat                                  % Drag ratio [k]
     persistent theta_hat del_theta_hat                                  % Wall orient. [k]
     persistent del_p1_hat del_p2_hat del_p3_hat d_hat del_d_hat        % World copies [k]
-    persistent pd_prev pd_k1 pd_k2                                     % Delay buffers
+    persistent pd pd_k1 pd_k2                                          % Delay buffers
     persistent del_pmd_k1 del_pmrd_k1                                  % EMA states [k-1]
     persistent P_f H R                                                 % Kalman filter
 
-    %% ================================================================
     %% Part 0: Parameters & Initialization
-    %% ================================================================
     if isempty(initialized)
         initialized = true;
         k_step = 0;
@@ -63,10 +61,10 @@ function f_d = motion_control_law(p_d, p_m, params)
         del_p1_hat = zeros(3,1); del_p2_hat = zeros(3,1); del_p3_hat = zeros(3,1);
         d_hat = zeros(3,1); del_d_hat = zeros(3,1);
 
-        % 0D. Delay buffers
-        pd_prev = p_d;    % p_d[k] for delta_pd (init to first input)
-        pd_k1   = p_d;    % p_d[k-1]
-        pd_k2   = p_d;    % p_d[k-2]
+        % 0D. Delay buffers (init all to first input)
+        pd      = pd_A1;  % p_d[k]
+        pd_k1   = pd_A1;  % p_d[k-1]
+        pd_k2   = pd_A1;  % p_d[k-2]
 
         % 0E. EMA states (PDF p.2: delta_pmd[k-1]=0, delta_pmr[k-1]=0)
         del_pmd_k1  = zeros(3,1);   % delta_pmd[k-1]
@@ -91,11 +89,9 @@ function f_d = motion_control_law(p_d, p_m, params)
     end
 
     k_step = k_step + 1;
-    % NOTE: p_d = p_d[k+1], pd_prev = p_d[k], p_m = p_m[k]
+    % NOTE: pd_A1 = p_d[k+1], pd = p_d[k], p_m = p_m[k]
 
-    %% ================================================================
     %% Part 1: Measurement Processing
-    %% ================================================================
 
     % 1A. 2-step delay position error (world frame)
     del_pm = pd_k2 - p_m;                          % p_d[k-2] - p_m[k]
@@ -105,9 +101,9 @@ function f_d = motion_control_law(p_d, p_m, params)
 
     % 1C. EMA decomposition (world frame, 3 layers)
     del_pmd   = (1 - a_pd)  * del_pmd_k1  + a_pd  * del_pm;    % Deterministic
-    del_pmr_k = del_pm - del_pmd;                                % Random
-    del_pmrd  = (1 - a_prd) * del_pmrd_k1 + a_prd * del_pmr_k; % Random-deterministic
-    del_pmrr  = del_pmr_k - del_pmrd;                            % Residual
+    del_pmr = del_pm - del_pmd;                                % Random
+    del_pmrd  = (1 - a_prd) * del_pmrd_k1 + a_prd * del_pmr; % Random-deterministic
+    del_pmrr  = del_pmr - del_pmrd;                            % Residual
 
     % 1D. Normalized residual
     del_pnr  = (1 / g_cov) * del_pmrr;             % world frame
@@ -126,9 +122,7 @@ function f_d = motion_control_law(p_d, p_m, params)
                                        -del_wnr*del_unr / del_lamda_m];
     end
 
-    %% ================================================================
     %% Part 2: EKF Update
-    %% ================================================================
 
     % 2A. Innovation errors (wall frame for position, scalar for lambda/theta)
     err_p     = V_del_pm - V_del_p1_hat;            % 3x1
@@ -157,9 +151,7 @@ function f_d = motion_control_law(p_d, p_m, params)
     % 2D. Posterior covariance
     P = (eye(23) - L * H) * P_f;
 
-    %% ================================================================
     %% Part 3: Coordinate Update & Control Law (NO persistent writes)
-    %% ================================================================
 
     % 3A. World-frame copies (using current V[k])
     del_p1_hat_kA1 = V * V_del_p1_hat_kA1;
@@ -182,7 +174,7 @@ function f_d = motion_control_law(p_d, p_m, params)
     V_del_d_hat_new  = V_T_new * del_d_hat_kA1;
 
     % 3D. Control law (PDF p.3, all [k+1] values via temps)
-    delta_pd = p_d - pd_prev;                       % p_d[k+1] - p_d[k], world frame
+    delta_pd = pd_A1 - pd;                           % p_d[k+1] - p_d[k], world frame
     V_del_pd = V_T_new * delta_pd;                  % wall frame (new V)
 
     del_u = (1/lamda_hat_kA1(1)) * (V_del_pd(1) + (1-lambda_c)*V_del_p3_hat_new(1) - V_d_hat_new(1));
@@ -195,9 +187,7 @@ function f_d = motion_control_law(p_d, p_m, params)
 
     f_d = V_new * [fu; fv; fw];                     % world frame output
 
-    %% ================================================================
     %% Part 4: State Iteration + ALL Persistent Shifts
-    %% ================================================================
 
     % 4A. Build G_lamda, G_theta (PDF p.6, uses [k+1] lamda_hat)
     del_lamda_hat_scalar = lamda_hat_kA1(1) - lamda_hat_kA1(2);
@@ -239,9 +229,7 @@ function f_d = motion_control_law(p_d, p_m, params)
     % 4D. Forecast covariance
     P_f = F * P * F' + Q;
 
-    %% ============================================================
     %% 4E. ALL persistent shifts (single location for all updates)
-    %% ============================================================
 
     % Rotation
     V = V_new;  V_T = V_T_new;
@@ -267,12 +255,12 @@ function f_d = motion_control_law(p_d, p_m, params)
     del_d_hat  = del_d_hat_kA1;
 
     % Delay buffers
-    pd_k2   = pd_k1;
-    pd_k1   = pd_prev;
-    pd_prev = p_d;              % p_d input is p_d[k+1], becomes p_d[k] for next step
+    pd_k2 = pd_k1;
+    pd_k1 = pd;
+    pd    = pd_A1;              % p_d[k+1] becomes p_d[k] for next step
 
     % EMA states
     del_pmd_k1  = del_pmd;      % delta_pmd[k-1] <- current delta_pmd[k]
-    del_pmrd_k1 = del_pmr_k;    % delta_pmr[k-1] <- current delta_pmr[k]
+    del_pmrd_k1 = del_pmr;    % delta_pmr[k-1] <- current delta_pmr[k]
 
 end
