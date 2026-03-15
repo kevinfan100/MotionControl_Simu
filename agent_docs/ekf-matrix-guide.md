@@ -527,52 +527,52 @@ Code reference: `model/controller/motion_control_law.m`
 ```
 輸入：del_pd (= p_d[k+1]-p_d[k]), pd (= p_d[k]), p_m (= p_m[k])
 
- [1] 座標轉換  (L104-105)
+ [1] 座標轉換  (L108-109)
      V_del_pd = V_T * del_pd
      Uses persistent V_T[k]
 
- [2] 控制律  (L107-116, Section 10)
+ [2] 控制律  (L111-120, Section 10)
      del_u/v/w -> fu/fv/fw -> f_d = V * [fu;fv;fw]
      Uses persistent [k]: lamda_hat, V_del_p3_hat, V_d_hat, V
 
- [3] 量測處理  (L118-147, Section 11)
-     [3a] del_pm = pd_k2 - p_m                          (L121)
-     [3b] V_del_pm = V_T * del_pm                       (L124)
-     [3c] EMA: del_pmd -> del_pmr -> del_pmrd -> del_pmrr  (L127-130)
-     [3d] del_pnr -> V_del_nr -> del_unr/vnr/wnr        (L133-135)
-     [3e] lamda_m                                        (L138)
-     [3f] theta_m (epsilon threshold)                    (L141-147)
+ [3] 量測處理  (L122-151, Section 11)
+     [3a] del_pm = pd_k2 - p_m                          (L125)
+     [3b] V_del_pm = V_T * del_pm                       (L128)
+     [3c] EMA: del_pmd -> del_pmr -> del_pmrd -> del_pmrr  (L131-134)
+     [3d] del_pnr -> V_del_nr -> del_unr/vnr/wnr        (L137-139)
+     [3e] lamda_m                                        (L142)
+     [3f] theta_m (epsilon threshold)                    (L145-151)
 
- [4] 誤差信號  (L149-153, Section 12)
+ [4] 誤差信號  (L154-157, Section 12)
      err_p, err_lamda, err_theta -> err (7x1)
 
- [5] Kalman Gain  (L155-160, Section 14.3)
+ [5] Kalman Gain  (L160-164, Section 14.3)
      Pf_HT -> HPf_HT -> G -> L (23x7)
 
- [6] 狀態更新  (L162-180, Section 13)
-     [6a] 9 groups wall frame: *_kA1 variables          (L165-173)
-     [6b] World frame: del_p*_hat_kA1 = V * V_del_*     (L176-180)
+ [6] 狀態更新  (L166-184, Section 13)
+     [6a] 9 groups wall frame: *_kA1 variables          (L169-177)
+     [6b] World frame: del_p*_hat_kA1 = V * V_del_*     (L180-184)
 
- [7] 後驗協方差  (L182-183, Section 14.1)
+ [7] 後驗協方差  (L186-187, Section 14.1)
      P = (I - L*H) * Pf
 
- [8] F[k] 更新  (L185-209, Section 16)
+ [8] F[k] 更新  (L189-218, Section 16)
      del_lamda_hat_scalar from lamda_hat_kA1 (updated)
      G_lamda, G_theta use del_u/v/w from Step [2]
      F (23x23)
 
- [9] Q[k] 更新  (L211-222, Section 8)
+ [9] Q[k] 更新  (L222-231, Section 8)
      Uses lamda_hat_kA1 (updated)
      Q33, Q66 -> Q (23x23)
 
-[10] 先驗預測  (L224-225, Section 14.2)
+[10] 先驗預測  (L233-234, Section 14.2)
      Pf = F * P * F' + Q
 
-[11] V[k] 更新 & 狀態重投影  (L227-240, Section 15, 13.3)
-     [11a] V_new, V_T_new from theta_hat_kA1            (L230-233)
-     [11b] Re-project: V_del_*_new = V_T_new * del_*_kA1  (L236-240)
+[11] V[k] 更新 & 狀態重投影  (L236-251, Section 15, 13.3)
+     [11a] V_new, V_T_new from theta_hat_kA1            (L239-243)
+     [11b] Re-project: V_del_*_new = V_T_new * del_*_kA1  (L247-251)
 
-Persistent Shifts  (L242-273)
+Persistent Shifts  (L253-284)
      V, V_T, wall-frame states, scalar states, world copies,
      delay buffers (pd_k1/k2), EMA states (del_pmd_k1, del_pmrd_k1)
 ```
