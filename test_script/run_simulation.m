@@ -155,11 +155,14 @@ if is_closed_loop
     theta_hat_log = ekf_log(3:4, :);       % [2 x N] [theta_x; theta_y]
 
     % True lambda from known geometry
+    % lambda = 1/c (mobility factor): lambda_T = 1/c_para, lambda_N = 1/c_perp
+    % This matches the EKF convention where control law uses 1/lambda_hat
+    % to compute the drag-compensated position increment.
     lambda_true_log = zeros(2, N_discrete);
     for i = 1:N_discrete
         h_val = (p_m_log(:,i)' * w_hat - pz_wall) / R;
         [c_para_i, c_perp_i] = calc_correction_functions(h_val);
-        lambda_true_log(:, i) = [c_para_i; c_perp_i];
+        lambda_true_log(:, i) = [1/c_para_i; 1/c_perp_i];
     end
 end
 
