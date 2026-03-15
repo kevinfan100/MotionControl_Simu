@@ -33,7 +33,7 @@ function f_d = motion_control_law(del_pd, pd, p_m, params)
     persistent del_p1_hat del_p2_hat del_p3_hat d_hat del_d_hat        % World copies [k]
     persistent pd_k1 pd_k2                                              % Delay buffers
     persistent del_pmd_k1 del_pmrd_k1                                  % EMA states [k-1]
-    persistent P_f H R                                                 % Kalman filter
+    persistent Pf H R                                                  % Kalman filter
 
     %% Part 0: Parameters & Initialization
     if isempty(initialized)
@@ -76,7 +76,7 @@ function f_d = motion_control_law(del_pd, pd, p_m, params)
         H(4:5, 16:17) = eye(2);     % selects lambda
         H(6:7, 20:21) = eye(2);     % selects theta
 
-        P_f = 10 * eye(23);         % Large initial uncertainty
+        Pf = 10 * eye(23);          % Large initial uncertainty
 
         g2_cov = g_cov * g_cov;
         R = zeros(7,7);
@@ -132,10 +132,10 @@ function f_d = motion_control_law(del_pd, pd, p_m, params)
 
     % 2B. Kalman gain (exploiting H's sparse structure, PDF p.5)
     idx_obs = [1:3, 16:17, 20:21];
-    P_f_HT  = P_f(:, idx_obs);                      % 23x7  (= P_f * H')
-    HP_f_HT = P_f(idx_obs, idx_obs);                % 7x7   (= H * P_f * H')
-    G       = inv(HP_f_HT + R);                      % 7x7
-    L       = P_f_HT * G;                           % 23x7
+    Pf_HT   = Pf(:, idx_obs);                        % 23x7  (= Pf * H')
+    HPf_HT  = Pf(idx_obs, idx_obs);                 % 7x7   (= H * Pf * H')
+    G       = inv(HPf_HT + R);                       % 7x7
+    L       = Pf_HT * G;                            % 23x7
 
     % 2C. State update: [k] -> [k+1] (PDF p.5, stored as _kA1)
     V_del_p1_hat_kA1  = V_del_p2_hat                    + L(1:3,:)   * err;
@@ -149,7 +149,7 @@ function f_d = motion_control_law(del_pd, pd, p_m, params)
     del_theta_hat_kA1 = del_theta_hat                    + L(22:23,:) * err;
 
     % 2D. Posterior covariance
-    P = (eye(23) - L * H) * P_f;
+    P = (eye(23) - L * H) * Pf;
 
     %% Part 3: Coordinate Update & Control Law (NO persistent writes)
 
@@ -226,7 +226,7 @@ function f_d = motion_control_law(del_pd, pd, p_m, params)
     Q(22:23, 22:23) = 0.01 * Q66;    % placeholder (PDF: Q99 = ?)
 
     % 4D. Forecast covariance
-    P_f = F * P * F' + Q;
+    Pf = F * P * F' + Q;
 
     %% 4E. ALL persistent shifts (single location for all updates)
 
