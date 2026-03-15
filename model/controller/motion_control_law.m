@@ -1,7 +1,7 @@
-function f_d = motion_control_law(del_pd, pd, p_m, params)
+function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
 %MOTION_CONTROL_LAW Discrete-time motion control with EKF estimation
 %
-%   f_d = motion_control_law(del_pd, pd, p_m, params)
+%   [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
 %
 %   Implements feedforward trajectory tracking with EKF-based estimation
 %   of wall-effect parameters (lambda, theta) and disturbance rejection.
@@ -20,11 +20,13 @@ function f_d = motion_control_law(del_pd, pd, p_m, params)
 %       params - Parameter structure from calc_simulation_params
 %
 %   Outputs:
-%       f_d    - Control force f_d[k] [3x1, pN]
+%       f_d     - Control force f_d[k] [3x1, pN]
+%       ekf_out - EKF diagnostic [4x1]: [lamda_hat(2x1); theta_hat(2x1)]
 
     % Check if control is enabled
     if params.ctrl.enable < 0.5
         f_d = zeros(3, 1);
+        ekf_out = [1; 1; 0; 0];     % lamda_hat=[1;1], theta_hat=[0;0]
         return;
     end
 
@@ -96,6 +98,7 @@ function f_d = motion_control_law(del_pd, pd, p_m, params)
         err = zeros(7,1);
 
         f_d = zeros(3,1);
+        ekf_out = [1; 1; 0; 0];     % lamda_hat=[1;1], theta_hat=[0;0]
         return;
     end
 
@@ -282,5 +285,8 @@ function f_d = motion_control_law(del_pd, pd, p_m, params)
     % EMA states
     del_pmd_k1  = del_pmd;            % delta_pmd[k-1] <- delta_pmd[k]
     del_pmrd_k1 = del_pmr;            % delta_pmr[k-1] <- delta_pmr[k]
+
+    % EKF diagnostic output (updated posterior values)
+    ekf_out = [lamda_hat; theta_hat];  % 4x1: [lamda_para; lamda_perp; theta_x; theta_y]
 
 end
