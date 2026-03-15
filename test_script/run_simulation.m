@@ -1,25 +1,16 @@
 %% run_simulation.m - Main Simulation Script
 %
-% This script runs the complete motion control simulation including:
-% - Trajectory generation
-% - Control force computation
-% - Thermal force disturbance
-% - Particle dynamics with Wall Effect
-%
-% The simulation uses a hybrid discrete-continuous approach:
-% - Discrete: Trajectory, Controller, Thermal Force (Ts = 1/1600 sec)
-% - Continuous: Particle dynamics (ODE solver with ZOH inputs)
+% Runs the complete motion control simulation with thesis-style visualization.
 
 clear; close all; clc;
-clear motion_control_law trajectory_generator;  % Reset persistent variables
+clear motion_control_law trajectory_generator;
 
-% Resolve project root (one level up from test_script/)
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
 project_root = fileparts(script_dir);
 cd(project_root);
+
 %% SECTION 1: Load Defaults and Override Parameters
 
-% Add paths (relative to project root)
 addpath(fullfile(project_root, 'model'));
 addpath(fullfile(project_root, 'model', 'config'));
 addpath(fullfile(project_root, 'model', 'wall_effect'));
@@ -27,53 +18,72 @@ addpath(fullfile(project_root, 'model', 'thermal_force'));
 addpath(fullfile(project_root, 'model', 'trajectory'));
 addpath(fullfile(project_root, 'model', 'controller'));
 
-% Load defaults from user_config(), then override for this test
 config = user_config();
 
-% --- Overrides for this simulation run ---
-config.h_min = 1 * 2.25;           % Minimum safe distance [um]
-config.amplitude = 2.5;            % Oscillation amplitude in h direction [um]
-config.lambda_c = 0.4;             % Closed-loop pole
-config.meas_noise_std = [0.00062; 0.000057; 0.00331];  % Measurement noise std [um]
+% --- Wall Geometry ---
+config.theta = 0;                    % Wall azimuth angle [deg]
+config.phi   = 0;                    % Wall elevation angle [deg]
+config.pz    = 0;                    % Wall displacement along w_hat [um]
+config.h_min = 1.1 * 2.25;           % Minimum safe distance [um]
 
-% Auto-calculate simulation time based on trajectory
-T_margin = 0.3;                    % Buffer time after trajectory completes [sec]
+% --- Trajectory ---
+config.h_init    = 5;                % Initial distance from wall [um]
+config.amplitude = 2.5;              % Oscillation amplitude [um]
+config.frequency = 1;                % Oscillation frequency [Hz]
+config.n_cycles  = 3;                % Number of cycles
+
+% --- Controller ---
+config.ctrl_enable = true;           % Enable closed-loop control
+config.lambda_c = 0.7;              % Closed-loop pole (0 < lambda_c < 1)
+config.a_pd  = 0.1;                 % EMA: deterministic smoothing
+config.a_prd = 0.1;                 % EMA: random-deterministic smoothing
+config.a_cov = 0.1;                 % EMA: covariance smoothing
+config.epsilon = 0.01;              % Anisotropy threshold for theta_m
+
+% --- Measurement Noise ---
+config.meas_noise_enable = true;
+config.meas_noise_std = [0.00062; 0.000057; 0.00331];  % [um]
+
+% --- Thermal Force ---
+config.thermal_enable = true;
+
+% --- Simulation Time ---
+T_margin = 0.3;
 T_traj = config.n_cycles / config.frequency;
 config.T_sim = T_traj + T_margin;
+T_sim = config.T_sim;
 
-% === Analysis Parameters (not part of Simulink params) ===
-openloop_cutoff_freq = 5;          % Deterministic/Random cutoff frequency [Hz]
+% --- Analysis Parameters ---
+openloop_cutoff_freq = 5;            % Deterministic/Random cutoff [Hz]
 
-% === Figure Style Settings ===
-colors = [
-    0.0000, 0.4470, 0.7410;  % Blue
-    0.8500, 0.3250, 0.0980;  % Orange
-    0.9290, 0.6940, 0.1250;  % Yellow
-    0.4940, 0.1840, 0.5560;  % Purple
-    0.4660, 0.6740, 0.1880;  % Green
-    0.3010, 0.7450, 0.9330;  % Cyan
-];
-axis_linewidth = 1.5;
-xlabel_fontsize = 14;
-ylabel_fontsize = 14;
-title_fontsize = 15;
-tick_fontsize = 12;
-legend_fontsize = 11;
-line_width_main = 3.0;
-line_width_ref = 2.5;
+% --- Thesis Figure Style ---
+AXIS_LW = 3.0;
+FONT_SIZE = 32;
+LEGEND_FS = 24;
+LINE_REF = 4;                       % Reference/true/desired
+LINE_OUT = 3;                       % Output/estimated/error
+COL_REF = [0.0 0.6 0.0];            % Green
+COL_OUT = [0.8 0.0 0.0];            % Red
+COL_ERR = [0.0 0.2 0.8];            % Blue
+
+% Export style (scaled for traditional figures)
+EXP_FS = 18;
+EXP_LW = 2.0;
+EXP_LFS = 14;
+EXP_LR = 3;
+EXP_LO = 2;
 
 %% SECTION 2: Calculate Parameters
 
-% Calculate simulation parameters
 params = calc_simulation_params(config);
 
 %% SECTION 3: Extract Initial Position and Safety Check
+
 p0 = params.Value.common.p0;
 
 fprintf('Initial position: [%.3f, %.3f, %.3f] um\n', p0);
 fprintf('Initial h/R: %.2f\n', (dot(p0, params.Value.wall.w_hat) - params.Value.wall.pz) / params.Value.common.R);
 
-% Safety check
 [is_safe, h_min_actual, t_critical] = check_trajectory_safety(params.Value);
 
 if ~is_safe
@@ -83,445 +93,591 @@ if ~is_safe
 end
 
 %% SECTION 4: Run Simulation
+
 fprintf('\nStarting simulation...\n');
+is_closed_loop = params.Value.ctrl.enable > 0.5;
+is_thermal = params.Value.thermal.enable > 0.5;
+
 ctrl_mode_str = 'Open-loop';
-if params.Value.ctrl.enable > 0.5
-    ctrl_mode_str = 'Closed-loop';
-end
+if is_closed_loop; ctrl_mode_str = 'Closed-loop'; end
 thermal_str = 'Disabled';
-if params.Value.thermal.enable > 0.5
-    thermal_str = 'Enabled';
-end
+if is_thermal; thermal_str = 'Enabled'; end
 traj_type_str = 'sine (along w_hat)';
+
 fprintf('  Mode: %s\n', ctrl_mode_str);
 fprintf('  Thermal: %s\n', thermal_str);
 fprintf('  Trajectory: %s\n', traj_type_str);
 fprintf('  Duration: %.1f sec\n', T_sim);
 
-% Assign parameters to base workspace for Simulink
 assignin('base', 'params', params);
 assignin('base', 'p0', p0);
-assignin('base', 'Ts', params.Value.common.Ts);  % For Simulink block sample times
+assignin('base', 'Ts', params.Value.common.Ts);
 
-% Run Simulink model
-% Note: Random seed for thermal force is set in params.thermal.seed
 simOut = sim(fullfile(project_root, 'model', 'system_model'), 'StopTime', num2str(T_sim), ...
     'SaveTime', 'on', 'TimeSaveName', 'tout', ...
     'SaveOutput', 'on', 'OutputSaveName', 'yout');
 
-% Extract results from simulation output
-% Use discrete time axis based on controller sample rate (Ts)
-% p_d, f_d, f_th are discrete outputs (sampled at Ts)
-% p_m is continuous output (needs to be resampled at discrete time points)
-
+% --- Data Extraction ---
 Ts = params.Value.common.Ts;
 N_discrete = size(simOut.p_d_out, 1);
 t_sample = (0:(N_discrete-1)) * Ts;
 
-% Extract discrete outputs [N x 3] -> [3 x N]
 p_d_log = simOut.p_d_out';
 f_d_log = simOut.f_d_out';
 f_th_log = simOut.f_th_out';
 
-% Resample continuous p_m at discrete time points
 t_cont = simOut.tout;
 p_m_cont = simOut.p_m_out;
 p_m_log = zeros(3, N_discrete);
-
 for i = 1:N_discrete
     [~, idx] = min(abs(t_cont - t_sample(i)));
     p_m_log(:, i) = p_m_cont(idx, :)';
 end
 
-% Calculate h_bar from p_m
 w_hat = params.Value.wall.w_hat;
+u_hat = params.Value.wall.u_hat;
+v_hat = params.Value.wall.v_hat;
 pz_wall = params.Value.wall.pz;
 R = params.Value.common.R;
+
 h_bar_log = (p_m_log' * w_hat - pz_wall) / R;
 h_bar_log = h_bar_log';
 
-% Calculate tracking error
-error = vecnorm(p_m_log - p_d_log, 2, 1);
+error_x = (p_m_log(1,:) - p_d_log(1,:)) * 1000;  % nm
+error_y = (p_m_log(2,:) - p_d_log(2,:)) * 1000;
+error_z = (p_m_log(3,:) - p_d_log(3,:)) * 1000;
+error_3d = vecnorm(p_m_log - p_d_log, 2, 1);
+
+% EKF diagnostic extraction (closed-loop only)
+if is_closed_loop
+    ekf_log = simOut.ekf_out';             % [4 x N]
+    lamda_hat_log = ekf_log(1:2, :);       % [2 x N] [para; perp]
+    theta_hat_log = ekf_log(3:4, :);       % [2 x N] [theta_x; theta_y]
+
+    % True lambda from known geometry
+    lambda_true_log = zeros(2, N_discrete);
+    for i = 1:N_discrete
+        h_val = (p_m_log(:,i)' * w_hat - pz_wall) / R;
+        [c_para_i, c_perp_i] = calc_correction_functions(h_val);
+        lambda_true_log(:, i) = [c_para_i; c_perp_i];
+    end
+end
 
 N_samples = length(t_sample);
-
 fprintf('Simulation completed.\n');
 
 %% SECTION 5: Results Visualization (Tabbed Figure)
+
 fprintf('\nGenerating figures...\n');
 
-% Create tabbed figure
-fig = uifigure('Name', 'Simulation Results', 'Position', [100 100 1200 800]);
+fig = uifigure('Name', 'Simulation Results', 'Position', [100 100 1400 900]);
 tabgroup = uitabgroup(fig);
 tabgroup.Units = 'normalized';
 tabgroup.Position = [0 0 1 1];
+
+fig_w = 1400; fig_h = 900;
+plot_left = 0.18 * fig_w;
+plot_w = 0.72 * fig_w;
+
+% 2x1 layout positions
+plot_h2 = 0.30 * fig_h;
+pos_2x1 = {[plot_left, 0.58*fig_h, plot_w, plot_h2], ...
+            [plot_left, 0.12*fig_h, plot_w, plot_h2]};
+
+% 3x1 layout positions
+plot_h3 = 0.22 * fig_h;
+pos_3x1 = {[plot_left, 0.70*fig_h, plot_w, plot_h3], ...
+            [plot_left, 0.40*fig_h, plot_w, plot_h3], ...
+            [plot_left, 0.08*fig_h, plot_w, plot_h3]};
 
 % ==================== Tab 1: 3D Trajectory ====================
 tab1 = uitab(tabgroup, 'Title', '3D Trajectory');
 ax1 = uiaxes(tab1);
 ax1.Units = 'normalized';
-ax1.Position = [0.08 0.10 0.88 0.82];
+ax1.Position = [0.10 0.08 0.85 0.84];
 
-plot3(ax1, p_d_log(1, :), p_d_log(2, :), p_d_log(3, :), 'b-', 'LineWidth', line_width_main);
+plot3(ax1, p_d_log(1,:), p_d_log(2,:), p_d_log(3,:), '-', 'Color', COL_REF, 'LineWidth', LINE_REF);
 hold(ax1, 'on');
-plot3(ax1, p_m_log(1, :), p_m_log(2, :), p_m_log(3, :), 'r--', 'LineWidth', line_width_ref);
-plot3(ax1, p0(1), p0(2), p0(3), 'go', 'MarkerSize', 12, 'MarkerFaceColor', 'g', 'LineWidth', 2);
+plot3(ax1, p_m_log(1,:), p_m_log(2,:), p_m_log(3,:), '-', 'Color', COL_OUT, 'LineWidth', LINE_OUT);
+plot3(ax1, p0(1), p0(2), p0(3), 'ko', 'MarkerSize', 12, 'MarkerFaceColor', 'k', 'LineWidth', 2);
 
-% --- Add wall plane visualization ---
-w_hat = params.Value.wall.w_hat;
-u_hat = params.Value.wall.u_hat;
-v_hat = params.Value.wall.v_hat;
-pz_wall = params.Value.wall.pz;
-
-% Wall center point
+% Wall plane
 wall_center = pz_wall * w_hat;
-
-% Calculate plane size based on trajectory bounding box
 all_pos = [p_d_log, p_m_log];
 traj_range = max([range(all_pos(1,:)), range(all_pos(2,:)), range(all_pos(3,:))]);
-plane_size = max(traj_range * 1.5, 10);  % At least 10 um
-
-% Wall plane corners (in u-v plane centered at wall_center)
+plane_size = max(traj_range * 1.5, 10);
 corners = [
     wall_center + plane_size/2 * u_hat + plane_size/2 * v_hat, ...
     wall_center - plane_size/2 * u_hat + plane_size/2 * v_hat, ...
     wall_center - plane_size/2 * u_hat - plane_size/2 * v_hat, ...
     wall_center + plane_size/2 * u_hat - plane_size/2 * v_hat ...
 ];
-
-% Draw wall plane (semi-transparent gray)
 fill3(ax1, corners(1,:), corners(2,:), corners(3,:), ...
     [0.7 0.7 0.7], 'FaceAlpha', 0.3, 'EdgeColor', [0.4 0.4 0.4], 'LineWidth', 1.5);
 hold(ax1, 'off');
 
-legend(ax1, {'p_d (desired)', 'p_m (measured)', 'Start', 'Wall'}, ...
-    'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
-xlabel(ax1, 'x [um]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax1, 'y [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-zlabel(ax1, 'z [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax1, sprintf('3D Trajectory (%s)', traj_type_str), 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax1.LineWidth = axis_linewidth;
-ax1.FontSize = tick_fontsize;
-ax1.FontWeight = 'bold';
-ax1.Box = 'on';
-grid(ax1, 'on');
-view(ax1, 30, 30);
-axis(ax1, 'equal');
-
+legend(ax1, {'p_d', 'p_m', 'Start', 'Wall'}, ...
+    'Location', 'best', 'FontSize', LEGEND_FS, 'FontWeight', 'bold');
+xlabel(ax1, 'x (um)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+ylabel(ax1, 'y (um)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+zlabel(ax1, 'z (um)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+set(ax1, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+ax1.Box = 'on'; grid(ax1, 'off');
+view(ax1, 30, 30); axis(ax1, 'equal');
 fprintf('  Tab 1: 3D Trajectory\n');
 
-% ==================== Tab 2: X-Axis Analysis ====================
-tab2 = uitab(tabgroup, 'Title', 'X-Axis Analysis');
+% ==================== Tabs 2-4: X/Y/Z Axis (2x1) ====================
+axis_names = {'X', 'Y', 'Z'};
+axis_errors = {error_x, error_y, error_z};
 
-% Calculate X-axis error in nm (use p_m_log for controller's perspective)
-error_x = (p_m_log(1, :) - p_d_log(1, :)) * 1000;
+for ai = 1:3
+    tab_ax = uitab(tabgroup, 'Title', sprintf('%s-Axis', axis_names{ai}));
 
-% Subplot positions [left bottom width height]
-pos_top = [0.10 0.70 0.85 0.25];
-pos_mid = [0.10 0.40 0.85 0.25];
-pos_bot = [0.10 0.08 0.85 0.25];
+    % Top: overlay tracking
+    ax_top = uiaxes(tab_ax, 'Position', pos_2x1{1});
+    ax_top.PositionConstraint = 'innerposition';
+    plot(ax_top, t_sample, p_d_log(ai,:), '-', 'Color', COL_REF, 'LineWidth', LINE_REF);
+    hold(ax_top, 'on');
+    plot(ax_top, t_sample, p_m_log(ai,:), '-', 'Color', COL_OUT, 'LineWidth', LINE_OUT);
+    hold(ax_top, 'off');
+    legend(ax_top, {'Reference', 'Measured'}, ...
+        'Location', 'northoutside', 'Orientation', 'horizontal', ...
+        'FontSize', LEGEND_FS, 'FontWeight', 'bold');
+    ylabel(ax_top, 'Position (um)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+    set(ax_top, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+    ax_top.Box = 'on'; grid(ax_top, 'off'); axis(ax_top, 'tight');
+    ax_top.XTickLabel = [];
 
-% --- Subplot 1: X Position Tracking ---
-ax2_pos = uiaxes(tab2, 'Position', [pos_top(1)*1200, pos_top(2)*800, pos_top(3)*1200, pos_top(4)*800]);
-plot(ax2_pos, t_sample, p_m_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
-hold(ax2_pos, 'on');
-plot(ax2_pos, t_sample, p_d_log(1, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_ref);
-hold(ax2_pos, 'off');
-legend(ax2_pos, {'p_{m,x}', 'p_{d,x}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
-ylabel(ax2_pos, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax2_pos, 'X-Axis Position Tracking', 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax2_pos.LineWidth = axis_linewidth; ax2_pos.FontSize = tick_fontsize; ax2_pos.FontWeight = 'bold';
-ax2_pos.Box = 'on'; grid(ax2_pos, 'on');
-ax2_pos.XTickLabel = [];
+    % Bottom: error
+    ax_bot = uiaxes(tab_ax, 'Position', pos_2x1{2});
+    ax_bot.PositionConstraint = 'innerposition';
+    plot(ax_bot, t_sample, axis_errors{ai}, '-', 'Color', COL_ERR, 'LineWidth', LINE_OUT);
+    xlabel(ax_bot, 'Time (sec)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+    ylabel(ax_bot, 'Error (nm)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+    title(ax_bot, sprintf('%s-Axis Tracking Error', axis_names{ai}), ...
+        'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+    set(ax_bot, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+    ax_bot.Box = 'on'; grid(ax_bot, 'off'); axis(ax_bot, 'tight');
 
-% --- Subplot 2: X Tracking Error ---
-ax2_err = uiaxes(tab2, 'Position', [pos_mid(1)*1200, pos_mid(2)*800, pos_mid(3)*1200, pos_mid(4)*800]);
-plot(ax2_err, t_sample, error_x, 'k-', 'LineWidth', line_width_main);
-ylabel(ax2_err, 'e_x [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax2_err, 'X-Axis Error (Controller View)', 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax2_err.LineWidth = axis_linewidth; ax2_err.FontSize = tick_fontsize; ax2_err.FontWeight = 'bold';
-ax2_err.Box = 'on'; grid(ax2_err, 'on');
-ax2_err.XTickLabel = [];
+    fprintf('  Tab %d: %s-Axis\n', ai+1, axis_names{ai});
+end
 
-% --- Subplot 3: X Control Force ---
-ax2_force = uiaxes(tab2, 'Position', [pos_bot(1)*1200, pos_bot(2)*800, pos_bot(3)*1200, pos_bot(4)*800]);
-plot(ax2_force, t_sample, f_d_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
-xlabel(ax2_force, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax2_force, 'f_x [pN]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax2_force, 'X-Axis Control Force', 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax2_force.LineWidth = axis_linewidth; ax2_force.FontSize = tick_fontsize; ax2_force.FontWeight = 'bold';
-ax2_force.Box = 'on'; grid(ax2_force, 'on');
+% ==================== Tab 5: Control Force (3x1) ====================
+tab5 = uitab(tabgroup, 'Title', 'Control Force');
+force_labels = {'f_x (pN)', 'f_y (pN)', 'f_z (pN)'};
 
-% Link X axes
-linkaxes([ax2_pos, ax2_err, ax2_force], 'x');
+for fi = 1:3
+    ax_f = uiaxes(tab5, 'Position', pos_3x1{fi});
+    ax_f.PositionConstraint = 'innerposition';
+    plot(ax_f, t_sample, f_d_log(fi,:), '-', 'Color', COL_ERR, 'LineWidth', LINE_OUT);
+    ylabel(ax_f, force_labels{fi}, 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+    set(ax_f, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+    ax_f.Box = 'on'; grid(ax_f, 'off'); axis(ax_f, 'tight');
+    if fi == 1
+        title(ax_f, sprintf('Control Force (%s)', ctrl_mode_str), ...
+            'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+    end
+    if fi < 3; ax_f.XTickLabel = []; end
+    if fi == 3
+        xlabel(ax_f, 'Time (sec)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+    end
+end
+fprintf('  Tab 5: Control Force\n');
 
-fprintf('  Tab 2: X-Axis Analysis\n');
+% ==================== Closed-loop Tabs (6-8) ====================
+if is_closed_loop
+    % --- Tab 6: Lambda Estimation ---
+    tab6 = uitab(tabgroup, 'Title', 'Lambda Est.');
+    lam_labels = {'c_{para}', 'c_{perp}'};
+    for li = 1:2
+        ax_l = uiaxes(tab6, 'Position', pos_2x1{li});
+        ax_l.PositionConstraint = 'innerposition';
+        plot(ax_l, t_sample, lambda_true_log(li,:), '-', 'Color', COL_REF, 'LineWidth', LINE_REF);
+        hold(ax_l, 'on');
+        plot(ax_l, t_sample, lamda_hat_log(li,:), '-', 'Color', COL_OUT, 'LineWidth', LINE_OUT);
+        hold(ax_l, 'off');
+        legend(ax_l, {'True', 'Estimated'}, ...
+            'Location', 'northoutside', 'Orientation', 'horizontal', ...
+            'FontSize', LEGEND_FS, 'FontWeight', 'bold');
+        ylabel(ax_l, lam_labels{li}, 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+        set(ax_l, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+        ax_l.Box = 'on'; grid(ax_l, 'off'); axis(ax_l, 'tight');
+        if li == 1; ax_l.XTickLabel = []; end
+        if li == 2
+            xlabel(ax_l, 'Time (sec)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+        end
+    end
+    fprintf('  Tab 6: Lambda Est.\n');
 
-% ==================== Tab 3: Y-Axis Analysis ====================
-tab3 = uitab(tabgroup, 'Title', 'Y-Axis Analysis');
+    % --- Tab 7: Theta Estimation ---
+    tab7 = uitab(tabgroup, 'Title', 'Theta Est.');
+    theta_labels = {'\theta_x (rad)', '\theta_y (rad)'};
+    for ti = 1:2
+        ax_t = uiaxes(tab7, 'Position', pos_2x1{ti});
+        ax_t.PositionConstraint = 'innerposition';
+        plot(ax_t, t_sample, theta_hat_log(ti,:), '-', 'Color', COL_OUT, 'LineWidth', LINE_OUT);
+        ylabel(ax_t, theta_labels{ti}, 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+        set(ax_t, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+        ax_t.Box = 'on'; grid(ax_t, 'off'); axis(ax_t, 'tight');
+        if ti == 1
+            title(ax_t, 'Theta Estimation Convergence', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+            ax_t.XTickLabel = [];
+        end
+        if ti == 2
+            xlabel(ax_t, 'Time (sec)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+        end
+    end
+    fprintf('  Tab 7: Theta Est.\n');
 
-% Calculate Y-axis error in nm (use p_m_log for controller's perspective)
-error_y = (p_m_log(2, :) - p_d_log(2, :)) * 1000;
+    % --- Tab 8: Error Statistics ---
+    tab8 = uitab(tabgroup, 'Title', 'Error Stats');
+    COL_XYZ = {[0.0 0.2 0.8], [0.0 0.6 0.0], [0.8 0.0 0.0]};
 
-% --- Subplot 1: Y Position Tracking ---
-ax3_pos = uiaxes(tab3, 'Position', [pos_top(1)*1200, pos_top(2)*800, pos_top(3)*1200, pos_top(4)*800]);
-plot(ax3_pos, t_sample, p_m_log(2, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
-hold(ax3_pos, 'on');
-plot(ax3_pos, t_sample, p_d_log(2, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_ref);
-hold(ax3_pos, 'off');
-legend(ax3_pos, {'p_{m,y}', 'p_{d,y}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
-ylabel(ax3_pos, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax3_pos, 'Y-Axis Position Tracking', 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax3_pos.LineWidth = axis_linewidth; ax3_pos.FontSize = tick_fontsize; ax3_pos.FontWeight = 'bold';
-ax3_pos.Box = 'on'; grid(ax3_pos, 'on');
-ax3_pos.XTickLabel = [];
+    errors_nm = {error_x, error_y, error_z};
+    running_mean = zeros(3, N_samples);
+    running_std_val = zeros(3, N_samples);
+    for ai = 1:3
+        cs = cumsum(errors_nm{ai});
+        cs2 = cumsum(errors_nm{ai}.^2);
+        n_vec = 1:N_samples;
+        running_mean(ai,:) = cs ./ n_vec;
+        running_std_val(ai,:) = sqrt(max(cs2 ./ n_vec - (cs ./ n_vec).^2, 0));
+    end
 
-% --- Subplot 2: Y Tracking Error ---
-ax3_err = uiaxes(tab3, 'Position', [pos_mid(1)*1200, pos_mid(2)*800, pos_mid(3)*1200, pos_mid(4)*800]);
-plot(ax3_err, t_sample, error_y, 'k-', 'LineWidth', line_width_main);
-ylabel(ax3_err, 'e_y [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax3_err, 'Y-Axis Error (Controller View)', 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax3_err.LineWidth = axis_linewidth; ax3_err.FontSize = tick_fontsize; ax3_err.FontWeight = 'bold';
-ax3_err.Box = 'on'; grid(ax3_err, 'on');
-ax3_err.XTickLabel = [];
+    % Top: Running mean
+    ax9_top = uiaxes(tab8, 'Position', pos_2x1{1});
+    ax9_top.PositionConstraint = 'innerposition';
+    hold(ax9_top, 'on');
+    for ai = 1:3
+        plot(ax9_top, t_sample, running_mean(ai,:), '-', 'Color', COL_XYZ{ai}, 'LineWidth', LINE_OUT);
+    end
+    hold(ax9_top, 'off');
+    legend(ax9_top, {'X', 'Y', 'Z'}, ...
+        'Location', 'northoutside', 'Orientation', 'horizontal', ...
+        'FontSize', LEGEND_FS, 'FontWeight', 'bold');
+    ylabel(ax9_top, 'Running Mean (nm)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+    set(ax9_top, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+    ax9_top.Box = 'on'; grid(ax9_top, 'off'); axis(ax9_top, 'tight');
+    ax9_top.XTickLabel = [];
 
-% --- Subplot 3: Y Control Force ---
-ax3_force = uiaxes(tab3, 'Position', [pos_bot(1)*1200, pos_bot(2)*800, pos_bot(3)*1200, pos_bot(4)*800]);
-plot(ax3_force, t_sample, f_d_log(2, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
-xlabel(ax3_force, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax3_force, 'f_y [pN]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax3_force, 'Y-Axis Control Force', 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax3_force.LineWidth = axis_linewidth; ax3_force.FontSize = tick_fontsize; ax3_force.FontWeight = 'bold';
-ax3_force.Box = 'on'; grid(ax3_force, 'on');
+    % Bottom: Running STD
+    ax9_bot = uiaxes(tab8, 'Position', pos_2x1{2});
+    ax9_bot.PositionConstraint = 'innerposition';
+    hold(ax9_bot, 'on');
+    for ai = 1:3
+        plot(ax9_bot, t_sample, running_std_val(ai,:), '-', 'Color', COL_XYZ{ai}, 'LineWidth', LINE_OUT);
+    end
+    hold(ax9_bot, 'off');
+    legend(ax9_bot, {'X', 'Y', 'Z'}, ...
+        'Location', 'northoutside', 'Orientation', 'horizontal', ...
+        'FontSize', LEGEND_FS, 'FontWeight', 'bold');
+    xlabel(ax9_bot, 'Time (sec)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+    ylabel(ax9_bot, 'Running STD (nm)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+    set(ax9_bot, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+    ax9_bot.Box = 'on'; grid(ax9_bot, 'off'); axis(ax9_bot, 'tight');
 
-% Link X axes
-linkaxes([ax3_pos, ax3_err, ax3_force], 'x');
+    fprintf('  Tab 8: Error Stats\n');
+end
 
-fprintf('  Tab 3: Y-Axis Analysis\n');
+% ==================== Open-loop Thermal Tabs ====================
+is_openloop_thermal = ~is_closed_loop && is_thermal;
 
-% ==================== Tab 4: Z-Axis Analysis ====================
-tab4 = uitab(tabgroup, 'Title', 'Z-Axis Analysis');
+if is_openloop_thermal
+    Fs = 1 / Ts;
 
-% Calculate Z-axis error in nm (use p_m_log for controller's perspective)
-error_z = (p_m_log(3, :) - p_d_log(3, :)) * 1000;
+    % Theoretical f_th STD
+    k_B = params.Value.thermal.k_B;
+    T_temp = params.Value.thermal.T;
+    gamma_N = params.Value.common.gamma_N;
+    variance_coeff = 4 * k_B * T_temp * gamma_N / Ts;
+    h_bar_init = (dot(p0, w_hat) - pz_wall) / R;
+    [c_para, c_perp] = calc_correction_functions(h_bar_init);
+    C_vec = c_para * (u_hat + v_hat) + c_perp * w_hat;
+    std_fth_theory = sqrt(variance_coeff) * abs(C_vec);
 
-% --- Subplot 1: Z Position Tracking ---
-ax4_pos = uiaxes(tab4, 'Position', [pos_top(1)*1200, pos_top(2)*800, pos_top(3)*1200, pos_top(4)*800]);
-plot(ax4_pos, t_sample, p_m_log(3, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
-hold(ax4_pos, 'on');
-plot(ax4_pos, t_sample, p_d_log(3, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_ref);
-hold(ax4_pos, 'off');
-legend(ax4_pos, {'p_{m,z}', 'p_{d,z}'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
-ylabel(ax4_pos, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax4_pos, 'Z-Axis Position Tracking', 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax4_pos.LineWidth = axis_linewidth; ax4_pos.FontSize = tick_fontsize; ax4_pos.FontWeight = 'bold';
-ax4_pos.Box = 'on'; grid(ax4_pos, 'on');
-ax4_pos.XTickLabel = [];
+    % FFT analysis
+    p_m_x_nm = p_m_log(1,:)' * 1000;
+    p_m_y_nm = p_m_log(2,:)' * 1000;
+    p_m_z_nm = p_m_log(3,:)' * 1000;
+    time_vec = t_sample';
 
-% --- Subplot 2: Z Tracking Error ---
-ax4_err = uiaxes(tab4, 'Position', [pos_mid(1)*1200, pos_mid(2)*800, pos_mid(3)*1200, pos_mid(4)*800]);
-plot(ax4_err, t_sample, error_z, 'k-', 'LineWidth', line_width_main);
-ylabel(ax4_err, 'e_z [nm]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax4_err, 'Z-Axis Error (Controller View)', 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax4_err.LineWidth = axis_linewidth; ax4_err.FontSize = tick_fontsize; ax4_err.FontWeight = 'bold';
-ax4_err.Box = 'on'; grid(ax4_err, 'on');
-ax4_err.XTickLabel = [];
+    [std_pm_x, det_pm_x, ~, freq_pm_x, spectrum_pm_x] = ...
+        fft_deterministic_random_separation(p_m_x_nm, time_vec, openloop_cutoff_freq);
+    [std_pm_y, det_pm_y, ~, freq_pm_y, spectrum_pm_y] = ...
+        fft_deterministic_random_separation(p_m_y_nm, time_vec, openloop_cutoff_freq);
+    [std_pm_z, det_pm_z, ~, freq_pm_z, spectrum_pm_z] = ...
+        fft_deterministic_random_separation(p_m_z_nm, time_vec, openloop_cutoff_freq);
 
-% --- Subplot 3: Z Control Force ---
-ax4_force = uiaxes(tab4, 'Position', [pos_bot(1)*1200, pos_bot(2)*800, pos_bot(3)*1200, pos_bot(4)*800]);
-plot(ax4_force, t_sample, f_d_log(3, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
-xlabel(ax4_force, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax4_force, 'f_z [pN]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax4_force, 'Z-Axis Control Force', 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax4_force.LineWidth = axis_linewidth; ax4_force.FontSize = tick_fontsize; ax4_force.FontWeight = 'bold';
-ax4_force.Box = 'on'; grid(ax4_force, 'on');
+    pp_pm_x = max(det_pm_x) - min(det_pm_x);
+    pp_pm_y = max(det_pm_y) - min(det_pm_y);
+    pp_pm_z = max(det_pm_z) - min(det_pm_z);
 
-% Link X axes
-linkaxes([ax4_pos, ax4_err, ax4_force], 'x');
+    N_fft = length(det_pm_x);
+    time_plot = time_vec(1:N_fft);
+    p_m_x_plot = p_m_x_nm(1:N_fft);
+    p_m_y_plot = p_m_y_nm(1:N_fft);
+    p_m_z_plot = p_m_z_nm(1:N_fft);
+    duration_plot = time_plot(end);
 
-fprintf('  Tab 4: Z-Axis Analysis\n');
+    % Remove DC offset for visualization
+    offset_x = det_pm_x(1); offset_y = det_pm_y(1); offset_z = det_pm_z(1);
+    p_m_x_centered = p_m_x_plot - offset_x;
+    p_m_y_centered = p_m_y_plot - offset_y;
+    p_m_z_centered = p_m_z_plot - offset_z;
+    det_x_centered = det_pm_x - offset_x;
+    det_y_centered = det_pm_y - offset_y;
+    det_z_centered = det_pm_z - offset_z;
 
-% ==================== Tab 5: Position vs Time ====================
-tab5 = uitab(tabgroup, 'Title', 'Position');
-ax5 = uiaxes(tab5);
-ax5.Units = 'normalized';
-ax5.Position = [0.08 0.10 0.88 0.82];
+    max_dev = max([max(abs(p_m_x_centered)), max(abs(p_m_y_centered)), max(abs(p_m_z_centered))]);
+    y_limit = max_dev * 1.15;
 
-plot(ax5, t_sample, p_d_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_ref);
-hold(ax5, 'on');
-plot(ax5, t_sample, p_d_log(2, :), '-', 'Color', colors(2, :), 'LineWidth', line_width_ref);
-plot(ax5, t_sample, p_d_log(3, :), '-', 'Color', colors(3, :), 'LineWidth', line_width_ref);
-plot(ax5, t_sample, p_m_log(1, :), '--', 'Color', colors(1, :), 'LineWidth', line_width_main);
-plot(ax5, t_sample, p_m_log(2, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_main);
-plot(ax5, t_sample, p_m_log(3, :), '--', 'Color', colors(3, :), 'LineWidth', line_width_main);
-hold(ax5, 'off');
+    % --- Tab 6: Open-loop Time Response ---
+    tab6_ol = uitab(tabgroup, 'Title', 'OL Time');
+    ol_colors = {COL_ERR, COL_REF, COL_OUT};
+    ol_data_raw = {p_m_x_centered, p_m_y_centered, p_m_z_centered};
+    ol_data_det = {det_x_centered, det_y_centered, det_z_centered};
+    ol_stds = [std_pm_x, std_pm_y, std_pm_z];
+    ol_ylabels = {'\Deltap_{m,x} (nm)', '\Deltap_{m,y} (nm)', '\Deltap_{m,z} (nm)'};
 
-legend(ax5, {'x_d', 'y_d', 'z_d', 'x_m', 'y_m', 'z_m'}, ...
-    'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold', 'NumColumns', 2);
-xlabel(ax5, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax5, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax5, 'Position vs Time', 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax5.LineWidth = axis_linewidth;
-ax5.FontSize = tick_fontsize;
-ax5.FontWeight = 'bold';
-ax5.Box = 'on';
-grid(ax5, 'on');
+    for oi = 1:3
+        ax_ol = uiaxes(tab6_ol, 'Position', pos_3x1{oi});
+        ax_ol.PositionConstraint = 'innerposition';
+        h_raw = plot(ax_ol, time_plot, ol_data_raw{oi}, '-', 'Color', ol_colors{oi}, 'LineWidth', 1.2);
+        h_raw.Color(4) = 0.5;
+        hold(ax_ol, 'on');
+        plot(ax_ol, time_plot, ol_data_det{oi}, 'k-', 'LineWidth', 1.8);
+        hold(ax_ol, 'off');
+        ylabel(ax_ol, ol_ylabels{oi}, 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+        set(ax_ol, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+        ax_ol.Box = 'on'; grid(ax_ol, 'off');
+        xlim(ax_ol, [0, duration_plot]); ylim(ax_ol, [-y_limit, y_limit]);
+        if oi == 1
+            title(ax_ol, 'Open-loop Position Response (DC removed)', ...
+                'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+        end
+        if oi < 3; ax_ol.XTickLabel = []; end
+        if oi == 3
+            xlabel(ax_ol, 'Time (sec)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+        end
+        text(ax_ol, 0.98, 0.95, sprintf('STD = %.2f nm', ol_stds(oi)), ...
+            'Units', 'normalized', 'HorizontalAlignment', 'right', ...
+            'VerticalAlignment', 'top', 'FontSize', EXP_FS, 'FontWeight', 'bold', ...
+            'BackgroundColor', 'white', 'EdgeColor', 'black', 'LineWidth', 1.5);
+    end
+    fprintf('  Tab 6: OL Time Response\n');
 
-fprintf('  Tab 5: Position\n');
+    % --- Tab 7: Open-loop FFT Spectrum ---
+    tab7_ol = uitab(tabgroup, 'Title', 'OL FFT');
+    all_spectrum = [spectrum_pm_x(2:end); spectrum_pm_y(2:end); spectrum_pm_z(2:end)];
+    y_min_fft = min(all_spectrum(all_spectrum > 0)) * 0.5;
+    y_max_fft = max(all_spectrum) * 2;
+    ol_freqs = {freq_pm_x, freq_pm_y, freq_pm_z};
+    ol_spectra = {spectrum_pm_x, spectrum_pm_y, spectrum_pm_z};
+    fft_ylabels = {'X Amp. (nm)', 'Y Amp. (nm)', 'Z Amp. (nm)'};
 
-% ==================== Tab 6: Control Force ====================
-tab6 = uitab(tabgroup, 'Title', 'Control Force');
-ax6 = uiaxes(tab6);
-ax6.Units = 'normalized';
-ax6.Position = [0.08 0.10 0.88 0.82];
-
-plot(ax6, t_sample, f_d_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
-hold(ax6, 'on');
-plot(ax6, t_sample, f_d_log(2, :), '-', 'Color', colors(2, :), 'LineWidth', line_width_main);
-plot(ax6, t_sample, f_d_log(3, :), '-', 'Color', colors(3, :), 'LineWidth', line_width_main);
-hold(ax6, 'off');
-
-legend(ax6, {'f_x', 'f_y', 'f_z'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
-xlabel(ax6, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax6, 'Force [pN]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax6, sprintf('Control Force (%s)', ctrl_mode_str), 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax6.LineWidth = axis_linewidth;
-ax6.FontSize = tick_fontsize;
-ax6.FontWeight = 'bold';
-ax6.Box = 'on';
-grid(ax6, 'on');
-
-% Add statistics
-f_max = max(abs(f_d_log), [], 2);
-stats_str = sprintf('Max |f_x|: %.4f pN\nMax |f_y|: %.4f pN\nMax |f_z|: %.4f pN', f_max(1), f_max(2), f_max(3));
-text(ax6, 0.95, 0.95, stats_str, 'Units', 'normalized', ...
-    'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
-    'FontSize', legend_fontsize, 'FontWeight', 'bold', ...
-    'BackgroundColor', [1 1 1 0.8], 'EdgeColor', [0.3 0.3 0.3], 'Margin', 5);
-
-fprintf('  Tab 6: Control Force\n');
+    for fi = 1:3
+        ax_fft = uiaxes(tab7_ol, 'Position', pos_3x1{fi});
+        ax_fft.PositionConstraint = 'innerposition';
+        loglog(ax_fft, ol_freqs{fi}(2:end), ol_spectra{fi}(2:end), '-', ...
+            'Color', ol_colors{fi}, 'LineWidth', LINE_OUT);
+        ylabel(ax_fft, fft_ylabels{fi}, 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+        set(ax_fft, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+        ax_fft.Box = 'on';
+        xlim(ax_fft, [ol_freqs{fi}(2), Fs/2]);
+        ylim(ax_fft, [y_min_fft, y_max_fft]);
+        if fi == 1
+            title(ax_fft, 'Position FFT Spectrum (Open-loop)', ...
+                'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+        end
+        if fi < 3; ax_fft.XTickLabel = []; end
+        if fi == 3
+            xlabel(ax_fft, 'Frequency (Hz)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+        end
+    end
+    fprintf('  Tab 7: OL FFT Spectrum\n');
+end
 
 %% SECTION 6: Save Results
+
 fprintf('\nSaving results...\n');
 
 timestamp = datestr(now, 'yyyymmdd_HHMMSS');
 output_dir = fullfile(project_root, 'test_results', 'simulation', ['sim_' timestamp]);
 mkdir(output_dir);
 
-% Save individual figures as PNG (using traditional figure for export)
-fig_export = figure('Visible', 'off', 'Position', [100 100 1000 700]);
+% --- PNG Export (traditional figures with export style) ---
+fig_exp = figure('Visible', 'off', 'Position', [100 100 1400 900]);
 
 % Export Tab 1: 3D Trajectory
-ax_exp = axes(fig_export, 'Position', [0.12 0.12 0.82 0.80]);
-plot3(ax_exp, p_d_log(1, :), p_d_log(2, :), p_d_log(3, :), 'b-', 'LineWidth', line_width_main);
-hold(ax_exp, 'on');
-plot3(ax_exp, p_m_log(1, :), p_m_log(2, :), p_m_log(3, :), 'r--', 'LineWidth', line_width_ref);
-plot3(ax_exp, p0(1), p0(2), p0(3), 'go', 'MarkerSize', 12, 'MarkerFaceColor', 'g', 'LineWidth', 2);
-% Add wall plane
-fill3(ax_exp, corners(1,:), corners(2,:), corners(3,:), ...
+ax_e = axes(fig_exp, 'Position', [0.12 0.12 0.82 0.80]);
+plot3(ax_e, p_d_log(1,:), p_d_log(2,:), p_d_log(3,:), '-', 'Color', COL_REF, 'LineWidth', EXP_LR);
+hold(ax_e, 'on');
+plot3(ax_e, p_m_log(1,:), p_m_log(2,:), p_m_log(3,:), '-', 'Color', COL_OUT, 'LineWidth', EXP_LO);
+plot3(ax_e, p0(1), p0(2), p0(3), 'ko', 'MarkerSize', 10, 'MarkerFaceColor', 'k', 'LineWidth', 2);
+fill3(ax_e, corners(1,:), corners(2,:), corners(3,:), ...
     [0.7 0.7 0.7], 'FaceAlpha', 0.3, 'EdgeColor', [0.4 0.4 0.4], 'LineWidth', 1.5);
-hold(ax_exp, 'off');
-legend(ax_exp, {'p_d (desired)', 'p_m (measured)', 'Start', 'Wall'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
-xlabel(ax_exp, 'x [um]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax_exp, 'y [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-zlabel(ax_exp, 'z [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax_exp, sprintf('3D Trajectory (%s)', traj_type_str), 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax_exp.LineWidth = axis_linewidth; ax_exp.FontSize = tick_fontsize; ax_exp.FontWeight = 'bold'; ax_exp.Box = 'on'; grid(ax_exp, 'on');
-view(ax_exp, 30, 30);
-axis(ax_exp, 'equal');
-exportgraphics(fig_export, fullfile(output_dir, '1_trajectory_3d.png'), 'Resolution', 150);
-clf(fig_export);
+hold(ax_e, 'off');
+legend(ax_e, {'p_d', 'p_m', 'Start', 'Wall'}, 'Location', 'best', 'FontSize', EXP_LFS, 'FontWeight', 'bold');
+xlabel(ax_e, 'x (um)'); ylabel(ax_e, 'y (um)'); zlabel(ax_e, 'z (um)');
+set(ax_e, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
+view(ax_e, 30, 30); axis(ax_e, 'equal');
+exportgraphics(fig_exp, fullfile(output_dir, '1_trajectory_3d.png'), 'Resolution', 150);
+clf(fig_exp);
 
-% Export Tab 2-4: Axis Analysis (3x1 subplots each)
-axis_names = {'X', 'Y', 'Z'};
-axis_errors = {error_x, error_y, error_z};
+% Export Tabs 2-4: X/Y/Z Axis (2x1)
+for ai = 1:3
+    ax_top_e = subplot(2,1,1);
+    plot(ax_top_e, t_sample, p_d_log(ai,:), '-', 'Color', COL_REF, 'LineWidth', EXP_LR);
+    hold(ax_top_e, 'on');
+    plot(ax_top_e, t_sample, p_m_log(ai,:), '-', 'Color', COL_OUT, 'LineWidth', EXP_LO);
+    hold(ax_top_e, 'off');
+    legend(ax_top_e, {'Reference', 'Measured'}, 'Location', 'northoutside', ...
+        'Orientation', 'horizontal', 'FontSize', EXP_LFS, 'FontWeight', 'bold');
+    ylabel(ax_top_e, 'Position (um)');
+    set(ax_top_e, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
+    axis(ax_top_e, 'tight');
 
-for axis_idx = 1:3
-    fig_export.Position = [100 100 800 900];  % Taller for 3x1 subplots
+    ax_bot_e = subplot(2,1,2);
+    plot(ax_bot_e, t_sample, axis_errors{ai}, '-', 'Color', COL_ERR, 'LineWidth', EXP_LO);
+    xlabel(ax_bot_e, 'Time (sec)'); ylabel(ax_bot_e, 'Error (nm)');
+    title(ax_bot_e, sprintf('%s-Axis Tracking Error', axis_names{ai}));
+    set(ax_bot_e, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
+    axis(ax_bot_e, 'tight');
 
-    % Subplot 1: Position Tracking
-    ax_pos = subplot(3, 1, 1);
-    plot(ax_pos, t_sample, p_m_log(axis_idx, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
-    hold(ax_pos, 'on');
-    plot(ax_pos, t_sample, p_d_log(axis_idx, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_ref);
-    hold(ax_pos, 'off');
-    legend(ax_pos, {sprintf('p_{m,%s}', lower(axis_names{axis_idx})), sprintf('p_{d,%s}', lower(axis_names{axis_idx}))}, ...
-        'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
-    ylabel(ax_pos, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-    title(ax_pos, sprintf('%s-Axis Position Tracking', axis_names{axis_idx}), 'FontSize', title_fontsize, 'FontWeight', 'bold');
-    ax_pos.LineWidth = axis_linewidth; ax_pos.FontSize = tick_fontsize; ax_pos.FontWeight = 'bold';
-    ax_pos.Box = 'on'; grid(ax_pos, 'on');
-
-    % Subplot 2: Tracking Error
-    ax_err = subplot(3, 1, 2);
-    plot(ax_err, t_sample, axis_errors{axis_idx}, 'k-', 'LineWidth', line_width_main);
-    ylabel(ax_err, sprintf('e_%s [nm]', lower(axis_names{axis_idx})), 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-    title(ax_err, sprintf('%s-Axis Error', axis_names{axis_idx}), ...
-        'FontSize', title_fontsize, 'FontWeight', 'bold');
-    ax_err.LineWidth = axis_linewidth; ax_err.FontSize = tick_fontsize; ax_err.FontWeight = 'bold';
-    ax_err.Box = 'on'; grid(ax_err, 'on');
-
-    % Subplot 3: Control Force
-    ax_force = subplot(3, 1, 3);
-    plot(ax_force, t_sample, f_d_log(axis_idx, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main);
-    xlabel(ax_force, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-    ylabel(ax_force, sprintf('f_%s [pN]', lower(axis_names{axis_idx})), 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-    title(ax_force, sprintf('%s-Axis Control Force', axis_names{axis_idx}), 'FontSize', title_fontsize, 'FontWeight', 'bold');
-    ax_force.LineWidth = axis_linewidth; ax_force.FontSize = tick_fontsize; ax_force.FontWeight = 'bold';
-    ax_force.Box = 'on'; grid(ax_force, 'on');
-
-    exportgraphics(fig_export, fullfile(output_dir, sprintf('%d_%s_axis_analysis.png', axis_idx+1, lower(axis_names{axis_idx}))), 'Resolution', 150);
-    clf(fig_export);
+    exportgraphics(fig_exp, fullfile(output_dir, sprintf('%d_%s_axis.png', ai+1, lower(axis_names{ai}))), 'Resolution', 150);
+    clf(fig_exp);
 end
 
-fig_export.Position = [100 100 1000 700];  % Reset to normal size
+% Export Tab 5: Control Force (3x1)
+for fi = 1:3
+    ax_fe = subplot(3,1,fi);
+    plot(ax_fe, t_sample, f_d_log(fi,:), '-', 'Color', COL_ERR, 'LineWidth', EXP_LO);
+    ylabel(ax_fe, force_labels{fi});
+    set(ax_fe, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
+    axis(ax_fe, 'tight');
+    if fi == 1; title(ax_fe, sprintf('Control Force (%s)', ctrl_mode_str)); end
+    if fi == 3; xlabel(ax_fe, 'Time (sec)'); end
+end
+exportgraphics(fig_exp, fullfile(output_dir, '5_control_force.png'), 'Resolution', 150);
+clf(fig_exp);
 
-% Export Tab 5: Position
-ax_exp = axes(fig_export, 'Position', [0.12 0.12 0.82 0.80]);
-plot(ax_exp, t_sample, p_d_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_ref); hold(ax_exp, 'on');
-plot(ax_exp, t_sample, p_d_log(2, :), '-', 'Color', colors(2, :), 'LineWidth', line_width_ref);
-plot(ax_exp, t_sample, p_d_log(3, :), '-', 'Color', colors(3, :), 'LineWidth', line_width_ref);
-plot(ax_exp, t_sample, p_m_log(1, :), '--', 'Color', colors(1, :), 'LineWidth', line_width_main);
-plot(ax_exp, t_sample, p_m_log(2, :), '--', 'Color', colors(2, :), 'LineWidth', line_width_main);
-plot(ax_exp, t_sample, p_m_log(3, :), '--', 'Color', colors(3, :), 'LineWidth', line_width_main); hold(ax_exp, 'off');
-legend(ax_exp, {'x_d', 'y_d', 'z_d', 'x_m', 'y_m', 'z_m'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold', 'NumColumns', 2);
-xlabel(ax_exp, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax_exp, 'Position [um]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax_exp, 'Position vs Time', 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax_exp.LineWidth = axis_linewidth; ax_exp.FontSize = tick_fontsize; ax_exp.FontWeight = 'bold'; ax_exp.Box = 'on'; grid(ax_exp, 'on');
-exportgraphics(fig_export, fullfile(output_dir, '5_position.png'), 'Resolution', 150);
-clf(fig_export);
+% Export closed-loop tabs (6-8)
+if is_closed_loop
+    % Tab 6: Lambda Est.
+    for li = 1:2
+        ax_le = subplot(2,1,li);
+        plot(ax_le, t_sample, lambda_true_log(li,:), '-', 'Color', COL_REF, 'LineWidth', EXP_LR);
+        hold(ax_le, 'on');
+        plot(ax_le, t_sample, lamda_hat_log(li,:), '-', 'Color', COL_OUT, 'LineWidth', EXP_LO);
+        hold(ax_le, 'off');
+        legend(ax_le, {'True', 'Estimated'}, 'Location', 'northoutside', ...
+            'Orientation', 'horizontal', 'FontSize', EXP_LFS, 'FontWeight', 'bold');
+        ylabel(ax_le, lam_labels{li});
+        set(ax_le, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
+        axis(ax_le, 'tight');
+        if li == 2; xlabel(ax_le, 'Time (sec)'); end
+    end
+    exportgraphics(fig_exp, fullfile(output_dir, '6_lambda_est.png'), 'Resolution', 150);
+    clf(fig_exp);
 
-% Export Tab 6: Control Force
-ax_exp = axes(fig_export, 'Position', [0.12 0.12 0.82 0.80]);
-plot(ax_exp, t_sample, f_d_log(1, :), '-', 'Color', colors(1, :), 'LineWidth', line_width_main); hold(ax_exp, 'on');
-plot(ax_exp, t_sample, f_d_log(2, :), '-', 'Color', colors(2, :), 'LineWidth', line_width_main);
-plot(ax_exp, t_sample, f_d_log(3, :), '-', 'Color', colors(3, :), 'LineWidth', line_width_main); hold(ax_exp, 'off');
-legend(ax_exp, {'f_x', 'f_y', 'f_z'}, 'Location', 'best', 'FontSize', legend_fontsize, 'FontWeight', 'bold');
-xlabel(ax_exp, 'Time [sec]', 'FontSize', xlabel_fontsize, 'FontWeight', 'bold');
-ylabel(ax_exp, 'Force [pN]', 'FontSize', ylabel_fontsize, 'FontWeight', 'bold');
-title(ax_exp, sprintf('Control Force (%s)', ctrl_mode_str), 'FontSize', title_fontsize, 'FontWeight', 'bold');
-ax_exp.LineWidth = axis_linewidth; ax_exp.FontSize = tick_fontsize; ax_exp.FontWeight = 'bold'; ax_exp.Box = 'on'; grid(ax_exp, 'on');
-exportgraphics(fig_export, fullfile(output_dir, '6_control_force.png'), 'Resolution', 150);
+    % Tab 7: Theta Est.
+    for ti = 1:2
+        ax_te = subplot(2,1,ti);
+        plot(ax_te, t_sample, theta_hat_log(ti,:), '-', 'Color', COL_OUT, 'LineWidth', EXP_LO);
+        ylabel(ax_te, theta_labels{ti});
+        set(ax_te, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
+        axis(ax_te, 'tight');
+        if ti == 1; title(ax_te, 'Theta Estimation Convergence'); end
+        if ti == 2; xlabel(ax_te, 'Time (sec)'); end
+    end
+    exportgraphics(fig_exp, fullfile(output_dir, '7_theta_est.png'), 'Resolution', 150);
+    clf(fig_exp);
 
-close(fig_export);
+    % Tab 8: Error Stats
+    COL_XYZ_arr = {[0.0 0.2 0.8], [0.0 0.6 0.0], [0.8 0.0 0.0]};
+    ax_me = subplot(2,1,1);
+    hold(ax_me, 'on');
+    for ai = 1:3
+        plot(ax_me, t_sample, running_mean(ai,:), '-', 'Color', COL_XYZ_arr{ai}, 'LineWidth', EXP_LO);
+    end
+    hold(ax_me, 'off');
+    legend(ax_me, {'X', 'Y', 'Z'}, 'Location', 'northoutside', ...
+        'Orientation', 'horizontal', 'FontSize', EXP_LFS, 'FontWeight', 'bold');
+    ylabel(ax_me, 'Running Mean (nm)');
+    set(ax_me, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
+    axis(ax_me, 'tight');
+
+    ax_se = subplot(2,1,2);
+    hold(ax_se, 'on');
+    for ai = 1:3
+        plot(ax_se, t_sample, running_std_val(ai,:), '-', 'Color', COL_XYZ_arr{ai}, 'LineWidth', EXP_LO);
+    end
+    hold(ax_se, 'off');
+    legend(ax_se, {'X', 'Y', 'Z'}, 'Location', 'northoutside', ...
+        'Orientation', 'horizontal', 'FontSize', EXP_LFS, 'FontWeight', 'bold');
+    xlabel(ax_se, 'Time (sec)'); ylabel(ax_se, 'Running STD (nm)');
+    set(ax_se, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
+    axis(ax_se, 'tight');
+
+    exportgraphics(fig_exp, fullfile(output_dir, '8_error_stats.png'), 'Resolution', 150);
+    clf(fig_exp);
+end
+
+% Export open-loop tabs
+if is_openloop_thermal
+    % Tab 7: OL Time Response
+    for oi = 1:3
+        ax_oe = subplot(3,1,oi);
+        h_r = plot(ax_oe, time_plot, ol_data_raw{oi}, '-', 'Color', ol_colors{oi}, 'LineWidth', 1.2);
+        h_r.Color(4) = 0.5;
+        hold(ax_oe, 'on');
+        plot(ax_oe, time_plot, ol_data_det{oi}, 'k-', 'LineWidth', 1.8);
+        hold(ax_oe, 'off');
+        ylabel(ax_oe, ol_ylabels{oi});
+        set(ax_oe, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
+        xlim(ax_oe, [0 duration_plot]); ylim(ax_oe, [-y_limit y_limit]);
+        if oi == 1; title(ax_oe, 'Open-loop Position Response (DC removed)'); end
+        if oi == 3; xlabel(ax_oe, 'Time (sec)'); end
+        text(ax_oe, 0.98, 0.95, sprintf('STD = %.2f nm', ol_stds(oi)), ...
+            'Units', 'normalized', 'HorizontalAlignment', 'right', ...
+            'VerticalAlignment', 'top', 'BackgroundColor', 'white', 'EdgeColor', 'black');
+    end
+    exportgraphics(fig_exp, fullfile(output_dir, '6_openloop_time.png'), 'Resolution', 150);
+    clf(fig_exp);
+
+    % Tab 8: OL FFT
+    for fi = 1:3
+        ax_fe2 = subplot(3,1,fi);
+        loglog(ax_fe2, ol_freqs{fi}(2:end), ol_spectra{fi}(2:end), '-', ...
+            'Color', ol_colors{fi}, 'LineWidth', EXP_LO);
+        ylabel(ax_fe2, fft_ylabels{fi});
+        set(ax_fe2, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
+        xlim(ax_fe2, [ol_freqs{fi}(2), Fs/2]); ylim(ax_fe2, [y_min_fft, y_max_fft]);
+        if fi == 1; title(ax_fe2, 'Position FFT Spectrum (Open-loop)'); end
+        if fi == 3; xlabel(ax_fe2, 'Frequency (Hz)'); end
+    end
+    exportgraphics(fig_exp, fullfile(output_dir, '7_openloop_fft.png'), 'Resolution', 150);
+    clf(fig_exp);
+end
+
+close(fig_exp);
 fprintf('  Figures saved (.png)\n');
 
-% Save data
+% --- Save Data ---
 result.t = t_sample;
 result.p_m = p_m_log;
 result.p_d = p_d_log;
 result.f_d = f_d_log;
 result.f_th = f_th_log;
 result.h_bar = h_bar_log;
-result.error = error;
+result.error_3d = error_3d;
 result.error_x = error_x;
 result.error_y = error_y;
 result.error_z = error_z;
 result.params = params.Value;
 result.p0 = p0;
 result.config = config;
-result.tracking_error_rmse = rms(error);
+result.tracking_error_rmse = rms(error_3d);
 result.tracking_error_rmse_x = rms(error_x);
 result.tracking_error_rmse_y = rms(error_y);
 result.tracking_error_rmse_z = rms(error_z);
@@ -530,10 +686,17 @@ result.meta.ctrl_mode = ctrl_mode_str;
 result.meta.thermal_mode = thermal_str;
 result.meta.traj_type = traj_type_str;
 
+if is_closed_loop
+    result.lamda_hat = lamda_hat_log;
+    result.theta_hat = theta_hat_log;
+    result.lambda_true = lambda_true_log;
+end
+
 save(fullfile(output_dir, 'result.mat'), 'result');
 fprintf('  Data saved (.mat)\n');
 
-%% Print Summary
+%% SECTION 7: Print Summary
+
 fprintf('\n');
 fprintf('================================================================\n');
 fprintf('                    Simulation Summary\n');
@@ -546,7 +709,7 @@ fprintf('  Trajectory: %s\n', traj_type_str);
 fprintf('  Duration: %.1f sec (%d samples)\n', T_sim, N_samples);
 fprintf('\n');
 fprintf('Tracking Performance (3D):\n');
-fprintf('  Max error: %.4f um (%.2f nm)\n', max(error), max(error)*1000);
+fprintf('  Max error: %.4f um (%.2f nm)\n', max(error_3d), max(error_3d)*1000);
 fprintf('\n');
 fprintf('Tracking Performance (per axis):\n');
 fprintf('  X-axis Max: %.2f nm\n', max(abs(error_x)));
@@ -554,9 +717,9 @@ fprintf('  Y-axis Max: %.2f nm\n', max(abs(error_y)));
 fprintf('  Z-axis Max: %.2f nm\n', max(abs(error_z)));
 fprintf('\n');
 fprintf('Control Force:\n');
-fprintf('  Max |f_x|: %.4f pN\n', max(abs(f_d_log(1, :))));
-fprintf('  Max |f_y|: %.4f pN\n', max(abs(f_d_log(2, :))));
-fprintf('  Max |f_z|: %.4f pN\n', max(abs(f_d_log(3, :))));
+fprintf('  Max |f_x|: %.4f pN\n', max(abs(f_d_log(1,:))));
+fprintf('  Max |f_y|: %.4f pN\n', max(abs(f_d_log(2,:))));
+fprintf('  Max |f_z|: %.4f pN\n', max(abs(f_d_log(3,:))));
 fprintf('\n');
 fprintf('Wall Distance:\n');
 fprintf('  Min h/R: %.2f (threshold: %.1f)\n', min(h_bar_log), params.Value.wall.h_bar_min);
@@ -565,291 +728,25 @@ fprintf('\n');
 fprintf('Results saved to: %s\n', output_dir);
 fprintf('================================================================\n');
 
-%% SECTION 7: Open-loop Thermal Force Analysis (as Tabs)
-% Triggered when: ctrl_enable = false AND thermal_enable = true
-% Analyzes p_m (position response) characteristics
-% f_th STD is calculated from theoretical formula
-
-is_openloop_thermal = (params.Value.ctrl.enable < 0.5) && ...
-                      (params.Value.thermal.enable > 0.5);
-
 if is_openloop_thermal
-    fprintf('\n');
-    fprintf('================================================================\n');
-    fprintf('  Open-loop Thermal Force Analysis\n');
-    fprintf('================================================================\n\n');
-
-    % Get sample rate
-    Fs = 1 / Ts;
-
-    % Calculate theoretical f_th STD from formula:
-    % f_th ~ N(0, Variance), Variance = (4 * k_B * T * gamma_N / Ts) * C^2
-    % STD = sqrt(Variance) = sqrt(4 * k_B * T * gamma_N / Ts) * |C|
-    k_B = params.Value.thermal.k_B;
-    T_temp = params.Value.thermal.T;
-    gamma_N = params.Value.common.gamma_N;
-    variance_coeff = 4 * k_B * T_temp * gamma_N / Ts;
-
-    % Get correction coefficients at initial position
-    h_bar_init = (dot(p0, params.Value.wall.w_hat) - params.Value.wall.pz) / params.Value.common.R;
-    [c_para, c_perp] = calc_correction_functions(h_bar_init);
-    C_vec = c_para * (params.Value.wall.u_hat + params.Value.wall.v_hat) + c_perp * params.Value.wall.w_hat;
-    std_fth_theory = sqrt(variance_coeff) * abs(C_vec);  % [3x1] pN
-
-    % Prepare p_m data for analysis (convert to column vectors, nm)
-    p_m_x_nm = p_m_log(1, :)' * 1000;  % um -> nm
-    p_m_y_nm = p_m_log(2, :)' * 1000;
-    p_m_z_nm = p_m_log(3, :)' * 1000;
-    time_vec = t_sample';
-
-    % FFT Analysis for p_m only
-    fprintf('Performing FFT analysis (cutoff = %.1f Hz)...\n', openloop_cutoff_freq);
-
-    [std_pm_x, det_pm_x, ~, freq_pm_x, spectrum_pm_x] = ...
-        fft_deterministic_random_separation(p_m_x_nm, time_vec, openloop_cutoff_freq);
-    [std_pm_y, det_pm_y, ~, freq_pm_y, spectrum_pm_y] = ...
-        fft_deterministic_random_separation(p_m_y_nm, time_vec, openloop_cutoff_freq);
-    [std_pm_z, det_pm_z, ~, freq_pm_z, spectrum_pm_z] = ...
-        fft_deterministic_random_separation(p_m_z_nm, time_vec, openloop_cutoff_freq);
-
-    % Calculate Deterministic Peak-to-Peak
-    pp_pm_x = max(det_pm_x) - min(det_pm_x);
-    pp_pm_y = max(det_pm_y) - min(det_pm_y);
-    pp_pm_z = max(det_pm_z) - min(det_pm_z);
-
-    fprintf('  Done.\n\n');
-
-    % Adjust data length if needed (FFT may truncate odd-length data)
-    N_fft = length(det_pm_x);
-    time_plot = time_vec(1:N_fft);
-    p_m_x_plot = p_m_x_nm(1:N_fft);
-    p_m_y_plot = p_m_y_nm(1:N_fft);
-    p_m_z_plot = p_m_z_nm(1:N_fft);
-    duration_plot = time_plot(end);
-
-    % ==================== Tab 7: Open-loop Time Response ====================
-    tab7 = uitab(tabgroup, 'Title', 'Open-loop Time');
-
-    % Subplot positions (pixel-based for uiaxes, assuming 1200x800 figure)
-    fig_w = 1200; fig_h = 800;
-    pos7_top = [0.10*fig_w, 0.70*fig_h, 0.85*fig_w, 0.25*fig_h];
-    pos7_mid = [0.10*fig_w, 0.40*fig_h, 0.85*fig_w, 0.25*fig_h];
-    pos7_bot = [0.10*fig_w, 0.08*fig_h, 0.85*fig_w, 0.25*fig_h];
-
-    % Remove initial offset (deterministic's first point) for better visualization
-    % This allows direct comparison of fluctuations across all axes
-    offset_x = det_pm_x(1);
-    offset_y = det_pm_y(1);
-    offset_z = det_pm_z(1);
-    p_m_x_centered = p_m_x_plot - offset_x;
-    p_m_y_centered = p_m_y_plot - offset_y;
-    p_m_z_centered = p_m_z_plot - offset_z;
-    det_x_centered = det_pm_x - offset_x;
-    det_y_centered = det_pm_y - offset_y;
-    det_z_centered = det_pm_z - offset_z;
-
-    % Calculate unified Y-axis range based on max deviation across all axes
-    max_dev_x = max(abs(p_m_x_centered));
-    max_dev_y = max(abs(p_m_y_centered));
-    max_dev_z = max(abs(p_m_z_centered));
-    max_dev = max([max_dev_x, max_dev_y, max_dev_z]);
-    y_limit = max_dev * 1.15;  % Add 15% margin
-
-    % Calculate nice tick interval
-    tick_interval = 10 ^ floor(log10(y_limit));
-    if y_limit / tick_interval < 2
-        tick_interval = tick_interval / 2;
-    elseif y_limit / tick_interval > 5
-        tick_interval = tick_interval * 2;
-    end
-
-    % --- X Position ---
-    ax7_x = uiaxes(tab7, 'Position', pos7_top);
-    h7x = plot(ax7_x, time_plot, p_m_x_centered, 'b-', 'LineWidth', 1.2);
-    h7x.Color(4) = 0.5;
-    hold(ax7_x, 'on');
-    plot(ax7_x, time_plot, det_x_centered, 'k-', 'LineWidth', 1.8);
-    hold(ax7_x, 'off');
-    ax7_x.FontSize = 14; ax7_x.FontWeight = 'bold'; ax7_x.LineWidth = 1.5;
-    ax7_x.Box = 'on';
-    ylabel(ax7_x, '\Deltap_{m,x} (nm)', 'FontSize', 16, 'FontWeight', 'bold');
-    title(ax7_x, 'Open-loop Position Response (Thermal Force Only, DC removed)', 'FontSize', 18, 'FontWeight', 'bold');
-    xlim(ax7_x, [0, duration_plot]);
-    ylim(ax7_x, [-y_limit, y_limit]);
-    ax7_x.YTick = -ceil(y_limit/tick_interval)*tick_interval : tick_interval : ceil(y_limit/tick_interval)*tick_interval;
-    ax7_x.XTickLabel = [];
-    text(ax7_x, 0.98, 0.95, sprintf('Random STD = %.2f nm', std_pm_x), ...
-        'Units', 'normalized', 'HorizontalAlignment', 'right', ...
-        'VerticalAlignment', 'top', 'FontSize', 14, 'FontWeight', 'bold', ...
-        'BackgroundColor', 'white', 'EdgeColor', 'black', 'LineWidth', 1.5);
-
-    % --- Y Position ---
-    ax7_y = uiaxes(tab7, 'Position', pos7_mid);
-    h7y = plot(ax7_y, time_plot, p_m_y_centered, 'g-', 'LineWidth', 1.2);
-    h7y.Color(4) = 0.5;
-    hold(ax7_y, 'on');
-    plot(ax7_y, time_plot, det_y_centered, 'k-', 'LineWidth', 1.8);
-    hold(ax7_y, 'off');
-    ax7_y.FontSize = 14; ax7_y.FontWeight = 'bold'; ax7_y.LineWidth = 1.5;
-    ax7_y.Box = 'on';
-    ylabel(ax7_y, '\Deltap_{m,y} (nm)', 'FontSize', 16, 'FontWeight', 'bold');
-    xlim(ax7_y, [0, duration_plot]);
-    ylim(ax7_y, [-y_limit, y_limit]);
-    ax7_y.YTick = -ceil(y_limit/tick_interval)*tick_interval : tick_interval : ceil(y_limit/tick_interval)*tick_interval;
-    ax7_y.XTickLabel = [];
-    text(ax7_y, 0.98, 0.95, sprintf('Random STD = %.2f nm', std_pm_y), ...
-        'Units', 'normalized', 'HorizontalAlignment', 'right', ...
-        'VerticalAlignment', 'top', 'FontSize', 14, 'FontWeight', 'bold', ...
-        'BackgroundColor', 'white', 'EdgeColor', 'black', 'LineWidth', 1.5);
-
-    % --- Z Position ---
-    ax7_z = uiaxes(tab7, 'Position', pos7_bot);
-    h7z = plot(ax7_z, time_plot, p_m_z_centered, 'r-', 'LineWidth', 1.2);
-    h7z.Color(4) = 0.5;
-    hold(ax7_z, 'on');
-    plot(ax7_z, time_plot, det_z_centered, 'k-', 'LineWidth', 1.8);
-    hold(ax7_z, 'off');
-    ax7_z.FontSize = 14; ax7_z.FontWeight = 'bold'; ax7_z.LineWidth = 1.5;
-    ax7_z.Box = 'on';
-    xlabel(ax7_z, 'Time (s)', 'FontSize', 16, 'FontWeight', 'bold');
-    ylabel(ax7_z, '\Deltap_{m,z} (nm)', 'FontSize', 16, 'FontWeight', 'bold');
-    xlim(ax7_z, [0, duration_plot]);
-    ylim(ax7_z, [-y_limit, y_limit]);
-    ax7_z.YTick = -ceil(y_limit/tick_interval)*tick_interval : tick_interval : ceil(y_limit/tick_interval)*tick_interval;
-    text(ax7_z, 0.98, 0.95, sprintf('Random STD = %.2f nm', std_pm_z), ...
-        'Units', 'normalized', 'HorizontalAlignment', 'right', ...
-        'VerticalAlignment', 'top', 'FontSize', 14, 'FontWeight', 'bold', ...
-        'BackgroundColor', 'white', 'EdgeColor', 'black', 'LineWidth', 1.5);
-
-    fprintf('  Tab 7: Open-loop Time Response\n');
-
-    % ==================== Tab 8: Open-loop FFT Spectrum ====================
-    tab8 = uitab(tabgroup, 'Title', 'Open-loop FFT');
-
-    % Calculate common Y-axis limits for all spectra (for easier comparison)
-    all_spectrum = [spectrum_pm_x(2:end); spectrum_pm_y(2:end); spectrum_pm_z(2:end)];
-    y_min_fft = min(all_spectrum(all_spectrum > 0)) * 0.5;
-    y_max_fft = max(all_spectrum) * 2;
-
-    % --- X Spectrum ---
-    ax8_x = uiaxes(tab8, 'Position', pos7_top);
-    loglog(ax8_x, freq_pm_x(2:end), spectrum_pm_x(2:end), 'b-', 'LineWidth', 1.5);
-    ax8_x.FontSize = 14; ax8_x.FontWeight = 'bold'; ax8_x.LineWidth = 1.5;
-    ax8_x.Box = 'on';
-    ylabel(ax8_x, 'X Amp. (nm)', 'FontSize', 16, 'FontWeight', 'bold');
-    title(ax8_x, 'Position FFT Spectrum (Open-loop)', 'FontSize', 18, 'FontWeight', 'bold');
-    xlim(ax8_x, [freq_pm_x(2), Fs/2]);
-    ylim(ax8_x, [y_min_fft, y_max_fft]);
-    ax8_x.XTickLabel = [];
-
-    % --- Y Spectrum ---
-    ax8_y = uiaxes(tab8, 'Position', pos7_mid);
-    loglog(ax8_y, freq_pm_y(2:end), spectrum_pm_y(2:end), 'g-', 'LineWidth', 1.5);
-    ax8_y.FontSize = 14; ax8_y.FontWeight = 'bold'; ax8_y.LineWidth = 1.5;
-    ax8_y.Box = 'on';
-    ylabel(ax8_y, 'Y Amp. (nm)', 'FontSize', 16, 'FontWeight', 'bold');
-    xlim(ax8_y, [freq_pm_x(2), Fs/2]);
-    ylim(ax8_y, [y_min_fft, y_max_fft]);
-    ax8_y.XTickLabel = [];
-
-    % --- Z Spectrum ---
-    ax8_z = uiaxes(tab8, 'Position', pos7_bot);
-    loglog(ax8_z, freq_pm_z(2:end), spectrum_pm_z(2:end), 'r-', 'LineWidth', 1.5);
-    ax8_z.FontSize = 14; ax8_z.FontWeight = 'bold'; ax8_z.LineWidth = 1.5;
-    ax8_z.Box = 'on';
-    xlabel(ax8_z, 'Frequency (Hz)', 'FontSize', 16, 'FontWeight', 'bold');
-    ylabel(ax8_z, 'Z Amp. (nm)', 'FontSize', 16, 'FontWeight', 'bold');
-    xlim(ax8_z, [freq_pm_x(2), Fs/2]);
-    ylim(ax8_z, [y_min_fft, y_max_fft]);
-
-    fprintf('  Tab 8: Open-loop FFT Spectrum\n');
-
-    % ==================== Statistics Output ====================
     fprintf('\n');
     fprintf('========================================\n');
     fprintf('  Open-loop Thermal Analysis Results\n');
     fprintf('========================================\n\n');
-
     fprintf('Thermal Force (f_th) - Theoretical STD:\n');
     fprintf('  X: STD = %.4f pN\n', std_fth_theory(1));
     fprintf('  Y: STD = %.4f pN\n', std_fth_theory(2));
     fprintf('  Z: STD = %.4f pN\n\n', std_fth_theory(3));
-
     fprintf('Position Response (p_m) - Measured:\n');
-    fprintf('  X: Random STD = %.2f nm, Deterministic P-P = %.2f nm\n', std_pm_x, pp_pm_x);
-    fprintf('  Y: Random STD = %.2f nm, Deterministic P-P = %.2f nm\n', std_pm_y, pp_pm_y);
-    fprintf('  Z: Random STD = %.2f nm, Deterministic P-P = %.2f nm\n\n', std_pm_z, pp_pm_z);
-
+    fprintf('  X: Random STD = %.2f nm, Det. P-P = %.2f nm\n', std_pm_x, pp_pm_x);
+    fprintf('  Y: Random STD = %.2f nm, Det. P-P = %.2f nm\n', std_pm_y, pp_pm_y);
+    fprintf('  Z: Random STD = %.2f nm, Det. P-P = %.2f nm\n\n', std_pm_z, pp_pm_z);
     fprintf('Analysis Parameters:\n');
     fprintf('  Cutoff Frequency: %.1f Hz\n', openloop_cutoff_freq);
     fprintf('  Sample Rate: %.0f Hz\n', Fs);
     fprintf('  Duration: %.2f sec\n', duration_plot);
     fprintf('  FFT Resolution: %.4f Hz\n', Fs / N_fft);
     fprintf('========================================\n');
-
-    % ==================== Save Open-loop Analysis Figures ====================
-    % Tab 7: Time Response
-    fig_export = figure('Visible', 'off', 'Position', [100, 100, 1000, 800]);
-
-    subplot(3,1,1);
-    h1 = plot(time_plot, p_m_x_centered, 'b-', 'LineWidth', 1.2); h1.Color(4) = 0.5;
-    hold on; plot(time_plot, det_x_centered, 'k-', 'LineWidth', 1.8); hold off;
-    ylabel('\Deltap_{m,x} (nm)'); title('Open-loop Position Response (Thermal Force Only, DC removed)');
-    xlim([0, duration_plot]); ylim([-y_limit, y_limit]);
-    text(0.98, 0.95, sprintf('Random STD = %.2f nm', std_pm_x), 'Units', 'normalized', ...
-        'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
-        'BackgroundColor', 'white', 'EdgeColor', 'black');
-    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
-
-    subplot(3,1,2);
-    h2 = plot(time_plot, p_m_y_centered, 'g-', 'LineWidth', 1.2); h2.Color(4) = 0.5;
-    hold on; plot(time_plot, det_y_centered, 'k-', 'LineWidth', 1.8); hold off;
-    ylabel('\Deltap_{m,y} (nm)');
-    xlim([0, duration_plot]); ylim([-y_limit, y_limit]);
-    text(0.98, 0.95, sprintf('Random STD = %.2f nm', std_pm_y), 'Units', 'normalized', ...
-        'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
-        'BackgroundColor', 'white', 'EdgeColor', 'black');
-    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
-
-    subplot(3,1,3);
-    h3 = plot(time_plot, p_m_z_centered, 'r-', 'LineWidth', 1.2); h3.Color(4) = 0.5;
-    hold on; plot(time_plot, det_z_centered, 'k-', 'LineWidth', 1.8); hold off;
-    xlabel('Time (s)'); ylabel('\Deltap_{m,z} (nm)');
-    xlim([0, duration_plot]); ylim([-y_limit, y_limit]);
-    text(0.98, 0.95, sprintf('Random STD = %.2f nm', std_pm_z), 'Units', 'normalized', ...
-        'HorizontalAlignment', 'right', 'VerticalAlignment', 'top', ...
-        'BackgroundColor', 'white', 'EdgeColor', 'black');
-    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
-
-    exportgraphics(fig_export, fullfile(output_dir, '7_openloop_deterministic_random.png'), 'Resolution', 150);
-    close(fig_export);
-
-    % Tab 8: FFT Spectrum
-    fig_export = figure('Visible', 'off', 'Position', [100, 100, 1000, 800]);
-
-    subplot(3,1,1);
-    loglog(freq_pm_x(2:end), spectrum_pm_x(2:end), 'b-', 'LineWidth', 1.5);
-    ylabel('X Amp. (nm)'); title('Position FFT Spectrum (Open-loop)');
-    xlim([freq_pm_x(2), Fs/2]); ylim([y_min_fft, y_max_fft]);
-    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
-
-    subplot(3,1,2);
-    loglog(freq_pm_y(2:end), spectrum_pm_y(2:end), 'g-', 'LineWidth', 1.5);
-    ylabel('Y Amp. (nm)');
-    xlim([freq_pm_x(2), Fs/2]); ylim([y_min_fft, y_max_fft]);
-    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
-
-    subplot(3,1,3);
-    loglog(freq_pm_z(2:end), spectrum_pm_z(2:end), 'r-', 'LineWidth', 1.5);
-    xlabel('Frequency (Hz)'); ylabel('Z Amp. (nm)');
-    xlim([freq_pm_x(2), Fs/2]); ylim([y_min_fft, y_max_fft]);
-    set(gca, 'FontSize', 12, 'FontWeight', 'bold', 'Box', 'on');
-
-    exportgraphics(fig_export, fullfile(output_dir, '8_openloop_fft_spectrum.png'), 'Resolution', 150);
-    close(fig_export);
-
-    fprintf('\n  Open-loop figures saved (7, 8)\n');
-
 end
 
 
@@ -857,94 +754,59 @@ end
 
 function [std_random, data_deterministic, data_random, f, P1] = ...
     fft_deterministic_random_separation(data, time, cutoff_freq)
-% FFT_DETERMINISTIC_RANDOM_SEPARATION - Separate deterministic and random components using FFT
-%
-%   Separates low-frequency deterministic and high-frequency random components
-%   using FFT-based filtering with endpoint extension for improved deterministic
-%   component estimation.
-%
-%   Inputs:
-%       data        - Time series data (column vector)
-%       time        - Time axis (column vector)
-%       cutoff_freq - Cutoff frequency for deterministic/random separation [Hz]
-%
-%   Outputs:
-%       std_random         - Standard deviation of random component
-%       data_deterministic - Low-frequency deterministic component
-%       data_random        - High-frequency random component
-%       f                  - Frequency axis for spectrum
-%       P1                 - Single-sided amplitude spectrum
+%FFT_DETERMINISTIC_RANDOM_SEPARATION Separate deterministic and random via FFT
 
     N = length(data);
 
-    % Ensure N is even
     if mod(N, 2) == 1
         data = data(1:end-1);
         time = time(1:end-1);
         N = N - 1;
     end
 
-    % Sample rate
     Fs = 1 / mean(diff(time));
 
-    % ========== Stage 1: FFT on original data ==========
     data_mean = mean(data);
     data_demean = data - data_mean;
 
-    % Direct FFT
     Y_original = fft(data_demean);
 
-    % Frequency axis
     f = Fs * (0:(N/2)) / N;
-    f = f(:);  % Ensure column vector
+    f = f(:);
 
-    % Single-sided amplitude spectrum
     P2 = abs(Y_original / N);
     P1 = P2(1:N/2+1);
     P1(2:end-1) = 2 * P1(2:end-1);
 
-    % Find cutoff frequency index
     cutoff_idx = find(f <= cutoff_freq, 1, 'last');
     if isempty(cutoff_idx)
         cutoff_idx = 1;
     end
 
-    % ========== Stage 2: Extract Random (high-frequency) ==========
+    % Random (high-frequency)
     Y_highfreq = Y_original;
     Y_highfreq(1:cutoff_idx) = 0;
     Y_highfreq(N-cutoff_idx+2:N) = 0;
-
-    % IFFT to get random component
     data_random = ifft(Y_highfreq, 'symmetric');
-
-    % Calculate random component standard deviation
     std_random = std(data_random);
 
-    % ========== Stage 3: Extract Deterministic (with extension + windowing) ==========
-    % Endpoint extension
+    % Deterministic (low-frequency with extension + windowing)
     extend_len = round(N * 0.1);
     left_extend = linspace(0, data_demean(1), extend_len)';
     right_extend = linspace(data_demean(end), 0, extend_len)';
     data_extended = [left_extend; data_demean; right_extend];
     N_ext = length(data_extended);
 
-    % Tukey window
     alpha = 0.1;
     window = tukeywin(N_ext, alpha);
     data_windowed = data_extended .* window;
 
-    % FFT for deterministic component
     Y_det = fft(data_windowed);
-
-    % Low-pass filter
     Y_det_lowfreq = Y_det;
     cutoff_idx_ext = round(cutoff_idx * N_ext / N);
     Y_det_lowfreq(cutoff_idx_ext+1:N_ext-cutoff_idx_ext+1) = 0;
 
-    % IFFT and extract original region
     det_extended = ifft(Y_det_lowfreq, 'symmetric');
     data_deterministic = det_extended(extend_len+1:extend_len+N) + data_mean;
 
 end
-
-
