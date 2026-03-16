@@ -6,14 +6,15 @@ function ctrl = calc_ctrl_params(config, constants)
 %   Inputs:
 %       config    - User config with fields: ctrl_enable, lambda_c,
 %                   meas_noise_enable, meas_noise_std,
-%                   a_pd, a_prd, a_cov, epsilon
+%                   a_pd, a_prd, a_cov, epsilon, alpha_f
 %       constants - Physical constants with fields: gamma_N, Ts, k_B, T
 %
 %   Outputs:
 %       ctrl - Struct with fields:
 %           enable, lambda_c, gamma, Ts,
 %           meas_noise_enable, meas_noise_std, meas_noise_seed,
-%           a_pd, a_prd, a_cov, epsilon, g_cov, sigma2_deltaXT, k_B, T
+%           a_pd, a_prd, a_cov, epsilon, k_B, T,
+%           sigma2_deltaXT, g_cov, alpha_f
 
     Ts = constants.Ts;
 
@@ -43,5 +44,8 @@ function ctrl = calc_ctrl_params(config, constants)
     % g_cov: normalization factor for residual covariance estimation
     ctrl.g_cov = sqrt(ctrl.sigma2_deltaXT) ...
                  * sqrt(2 + 1 / (1 - config.lambda_c^2));
+
+    % Forgetting factor (must be last to match CtrlBus element order)
+    ctrl.alpha_f = config.alpha_f;
 
 end

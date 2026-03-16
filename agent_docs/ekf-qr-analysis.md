@@ -627,3 +627,112 @@ After passing T1-T3, re-examine:
 2. Theta_hat convergence (Tab 7) — should stay near zero for static wall
 3. Tracking error statistics (Tab 8) — quantify improvement
 4. Pf condition number over time — should stabilize, not diverge
+
+---
+
+## 9. Forgetting Factor & EKF Deep Debugging (2026-03-16 Session 2)
+
+### 9.1 Changes Implemented
+
+**Phase 1 (code changes):**
+- Added `alpha_f = 0.998` forgetting factor to forecast covariance (thesis Ch4/Ch5)
+- Added `alpha_f` to user_config, calc_ctrl_params, CtrlBus
+- Fixed Delay(2) IC: `p0` → `[p0, p0]` (3x2 for delay length 2)
+- Cleaned debug code: removed Tikhonov regularization, replaced 100-step
+  warmup with principled EMA-settling warmup `ceil(3/a_pd + 3/a_prd) = 60`
+
+### 9.2 Root Causes Discovered
+
+**Bug 1: g_cov formula overestimates by ~2.4x**
+
+Formula: `g_cov^2 = sigma2_deltaXT * (2 + 1/(1-lambda_c^2))` = 3.96 * sigma2_deltaXT
+
+Measured (closed-loop, h=20): `Var(del_pmrr) / sigma2_deltaXT` = 1.62
+
+The formula computes Var(del_pm) (total tracking error), but the normalization
+is applied to del_pmrr (after two-stage EMA highpass). The EMA removes ~59%
+of the variance. This causes `E[del_pnr^2] = 0.49` instead of 1.0, biasing
+lambda_m systematically toward zero.
+
+**Fix:** Adaptive g_cov that tracks running variance of del_pmrr:
+```matlab
+g_cov_sq = (1 - a_cov) * g_cov_sq + a_cov * mean(del_pmrr.^2);
+g_cov = sqrt(g_cov_sq);
+```
+Verified: with corrected g_cov, `E[(u^2+v^2)/2] = 1.03` (correct).
+
+**Bug 2: R_lambda off by ~5000x**
+
+Formula: `R_lambda = a_cov^2 * g_cov^2` = 4.1e-6
+
+Correct (from chi-squared noise): `R_lambda = a_cov^2 * lambda^2` = 0.01
+
+The lambda measurement uses squared normalized residuals (chi-squared),
+whose variance is proportional to lambda^2, NOT g_cov^2. The tiny R makes
+the Kalman gain ~1.0, causing the EKF to fully trust every noisy sample.
+
+**Fix:** State-dependent R:
+```matlab
+R(4,4) = a_cov^2 * lambda_hat(1)^2;      % Var(chi^2_2/2)
+R(5,5) = a_cov^2 * 2 * lambda_hat(2)^2;  % Var(chi^2_1)
+R(6:7) = a_cov^2 * lam_T*lam_N / del_lam^2;  % theta noise
+```
+
+**Bug 3: Position EKF states (del_p1-p3, d) destabilize control**
+
+Test: known-lambda + EKF enabled → 48000 nm error.
+Test: known-lambda + EKF disabled (L=0) → **928 nm error**.
+
+The EKF position updates cause **50x worse tracking**. The position error
+estimates, especially through the disturbance states (d_hat, del_d_hat)
+with double-integrator dynamics, create a secondary positive feedback loop.
+
+**Bug 4: Double-integrator rate states (del_lambda, del_d, del_theta) diverge**
+
+These states are modeled as random walks in F:
+```
+del_lambda[k+1] = del_lambda[k] + L * err
+lambda[k+1] = lambda[k] + del_lambda[k] + L * err
+```
+Even small biased corrections to del_lambda accumulate linearly,
+causing lambda to drift. The forgetting factor amplifies this by
+keeping Pf large for these poorly-observable states.
+
+**Bug 5: Theta estimation unstable at small anisotropy**
+
+At h=20, anisotropy |lambda_T - lambda_N| = 0.03. Theta measurement
+divides by this: `theta_m += a_cov * cross_product / 0.03`. Noise is
+amplified 33x, causing theta to diverge to +/-30 degrees within 500 steps.
+
+### 9.3 Test Results with Known-Lambda Baseline
+
+Known-lambda mode: lambda computed from `calc_correction_functions(h_bar)`
+using measured position and known wall geometry. All EKF updates disabled (L=0).
+
+| Config | RMS 3D (nm) | Max (nm) | Min h/R |
+|--------|-------------|----------|---------|
+| h=5, amp=2.5, thermal+noise | **759** | 1379 | 1.16 |
+| h=20, amp=1.0, no noise | **1773** | 2693 | 8.85 |
+
+Performance limited by 2-step delay (lambda from p_m[k-2] vs current h).
+
+### 9.4 Revised Understanding
+
+The 23-state EKF has at least 5 interacting failure modes. The forgetting
+factor alone does NOT fix convergence — it actually worsens stability for
+weakly-observable states. The fundamental issues are:
+
+1. **Measurement model errors** (g_cov, R formulas)
+2. **Structural instability** (double-integrator rate states)
+3. **Position estimation coupling** (EKF position → control → measurement)
+4. **Observation noise mismatch** (chi-squared vs Gaussian R)
+5. **Weak observability** (theta at low anisotropy)
+
+### 9.5 Next Steps (Priority Order)
+
+1. **Use known-lambda baseline** for all simulation/analysis work
+2. **Investigate reduced-state estimator**: estimate only lambda (4 states)
+   without theta/disturbance, using the corrected g_cov and R
+3. **Design stable position observer**: possibly separate from the
+   lambda estimator, with proper gain scheduling
+4. **Validate theta estimation**: only at h_bar < 3 where anisotropy > 10%

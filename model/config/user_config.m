@@ -29,6 +29,7 @@ function config = user_config()
 %       a_prd       = 0.1       % EMA smoothing for random-deterministic component
 %       a_cov       = 0.1       % EMA smoothing for covariance estimation
 %       epsilon     = 0.01      % Anisotropy threshold for theta measurement
+%       alpha_f     = 0.998     % EKF forgetting factor (thesis Ch4/Ch5)
 %
 %       % Thermal
 %       thermal_enable = true   % Enable thermal force
@@ -59,6 +60,7 @@ function config = user_config()
     config.a_prd = 0.1;             % EMA smoothing for random-deterministic component
     config.a_cov = 0.1;             % EMA smoothing for covariance estimation
     config.epsilon = 0.01;          % Anisotropy threshold for theta measurement
+    config.alpha_f = 0.998;         % EKF forgetting factor (thesis Ch4/Ch5)
 
     % Thermal
     config.thermal_enable = true;

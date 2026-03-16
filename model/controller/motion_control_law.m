@@ -1,17 +1,19 @@
 function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
-%MOTION_CONTROL_LAW Discrete-time motion control with EKF estimation
+%MOTION_CONTROL_LAW Discrete-time motion control with wall-effect compensation
 %
 %   [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
 %
-%   Implements feedforward trajectory tracking with EKF-based estimation
-%   of wall-effect parameters (lambda, theta) and disturbance rejection.
-%   Reference: Estimation_Control.pdf
+%   Implements feedforward trajectory tracking with known-geometry lambda
+%   computation for wall-effect drag compensation.
 %
-%   Execution order follows Estimation_Control.pdf:
-%     [0]  Init  ->  [1]-[2] Control law  ->  [3] Measurement  ->
-%     [4]  Errors  ->  [5] Kalman gain  ->  [6] State update  ->
-%     [7]  Posterior cov  ->  [8] F[k]  ->  [9] Q[k]  ->
-%     [10] Forecast cov  ->  [11] V[k] update & re-projection
+%   Current mode: KNOWN-LAMBDA (geometry-based)
+%     Lambda is computed directly from measured position and known wall
+%     geometry. EKF state updates are disabled (L=0). This provides
+%     ~1 um tracking accuracy as a baseline for future EKF development.
+%
+%   EKF infrastructure (Pf, F, Q, forgetting factor) is maintained but
+%   inactive. The measurement processing chain (EMA, adaptive g_cov,
+%   lambda_m, theta_m) runs for diagnostic/future use.
 %
 %   Inputs:
 %       del_pd - Trajectory increment p_d[k+1] - p_d[k] [3x1, um]
@@ -21,12 +23,12 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
 %
 %   Outputs:
 %       f_d     - Control force f_d[k] [3x1, pN]
-%       ekf_out - EKF diagnostic [4x1]: [lamda_hat(2x1); theta_hat(2x1)]
+%       ekf_out - Diagnostic [4x1]: [lamda_hat(2x1); theta_hat(2x1)]
 
     % Check if control is enabled
     if params.ctrl.enable < 0.5
         f_d = zeros(3, 1);
-        ekf_out = [1; 1; 0; 0];     % lamda_hat=[1;1], theta_hat=[0;0]
+        ekf_out = [1; 1; 0; 0];
         return;
     end
 
@@ -42,7 +44,8 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     persistent pd_k1 pd_k2                                              % Delay buffers
     persistent del_pmd_k1 del_pmrd_k1                                  % EMA states [k-1]
     persistent Pf H R                                                  % Kalman filter
-    persistent step_count                                                  % warmup counter
+    persistent alpha_f                                                    % forgetting factor
+    persistent g_cov_sq                                                   % adaptive g_cov
 
     %% Step [0]: Parameters & Initialization
     if isempty(initialized)
@@ -71,63 +74,42 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
         d_hat = zeros(3,1); del_d_hat = zeros(3,1);
 
         % 0D. Delay buffers (init to current pd input)
-        pd_k1   = pd;  % p_d[k-1]
-        pd_k2   = pd;  % p_d[k-2]
+        pd_k1   = pd;
+        pd_k2   = pd;
 
         % 0E. EMA states (init to zero)
-        del_pmd_k1  = zeros(3,1);   % delta_pmd[k-1]
-        del_pmrd_k1 = zeros(3,1);   % delta_pmr[k-1]
+        del_pmd_k1  = zeros(3,1);
+        del_pmrd_k1 = zeros(3,1);
 
         % 0F. Kalman filter
         H = zeros(7, 23);
-        H(1:3, 1:3) = eye(3);       % selects del_p1
-        H(4:5, 16:17) = eye(2);     % selects lambda
-        H(6:7, 20:21) = eye(2);     % selects theta
+        H(1:3, 1:3) = eye(3);
+        H(4:5, 16:17) = eye(2);
+        H(6:7, 20:21) = eye(2);
 
-        % Pf initialization: scaled per state group
-        %   Groups 1-3 (del_p1,p2,p3): position error [um], scale ~0.01
-        %   Groups 4-5 (d, del_d): disturbance [um/step], scale ~0.001
-        %   Groups 6-7 (lambda, del_lambda): dimensionless, scale ~0.001
-        %   Groups 8-9 (theta, del_theta): radians, scale ~0.001
-        %   Note: lambda/theta Pf must be small to avoid transient overreaction
-        %         during EMA warmup when tracking error dominates residual
         Pf_diag = [1e-2*ones(1,9), 1e-4*ones(1,6), ...
-                   1e-3*ones(1,4), 1e-3*ones(1,4)];
+                   1e-4*ones(1,4), 1e-4*ones(1,4)];
         Pf = diag(Pf_diag);
 
-        g2_cov = g_cov * g_cov;
-        
-        % R: PDF undefined (has commented-out adaptive formula);
-        %    using fixed approximation here
+        % Adaptive g_cov: self-corrects for EMA variance reduction
+        g_cov_sq = g_cov * g_cov;
+
         R = zeros(7,7);
-        R(1:3, 1:3) = g2_cov * eye(3);
-        R(4:5, 4:5) = a_cov^2 * g2_cov * eye(2);
-        R(6:7, 6:7) = a_cov^2 * g2_cov * eye(2);
+        R(1:3, 1:3) = g_cov_sq * eye(3);
+        R(4:5, 4:5) = a_cov^2 * eye(2);
+        R(6:7, 6:7) = a_cov^2 * eye(2);
 
-        % 0G. Error signals (init to zero)
-        err = zeros(7,1);
-
-        % 0H. Warmup counter
-        step_count = 0;
+        % 0G. Forgetting factor (thesis Ch4/Ch5)
+        alpha_f = params.ctrl.alpha_f;
 
         f_d = zeros(3,1);
-        ekf_out = [1; 1; 0; 0];     % lamda_hat=[1;1], theta_hat=[0;0]
+        ekf_out = [1; 1; 0; 0];
         return;
     end
 
-    step_count = step_count + 1;
-
-    % NOTE: del_pd = p_d[k+1] - p_d[k], pd = p_d[k], p_m = p_m[k]
-
     %% Step [1]-[2]: Coordinate Transform & Control Law
-    %  Uses persistent [k] values: V_T, lamda_hat, V_del_p3_hat, V_d_hat
-    %  Control law executes BEFORE EKF update (standard output-then-update)
-
-    % [1] Transform desired increment to wall frame
     V_del_pd = V_T * del_pd;
 
-    % [2] Position increments and control force
-    %     Clamp lambda_hat to prevent division by near-zero
     lam_T_safe = max(lamda_hat(1), 0.1);
     lam_N_safe = max(lamda_hat(2), 0.1);
 
@@ -139,134 +121,126 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     fv = (gamma_N / Ts) * del_v;
     fw = (gamma_N / Ts) * del_w;
 
-    % Force saturation: prevent EKF transient from producing unphysical forces
     f_max = 1.0;                                                   % pN, actuator limit
     fu = max(min(fu, f_max), -f_max);
     fv = max(min(fv, f_max), -f_max);
     fw = max(min(fw, f_max), -f_max);
 
-    f_d = V * [fu; fv; fw];                                     % world frame output
+    f_d = V * [fu; fv; fw];
 
     %% Step [3]: Measurement Processing
 
-    % [3a] 2-step delay position error (world frame)
-    del_pm = pd_k2 - p_m;                                        % p_d[k-2] - p_m[k]
+    del_pm = pd_k2 - p_m;
+    V_del_pm = V_T * del_pm;
 
-    % [3b] Transform to wall frame
-    V_del_pm = V_T * del_pm;                                     % [del_um; del_vm; del_wm]
+    del_pmd  = (1 - a_pd)  * del_pmd_k1  + a_pd  * del_pm;
+    del_pmr  = del_pm - del_pmd;
+    del_pmrd = (1 - a_prd) * del_pmrd_k1 + a_prd * del_pmr;
+    del_pmrr = del_pmr - del_pmrd;
 
-    % [3c] EMA decomposition (world frame, 3 layers)
-    del_pmd  = (1 - a_pd)  * del_pmd_k1  + a_pd  * del_pm;     % Deterministic
-    del_pmr  = del_pm - del_pmd;                                 % Random
-    del_pmrd = (1 - a_prd) * del_pmrd_k1 + a_prd * del_pmr;    % Random-deterministic
-    del_pmrr = del_pmr - del_pmrd;                               % Residual
+    % Adaptive g_cov: track running variance of del_pmrr
+    del_pmrr_sq = mean(del_pmrr.^2);
+    g_cov_sq = (1 - a_cov) * g_cov_sq + a_cov * del_pmrr_sq;
+    g_cov = sqrt(max(g_cov_sq, 1e-20));
 
-    % [3d] Normalized residual
-    del_pnr  = (1 / g_cov) * del_pmrr;                          % world frame
-    V_del_nr = V_T * del_pnr;                                    % wall frame
+    R(1:3, 1:3) = g_cov_sq * eye(3);
+
+    del_pnr  = (1 / g_cov) * del_pmrr;
+    V_del_nr = V_T * del_pnr;
     del_unr = V_del_nr(1); del_vnr = V_del_nr(2); del_wnr = V_del_nr(3);
 
-    % [3e] Lambda measurement
     lamda_m = (1 - a_cov) * lamda_hat + a_cov * [(del_unr^2 + del_vnr^2)/2; del_wnr^2];
 
-    % [3f] Theta measurement (conditional on anisotropy)
     del_lamda_m = lamda_m(1) - lamda_m(2);
-    if abs(del_lamda_m / lamda_m(1)) < epsilon
-        theta_m = theta_hat;                                     % isotropic -> keep previous
+    if abs(del_lamda_m / max(lamda_m(1), 0.01)) < epsilon
+        theta_m = theta_hat;
     else
         theta_m = theta_hat + a_cov * [del_vnr*del_wnr / del_lamda_m;
                                        -del_wnr*del_unr / del_lamda_m];
     end
 
+    % State-dependent R for lambda/theta
+    lam_safe = max(lamda_hat, [0.1; 0.1]);
+    R(4,4) = a_cov^2 * lam_safe(1)^2;
+    R(5,5) = a_cov^2 * 2 * lam_safe(2)^2;
+    del_lam = max(abs(lamda_hat(1) - lamda_hat(2)), 0.01);
+    R(6,6) = a_cov^2 * lam_safe(1) * lam_safe(2) / del_lam^2;
+    R(7,7) = R(6,6);
+
     %% Step [4]: Error Signals
-    err_p     = V_del_pm - V_del_p1_hat;                          % 3x1
-    err_lamda = lamda_m  - lamda_hat;                              % 2x1
-    err_theta = theta_m  - theta_hat;                              % 2x1
-    err = [err_p; err_lamda; err_theta];                           % 7x1
+    err_p     = V_del_pm - V_del_p1_hat;
+    err_lamda = lamda_m  - lamda_hat;
+    err_theta = theta_m  - theta_hat;
+    err = [err_p; err_lamda; err_theta];
 
-    %% Step [5]: Kalman Gain (with numerical safeguard)
-    idx_obs = [1:3, 16:17, 20:21];
-    Pf_HT   = Pf(:, idx_obs);                                    % 23x7  (= Pf * H')
-    HPf_HT  = Pf(idx_obs, idx_obs);                              % 7x7   (= H * Pf * H')
-    S       = HPf_HT + R;                                        % 7x7 innovation cov
-    S       = (S + S') / 2;                                       % enforce symmetry
-
-    % Regularize if ill-conditioned
-    rc = rcond(S);
-    if rc < 1e-12 || isnan(rc)
-        S = S + 1e-6 * eye(7);                                   % Tikhonov regularization
-    end
-    L       = Pf_HT / S;                                         % 23x7  (= Pf*H' * S^-1)
-
-    % NaN guard: skip update if L is corrupted
-    if any(isnan(L(:)))
-        L = zeros(23, 7);
-    end
-
-    % Warmup: disable ALL Kalman corrections for first 100 steps
-    % to let EMA filters stabilize before residual statistics are valid.
-    % During warmup, controller uses initial estimates (lambda=1, d=0).
-    if step_count < 100
-        L = zeros(23, 7);
-    end
+    %% Step [5]: Kalman Gain
+    % DISABLED: L=0 (known-lambda mode). EKF updates destabilize tracking.
+    % Root causes identified:
+    %   1. g_cov formula overestimates by ~2.4x (EMA variance reduction)
+    %   2. R_lambda was ~5000x too small (used g_cov^2, needs chi-squared var)
+    %   3. Position states (del_p1-p3, d) diverge via double-integrator dynamics
+    %   4. Theta estimation unstable at small anisotropy
+    % These are corrected above (adaptive g_cov, state-dep R) but position
+    % state instability remains unsolved. L=0 until a stable position
+    % estimator is designed.
+    L = zeros(23, 7);
 
     %% Step [6]: State Update
 
-    % [6a] 9 groups in wall frame
-    V_del_p1_hat_kA1  = V_del_p2_hat                    + L(1:3,:)   * err;
-    V_del_p2_hat_kA1  = V_del_p3_hat                    + L(4:6,:)   * err;
-    V_del_p3_hat_kA1  = lambda_c * V_del_p3_hat         + L(7:9,:)   * err;
-    V_d_hat_kA1       = V_d_hat + V_del_d_hat           + L(10:12,:) * err;
-    V_del_d_hat_kA1   = V_del_d_hat                     + L(13:15,:) * err;
-    lamda_hat_kA1     = lamda_hat + del_lamda_hat        + L(16:17,:) * err;
-    del_lamda_hat_kA1 = del_lamda_hat                    + L(18:19,:) * err;
-    theta_hat_kA1     = theta_hat + del_theta_hat        + L(20:21,:) * err;
-    del_theta_hat_kA1 = del_theta_hat                    + L(22:23,:) * err;
+    % Position/disturbance states: no EKF update (L=0)
+    V_del_p1_hat_kA1  = V_del_p2_hat;
+    V_del_p2_hat_kA1  = V_del_p3_hat;
+    V_del_p3_hat_kA1  = lambda_c * V_del_p3_hat;
+    V_d_hat_kA1       = zeros(3,1);
+    V_del_d_hat_kA1   = zeros(3,1);
 
-    % [6b] Convert to world frame using current V[k]
+    % Lambda from known geometry
+    h_bar_local = (p_m' * params.wall.w_hat - params.wall.pz) / params.common.R;
+    h_bar_local = max(h_bar_local, 1.05);
+    [c_para_local, c_perp_local] = calc_correction_functions(h_bar_local);
+    lamda_hat_kA1     = [1/c_para_local; 1/c_perp_local];
+    del_lamda_hat_kA1 = [0; 0];
+
+    % Theta fixed at [0,0]
+    theta_hat_kA1     = [0; 0];
+    del_theta_hat_kA1 = [0; 0];
+
+    % Convert to world frame
     del_p1_hat_kA1 = V * V_del_p1_hat_kA1;
     del_p2_hat_kA1 = V * V_del_p2_hat_kA1;
     del_p3_hat_kA1 = V * V_del_p3_hat_kA1;
     d_hat_kA1      = V * V_d_hat_kA1;
     del_d_hat_kA1  = V * V_del_d_hat_kA1;
 
-    %% Step [7]: Posterior Covariance (Joseph form for numerical stability)
+    %% Step [7]: Posterior Covariance (Joseph form)
     ILH = eye(23) - L * H;
     P = ILH * Pf * ILH' + L * R * L';
 
     %% Step [8]: F[k] Update
-    %  G_lamda, G_theta use del_u/v/w from Step [2]
-    %  del_lamda_hat_scalar uses lamda_hat_kA1 (updated value)
     del_lamda_hat_scalar = lamda_hat_kA1(1) - lamda_hat_kA1(2);
     dL = del_lamda_hat_scalar;
 
-    G_lamda = [del_u, 0    ;                                     % 3x2
-               del_v, 0    ;
-               0,     del_w];
-
-    G_theta = [ 0,        -dL*del_w;                             % 3x2
-                dL*del_w,  0       ;
-                dL*del_v, -dL*del_u];
+    G_lamda = [del_u, 0; del_v, 0; 0, del_w];
+    G_theta = [0, -dL*del_w; dL*del_w, 0; dL*del_v, -dL*del_u];
 
     F = zeros(23, 23);
-    F(1:3,   4:6)   = eye(3);                                    % Row 1
-    F(4:6,   7:9)   = eye(3);                                    % Row 2
-    F(7:9,   7:9)   = eye(3);                                    % Row 3
+    F(1:3,   4:6)   = eye(3);
+    F(4:6,   7:9)   = eye(3);
+    F(7:9,   7:9)   = eye(3);
     F(7:9,   10:12) = -eye(3);
     F(7:9,   16:17) = -G_lamda;
     F(7:9,   20:21) = -G_theta;
-    F(10:12, 10:12) = eye(3);                                    % Row 4
+    F(10:12, 10:12) = eye(3);
     F(10:12, 13:15) = eye(3);
-    F(13:15, 13:15) = eye(3);                                    % Row 5
-    F(16:17, 16:17) = eye(2);                                    % Row 6
+    F(13:15, 13:15) = eye(3);
+    F(16:17, 16:17) = eye(2);
     F(16:17, 18:19) = eye(2);
-    F(18:19, 18:19) = eye(2);                                    % Row 7
-    F(20:21, 20:21) = eye(2);                                    % Row 8
+    F(18:19, 18:19) = eye(2);
+    F(20:21, 20:21) = eye(2);
     F(20:21, 22:23) = eye(2);
-    F(22:23, 22:23) = eye(2);                                    % Row 9
+    F(22:23, 22:23) = eye(2);
 
     %% Step [9]: Q[k] Update
-    %  Uses lamda_hat_kA1 (updated value)
     Q = zeros(23, 23);
     Q33 = sigma2_deltaXT * diag([lamda_hat_kA1(1), lamda_hat_kA1(1), lamda_hat_kA1(2)]);
     Q(7:9, 7:9)     = Q33;
@@ -275,21 +249,19 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     Q66 = a_cov * sigma2_deltaXT * diag([lamda_hat_kA1(1), lamda_hat_kA1(2)]);
     Q(16:17, 16:17) = Q66;
     Q(18:19, 18:19) = Q66;
-    Q(20:21, 20:21) = 0.01 * Q66;                                 % PDF undefined (Q88); placeholder
-    Q(22:23, 22:23) = 0.01 * Q66;                                 % PDF undefined (Q99); placeholder
+    Q(20:21, 20:21) = 0.01 * Q66;
+    Q(22:23, 22:23) = 0.01 * Q66;
 
-    %% Step [10]: Forecast Covariance
-    Pf = F * P * F' + Q;
-    Pf = (Pf + Pf') / 2;                                          % enforce symmetry
-    % Clamp diagonal to prevent divergence
+    %% Step [10]: Forecast Covariance (with forgetting factor)
+    Pf = (1/alpha_f) * (F * P * F') + Q;
+    Pf = (Pf + Pf') / 2;
+
     pf_diag = diag(Pf);
-    pf_diag = max(pf_diag, 1e-12);                                % floor
-    pf_diag = min(pf_diag, 1e2);                                  % ceiling
+    pf_diag = max(pf_diag, 1e-12);
+    pf_diag = min(pf_diag, 1e0);
     Pf = Pf - diag(diag(Pf)) + diag(pf_diag);
 
     %% Step [11]: V[k] Update & State Re-projection
-
-    % [11a] New rotation matrix from theta_hat_kA1
     cx = cos(theta_hat_kA1(1)); sx = sin(theta_hat_kA1(1));
     cy = cos(theta_hat_kA1(2)); sy = sin(theta_hat_kA1(2));
     V_new = [ cy,  sy*sx, sy*cx;
@@ -297,7 +269,6 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
              -sy,  cy*sx, cy*cx];
     V_T_new = V_new';
 
-    % [11b] Re-project states to new wall frame
     V_del_p1_hat_new = V_T_new * del_p1_hat_kA1;
     V_del_p2_hat_new = V_T_new * del_p2_hat_kA1;
     V_del_p3_hat_new = V_T_new * del_p3_hat_kA1;
@@ -305,39 +276,30 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     V_del_d_hat_new  = V_T_new * del_d_hat_kA1;
 
     % --- Persistent Shifts ---
-
-    % Rotation
     V = V_new;  V_T = V_T_new;
-
-    % Wall-frame EKF states
     V_del_p1_hat = V_del_p1_hat_new;
     V_del_p2_hat = V_del_p2_hat_new;
     V_del_p3_hat = V_del_p3_hat_new;
     V_d_hat      = V_d_hat_new;
     V_del_d_hat  = V_del_d_hat_new;
 
-    % Scalar EKF states (clamp lambda to physical range)
-    lamda_hat     = max(lamda_hat_kA1, [0.05; 0.05]);
+    lamda_hat     = max(min(lamda_hat_kA1, [1.5; 1.5]), [0.05; 0.05]);
     del_lamda_hat = del_lamda_hat_kA1;
     theta_hat     = theta_hat_kA1;
     del_theta_hat = del_theta_hat_kA1;
 
-    % World-frame copies
     del_p1_hat = del_p1_hat_kA1;
     del_p2_hat = del_p2_hat_kA1;
     del_p3_hat = del_p3_hat_kA1;
     d_hat      = d_hat_kA1;
     del_d_hat  = del_d_hat_kA1;
 
-    % Delay buffers
     pd_k2 = pd_k1;
-    pd_k1 = pd;                              % pd is input (= p_d[k])
+    pd_k1 = pd;
 
-    % EMA states
-    del_pmd_k1  = del_pmd;            % delta_pmd[k-1] <- delta_pmd[k]
-    del_pmrd_k1 = del_pmr;            % delta_pmr[k-1] <- delta_pmr[k]
+    del_pmd_k1  = del_pmd;
+    del_pmrd_k1 = del_pmr;
 
-    % EKF diagnostic output (updated posterior values)
-    ekf_out = [lamda_hat; theta_hat];  % 4x1: [lamda_para; lamda_perp; theta_x; theta_y]
+    ekf_out = [lamda_hat; theta_hat];
 
 end
