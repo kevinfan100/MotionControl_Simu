@@ -454,43 +454,173 @@ Pf = diag([...
 - lambda_hat converges toward 1/c_para (true lambda)
 - Tracking error < 100 nm RMS in steady state
 
-### 8.3 Test Results After Fixes (2026-03-16)
+### 8.3 Chronological Test Log (2026-03-16)
 
-**Control law validation (known-lambda, no EKF):**
+All tests on Kevinfan branch. Controller = motion_control_law.m.
+
+#### Round 1: Original code (before any fixes)
+
+| # | Config | Result |
+|---|--------|--------|
+| 1 | run_simulation.m defaults (h_init=5, amp=2.5) | CRASH: h_bar=1.0 |
+| 2 | h_init=10, amp=1, thermal=OFF, noise=OFF | CRASH: singular matrix warnings, RCOND 1e-17→1e-26 |
+
+**Diagnosis:** `Pf = 10*eye(23)` too large → `P = (I-LH)*Pf` loses positive-definiteness
+→ Pf diverges → `inv(HPfHT+R)` produces garbage → control force explodes.
+
+#### Round 2: After numerical stability fixes (A+B+C)
+
+Applied: Joseph form, Pf symmetrization, scaled Pf init, mldivide instead of inv().
+Also mistakenly removed Delay(2) on pm (later restored).
+
+| # | Config | Result |
+|---|--------|--------|
+| 3 | ctrl=OFF (open-loop), thermal=ON | SUCCESS: h_bar [4.19, 4.63] |
+| 4 | ctrl=ON, h_init=10, amp=1, thermal=OFF | CRASH: h_bar=-0.71 |
+
+**Discovery:** Without thermal noise, `(du_nr^2+dv_nr^2)/2 = 0` →
+`lambda_m = 0.9*lambda_hat → 0` exponentially → `1/lambda_hat → ∞` → force explodes.
+**EKF lambda measurement fundamentally requires thermal noise.**
+
+#### Round 3: Added force saturation (±1 pN per axis)
+
+| # | Config | Result |
+|---|--------|--------|
+| 5 | h_init=7, amp=2, thermal=ON | CRASH: "derivative not finite" at t=0.058 |
+| 6 | h_init=20, amp=1, thermal=ON | CRASH: "derivative not finite" at t=0.311 |
+
+Force saturation delays the crash but doesn't prevent it. NaN propagates
+from corrupted Kalman gain → theta_hat → V matrix → f_d.
+
+#### Round 4: Added lambda clamp + NaN guard + S regularization
+
+Added: lambda state clamp [0.05, inf], control-law clamp [0.1, inf],
+S regularization (Tikhonov if rcond < 1e-12), NaN guard on L.
+
+| # | Config | Result |
+|---|--------|--------|
+| 7 | h_init=7, amp=2, thermal=ON, noise=ON | Completed but TERRIBLE |
+
 ```
-h_init=5, amplitude=2.5, thermal=ON, known lambda from h_bar
-CL Tracking: max=0.0 nm, RMS=0.0 nm  (PERFECT)
-OL Tracking: max=3665.9 nm, RMS=2024.1 nm
-Force max: 1.73 pN (reasonable)
-h_bar: [1.111, 3.333] (safe)
+h_bar: [1.000, 3.384]
+Tracking error: RMS=24748 nm (24.7 um!)
+lambda_hat: stuck at 0.05 (clamp floor)
+theta_hat: diverged to ~1e17
 ```
-**Conclusion: control law is correct. Problem is entirely in the EKF.**
 
-**EKF stability issues found:**
-1. ~~Simulink Delay(2) on p_m path~~ — RESTORED: Delay(2) is correct.
-   pm[k] in PDF = physical_position[k-2] (ADC pipeline delay).
-   pd_k2 provides pd[k-2] to match → δpm = desired[k-2] - physical[k-2] (same time).
-2. Without thermal noise, lambda_m decays to 0 (EKF requires noise to estimate lambda)
-3. During EMA warmup, tracking error contaminates lambda measurement
-4. Controller-EKF positive feedback: lambda_hat drift → wrong force → more error → more drift
-5. Pf off-diagonal elements grow unboundedly even with diagonal clamping
-6. Full warmup (L=0 for 100 steps) delays but doesn't prevent post-warmup divergence
+**Discovery: controller-EKF positive feedback loop.**
+lambda_hat drift → wrong force → tracking error →
+EMA residual contaminated → lambda measurement wrong → more drift.
 
-**Applied fixes (in motion_control_law.m):**
-- Joseph form P update (numerically stable)
-- Pf symmetrization after forecast
-- Scaled Pf initialization (per state group)
-- Lambda clamp [0.05, inf] in state update
-- Lambda safe clamp [0.1, inf] in control law
-- Force saturation at 1 pN
-- S regularization and NaN guard
-- Warmup period (L=0 for first 100 steps)
-- Pf diagonal clamping [1e-12, 1e2]
+#### Round 5: Reduced Pf_lambda init (0.1 → 0.001)
 
-**These fixes prevent crashes but do NOT make the EKF converge.**
-The fundamental issue is EKF stability, not just numerical robustness.
+| # | Config | Result |
+|---|--------|--------|
+| 8 | Same as #7, Pf_lambda=1e-3 | Completed but WORSE |
 
-### 8.4 Verification After Fix
+```
+h_bar: [2.664, 4.470]
+Tracking error: RMS=44663 nm (44.7 um!)
+lambda_hat: still stuck at 0.05
+theta_hat: diverged to ~1e31
+```
+
+#### Round 6: Added warmup period (L=0 for first 100 steps)
+
+| # | Config | Warmup scope | Result |
+|---|--------|-------------|--------|
+| 9 | Same as #7 | lambda/theta rows only (L(16:23,:)=0) | h_bar [3.1, 41.3], lambda exploded post-warmup |
+| 10 | Same as #7 | ALL states (L=0 entirely) | h_bar [1.0, 123650], lambda_N=5.3e25 |
+
+Warmup delays the divergence but does not prevent it.
+After warmup, Pf off-diagonal elements have grown unboundedly,
+causing the first non-zero L correction to be catastrophically large.
+
+#### Round 7: Known-lambda controller (bypass EKF entirely)
+
+Discrete simulation with true lambda computed from `calc_correction_functions(h_bar)`.
+No EKF, no Simulink — pure MATLAB loop.
+
+| # | Config | Result |
+|---|--------|--------|
+| 11 | h_init=5, amp=2.5, thermal=ON, known lambda | **PERFECT** |
+
+```
+CL Tracking error: max=0.0 nm, RMS=0.0 nm
+OL Tracking error: max=3665.9 nm, RMS=2024.1 nm
+Force max: 1.73 pN
+h_bar: [1.111, 3.333]
+```
+
+**Conclusion: control law (PDF equations) is correct.
+Problem is 100% in the 23-state EKF estimation.**
+
+#### Round 8: Delay(2) investigation
+
+Initially suspected Delay(2) on pm caused double-delay → removed it.
+User corrected: pm[k] in PDF already means 2-step delayed measurement
+(ADC pipeline). Delay(2) is correct and necessary. **Restored.**
+
+Verified signal flow:
+- `From p_m_Drag → Drag_coeff_matrix`: no delay (continuous physics needs real-time p_m)
+- `From p_m_Thermal → Thermal_Force`: no delay
+- `From p_m_Ctrl → Delay(2, IC=p0) → Controller`: 2-step delay (ADC pipeline emulation)
+
+### 8.4 Applied Code Changes (motion_control_law.m)
+
+All changes are in the current code. They prevent crashes but do NOT
+make the EKF converge:
+
+| Change | Location | Purpose |
+|--------|----------|---------|
+| Joseph form P update | Step [7] | Preserve positive-definiteness |
+| Pf symmetrization | Step [10] | Prevent asymmetry accumulation |
+| Scaled Pf init | Step [0F] | Match state scales (pos/dist/lambda/theta) |
+| mldivide instead of inv() | Step [5] | Better numerical conditioning |
+| S symmetrization + Tikhonov | Step [5] | Regularize if rcond < 1e-12 |
+| NaN guard on L | Step [5] | Skip update if L corrupted |
+| Lambda state clamp [0.05] | Persistent shift | Prevent lambda → 0 |
+| Lambda control clamp [0.1] | Step [2] | Prevent 1/lambda → ∞ |
+| Force saturation ±1 pN | Step [2] | Prevent unphysical forces |
+| Warmup (L=0, 100 steps) | Step [5] | Let EMA stabilize before EKF corrects |
+| Pf diagonal clamp [1e-12, 1e2] | Step [10] | Limit diagonal growth |
+
+### 8.5 Root Cause Analysis
+
+The 23-state EKF fails due to **three coupled mechanisms**:
+
+1. **Lambda measurement requires noise (structural limitation)**
+   - Lambda is estimated from chi-squared statistics of normalized residual
+   - Without thermal noise, the residual is zero → lambda_m → 0
+   - Even with noise, during EMA warmup (~30 steps), tracking error dominates
+     the residual, contaminating the lambda measurement
+
+2. **Controller-EKF positive feedback (coupled instability)**
+   ```
+   lambda_hat deviates from true value
+   → control under/over-compensates (1/lambda_hat scaling)
+   → tracking error grows
+   → tracking error contaminates EMA residual
+   → lambda measurement becomes unreliable
+   → lambda_hat deviates further
+   → positive feedback → divergence
+   ```
+
+3. **Pf covariance divergence (numerical)**
+   - F matrix has unit eigenvalues (rate states: del_d, del_lambda, del_theta)
+   - Pf grows linearly each step via Q accumulation
+   - Off-diagonal elements grow through F coupling
+   - Diagonal clamping alone doesn't prevent off-diagonal blow-up
+   - When Kalman correction resumes after warmup, oversized Pf → oversized L → overshoot
+
+### 8.6 Next Steps
+
+The control law is verified correct (known-lambda test). Options:
+
+**A.** Use known-lambda controller for simulation/analysis (bypass EKF)
+**B.** Redesign EKF initialization/adaptation (two-phase: open-loop data collection → closed-loop)
+**C.** Research dual control / certainty equivalence stability conditions
+**D.** Simplify: estimate only lambda (not theta/d), reduce state dimension
 
 After passing T1-T3, re-examine:
 1. Lambda_hat convergence plot (Tab 6) — now with correct 1/c_para comparison
