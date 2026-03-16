@@ -728,11 +728,33 @@ weakly-observable states. The fundamental issues are:
 4. **Observation noise mismatch** (chi-squared vs Gaussian R)
 5. **Weak observability** (theta at low anisotropy)
 
-### 9.5 Next Steps (Priority Order)
+### 9.5 Direct EMA Lambda Estimator (Working Solution)
 
-1. **Use known-lambda baseline** for all simulation/analysis work
-2. **Investigate reduced-state estimator**: estimate only lambda (4 states)
-   without theta/disturbance, using the corrected g_cov and R
-3. **Design stable position observer**: possibly separate from the
-   lambda estimator, with proper gain scheduling
-4. **Validate theta estimation**: only at h_bar < 3 where anisotropy > 10%
+Research showed that a **simple EMA with a_lam = a_cov^2 = 0.01** is
+near-optimal for lambda estimation from chi-squared measurements (offline
+RMS 0.066-0.098, comparable to optimal 2-state KF). A Kalman filter adds
+negligible benefit because chi-squared noise dominates.
+
+Closed-loop results with direct EMA lambda (theta=0, d_hat=0, L=0):
+
+| Config | RMS (nm) | Max (nm) | Min h/R | Lambda bias |
+|--------|----------|----------|---------|-------------|
+| h=5, amp=2.5, thermal+noise | 1391 | 2709 | 1.79 | +0.26, +0.22 |
+| h=7, amp=2.0, thermal+noise | 1489 | --- | 2.04 | +0.18, +0.13 |
+| h=20, amp=1.0, no noise | 853 | 1565 | 8.05 | +0.05, +0.06 |
+
+Comparison with baselines:
+- Known-lambda: 759 nm (h=5) --- 1.8x better
+- Fixed lambda=[1,1]: 1190 nm (h=20) --- EMA is 1.4x better
+
+Lambda has ~0.25 positive bias at h=5 (overestimates), but the system is
+stable across all tested conditions.
+
+### 9.6 Next Steps
+
+1. **Reduce lambda bias**: the +0.25 bias limits tracking to ~1.4 um.
+   Options: slower a_lam, batch updates, or bias correction.
+2. **Re-enable position feedback**: del_p3_hat can improve tracking if the
+   position observer is redesigned (simple proportional, not EKF delay chain).
+3. **Theta estimation**: only enable at h_bar < 3 with heavy smoothing.
+4. **Validate with full run_simulation.m**: check all GUI tabs and PNG export.
