@@ -336,3 +336,128 @@ Q/R ratios. Not recommended as an isolated change.
 5. **Lambda convention: lambda = 1/c (mobility factor)**, not c (drag factor).
    The visualization code had a bug comparing lambda_hat with c_para instead
    of 1/c_para.
+
+---
+
+## 7. Simulation Test Results (2026-03-16)
+
+### 7.1 Test Configuration
+
+```
+h_init = 10 um, amplitude = 1.0 um, frequency = 1 Hz
+h_bar_init = 4.44, h_bar_min_trajectory = 4.00
+lambda_c = 0.7, thermal = OFF, meas_noise = OFF
+```
+
+### 7.2 Observed Failure: Pf Covariance Divergence
+
+**Symptom:** Simulation crashes with "h_bar must be > 1" (particle hits wall).
+
+**Root cause:** `inv(H*Pf*H' + R)` in Kalman gain computation (motion_control_law.m:166)
+becomes numerically singular. RCOND degrades monotonically:
+
+```
+Step ~0-50:     RCOND ~ 1e-17   (already poor)
+Step ~50-200:   RCOND ~ 1e-19
+Step ~200-500:  RCOND ~ 1e-22
+Step ~500+:     RCOND ~ 1e-26   → inv() output corrupted
+                                → control force diverges
+                                → particle pushed to wall
+```
+
+**Cause chain:**
+1. `Pf = 10 * eye(23)` initialization is oversized relative to state scales
+   (position error ~0.01 um vs Pf diagonal = 10)
+2. `P = (I - L*H) * Pf` uses simple form — numerical errors accumulate and
+   break positive-definiteness of P
+3. Once P loses positive-definiteness: Pf = F*P*F' + Q amplifies the error
+4. Diverging Pf → singular (H*Pf*H' + R) → garbage Kalman gain → bad control
+
+### 7.3 lambda_c Impact Analysis
+
+lambda_c = 0.7 is NOT the primary failure cause, but it affects EKF parameters:
+
+| lambda_c | g2_cov factor | (1-lambda_c) | Error settling (steps) |
+|----------|---------------|--------------|------------------------|
+| 0.3      | 2.10          | 0.7          | ~3 (aggressive)        |
+| 0.5      | 2.33          | 0.5          | ~6                     |
+| 0.7      | 3.96          | 0.3          | ~10                    |
+| 0.9      | 7.26          | 0.1          | ~44 (smooth)           |
+
+- Larger lambda_c → larger g2_cov → higher observation noise floor → harder for EKF
+- lambda_c = 0.7 is standard for moderate convergence
+- The real issue is Pf numerical stability, not lambda_c
+
+### 7.4 Root Causes Identified
+
+1. **Pf initialization `10*eye(23)` is too large**
+   - Position states have scale ~0.01 um, lambda ~1, theta ~0
+   - Pf=10 for position means 1000x overestimate of uncertainty
+   - Causes initial Kalman gains to be extremely large
+
+2. **Simple P update `P = (I-LH)*Pf` is numerically fragile**
+   - Does not preserve symmetry or positive-definiteness
+   - Error compounds each step through the Riccati recursion
+
+3. **Q/R scale mismatch across state groups**
+   - Position states: Q33 ~ 1e-4 um², R_pp ~ 1e-3 um²
+   - Lambda states: Q66 ~ 1e-5 (um²?), R_lam ~ 1e-5 (um²?)
+   - Theta states: Q88 ~ 1e-7, R_theta ~ 1e-5
+   - Mixed units create ill-conditioned Pf matrix
+
+---
+
+## 8. Proposed Fix and Test Plan
+
+### 8.1 Fix: Numerical Stability (A+B approach)
+
+**A. Pf symmetrization after each update:**
+```matlab
+Pf = (Pf + Pf') / 2;  % enforce symmetry after Riccati step
+```
+
+**B. Joseph form for posterior covariance:**
+```matlab
+% Replace: P = (I - L*H) * Pf
+% With:    P = (I - L*H) * Pf * (I - L*H)' + L * R * L'
+ILH = eye(23) - L * H;
+P = ILH * Pf * ILH' + L * R * L';
+```
+This is algebraically equivalent but numerically more stable because:
+- Result is always symmetric
+- L*R*L' term adds positive-definite contribution, preventing P from
+  going negative-definite due to floating-point errors
+
+**C. Better Pf initialization:**
+```matlab
+Pf = diag([...
+    1e-2*ones(1,9),  ... % del_p1,p2,p3: position scale (~0.01 um)^2
+    1e-4*ones(1,6),  ... % d, del_d: disturbance scale
+    1e-1*ones(1,4),  ... % lambda, del_lambda: dimensionless ~0.1
+    1e-2*ones(1,4)   ... % theta, del_theta: small angles
+]);
+```
+
+### 8.2 Test Plan
+
+| Test | Config | Purpose |
+|------|--------|---------|
+| T1   | thermal=OFF, noise=OFF, h_init=10, amp=1 | Verify Pf doesn't diverge |
+| T2   | thermal=ON, noise=OFF, h_init=7, amp=2 | EKF tracks lambda with thermal |
+| T3   | thermal=ON, noise=ON, h_init=5, amp=2.5 | Full config from run_simulation |
+| T4   | Same as T3, lambda_c=0.5 | Compare convergence speed |
+| T5   | Same as T3, lambda_c=0.9 | Compare smoothness |
+
+**Success criteria for each test:**
+- No singular matrix warnings
+- h_bar stays above h_min throughout simulation
+- lambda_hat converges toward 1/c_para (true lambda)
+- Tracking error < 100 nm RMS in steady state
+
+### 8.3 Verification After Fix
+
+After passing T1-T3, re-examine:
+1. Lambda_hat convergence plot (Tab 6) — now with correct 1/c_para comparison
+2. Theta_hat convergence (Tab 7) — should stay near zero for static wall
+3. Tracking error statistics (Tab 8) — quantify improvement
+4. Pf condition number over time — should stabilize, not diverge
