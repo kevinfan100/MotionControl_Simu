@@ -121,7 +121,7 @@ function params = calc_simulation_params(config)
     assignin('base', 'TrajBus', TrajBus);
 
     % --- CtrlBus ---
-    elems_ctrl = Simulink.BusElement.empty(0, 7);
+    elems_ctrl = Simulink.BusElement.empty(0, 15);
     elems_ctrl(1) = Simulink.BusElement; elems_ctrl(1).Name = 'enable';
     elems_ctrl(1).Dimensions = [1 1]; elems_ctrl(1).DataType = 'double';
     elems_ctrl(2) = Simulink.BusElement; elems_ctrl(2).Name = 'lambda_c';
@@ -136,6 +136,22 @@ function params = calc_simulation_params(config)
     elems_ctrl(6).Dimensions = [3 1]; elems_ctrl(6).DataType = 'double';
     elems_ctrl(7) = Simulink.BusElement; elems_ctrl(7).Name = 'meas_noise_seed';
     elems_ctrl(7).Dimensions = [1 1]; elems_ctrl(7).DataType = 'double';
+    elems_ctrl(8) = Simulink.BusElement; elems_ctrl(8).Name = 'a_pd';
+    elems_ctrl(8).Dimensions = [1 1]; elems_ctrl(8).DataType = 'double';
+    elems_ctrl(9) = Simulink.BusElement; elems_ctrl(9).Name = 'a_prd';
+    elems_ctrl(9).Dimensions = [1 1]; elems_ctrl(9).DataType = 'double';
+    elems_ctrl(10) = Simulink.BusElement; elems_ctrl(10).Name = 'a_cov';
+    elems_ctrl(10).Dimensions = [1 1]; elems_ctrl(10).DataType = 'double';
+    elems_ctrl(11) = Simulink.BusElement; elems_ctrl(11).Name = 'epsilon';
+    elems_ctrl(11).Dimensions = [1 1]; elems_ctrl(11).DataType = 'double';
+    elems_ctrl(12) = Simulink.BusElement; elems_ctrl(12).Name = 'k_B';
+    elems_ctrl(12).Dimensions = [1 1]; elems_ctrl(12).DataType = 'double';
+    elems_ctrl(13) = Simulink.BusElement; elems_ctrl(13).Name = 'T';
+    elems_ctrl(13).Dimensions = [1 1]; elems_ctrl(13).DataType = 'double';
+    elems_ctrl(14) = Simulink.BusElement; elems_ctrl(14).Name = 'sigma2_deltaXT';
+    elems_ctrl(14).Dimensions = [1 1]; elems_ctrl(14).DataType = 'double';
+    elems_ctrl(15) = Simulink.BusElement; elems_ctrl(15).Name = 'g_cov';
+    elems_ctrl(15).Dimensions = [1 1]; elems_ctrl(15).DataType = 'double';
 
     CtrlBus = Simulink.Bus;
     CtrlBus.Elements = elems_ctrl;

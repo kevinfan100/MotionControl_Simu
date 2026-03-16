@@ -25,6 +25,10 @@ function config = user_config()
 %       lambda_c    = 0.7       % Closed-loop pole (0 < lambda_c < 1)
 %       meas_noise_enable = false    % Enable measurement noise injection
 %       meas_noise_std = [0.01; 0.01; 0.01]  % Noise std [um] per axis
+%       a_pd        = 0.1       % EMA smoothing for deterministic component
+%       a_prd       = 0.1       % EMA smoothing for random-deterministic component
+%       a_cov       = 0.1       % EMA smoothing for covariance estimation
+%       epsilon     = 0.01      % Anisotropy threshold for theta measurement
 %
 %       % Thermal
 %       thermal_enable = true   % Enable thermal force
@@ -49,6 +53,12 @@ function config = user_config()
     config.lambda_c = 0.7;
     config.meas_noise_enable = false;
     config.meas_noise_std = [0.01; 0.01; 0.01];
+
+    % EKF estimation parameters
+    config.a_pd = 0.1;              % EMA smoothing for deterministic component
+    config.a_prd = 0.1;             % EMA smoothing for random-deterministic component
+    config.a_cov = 0.1;             % EMA smoothing for covariance estimation
+    config.epsilon = 0.01;          % Anisotropy threshold for theta measurement
 
     % Thermal
     config.thermal_enable = true;
