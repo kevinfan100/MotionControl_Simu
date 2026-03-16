@@ -42,6 +42,7 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     persistent pd_k1 pd_k2                                              % Delay buffers
     persistent del_pmd_k1 del_pmrd_k1                                  % EMA states [k-1]
     persistent Pf H R                                                  % Kalman filter
+    persistent step_count                                                  % warmup counter
 
     %% Step [0]: Parameters & Initialization
     if isempty(initialized)
@@ -83,7 +84,16 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
         H(4:5, 16:17) = eye(2);     % selects lambda
         H(6:7, 20:21) = eye(2);     % selects theta
 
-        Pf = 10 * eye(23);          % PDF undefined; arbitrary large value, Riccati converges in a few steps
+        % Pf initialization: scaled per state group
+        %   Groups 1-3 (del_p1,p2,p3): position error [um], scale ~0.01
+        %   Groups 4-5 (d, del_d): disturbance [um/step], scale ~0.001
+        %   Groups 6-7 (lambda, del_lambda): dimensionless, scale ~0.001
+        %   Groups 8-9 (theta, del_theta): radians, scale ~0.001
+        %   Note: lambda/theta Pf must be small to avoid transient overreaction
+        %         during EMA warmup when tracking error dominates residual
+        Pf_diag = [1e-2*ones(1,9), 1e-4*ones(1,6), ...
+                   1e-3*ones(1,4), 1e-3*ones(1,4)];
+        Pf = diag(Pf_diag);
 
         g2_cov = g_cov * g_cov;
         
@@ -97,10 +107,15 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
         % 0G. Error signals (init to zero)
         err = zeros(7,1);
 
+        % 0H. Warmup counter
+        step_count = 0;
+
         f_d = zeros(3,1);
         ekf_out = [1; 1; 0; 0];     % lamda_hat=[1;1], theta_hat=[0;0]
         return;
     end
+
+    step_count = step_count + 1;
 
     % NOTE: del_pd = p_d[k+1] - p_d[k], pd = p_d[k], p_m = p_m[k]
 
@@ -112,13 +127,23 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     V_del_pd = V_T * del_pd;
 
     % [2] Position increments and control force
-    del_u = (1/lamda_hat(1)) * (V_del_pd(1) + (1-lambda_c)*V_del_p3_hat(1) - V_d_hat(1));
-    del_v = (1/lamda_hat(1)) * (V_del_pd(2) + (1-lambda_c)*V_del_p3_hat(2) - V_d_hat(2));
-    del_w = (1/lamda_hat(2)) * (V_del_pd(3) + (1-lambda_c)*V_del_p3_hat(3) - V_d_hat(3));
+    %     Clamp lambda_hat to prevent division by near-zero
+    lam_T_safe = max(lamda_hat(1), 0.1);
+    lam_N_safe = max(lamda_hat(2), 0.1);
+
+    del_u = (1/lam_T_safe) * (V_del_pd(1) + (1-lambda_c)*V_del_p3_hat(1) - V_d_hat(1));
+    del_v = (1/lam_T_safe) * (V_del_pd(2) + (1-lambda_c)*V_del_p3_hat(2) - V_d_hat(2));
+    del_w = (1/lam_N_safe) * (V_del_pd(3) + (1-lambda_c)*V_del_p3_hat(3) - V_d_hat(3));
 
     fu = (gamma_N / Ts) * del_u;
     fv = (gamma_N / Ts) * del_v;
     fw = (gamma_N / Ts) * del_w;
+
+    % Force saturation: prevent EKF transient from producing unphysical forces
+    f_max = 1.0;                                                   % pN, actuator limit
+    fu = max(min(fu, f_max), -f_max);
+    fv = max(min(fv, f_max), -f_max);
+    fw = max(min(fw, f_max), -f_max);
 
     f_d = V * [fu; fv; fw];                                     % world frame output
 
@@ -159,12 +184,31 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     err_theta = theta_m  - theta_hat;                              % 2x1
     err = [err_p; err_lamda; err_theta];                           % 7x1
 
-    %% Step [5]: Kalman Gain
+    %% Step [5]: Kalman Gain (with numerical safeguard)
     idx_obs = [1:3, 16:17, 20:21];
     Pf_HT   = Pf(:, idx_obs);                                    % 23x7  (= Pf * H')
     HPf_HT  = Pf(idx_obs, idx_obs);                              % 7x7   (= H * Pf * H')
-    G       = inv(HPf_HT + R);                                   % 7x7
-    L       = Pf_HT * G;                                         % 23x7
+    S       = HPf_HT + R;                                        % 7x7 innovation cov
+    S       = (S + S') / 2;                                       % enforce symmetry
+
+    % Regularize if ill-conditioned
+    rc = rcond(S);
+    if rc < 1e-12 || isnan(rc)
+        S = S + 1e-6 * eye(7);                                   % Tikhonov regularization
+    end
+    L       = Pf_HT / S;                                         % 23x7  (= Pf*H' * S^-1)
+
+    % NaN guard: skip update if L is corrupted
+    if any(isnan(L(:)))
+        L = zeros(23, 7);
+    end
+
+    % Warmup: disable ALL Kalman corrections for first 100 steps
+    % to let EMA filters stabilize before residual statistics are valid.
+    % During warmup, controller uses initial estimates (lambda=1, d=0).
+    if step_count < 100
+        L = zeros(23, 7);
+    end
 
     %% Step [6]: State Update
 
@@ -186,8 +230,9 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     d_hat_kA1      = V * V_d_hat_kA1;
     del_d_hat_kA1  = V * V_del_d_hat_kA1;
 
-    %% Step [7]: Posterior Covariance
-    P = (eye(23) - L * H) * Pf;
+    %% Step [7]: Posterior Covariance (Joseph form for numerical stability)
+    ILH = eye(23) - L * H;
+    P = ILH * Pf * ILH' + L * R * L';
 
     %% Step [8]: F[k] Update
     %  G_lamda, G_theta use del_u/v/w from Step [2]
@@ -235,6 +280,12 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
 
     %% Step [10]: Forecast Covariance
     Pf = F * P * F' + Q;
+    Pf = (Pf + Pf') / 2;                                          % enforce symmetry
+    % Clamp diagonal to prevent divergence
+    pf_diag = diag(Pf);
+    pf_diag = max(pf_diag, 1e-12);                                % floor
+    pf_diag = min(pf_diag, 1e2);                                  % ceiling
+    Pf = Pf - diag(diag(Pf)) + diag(pf_diag);
 
     %% Step [11]: V[k] Update & State Re-projection
 
@@ -265,8 +316,8 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     V_d_hat      = V_d_hat_new;
     V_del_d_hat  = V_del_d_hat_new;
 
-    % Scalar EKF states
-    lamda_hat     = lamda_hat_kA1;
+    % Scalar EKF states (clamp lambda to physical range)
+    lamda_hat     = max(lamda_hat_kA1, [0.05; 0.05]);
     del_lamda_hat = del_lamda_hat_kA1;
     theta_hat     = theta_hat_kA1;
     del_theta_hat = del_theta_hat_kA1;

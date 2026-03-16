@@ -454,7 +454,41 @@ Pf = diag([...
 - lambda_hat converges toward 1/c_para (true lambda)
 - Tracking error < 100 nm RMS in steady state
 
-### 8.3 Verification After Fix
+### 8.3 Test Results After Fixes (2026-03-16)
+
+**Control law validation (known-lambda, no EKF):**
+```
+h_init=5, amplitude=2.5, thermal=ON, known lambda from h_bar
+CL Tracking: max=0.0 nm, RMS=0.0 nm  (PERFECT)
+OL Tracking: max=3665.9 nm, RMS=2024.1 nm
+Force max: 1.73 pN (reasonable)
+h_bar: [1.111, 3.333] (safe)
+```
+**Conclusion: control law is correct. Problem is entirely in the EKF.**
+
+**EKF stability issues found:**
+1. Simulink Delay(2) on p_m path caused double-delay (REMOVED)
+2. Without thermal noise, lambda_m decays to 0 (EKF requires noise to estimate lambda)
+3. During EMA warmup, tracking error contaminates lambda measurement
+4. Controller-EKF positive feedback: lambda_hat drift → wrong force → more error → more drift
+5. Pf off-diagonal elements grow unboundedly even with diagonal clamping
+6. Full warmup (L=0 for 100 steps) delays but doesn't prevent post-warmup divergence
+
+**Applied fixes (in motion_control_law.m):**
+- Joseph form P update (numerically stable)
+- Pf symmetrization after forecast
+- Scaled Pf initialization (per state group)
+- Lambda clamp [0.05, inf] in state update
+- Lambda safe clamp [0.1, inf] in control law
+- Force saturation at 1 pN
+- S regularization and NaN guard
+- Warmup period (L=0 for first 100 steps)
+- Pf diagonal clamping [1e-12, 1e2]
+
+**These fixes prevent crashes but do NOT make the EKF converge.**
+The fundamental issue is EKF stability, not just numerical robustness.
+
+### 8.4 Verification After Fix
 
 After passing T1-T3, re-examine:
 1. Lambda_hat convergence plot (Tab 6) — now with correct 1/c_para comparison
