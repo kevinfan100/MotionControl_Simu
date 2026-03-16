@@ -467,7 +467,9 @@ h_bar: [1.111, 3.333] (safe)
 **Conclusion: control law is correct. Problem is entirely in the EKF.**
 
 **EKF stability issues found:**
-1. Simulink Delay(2) on p_m path caused double-delay (REMOVED)
+1. ~~Simulink Delay(2) on p_m path~~ — RESTORED: Delay(2) is correct.
+   pm[k] in PDF = physical_position[k-2] (ADC pipeline delay).
+   pd_k2 provides pd[k-2] to match → δpm = desired[k-2] - physical[k-2] (same time).
 2. Without thermal noise, lambda_m decays to 0 (EKF requires noise to estimate lambda)
 3. During EMA warmup, tracking error contaminates lambda measurement
 4. Controller-EKF positive feedback: lambda_hat drift → wrong force → more error → more drift
