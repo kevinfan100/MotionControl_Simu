@@ -166,11 +166,14 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     end
 
     % State-dependent R for lambda/theta
+    % Base chi-squared variance scaled by 100x safety factor to match
+    % the effective smoothing rate that stabilizes closed-loop (~a_cov^2).
+    R_scale = 100;
     lam_safe = max(lamda_hat, [0.1; 0.1]);
-    R(4,4) = a_cov^2 * lam_safe(1)^2;
-    R(5,5) = a_cov^2 * 2 * lam_safe(2)^2;
+    R(4,4) = R_scale * a_cov^2 * lam_safe(1)^2;
+    R(5,5) = R_scale * a_cov^2 * 2 * lam_safe(2)^2;
     del_lam = max(abs(lamda_hat(1) - lamda_hat(2)), 0.01);
-    R(6,6) = a_cov^2 * lam_safe(1) * lam_safe(2) / del_lam^2;
+    R(6,6) = R_scale * a_cov^2 * lam_safe(1) * lam_safe(2) / del_lam^2;
     R(7,7) = R(6,6);
 
     %% Step [4]: Error Signals
@@ -192,10 +195,16 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
         L = zeros(23, 7);
     end
 
-    % EMA warmup gate
-    if step_count <= warmup_steps
-        L = zeros(23, 7);
+    % Staged activation: gradually enable state groups
+    % Phase durations scaled by warmup_steps (60 for a_pd=a_prd=0.1)
+    if step_count <= 8 * warmup_steps
+        L = zeros(23, 7);                                         % Phase 0: EMA settling (long)
+    elseif step_count <= 12 * warmup_steps
+        L(10:23, :) = 0;                                         % Phase 1: position only
+    elseif step_count <= 16 * warmup_steps
+        L(16:23, :) = 0;                                         % Phase 2: +disturbance
     end
+    % Phase 3+: full EKF (with decoupling below)
 
     % Decouple: lambda/theta only respond to their own measurements
     L(16:19, [1:3, 6:7]) = 0;                                    % lambda: keep only cols 4:5
@@ -265,9 +274,15 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     Pf = (1/alpha_f) * (F * P * F') + Q;
     Pf = (Pf + Pf') / 2;
 
+    % Enforce Pf bounds while preserving positive-definiteness.
+    % Scale entire matrix if max diagonal exceeds ceiling (preserves PD).
+    % Then enforce floor on diagonals.
+    pf_max = max(diag(Pf));
+    if pf_max > 1e0
+        Pf = Pf * (1e0 / pf_max);
+    end
     pf_diag = diag(Pf);
     pf_diag = max(pf_diag, 1e-12);
-    pf_diag = min(pf_diag, 1e0);
     Pf = Pf - diag(diag(Pf)) + diag(pf_diag);
 
     %% Step [11]: V[k] Update & State Re-projection
