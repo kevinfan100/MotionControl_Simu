@@ -6,14 +6,12 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
 %   Implements feedforward trajectory tracking with known-geometry lambda
 %   computation for wall-effect drag compensation.
 %
-%   Current mode: DIRECT-EMA LAMBDA ESTIMATION
-%     Lambda estimated via smoothed EMA of normalized residual chi-squared
-%     statistics (a_lam = a_cov^2 = 0.01). Theta fixed at [0,0].
-%     EKF position state updates disabled (L=0) — position feedback via
-%     del_p3_hat is inactive (pure feedforward + lambda compensation).
-%
-%     Performance: ~1.4 um RMS at h=5/amp=2.5 (1.8x vs known-lambda).
-%     Stable across h=5-20 with thermal + measurement noise.
+%   Full 23-state EKF with structural stability fixes:
+%     - Leaky integrator for rate states (rho_f) prevents drift
+%     - Kalman gain decoupling prevents position-parameter cross-talk
+%     - Adaptive g_cov corrects for EMA variance reduction
+%     - State-dependent R uses chi-squared noise model
+%     - Theta epsilon=0.05 prevents noise amplification at low anisotropy
 %
 %   Inputs:
 %       del_pd - Trajectory increment p_d[k+1] - p_d[k] [3x1, um]
@@ -44,7 +42,8 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     persistent pd_k1 pd_k2                                              % Delay buffers
     persistent del_pmd_k1 del_pmrd_k1                                  % EMA states [k-1]
     persistent Pf H R                                                  % Kalman filter
-    persistent alpha_f                                                    % forgetting factor
+    persistent alpha_f rho_f                                               % forgetting/leaky factors
+    persistent step_count warmup_steps                                    % EMA settling gate
     persistent g_cov_sq                                                   % adaptive g_cov
 
     %% Step [0]: Parameters & Initialization
@@ -99,13 +98,20 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
         R(4:5, 4:5) = a_cov^2 * eye(2);
         R(6:7, 6:7) = a_cov^2 * eye(2);
 
-        % 0G. Forgetting factor (thesis Ch4/Ch5)
+        % 0G. Forgetting factor and leaky factor
         alpha_f = params.ctrl.alpha_f;
+        rho_f = params.ctrl.rho_f;
+
+        % 0H. EMA measurement validity gate
+        step_count = 0;
+        warmup_steps = ceil(3/a_pd + 3/a_prd);
 
         f_d = zeros(3,1);
         ekf_out = [1; 1; 0; 0];
         return;
     end
+
+    step_count = step_count + 1;
 
     %% Step [1]-[2]: Coordinate Transform & Control Law
     V_del_pd = V_T * del_pd;
@@ -174,38 +180,41 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     err = [err_p; err_lamda; err_theta];
 
     %% Step [5]: Kalman Gain
-    % DISABLED: L=0 (known-lambda mode). EKF updates destabilize tracking.
-    % Root causes identified:
-    %   1. g_cov formula overestimates by ~2.4x (EMA variance reduction)
-    %   2. R_lambda was ~5000x too small (used g_cov^2, needs chi-squared var)
-    %   3. Position states (del_p1-p3, d) diverge via double-integrator dynamics
-    %   4. Theta estimation unstable at small anisotropy
-    % These are corrected above (adaptive g_cov, state-dep R) but position
-    % state instability remains unsolved. L=0 until a stable position
-    % estimator is designed.
-    L = zeros(23, 7);
+    idx_obs = [1:3, 16:17, 20:21];
+    Pf_HT   = Pf(:, idx_obs);                                    % 23x7
+    HPf_HT  = Pf(idx_obs, idx_obs);                              % 7x7
+    S       = HPf_HT + R;                                        % 7x7
+    S       = (S + S') / 2;                                       % enforce symmetry
+    L       = Pf_HT / S;                                         % 23x7 (mldivide)
 
-    %% Step [6]: State Update
+    % NaN guard
+    if any(isnan(L(:)))
+        L = zeros(23, 7);
+    end
 
-    % Position/disturbance states: no EKF update (L=0)
-    V_del_p1_hat_kA1  = V_del_p2_hat;
-    V_del_p2_hat_kA1  = V_del_p3_hat;
-    V_del_p3_hat_kA1  = lambda_c * V_del_p3_hat;
-    V_d_hat_kA1       = zeros(3,1);
-    V_del_d_hat_kA1   = zeros(3,1);
+    % EMA warmup gate
+    if step_count <= warmup_steps
+        L = zeros(23, 7);
+    end
 
-    % Lambda via direct EMA on normalized residual statistics.
-    % Research shows a_ema=0.01 is near-optimal for chi-squared noise
-    % (RMS error ~0.07 offline, comparable to optimal KF).
-    a_lam = a_cov * a_cov;                                       % 0.01 for a_cov=0.1
-    lamda_hat_kA1     = (1 - a_lam) * lamda_hat + a_lam * lamda_m;
-    del_lamda_hat_kA1 = [0; 0];
+    % Decouple: lambda/theta only respond to their own measurements
+    L(16:19, [1:3, 6:7]) = 0;                                    % lambda: keep only cols 4:5
+    L(20:23, [1:3, 4:5]) = 0;                                    % theta: keep only cols 6:7
 
-    % Theta fixed at [0,0]
-    theta_hat_kA1     = [0; 0];
-    del_theta_hat_kA1 = [0; 0];
+    %% Step [6]: State Update (all 9 groups)
 
-    % Convert to world frame
+    % [6a] Wall-frame EKF states
+    V_del_p1_hat_kA1  = V_del_p2_hat                    + L(1:3,:)   * err;
+    V_del_p2_hat_kA1  = V_del_p3_hat                    + L(4:6,:)   * err;
+    V_del_p3_hat_kA1  = lambda_c * V_del_p3_hat         + L(7:9,:)   * err;
+    V_d_hat_kA1       = V_d_hat + V_del_d_hat           + L(10:12,:) * err;
+    V_del_d_hat_kA1   = V_del_d_hat                     + L(13:15,:) * err;
+    lamda_hat_kA1     = lamda_hat + del_lamda_hat        + L(16:17,:) * err;
+    del_lamda_hat_kA1 = del_lamda_hat                    + L(18:19,:) * err;
+    theta_hat_kA1     = theta_hat + del_theta_hat        + L(20:21,:) * err;
+    del_theta_hat_kA1 = del_theta_hat                    + L(22:23,:) * err;
+
+    % [6b] Convert to world frame
     del_p1_hat_kA1 = V * V_del_p1_hat_kA1;
     del_p2_hat_kA1 = V * V_del_p2_hat_kA1;
     del_p3_hat_kA1 = V * V_del_p3_hat_kA1;
@@ -232,13 +241,13 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     F(7:9,   20:21) = -G_theta;
     F(10:12, 10:12) = eye(3);
     F(10:12, 13:15) = eye(3);
-    F(13:15, 13:15) = eye(3);
+    F(13:15, 13:15) = rho_f * eye(3);                              % Row 5 (leaky)
     F(16:17, 16:17) = eye(2);
     F(16:17, 18:19) = eye(2);
-    F(18:19, 18:19) = eye(2);
+    F(18:19, 18:19) = rho_f * eye(2);                              % Row 7 (leaky)
     F(20:21, 20:21) = eye(2);
     F(20:21, 22:23) = eye(2);
-    F(22:23, 22:23) = eye(2);
+    F(22:23, 22:23) = rho_f * eye(2);                              % Row 9 (leaky)
 
     %% Step [9]: Q[k] Update
     Q = zeros(23, 23);
@@ -285,7 +294,8 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
 
     lamda_hat     = max(min(lamda_hat_kA1, [1.5; 1.5]), [0.05; 0.05]);
     del_lamda_hat = del_lamda_hat_kA1;
-    theta_hat     = theta_hat_kA1;
+    theta_max = pi/6;
+    theta_hat     = max(min(theta_hat_kA1, theta_max), -theta_max);
     del_theta_hat = del_theta_hat_kA1;
 
     del_p1_hat = del_p1_hat_kA1;
