@@ -128,6 +128,14 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     fw = (gamma_N / Ts) * del_w;
 
     f_max = 1.0;                                                   % pN, actuator limit
+
+    % Wall-proximity safety: reduce max force when particle is near wall.
+    % Prevents crash regardless of EKF state; allows longer simulations.
+    h_bar_est = (p_m' * params.wall.w_hat - params.wall.pz) / params.common.R;
+    if h_bar_est < 2.0
+        f_max = f_max * max((h_bar_est - 1.0), 0);
+    end
+
     fu = max(min(fu, f_max), -f_max);
     fv = max(min(fv, f_max), -f_max);
     fw = max(min(fw, f_max), -f_max);
