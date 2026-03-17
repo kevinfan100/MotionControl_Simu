@@ -129,13 +129,6 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
 
     f_max = 1.0;                                                   % pN, actuator limit
 
-    % Wall-proximity safety: reduce max force when particle is near wall.
-    % Prevents crash regardless of EKF state; allows longer simulations.
-    h_bar_est = (p_m' * params.wall.w_hat - params.wall.pz) / params.common.R;
-    if h_bar_est < 2.0
-        f_max = f_max * max((h_bar_est - 1.0), 0);
-    end
-
     fu = max(min(fu, f_max), -f_max);
     fv = max(min(fv, f_max), -f_max);
     fw = max(min(fw, f_max), -f_max);
@@ -174,14 +167,12 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     end
 
     % State-dependent R for lambda/theta
-    % Base chi-squared variance scaled by 100x safety factor to match
-    % the effective smoothing rate that stabilizes closed-loop (~a_cov^2).
-    R_scale = 100;
+    % R_scale: 100 for tangential (clean), 1000 for normal (trajectory-contaminated)
     lam_safe = max(lamda_hat, [0.1; 0.1]);
-    R(4,4) = R_scale * a_cov^2 * lam_safe(1)^2;
-    R(5,5) = R_scale * a_cov^2 * 2 * lam_safe(2)^2;
+    R(4,4) = 100 * a_cov^2 * lam_safe(1)^2;
+    R(5,5) = 1000 * a_cov^2 * 2 * lam_safe(2)^2;
     del_lam = max(abs(lamda_hat(1) - lamda_hat(2)), 0.01);
-    R(6,6) = R_scale * a_cov^2 * lam_safe(1) * lam_safe(2) / del_lam^2;
+    R(6,6) = 100 * a_cov^2 * lam_safe(1) * lam_safe(2) / del_lam^2;
     R(7,7) = R(6,6);
 
     %% Step [4]: Error Signals

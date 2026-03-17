@@ -26,10 +26,9 @@ function [c_para, c_perp] = calc_correction_functions(h_bar)
 %   Reference:
 %       Drag_MATLAB.pdf - Wall Effect mathematical model
 
-    if h_bar < 1
-        error('calc_correction_functions:invalidInput', ...
-            'h_bar must be > 1 (particle must not touch wall). Got h_bar = %.4f', h_bar);
-    end
+    % Safety clamp: prevent singularity at h_bar <= 1 (particle touching wall).
+    % Clamps to 1.001 instead of throwing error, allowing simulation to continue.
+    h_bar = max(h_bar, 1.001);
 
     % Compute inverse of h_bar for efficiency
     inv_h = 1 / h_bar;
