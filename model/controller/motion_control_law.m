@@ -214,9 +214,27 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     V_d_hat_kA1       = zeros(3,1);
     V_del_d_hat_kA1   = zeros(3,1);
 
-    % [6c] Lambda via smoothed direct EMA (a_lam = a_cov^2)
+    % [6c] Lambda_T via smoothed direct EMA (tangential, clean measurement)
     a_lam = a_cov * a_cov;
-    lamda_hat_kA1     = (1 - a_lam) * lamda_hat + a_lam * lamda_m;
+    lam_T_new = (1 - a_lam) * lamda_hat(1) + a_lam * lamda_m(1);
+    lam_T_new = max(min(lam_T_new, 0.9999), 0.05);
+
+    % [6c-bis] Derive lambda_N from lambda_T via c_para/c_perp relationship.
+    % Newton iteration: solve denom_para(h) = lam_T for h_bar.
+    h_inv = 2.0;  % initial guess
+    for newton_iter = 1:10
+        ih = 1/h_inv;
+        f_val = 1 - 9/16*ih + 1/8*ih^3 - 45/256*ih^4 - 1/16*ih^5 - lam_T_new;
+        df_val = 9/16*ih^2 - 3/8*ih^4 + 45/64*ih^5 + 5/16*ih^6;
+        h_inv = max(h_inv - f_val / max(df_val, 1e-10), 1.001);
+    end
+    % Compute lambda_N = 1/c_perp(h_bar) from recovered h_bar
+    ih = 1/h_inv;
+    denom_perp = 1 - 9/8*ih + 1/2*ih^3 - 57/100*ih^4 + 1/5*ih^5 ...
+                 + 7/200*ih^11 - 1/25*ih^12;
+    lam_N_new = max(min(denom_perp, 1.0), 0.01);
+
+    lamda_hat_kA1     = [lam_T_new; lam_N_new];
     del_lamda_hat_kA1 = [0; 0];
 
     % [6d] Theta via heavily smoothed EMA (10x slower than lambda)
