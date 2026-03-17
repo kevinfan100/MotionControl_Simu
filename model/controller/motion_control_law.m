@@ -6,12 +6,12 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
 %   Implements feedforward trajectory tracking with known-geometry lambda
 %   computation for wall-effect drag compensation.
 %
-%   Full 23-state EKF with structural stability fixes:
-%     - Leaky integrator for rate states (rho_f) prevents drift
-%     - Kalman gain decoupling prevents position-parameter cross-talk
+%   Hybrid architecture: EKF position + EMA lambda/theta.
+%     - EKF estimates position error (del_p1-p3) for tracking feedback
+%     - Lambda/theta estimated via direct EMA (a_lam = a_cov^2)
+%     - Disturbance (d_hat) disabled to prevent long-term drift
 %     - Adaptive g_cov corrects for EMA variance reduction
 %     - State-dependent R uses chi-squared noise model
-%     - Theta epsilon=0.05 prevents noise amplification at low anisotropy
 %
 %   Inputs:
 %       del_pd - Trajectory increment p_d[k+1] - p_d[k] [3x1, um]
@@ -194,33 +194,35 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
         L = zeros(23, 7);
     end
 
-    % Staged activation: gradually enable state groups
-    % Phase durations scaled by warmup_steps (60 for a_pd=a_prd=0.1)
-    if step_count <= 8 * warmup_steps
-        L = zeros(23, 7);                                         % Phase 0: EMA settling (long)
-    elseif step_count <= 12 * warmup_steps
-        L(10:23, :) = 0;                                         % Phase 1: position only
-    elseif step_count <= 16 * warmup_steps
-        L(16:23, :) = 0;                                         % Phase 2: +disturbance
+    % Hybrid architecture: EKF for position, EMA for lambda/theta.
+    % Position EKF provides error feedback; EMA lambda is stable.
+    % Disturbance states disabled (d_hat=0) to prevent long-term drift.
+    if step_count <= warmup_steps
+        L = zeros(23, 7);                                         % EMA settling
+    else
+        L(10:23, :) = 0;                                         % disable dist + lambda + theta
     end
-    % Phase 3+: full EKF (with decoupling below)
 
-    % Decouple: lambda/theta only respond to their own measurements
-    L(16:19, [1:3, 6:7]) = 0;                                    % lambda: keep only cols 4:5
-    L(20:23, [1:3, 4:5]) = 0;                                    % theta: keep only cols 6:7
+    %% Step [6]: State Update
 
-    %% Step [6]: State Update (all 9 groups)
-
-    % [6a] Wall-frame EKF states
+    % [6a] Position states via EKF (wall frame)
     V_del_p1_hat_kA1  = V_del_p2_hat                    + L(1:3,:)   * err;
     V_del_p2_hat_kA1  = V_del_p3_hat                    + L(4:6,:)   * err;
     V_del_p3_hat_kA1  = lambda_c * V_del_p3_hat         + L(7:9,:)   * err;
-    V_d_hat_kA1       = V_d_hat + V_del_d_hat           + L(10:12,:) * err;
-    V_del_d_hat_kA1   = V_del_d_hat                     + L(13:15,:) * err;
-    lamda_hat_kA1     = lamda_hat + del_lamda_hat        + L(16:17,:) * err;
-    del_lamda_hat_kA1 = del_lamda_hat                    + L(18:19,:) * err;
-    theta_hat_kA1     = theta_hat + del_theta_hat        + L(20:21,:) * err;
-    del_theta_hat_kA1 = del_theta_hat                    + L(22:23,:) * err;
+
+    % [6b] Disturbance: disabled (prevents long-term drift)
+    V_d_hat_kA1       = zeros(3,1);
+    V_del_d_hat_kA1   = zeros(3,1);
+
+    % [6c] Lambda via smoothed direct EMA (a_lam = a_cov^2)
+    a_lam = a_cov * a_cov;
+    lamda_hat_kA1     = (1 - a_lam) * lamda_hat + a_lam * lamda_m;
+    del_lamda_hat_kA1 = [0; 0];
+
+    % [6d] Theta via heavily smoothed EMA (10x slower than lambda)
+    a_theta = a_cov * a_cov * a_cov;                              % 0.001 for a_cov=0.1
+    theta_hat_kA1     = (1 - a_theta) * theta_hat + a_theta * theta_m;
+    del_theta_hat_kA1 = [0; 0];
 
     % [6b] Convert to world frame
     del_p1_hat_kA1 = V * V_del_p1_hat_kA1;

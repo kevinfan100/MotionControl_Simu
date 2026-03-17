@@ -60,7 +60,7 @@ function config = user_config()
     config.a_pd = 0.1;              % EMA smoothing for deterministic component
     config.a_prd = 0.1;             % EMA smoothing for random-deterministic component
     config.a_cov = 0.1;             % EMA smoothing for covariance estimation
-    config.epsilon = 0.05;          % Anisotropy threshold for theta measurement
+    config.epsilon = 0.2;           % Anisotropy threshold for theta measurement
     config.alpha_f = 0.998;         % EKF forgetting factor (thesis Ch4/Ch5)
     config.rho_f = 0.995;           % EKF rate state leaky factor (half-life ~86 ms)
 
