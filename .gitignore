@@ -24,3 +24,8 @@ desktop.ini
 # MATLAB 生成檔案
 *.mex*
 codegen/
+
+# Node.js（非本專案所需）
+node_modules/
+package.json
+package-lock.json
