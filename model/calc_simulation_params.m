@@ -57,6 +57,11 @@ function params = calc_simulation_params(config)
 
     % --- ctrl sub-structure ---
     params_data.ctrl = calc_ctrl_params(config, constants);
+    % D2: Add wall geometry for lambda estimation from measured position
+    params_data.ctrl.w_hat = params_data.wall.w_hat;
+    params_data.ctrl.R_particle = constants.R;
+    params_data.ctrl.h_bar_init = config.h_init / constants.R;
+    params_data.ctrl.pz = params_data.wall.pz;
 
     % --- thermal sub-structure ---
     params_data.thermal = calc_thermal_params(config, constants);
@@ -121,7 +126,7 @@ function params = calc_simulation_params(config)
     assignin('base', 'TrajBus', TrajBus);
 
     % --- CtrlBus ---
-    elems_ctrl = Simulink.BusElement.empty(0, 17);
+    elems_ctrl = Simulink.BusElement.empty(0, 21);
     elems_ctrl(1) = Simulink.BusElement; elems_ctrl(1).Name = 'enable';
     elems_ctrl(1).Dimensions = [1 1]; elems_ctrl(1).DataType = 'double';
     elems_ctrl(2) = Simulink.BusElement; elems_ctrl(2).Name = 'lambda_c';
@@ -156,6 +161,14 @@ function params = calc_simulation_params(config)
     elems_ctrl(16).Dimensions = [1 1]; elems_ctrl(16).DataType = 'double';
     elems_ctrl(17) = Simulink.BusElement; elems_ctrl(17).Name = 'rho_f';
     elems_ctrl(17).Dimensions = [1 1]; elems_ctrl(17).DataType = 'double';
+    elems_ctrl(18) = Simulink.BusElement; elems_ctrl(18).Name = 'w_hat';
+    elems_ctrl(18).Dimensions = [3 1]; elems_ctrl(18).DataType = 'double';
+    elems_ctrl(19) = Simulink.BusElement; elems_ctrl(19).Name = 'R_particle';
+    elems_ctrl(19).Dimensions = [1 1]; elems_ctrl(19).DataType = 'double';
+    elems_ctrl(20) = Simulink.BusElement; elems_ctrl(20).Name = 'h_bar_init';
+    elems_ctrl(20).Dimensions = [1 1]; elems_ctrl(20).DataType = 'double';
+    elems_ctrl(21) = Simulink.BusElement; elems_ctrl(21).Name = 'pz';
+    elems_ctrl(21).Dimensions = [1 1]; elems_ctrl(21).DataType = 'double';
 
     CtrlBus = Simulink.Bus;
     CtrlBus.Elements = elems_ctrl;

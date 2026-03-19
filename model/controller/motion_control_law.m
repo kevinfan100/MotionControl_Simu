@@ -6,12 +6,13 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
 %   Implements feedforward trajectory tracking with known-geometry lambda
 %   computation for wall-effect drag compensation.
 %
-%   Hybrid architecture: EKF position + EMA lambda/theta.
-%     - EKF estimates position error (del_p1-p3) for tracking feedback
-%     - Lambda/theta estimated via direct EMA (a_lam = a_cov^2)
-%     - Disturbance (d_hat) disabled to prevent long-term drift
-%     - Adaptive g_cov corrects for EMA variance reduction
-%     - State-dependent R uses chi-squared noise model
+%   Hybrid architecture: EKF position + position-based lambda + EMA theta.
+%     - Position: innovation-only feedback (no delay chain accumulation)
+%     - Lambda: computed from p_m + known wall geometry, EMA filtered (a=0.5)
+%     - Theta: chi-squared EMA estimation
+%     - D1: Per-channel g_cov (tangential/normal separation)
+%     - D2: Position-based lambda (direct h_bar from p_m)
+%     - D3: Innovation-only position states (no drift)
 %
 %   Inputs:
 %       del_pd - Trajectory increment p_d[k+1] - p_d[k] [3x1, um]
@@ -44,7 +45,8 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     persistent Pf H R                                                  % Kalman filter
     persistent alpha_f rho_f                                               % forgetting/leaky factors
     persistent step_count warmup_steps                                    % EMA settling gate
-    persistent g_cov_sq                                                   % adaptive g_cov
+    persistent g_cov_T_sq g_cov_N_sq g_cov_T g_cov_N                    % D1: per-channel g_cov
+    persistent w_hat_ctrl R_particle pz_ctrl                              % D2: position-based lambda
 
     %% Step [0]: Parameters & Initialization
     if isempty(initialized)
@@ -60,6 +62,11 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
         epsilon = params.ctrl.epsilon;
         sigma2_deltaXT = params.ctrl.sigma2_deltaXT;
         g_cov = params.ctrl.g_cov;
+
+        % 0A-bis. D2: Extract wall geometry for position-based lambda
+        w_hat_ctrl = params.ctrl.w_hat;
+        R_particle = params.ctrl.R_particle;
+        pz_ctrl = params.ctrl.pz;
 
         % 0B. Rotation (theta[0]=[0;0] -> V=I)
         V = eye(3); V_T = eye(3);
@@ -90,11 +97,14 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
                    1e-4*ones(1,4), 1e-4*ones(1,4)];
         Pf = diag(Pf_diag);
 
-        % Adaptive g_cov: self-corrects for EMA variance reduction
-        g_cov_sq = g_cov * g_cov;
+        % D1: Per-channel g_cov initialization
+        g_cov_T_sq = g_cov * g_cov;
+        g_cov_N_sq = g_cov * g_cov;
+        g_cov_T = g_cov;
+        g_cov_N = g_cov;
 
         R = zeros(7,7);
-        R(1:3, 1:3) = g_cov_sq * eye(3);
+        R(1:3, 1:3) = diag([g_cov_T_sq, g_cov_T_sq, g_cov_N_sq]);
         R(4:5, 4:5) = a_cov^2 * eye(2);
         R(6:7, 6:7) = a_cov^2 * eye(2);
 
@@ -145,16 +155,20 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     del_pmrd = (1 - a_prd) * del_pmrd_k1 + a_prd * del_pmr;
     del_pmrr = del_pmr - del_pmrd;
 
-    % Adaptive g_cov: track running variance of del_pmrr
-    del_pmrr_sq = mean(del_pmrr.^2);
-    g_cov_sq = (1 - a_cov) * g_cov_sq + a_cov * del_pmrr_sq;
-    g_cov = sqrt(max(g_cov_sq, 1e-20));
+    % D1: Per-channel g_cov (tangential vs normal in wall frame)
+    V_del_pmrr = V_T * del_pmrr;
+    g_cov_T_sq = (1 - a_cov) * g_cov_T_sq + a_cov * (V_del_pmrr(1)^2 + V_del_pmrr(2)^2) / 2;
+    g_cov_N_sq = (1 - a_cov) * g_cov_N_sq + a_cov * V_del_pmrr(3)^2;
+    g_cov_T = sqrt(max(g_cov_T_sq, 1e-20));
+    g_cov_N = sqrt(max(g_cov_N_sq, 1e-20));
 
-    R(1:3, 1:3) = g_cov_sq * eye(3);
+    % Per-channel R for position (wall frame)
+    R(1:3, 1:3) = diag([g_cov_T_sq, g_cov_T_sq, g_cov_N_sq]);
 
-    del_pnr  = (1 / g_cov) * del_pmrr;
-    V_del_nr = V_T * del_pnr;
-    del_unr = V_del_nr(1); del_vnr = V_del_nr(2); del_wnr = V_del_nr(3);
+    % Per-channel normalization in wall frame
+    del_unr = V_del_pmrr(1) / g_cov_T;
+    del_vnr = V_del_pmrr(2) / g_cov_T;
+    del_wnr = V_del_pmrr(3) / g_cov_N;
 
     lamda_m = (1 - a_cov) * lamda_hat + a_cov * [(del_unr^2 + del_vnr^2)/2; del_wnr^2];
 
@@ -201,38 +215,45 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
         L = zeros(23, 7);                                         % EMA settling
     else
         L(10:23, :) = 0;                                         % disable dist + lambda + theta
+        % D3: Decouple position from lambda/theta innovations
+        L(1:9, 4:7) = 0;                                        % position only from position err
     end
 
     %% Step [6]: State Update
 
     % [6a] Position states via EKF (wall frame)
-    V_del_p1_hat_kA1  = V_del_p2_hat                    + L(1:3,:)   * err;
-    V_del_p2_hat_kA1  = V_del_p3_hat                    + L(4:6,:)   * err;
+    % D3: Kill delay chain feed-through to prevent drift accumulation.
+    % del_p1/p2 use innovation only; del_p3 retains bounded memory via lambda_c.
+    V_del_p1_hat_kA1  = L(1:3,:)   * err;
+    V_del_p2_hat_kA1  = L(4:6,:)   * err;
     V_del_p3_hat_kA1  = lambda_c * V_del_p3_hat         + L(7:9,:)   * err;
 
     % [6b] Disturbance: disabled (prevents long-term drift)
     V_d_hat_kA1       = zeros(3,1);
     V_del_d_hat_kA1   = zeros(3,1);
 
-    % [6c] Lambda_T via smoothed direct EMA (tangential, clean measurement)
-    a_lam = a_cov * a_cov;
-    lam_T_new = (1 - a_lam) * lamda_hat(1) + a_lam * lamda_m(1);
+    % [6c] Lambda via measured position + known wall geometry (D2)
+    % Compute h_bar directly from p_m (instantaneous, no EMA lag)
+    h_bar_meas = (p_m(1)*w_hat_ctrl(1) + p_m(2)*w_hat_ctrl(2) ...
+                  + p_m(3)*w_hat_ctrl(3) - pz_ctrl) / R_particle;
+    h_bar_meas = max(h_bar_meas, 1.001);
+
+    % Lambda_T = 1/c_para from known physics
+    ih_m = 1 / h_bar_meas;
+    lam_T_direct = 1 - 9/16*ih_m + 1/8*ih_m^3 ...
+                   - 45/256*ih_m^4 - 1/16*ih_m^5;
+
+    % Light EMA for noise rejection (decoupled from a_cov to avoid side effects)
+    % Position noise → h_bar noise ≈ 0.001 → lambda noise ≈ 0.001 (SNR > 100)
+    a_lam = 0.5;
+    lam_T_new = (1 - a_lam) * lamda_hat(1) + a_lam * lam_T_direct;
     lam_T_new = max(min(lam_T_new, 0.9999), 0.05);
 
-    % [6c-bis] Derive lambda_N from lambda_T via c_para/c_perp relationship.
-    % Newton iteration: solve denom_para(h) = lam_T for h_bar.
-    h_inv = 2.0;  % initial guess
-    for newton_iter = 1:10
-        ih = 1/h_inv;
-        f_val = 1 - 9/16*ih + 1/8*ih^3 - 45/256*ih^4 - 1/16*ih^5 - lam_T_new;
-        df_val = 9/16*ih^2 - 3/8*ih^4 + 45/64*ih^5 + 5/16*ih^6;
-        h_inv = max(h_inv - f_val / max(df_val, 1e-10), 1.001);
-    end
-    % Compute lambda_N = 1/c_perp(h_bar) from recovered h_bar
-    ih = 1/h_inv;
-    denom_perp = 1 - 9/8*ih + 1/2*ih^3 - 57/100*ih^4 + 1/5*ih^5 ...
-                 + 7/200*ih^11 - 1/25*ih^12;
-    lam_N_new = max(min(denom_perp, 1.0), 0.01);
+    % Lambda_N = 1/c_perp from same h_bar (no Newton needed)
+    denom_perp = 1 - 9/8*ih_m + 1/2*ih_m^3 - 57/100*ih_m^4 + 1/5*ih_m^5 ...
+                 + 7/200*ih_m^11 - 1/25*ih_m^12;
+    lam_N_direct = max(min(denom_perp, 1.0), 0.01);
+    lam_N_new = (1 - a_lam) * lamda_hat(2) + a_lam * lam_N_direct;
 
     lamda_hat_kA1     = [lam_T_new; lam_N_new];
     del_lamda_hat_kA1 = [0; 0];
