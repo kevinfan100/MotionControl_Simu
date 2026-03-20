@@ -45,7 +45,7 @@ function ctrl = calc_ctrl_params(config, constants)
     ctrl.g_cov = sqrt(ctrl.sigma2_deltaXT) ...
                  * sqrt(2 + 1 / (1 - config.lambda_c^2));
 
-    % Forgetting factor and leaky factor (must be last to match CtrlBus element order)
+    % Forgetting factor and leaky factor
     ctrl.alpha_f = config.alpha_f;
     ctrl.rho_f = config.rho_f;
 

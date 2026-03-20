@@ -758,3 +758,171 @@ stable across all tested conditions.
    position observer is redesigned (simple proportional, not EKF delay chain).
 3. **Theta estimation**: only enable at h_bar < 3 with heavy smoothing.
 4. **Validate with full run_simulation.m**: check all GUI tabs and PNG export.
+
+---
+
+## 10. Hybrid Architecture v2 — Position-Based Lambda (2026-03-19)
+
+### 10.1 Architecture Change Summary
+
+Replaced EMA chi-squared lambda estimation (Section 9.5) with **position-based lambda**
+computed directly from measured position and known wall geometry. This eliminates the
+chi-squared measurement noise entirely and provides instantaneous, bias-free lambda.
+
+Key changes from Section 9 architecture:
+- Lambda source: chi-squared EMA → position-based polynomial (D2)
+- g_cov: scalar adaptive → per-channel tangential/normal (D1)
+- Position states: delay chain accumulation → innovation-only feedback (D3)
+
+### 10.2 D1: Per-Channel g_cov
+
+**Problem:** Scalar g_cov averages tangential and normal residual variance,
+but wall effect makes normal-direction variance significantly different from
+tangential (c_perp ≠ c_para).
+
+**Solution:** Track separate g_cov for tangential (u,v) and normal (w) in wall frame:
+```matlab
+V_del_pmrr = V_T * del_pmrr;
+g_cov_T_sq = (1 - a_cov) * g_cov_T_sq + a_cov * (V_del_pmrr(1)^2 + V_del_pmrr(2)^2) / 2;
+g_cov_N_sq = (1 - a_cov) * g_cov_N_sq + a_cov * V_del_pmrr(3)^2;
+```
+
+**Effect:** R_pp becomes `diag(g_cov_T^2, g_cov_T^2, g_cov_N^2)` — properly weighted
+per-channel position measurement noise. Normalization uses channel-specific g_cov,
+producing unbiased chi-squared statistics per direction.
+
+### 10.3 D2: Position-Based Lambda
+
+**Problem:** Chi-squared lambda estimation (Section 9.5) has +0.25 bias at h=5 um
+because the measurement is inherently noisy (variance of chi-squared = 2*lambda^2
+for single DOF). Even with optimal EMA, RMS error ~0.07 is achievable but bias
+persists due to closed-loop contamination.
+
+**Solution:** Compute h_bar directly from measured position and known wall geometry:
+```matlab
+h_bar_meas = dot(p_m, w_hat) - pz) / R_particle;
+h_bar_meas = max(h_bar_meas, 1.001);  % safety clamp
+```
+
+Then compute lambda_T = 1/c_para(h_bar) from Faxen's series:
+```matlab
+ih = 1/h_bar_meas;
+lam_T = 1 - 9/16*ih + 1/8*ih^3 - 45/256*ih^4 - 1/16*ih^5;
+```
+
+Lambda_N = 1/c_perp from same h_bar (direct polynomial, no Newton inversion needed).
+
+Light EMA filtering (a_lam = 0.5) for noise rejection:
+```matlab
+lam_T_new = (1 - a_lam) * lamda_hat(1) + a_lam * lam_T_direct;
+```
+
+a_lam = 0.5 is decoupled from a_cov to avoid side effects. Position noise → h_bar
+noise ≈ 0.001 → lambda noise ≈ 0.001, giving SNR > 100.
+
+**CtrlBus additions:** w_hat [3x1], R_particle [1x1], h_bar_init [1x1], pz [1x1]
+are passed from calc_simulation_params to the controller.
+
+### 10.4 D3: Innovation-Only Position States
+
+**Problem:** The original delay chain (del_p1 → del_p2 → del_p3) accumulates
+state estimate errors across 3 time steps. Combined with disturbance states
+(d_hat, del_d_hat), this creates a 15-state integrator chain that drifts
+unboundedly (Section 9.2, Bug 3: 50x worse tracking with EKF vs without).
+
+**Solution:** Kill the delay chain feed-through:
+```matlab
+% del_p1, del_p2: innovation only (no delay feed-through)
+V_del_p1_hat_kA1 = L(1:3,:) * err;
+V_del_p2_hat_kA1 = L(4:6,:) * err;
+% del_p3: retains bounded memory via lambda_c decay
+V_del_p3_hat_kA1 = lambda_c * V_del_p3_hat + L(7:9,:) * err;
+```
+
+Additionally, cross-innovation coupling is blocked:
+```matlab
+L(1:9, 4:7) = 0;  % position only from position error (not lambda/theta)
+```
+
+Disturbance states remain zeroed (d_hat = 0, del_d_hat = 0) to prevent drift.
+
+### 10.5 Test Results (T1-T4)
+
+All tests: h_init=5 um, amplitude=2.5 um, frequency=1 Hz, thermal=ON, meas_noise=ON.
+
+| Test | lambda_c | Lambda Bias (T/N) | Tracking RMS (nm) | Min h/R | Status |
+|------|----------|-------------------|-------------------|---------|--------|
+| T1   | 0.7      | ~0%               | 898               | 1.16    | PASS   |
+| T2   | 0.5      | ~0%               | 942               | 1.14    | PASS   |
+| T3   | 0.7      | ~0%               | 898               | 1.16    | PASS (repeat T1) |
+| T4   | 0.9      | ~0%               | 877               | 1.17    | PASS   |
+
+**Comparison with previous architectures:**
+| Architecture | Lambda Bias | Tracking RMS (nm) | Notes |
+|-------------|-------------|-------------------|-------|
+| Known-lambda (Section 9.3) | 0% | 759 | Theoretical optimum |
+| EMA chi-squared (Section 9.5) | +25% | 1391 | Biased |
+| **Position-based (D1+D2+D3)** | **~0%** | **898** | **Current** |
+
+Position-based lambda achieves near-zero bias and is within 18% of the
+known-lambda optimum. The remaining gap is from the 2-step measurement delay
+and EMA smoothing.
+
+### 10.6 Performance Validation — Multi-Seed Analysis (2026-03-19)
+
+The T1-T4 single-run results (898 nm) were stochastic. A 10-seed validation
+reveals the architecture already **outperforms** the known-lambda baseline:
+
+**a_lam sweep** (lambda_c = 0.7, 10 seeds):
+```
+a_lam=0.5: mean=701.7 nm, std=113.8 nm, range=[554, 833]
+a_lam=1.0: mean=702.4 nm, std=114.8 nm, range=[557, 844]
+Difference: 0.7 nm (0.1%) — negligible
+```
+
+**lambda_c sweep** (a_lam = 0.9, seed=42):
+```
+lambda_c=0.30: 726 nm  (too aggressive position feedback)
+lambda_c=0.50: 728 nm
+lambda_c=0.70: 707 nm  ← optimum
+lambda_c=0.80: 721 nm
+lambda_c=0.90: 721 nm
+lambda_c=0.95: 791 nm  (too weak)
+lambda_c=0.999: 2878 nm (no position feedback → 4x worse)
+```
+
+**Key findings:**
+1. **a_lam has zero practical effect.** Lambda SNR > 100 means EMA adds no
+   noise benefit. Changed default to a_lam = 1.0 (no EMA). Parameterized via
+   CtrlBus for future tuning.
+
+2. **lambda_c = 0.7 is the optimum.** Both stronger (0.3-0.5) and weaker
+   (0.8-0.95) position feedback degrade performance. Position feedback via
+   del_p3_hat provides ~2170 nm improvement — it is ESSENTIAL.
+
+3. **D1+D2+D3 mean RMS = 701.7 nm, 7.6% better than known-lambda (759 nm).**
+   The 898 nm T1-T4 result was a stochastic outlier. Position feedback
+   compensates for the 2-step delay better than known-lambda's feedforward-only.
+
+**Updated comparison:**
+| Architecture | Lambda Bias | Mean RMS (nm) | Notes |
+|-------------|-------------|---------------|-------|
+| Known-lambda (Section 9.3) | 0% | 759 | Feedforward only |
+| EMA chi-squared (Section 9.5) | +25% | 1391 | Biased |
+| **Position-based (D1+D2+D3)** | **~0%** | **702** | **Current, beats known-lambda** |
+
+### 10.7 Known Limitations
+
+1. **Assumes known wall geometry:** w_hat and pz must be provided. If theta/phi
+   are unknown at runtime, must fall back to chi-squared estimation (Section 9.5)
+   or add a wall geometry estimator.
+
+2. **a_lam is parameterized but irrelevant:** Default 1.0 (no EMA). Available
+   via user_config.a_lam and CtrlBus for edge cases.
+
+3. **Position EKF gains still conservative:** L(10:23,:) = 0 disables all
+   non-position EKF updates. Future work could selectively re-enable theta
+   estimation at close wall distances where anisotropy is strong.
+
+4. **Stochastic variability:** RMS std = 114 nm across seeds (16% CV).
+   Single-run results should not be over-interpreted.

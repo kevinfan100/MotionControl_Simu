@@ -8,7 +8,7 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
 %
 %   Hybrid architecture: EKF position + position-based lambda + EMA theta.
 %     - Position: innovation-only feedback (no delay chain accumulation)
-%     - Lambda: computed from p_m + known wall geometry, EMA filtered (a=0.5)
+%     - Lambda: computed from p_m + known wall geometry, EMA filtered (a=a_lam)
 %     - Theta: chi-squared EMA estimation
 %     - D1: Per-channel g_cov (tangential/normal separation)
 %     - D2: Position-based lambda (direct h_bar from p_m)
@@ -46,7 +46,7 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     persistent alpha_f rho_f                                               % forgetting/leaky factors
     persistent step_count warmup_steps                                    % EMA settling gate
     persistent g_cov_T_sq g_cov_N_sq g_cov_T g_cov_N                    % D1: per-channel g_cov
-    persistent w_hat_ctrl R_particle pz_ctrl                              % D2: position-based lambda
+    persistent w_hat_ctrl R_particle pz_ctrl a_lam                        % D2: position-based lambda
 
     %% Step [0]: Parameters & Initialization
     if isempty(initialized)
@@ -67,6 +67,7 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
         w_hat_ctrl = params.ctrl.w_hat;
         R_particle = params.ctrl.R_particle;
         pz_ctrl = params.ctrl.pz;
+        a_lam = params.ctrl.a_lam;
 
         % 0B. Rotation (theta[0]=[0;0] -> V=I)
         V = eye(3); V_T = eye(3);
@@ -243,9 +244,7 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
     lam_T_direct = 1 - 9/16*ih_m + 1/8*ih_m^3 ...
                    - 45/256*ih_m^4 - 1/16*ih_m^5;
 
-    % Light EMA for noise rejection (decoupled from a_cov to avoid side effects)
-    % Position noise → h_bar noise ≈ 0.001 → lambda noise ≈ 0.001 (SNR > 100)
-    a_lam = 0.5;
+    % Lambda EMA (a_lam from params; default 1.0 = no EMA since SNR > 100)
     lam_T_new = (1 - a_lam) * lamda_hat(1) + a_lam * lam_T_direct;
     lam_T_new = max(min(lam_T_new, 0.9999), 0.05);
 

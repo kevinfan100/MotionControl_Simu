@@ -62,6 +62,7 @@ function params = calc_simulation_params(config)
     params_data.ctrl.R_particle = constants.R;
     params_data.ctrl.h_bar_init = config.h_init / constants.R;
     params_data.ctrl.pz = params_data.wall.pz;
+    params_data.ctrl.a_lam = config.a_lam;
 
     % --- thermal sub-structure ---
     params_data.thermal = calc_thermal_params(config, constants);
@@ -126,7 +127,7 @@ function params = calc_simulation_params(config)
     assignin('base', 'TrajBus', TrajBus);
 
     % --- CtrlBus ---
-    elems_ctrl = Simulink.BusElement.empty(0, 21);
+    elems_ctrl = Simulink.BusElement.empty(0, 22);
     elems_ctrl(1) = Simulink.BusElement; elems_ctrl(1).Name = 'enable';
     elems_ctrl(1).Dimensions = [1 1]; elems_ctrl(1).DataType = 'double';
     elems_ctrl(2) = Simulink.BusElement; elems_ctrl(2).Name = 'lambda_c';
@@ -169,6 +170,8 @@ function params = calc_simulation_params(config)
     elems_ctrl(20).Dimensions = [1 1]; elems_ctrl(20).DataType = 'double';
     elems_ctrl(21) = Simulink.BusElement; elems_ctrl(21).Name = 'pz';
     elems_ctrl(21).Dimensions = [1 1]; elems_ctrl(21).DataType = 'double';
+    elems_ctrl(22) = Simulink.BusElement; elems_ctrl(22).Name = 'a_lam';
+    elems_ctrl(22).Dimensions = [1 1]; elems_ctrl(22).DataType = 'double';
 
     CtrlBus = Simulink.Bus;
     CtrlBus.Elements = elems_ctrl;

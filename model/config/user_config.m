@@ -63,6 +63,7 @@ function config = user_config()
     config.epsilon = 0.2;           % Anisotropy threshold for theta measurement
     config.alpha_f = 0.998;         % EKF forgetting factor (thesis Ch4/Ch5)
     config.rho_f = 0.995;           % EKF rate state leaky factor (half-life ~86 ms)
+    config.a_lam = 1.0;             % Position-based lambda EMA (1.0 = instant, no smoothing needed; SNR > 100)
 
     % Thermal
     config.thermal_enable = true;
