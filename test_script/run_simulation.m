@@ -126,13 +126,7 @@ p_d_log = simOut.p_d_out';
 f_d_log = simOut.f_d_out';
 f_th_log = simOut.f_th_out';
 
-t_cont = simOut.tout;
-p_m_cont = simOut.p_m_out;
-p_m_log = zeros(3, N_discrete);
-for i = 1:N_discrete
-    [~, idx] = min(abs(t_cont - t_sample(i)));
-    p_m_log(:, i) = p_m_cont(idx, :)';
-end
+p_m_log = simOut.p_m_out';   % [3 x N_discrete] (discrete after Measurement_Noise)
 
 w_hat = params.Value.wall.w_hat;
 u_hat = params.Value.wall.u_hat;
