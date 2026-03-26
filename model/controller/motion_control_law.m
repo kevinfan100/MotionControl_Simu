@@ -16,10 +16,17 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
 %       f_d     - Control force f_d[k] [3x1, pN]
 %       ekf_out - EKF diagnostic [4x1]
 
-    if params.ctrl.controller_type == 7
-        [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params);
-    else
-        [f_d, ekf_out] = motion_control_law_23state(del_pd, pd, p_m, params);
+    switch params.ctrl.controller_type
+        case 1
+            [f_d, ekf_out] = motion_control_law_1(del_pd, pd, p_m, params);
+        case 2
+            [f_d, ekf_out] = motion_control_law_2(del_pd, pd, p_m, params);
+        case 7
+            [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params);
+        case 23
+            [f_d, ekf_out] = motion_control_law_23state(del_pd, pd, p_m, params);
+        otherwise
+            error('Unknown controller_type: %d', params.ctrl.controller_type);
     end
 
 end
