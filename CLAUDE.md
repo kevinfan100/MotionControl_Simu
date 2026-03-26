@@ -51,6 +51,25 @@ Scope: wall-effect, simulation, control, analysis, etc.
 
 ---
 
+## 控制器類型
+
+| controller_type | 名稱 | 說明 |
+|---|---|---|
+| 1 | Eq.17 delay compensation | 簡單延遲補償控制律，K=2 |
+| 2 | 3-state observer (le=0) | 三狀態觀測器（deadbeat），K=3 |
+| 7 | 7-state EKF | 擴展卡爾曼濾波器，自適應增益，非線性 |
+
+### C_dpmr 公式修正
+
+IIR HP filter `H_HP(z) = (1-a_pd)*(1-z^-1)/(1-(1-a_pd)*z^-1)` 的 `(1-a_pd)` 前綴
+在原始 C_dpmr 公式推導中被遺漏。修正後的公式需乘以 `(1-a_pd)^2` 前綴：
+
+- Controller 1: `C_dpmr = (1-av)^2 * [2*(1-av)*(1-lc)/(1-(1-av)*lc) + (2/(2-av))/((1+lc)*(1-(1-av)*lc))]`
+- Controller 2: 同結構但 `K_eff(av) = 2 + 2*(1-av)^2/(2-av)` 替代 K=2
+- Controller 3: 無解析公式（EKF 為非線性系統）
+
+詳見 `test_results/verify/derivation_C_dpmr_correction.md`。
+
 ## 專案結構
 
 ```
@@ -64,6 +83,7 @@ MotionControl_Simu/
 │   ├── trajectory/                    # 軌跡模組
 │   └── controller/                    # 控制器模組
 ├── test_script/                      # 模擬腳本
+│   └── verify_variance.m               # 變異數驗證：C_dpm/C_dpmr vs 理論公式（3 種控制器）
 ├── agent_docs/                       # 詳細技術文件
 ├── reference/                        # 參考文件
 ├── test_results/                     # 模擬結果（不納入 Git）
