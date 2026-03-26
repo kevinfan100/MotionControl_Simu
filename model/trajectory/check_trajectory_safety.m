@@ -35,6 +35,14 @@ function [is_safe, h_min_actual, t_critical] = check_trajectory_safety(params)
     T_sim = params.common.T_sim;
     Ts = params.common.Ts;
 
+    % Positioning mode: trajectory is constant at h_init
+    if params.traj.trajectory_type > 1.5
+        h_min_actual = params.traj.h_init;
+        t_critical = 0;
+        is_safe = h_min_actual >= h_min_threshold;
+        return;
+    end
+
     % Generate time vector for checking
     t_check = 0:Ts:T_sim;
     N = length(t_check);

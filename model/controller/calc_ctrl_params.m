@@ -44,4 +44,13 @@ function ctrl = calc_ctrl_params(config, constants)
     ctrl.g_cov = sqrt(ctrl.sigma2_deltaXT) ...
                  * sqrt(2 + 1 / (1 - config.lambda_c^2));
 
+    % Controller type and 7-state parameters
+    ctrl.controller_type = config.controller_type;
+    ctrl.beta = config.beta;
+    ctrl.lamdaF = config.lamdaF;
+    ctrl.sigma2_noise = config.meas_noise_std.^2;  % 3x1 [um^2]
+    ctrl.Pf_init_diag = config.Pf_init_diag;
+    ctrl.Qz_diag_scaling = config.Qz_diag_scaling;
+    ctrl.Rz_diag_scaling = config.Rz_diag_scaling;
+
 end

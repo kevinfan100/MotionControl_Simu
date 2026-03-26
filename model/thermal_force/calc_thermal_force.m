@@ -45,16 +45,22 @@ function f_th = calc_thermal_force(p, params)
     k_B = params.thermal.k_B;
     T = params.thermal.T;
     Ts = params.thermal.Ts;
+    enable_wall = params.wall.enable_wall_effect;
 
-    % Calculate normalized distance from wall
-    h = dot(p, w_hat) - pz;
-    h_bar = h / R;
+    if enable_wall > 0.5
+        % Wall effect ON: anisotropic variance
+        h = dot(p, w_hat) - pz;
+        h_bar = h / R;
 
-    % Calculate correction coefficients using Wall Effect module
-    [c_para, c_perp] = calc_correction_functions(h_bar);
+        % Calculate correction coefficients using Wall Effect module
+        [c_para, c_perp] = calc_correction_functions(h_bar);
 
-    % C = c_para * (u_hat + v_hat) + c_perp * w_hat
-    C = c_para * (u_hat + v_hat) + c_perp * w_hat;
+        % C = c_para * (u_hat + v_hat) + c_perp * w_hat
+        C = c_para * (u_hat + v_hat) + c_perp * w_hat;
+    else
+        % Wall effect OFF: isotropic variance (c_para = c_perp = 1)
+        C = u_hat + v_hat + w_hat;
+    end
 
     % Calculate variance for each direction
     % Variance = (4 * k_B * T * gamma_N / Ts) * C 

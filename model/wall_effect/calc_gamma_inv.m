@@ -23,6 +23,7 @@ function [Gamma_inv, h_bar] = calc_gamma_inv(p, params)
     pz = params.wall.pz;
     R = params.common.R;
     gamma_N = params.common.gamma_N;
+    enable_wall = params.wall.enable_wall_effect;
 
     % h = (p . w_hat) - pz
     % This is the signed distance along the wall normal
@@ -31,25 +32,32 @@ function [Gamma_inv, h_bar] = calc_gamma_inv(p, params)
     % Normalize by particle radius
     h_bar = h / R;
 
-    % Calculate correction coefficients
-    [c_para, c_perp] = calc_correction_functions(h_bar);
+    if enable_wall > 0.5
+        % Wall effect ON: anisotropic mobility matrix
 
-    % W = w_hat * w_hat' is the projection onto the normal direction
-    W = w_hat * w_hat';
+        % Calculate correction coefficients
+        [c_para, c_perp] = calc_correction_functions(h_bar);
 
-    % coeff = (c_perp - c_para) / c_perp
-    coeff = (c_perp - c_para) / c_perp;
+        % W = w_hat * w_hat' is the projection onto the normal direction
+        W = w_hat * w_hat';
 
-    % Construct the inverse drag coefficient matrix
-    % Gamma_inv = (1 / (gamma_N * c_para)) * (I - coeff * W)
-    %
-    % This can be derived as:
-    % - Parallel component: 1 / (gamma_N * c_para)
-    % - Perpendicular component: 1 / (gamma_N * c_perp)
-    %
-    % The formula combines these into a single matrix expression:
-    % For any direction d:
-    %   d' * Gamma_inv * d = (1/gamma_N) * [1/c_para * (d_para)^2 + 1/c_perp * (d_perp)^2]
-    Gamma_inv = (1 / (gamma_N * c_para)) * (eye(3) - coeff * W);
+        % coeff = (c_perp - c_para) / c_perp
+        coeff = (c_perp - c_para) / c_perp;
+
+        % Construct the inverse drag coefficient matrix
+        % Gamma_inv = (1 / (gamma_N * c_para)) * (I - coeff * W)
+        %
+        % This can be derived as:
+        % - Parallel component: 1 / (gamma_N * c_para)
+        % - Perpendicular component: 1 / (gamma_N * c_perp)
+        %
+        % The formula combines these into a single matrix expression:
+        % For any direction d:
+        %   d' * Gamma_inv * d = (1/gamma_N) * [1/c_para * (d_para)^2 + 1/c_perp * (d_perp)^2]
+        Gamma_inv = (1 / (gamma_N * c_para)) * (eye(3) - coeff * W);
+    else
+        % Wall effect OFF: isotropic Stokes drag (c_para = c_perp = 1)
+        Gamma_inv = (1 / gamma_N) * eye(3);
+    end
 
 end

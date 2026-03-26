@@ -23,5 +23,6 @@ function wall = calc_wall_params(config, constants)
     wall.w_hat = [cos(theta)*sin(phi); sin(theta)*sin(phi); cos(phi)];
     wall.u_hat = [-cos(theta)*cos(phi); -sin(theta)*cos(phi); sin(phi)];
     wall.v_hat = [sin(theta); -cos(theta); 0];
+    wall.enable_wall_effect = double(config.enable_wall_effect);
 
 end

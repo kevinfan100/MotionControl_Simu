@@ -3,7 +3,7 @@
 % Runs the complete motion control simulation with thesis-style visualization.
 
 clear; close all; clc;
-clear motion_control_law trajectory_generator;
+clear motion_control_law motion_control_law_23state motion_control_law_7state trajectory_generator;
 
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
 project_root = fileparts(script_dir);
@@ -25,20 +25,38 @@ config.theta = 0;                    % Wall azimuth angle [deg]
 config.phi   = 0;                    % Wall elevation angle [deg]
 config.pz    = 0;                    % Wall displacement along w_hat [um]
 config.h_min = 1.1 * 2.25;           % Minimum safe distance [um]
+config.enable_wall_effect = true;    % Wall effect (false = no wall)
 
 % --- Trajectory ---
-config.h_init    = 5;                % Initial distance from wall [um]
-config.amplitude = 2.5;              % Oscillation amplitude [um]
+config.t_hold    = 0.5;              % Initial hold at h_init [sec]
+config.h_init    = 50;               % Starting height from wall [um]
+config.h_bottom  = 2.5;              % Lowest point / oscillation trough [um]
+config.amplitude = 10;               % Oscillation amplitude [um]
 config.frequency = 1;                % Oscillation frequency [Hz]
 config.n_cycles  = 3;                % Number of cycles
+config.trajectory_type = 'osc';      % 'osc' or 'positioning'
 
 % --- Controller ---
 config.ctrl_enable = true;           % Enable closed-loop control
+config.controller_type = 7;          % 23 or 7 (controller type selection)
 config.lambda_c = 0.7;              % Closed-loop pole (0 < lambda_c < 1)
-config.a_pd  = 0.1;                 % EMA: deterministic smoothing
-config.a_prd = 0.1;                 % EMA: random-deterministic smoothing
-config.a_cov = 0.1;                 % EMA: covariance smoothing
+config.a_pd  = 0.05;                % EMA: LP smoothing
+config.a_prd = 0.05;                % EMA: HP residual mean
+config.a_cov = 0.05;                % EMA: HP residual mean-square
 config.epsilon = 0.01;              % Anisotropy threshold for theta_m
+
+% --- 7-State EKF Tuning ---
+%   Q: process noise scaling (7x1 diagonal)
+%       [del_p1, del_p2, del_p3, d, del_d, a, del_a]
+%       Only (3), (4), (6) are active; rest should be 0.
+%   R: measurement noise scaling (2x1 diagonal)
+%       [position, gain]
+%   Pf_init: initial forecast covariance (7x1 diagonal)
+config.Qz_diag_scaling = [0; 0; 1e4; 1e-1; 0; 1e-4; 0];
+config.Rz_diag_scaling = [1e-2; 1e0];
+config.Pf_init_diag    = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];
+config.beta   = 0.5;                % z-axis disturbance/gain coupling
+config.lamdaF = 1.0;                % Forgetting factor (1.0 = no forgetting)
 
 % --- Measurement Noise ---
 config.meas_noise_enable = true;
@@ -49,8 +67,13 @@ config.thermal_enable = true;
 
 % --- Simulation Time ---
 T_margin = 0.3;
-T_traj = config.n_cycles / config.frequency;
-config.T_sim = T_traj + T_margin;
+t_warmup = 0.2;                       % IIR warm-up inside controller [sec]
+if strcmp(config.trajectory_type, 'osc')
+    t_descend = 1 / config.frequency;
+    T_traj = config.t_hold + t_descend + config.n_cycles / config.frequency;
+    config.T_sim = T_traj + T_margin;
+end
+% positioning: config.T_sim keeps user_config default (5 sec) or user override
 T_sim = config.T_sim;
 
 % --- Analysis Parameters ---
@@ -99,13 +122,26 @@ is_closed_loop = params.Value.ctrl.enable > 0.5;
 is_thermal = params.Value.thermal.enable > 0.5;
 
 ctrl_mode_str = 'Open-loop';
-if is_closed_loop; ctrl_mode_str = 'Closed-loop'; end
+if is_closed_loop
+    ctrl_mode_str = sprintf('Closed-loop (%d-state)', config.controller_type);
+end
 thermal_str = 'Disabled';
 if is_thermal; thermal_str = 'Enabled'; end
-traj_type_str = 'sine (along w_hat)';
+
+wall_str = 'Enabled';
+if isfield(config, 'enable_wall_effect') && ~config.enable_wall_effect
+    wall_str = 'Disabled (isotropic Stokes)';
+end
+
+if strcmp(config.trajectory_type, 'positioning')
+    traj_type_str = 'positioning (hold at h_init)';
+else
+    traj_type_str = 'descent + cosine (along w_hat)';
+end
 
 fprintf('  Mode: %s\n', ctrl_mode_str);
 fprintf('  Thermal: %s\n', thermal_str);
+fprintf('  Wall Effect: %s\n', wall_str);
 fprintf('  Trajectory: %s\n', traj_type_str);
 fprintf('  Duration: %.1f sec\n', T_sim);
 
@@ -143,24 +179,67 @@ error_z = (p_m_log(3,:) - p_d_log(3,:)) * 1000;
 error_3d = vecnorm(p_m_log - p_d_log, 2, 1);
 
 % EKF diagnostic extraction (closed-loop only)
+is_7state = config.controller_type == 7;
 if is_closed_loop
     ekf_log = simOut.ekf_out';             % [4 x N]
-    lamda_hat_log = ekf_log(1:2, :);       % [2 x N] [para; perp]
-    theta_hat_log = ekf_log(3:4, :);       % [2 x N] [theta_x; theta_y]
 
-    % True lambda from known geometry
-    % lambda = 1/c (mobility factor): lambda_T = 1/c_para, lambda_N = 1/c_perp
-    % This matches the EKF convention where control law uses 1/lambda_hat
-    % to compute the drag-compensated position increment.
-    lambda_true_log = zeros(2, N_discrete);
-    for i = 1:N_discrete
-        h_val = (p_m_log(:,i)' * w_hat - pz_wall) / R;
-        [c_para_i, c_perp_i] = calc_correction_functions(h_val);
-        lambda_true_log(:, i) = [1/c_para_i; 1/c_perp_i];
+    if is_7state
+        % 7-state: ekf_out = [a_hat_x; a_hat_z; 0; 0] [um/pN]
+        a_hat_log = ekf_log(1:2, :);       % [2 x N] [x-axis; z-axis]
+
+        % True gain from known geometry: a_true = Ts / (gamma_N * c)
+        a_nom = params.Value.common.Ts / params.Value.common.gamma_N;
+        a_true_log = zeros(2, N_discrete);
+        for i = 1:N_discrete
+            h_val = (p_m_log(:,i)' * w_hat - pz_wall) / R;
+            if h_val > 1
+                [c_para_i, c_perp_i] = calc_correction_functions(h_val);
+            else
+                c_para_i = 1; c_perp_i = 1;  % fallback
+            end
+            a_true_log(:, i) = [a_nom / c_para_i; a_nom / c_perp_i];
+        end
+    else
+        % 23-state: ekf_out = [lamda_hat(2x1); theta_hat(2x1)]
+        lamda_hat_log = ekf_log(1:2, :);   % [2 x N] [para; perp]
+        theta_hat_log = ekf_log(3:4, :);   % [2 x N] [theta_x; theta_y]
+
+        % True lambda from known geometry
+        lambda_true_log = zeros(2, N_discrete);
+        for i = 1:N_discrete
+            h_val = (p_m_log(:,i)' * w_hat - pz_wall) / R;
+            [c_para_i, c_perp_i] = calc_correction_functions(h_val);
+            lambda_true_log(:, i) = [1/c_para_i; 1/c_perp_i];
+        end
     end
 end
 
 N_samples = length(t_sample);
+
+% Active control region (after IIR warm-up) — for stats
+idx_ctrl = t_sample >= t_warmup;
+error_x_ctrl = error_x(idx_ctrl);
+error_y_ctrl = error_y(idx_ctrl);
+error_z_ctrl = error_z(idx_ctrl);
+error_3d_ctrl = error_3d(idx_ctrl);
+
+% Trimmed arrays for plotting (exclude warm-up)
+t_plot = t_sample(idx_ctrl);
+p_d_plot = p_d_log(:, idx_ctrl);
+p_m_plot = p_m_log(:, idx_ctrl);
+f_d_plot = f_d_log(:, idx_ctrl);
+h_bar_plot = h_bar_log(idx_ctrl);
+error_x_plot = error_x(idx_ctrl);
+error_y_plot = error_y(idx_ctrl);
+error_z_plot = error_z(idx_ctrl);
+if is_closed_loop
+    ekf_plot = ekf_log(:, idx_ctrl);
+    if is_7state
+        a_hat_plot = a_hat_log(:, idx_ctrl);
+        a_true_plot = a_true_log(:, idx_ctrl);
+    end
+end
+
 fprintf('Simulation completed.\n');
 
 %% SECTION 5: Results Visualization (Tabbed Figure)
@@ -193,14 +272,14 @@ ax1 = uiaxes(tab1);
 ax1.Units = 'normalized';
 ax1.Position = [0.10 0.08 0.85 0.84];
 
-plot3(ax1, p_d_log(1,:), p_d_log(2,:), p_d_log(3,:), '-', 'Color', COL_REF, 'LineWidth', LINE_REF);
+plot3(ax1, p_d_plot(1,:), p_d_plot(2,:), p_d_plot(3,:), '-', 'Color', COL_REF, 'LineWidth', LINE_REF);
 hold(ax1, 'on');
-plot3(ax1, p_m_log(1,:), p_m_log(2,:), p_m_log(3,:), '-', 'Color', COL_OUT, 'LineWidth', LINE_OUT);
+plot3(ax1, p_m_plot(1,:), p_m_plot(2,:), p_m_plot(3,:), '-', 'Color', COL_OUT, 'LineWidth', LINE_OUT);
 plot3(ax1, p0(1), p0(2), p0(3), 'ko', 'MarkerSize', 12, 'MarkerFaceColor', 'k', 'LineWidth', 2);
 
 % Wall plane
 wall_center = pz_wall * w_hat;
-all_pos = [p_d_log, p_m_log];
+all_pos = [p_d_plot, p_m_plot];
 traj_range = max([range(all_pos(1,:)), range(all_pos(2,:)), range(all_pos(3,:))]);
 plane_size = max(traj_range * 1.5, 10);
 corners = [
@@ -225,7 +304,7 @@ fprintf('  Tab 1: 3D Trajectory\n');
 
 % ==================== Tabs 2-4: X/Y/Z Axis (2x1) ====================
 axis_names = {'X', 'Y', 'Z'};
-axis_errors = {error_x, error_y, error_z};
+axis_errors = {error_x_plot, error_y_plot, error_z_plot};
 
 for ai = 1:3
     tab_ax = uitab(tabgroup, 'Title', sprintf('%s-Axis', axis_names{ai}));
@@ -233,9 +312,9 @@ for ai = 1:3
     % Top: overlay tracking
     ax_top = uiaxes(tab_ax, 'Position', pos_2x1{1});
     ax_top.PositionConstraint = 'innerposition';
-    plot(ax_top, t_sample, p_d_log(ai,:), '-', 'Color', COL_REF, 'LineWidth', LINE_REF);
+    plot(ax_top, t_plot, p_d_plot(ai,:), '-', 'Color', COL_REF, 'LineWidth', LINE_REF);
     hold(ax_top, 'on');
-    plot(ax_top, t_sample, p_m_log(ai,:), '-', 'Color', COL_OUT, 'LineWidth', LINE_OUT);
+    plot(ax_top, t_plot, p_m_plot(ai,:), '-', 'Color', COL_OUT, 'LineWidth', LINE_OUT);
     hold(ax_top, 'off');
     legend(ax_top, {'Reference', 'Measured'}, ...
         'Location', 'northoutside', 'Orientation', 'horizontal', ...
@@ -248,7 +327,7 @@ for ai = 1:3
     % Bottom: error
     ax_bot = uiaxes(tab_ax, 'Position', pos_2x1{2});
     ax_bot.PositionConstraint = 'innerposition';
-    plot(ax_bot, t_sample, axis_errors{ai}, '-', 'Color', COL_ERR, 'LineWidth', LINE_OUT);
+    plot(ax_bot, t_plot, axis_errors{ai}, '-', 'Color', COL_ERR, 'LineWidth', LINE_OUT);
     xlabel(ax_bot, 'Time (sec)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
     ylabel(ax_bot, 'Error (nm)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
     title(ax_bot, sprintf('%s-Axis Tracking Error', axis_names{ai}), ...
@@ -266,7 +345,7 @@ force_labels = {'f_x (pN)', 'f_y (pN)', 'f_z (pN)'};
 for fi = 1:3
     ax_f = uiaxes(tab5, 'Position', pos_3x1{fi});
     ax_f.PositionConstraint = 'innerposition';
-    plot(ax_f, t_sample, f_d_log(fi,:), '-', 'Color', COL_ERR, 'LineWidth', LINE_OUT);
+    plot(ax_f, t_plot, f_d_plot(fi,:), '-', 'Color', COL_ERR, 'LineWidth', LINE_OUT);
     ylabel(ax_f, force_labels{fi}, 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
     set(ax_f, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
     ax_f.Box = 'on'; grid(ax_f, 'off'); axis(ax_f, 'tight');
@@ -283,60 +362,86 @@ fprintf('  Tab 5: Control Force\n');
 
 % ==================== Closed-loop Tabs (6-8) ====================
 if is_closed_loop
-    % --- Tab 6: Lambda Estimation ---
-    tab6 = uitab(tabgroup, 'Title', 'Lambda Est.');
-    lam_labels = {'c_{para}', 'c_{perp}'};
-    for li = 1:2
-        ax_l = uiaxes(tab6, 'Position', pos_2x1{li});
-        ax_l.PositionConstraint = 'innerposition';
-        plot(ax_l, t_sample, lambda_true_log(li,:), '-', 'Color', COL_REF, 'LineWidth', LINE_REF);
-        hold(ax_l, 'on');
-        plot(ax_l, t_sample, lamda_hat_log(li,:), '-', 'Color', COL_OUT, 'LineWidth', LINE_OUT);
-        hold(ax_l, 'off');
-        legend(ax_l, {'True', 'Estimated'}, ...
-            'Location', 'northoutside', 'Orientation', 'horizontal', ...
-            'FontSize', LEGEND_FS, 'FontWeight', 'bold');
-        ylabel(ax_l, lam_labels{li}, 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
-        set(ax_l, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
-        ax_l.Box = 'on'; grid(ax_l, 'off'); axis(ax_l, 'tight');
-        if li == 1; ax_l.XTickLabel = []; end
-        if li == 2
-            xlabel(ax_l, 'Time (sec)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+    if is_7state
+        % --- Tab 6: Motion Gain Estimation (7-state) ---
+        tab6 = uitab(tabgroup, 'Title', 'Gain Est.');
+        gain_labels = {'a_x (um/pN)', 'a_z (um/pN)'};
+        for gi = 1:2
+            ax_g = uiaxes(tab6, 'Position', pos_2x1{gi});
+            ax_g.PositionConstraint = 'innerposition';
+            plot(ax_g, t_plot, a_true_plot(gi,:), '-', 'Color', COL_REF, 'LineWidth', LINE_REF);
+            hold(ax_g, 'on');
+            plot(ax_g, t_plot, a_hat_plot(gi,:), '-', 'Color', COL_OUT, 'LineWidth', LINE_OUT);
+            hold(ax_g, 'off');
+            legend(ax_g, {'True', 'Estimated'}, ...
+                'Location', 'northoutside', 'Orientation', 'horizontal', ...
+                'FontSize', LEGEND_FS, 'FontWeight', 'bold');
+            ylabel(ax_g, gain_labels{gi}, 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+            set(ax_g, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+            ax_g.Box = 'on'; grid(ax_g, 'off'); axis(ax_g, 'tight');
+            if gi == 1; ax_g.XTickLabel = []; end
+            if gi == 2
+                xlabel(ax_g, 'Time (sec)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+            end
         end
-    end
-    fprintf('  Tab 6: Lambda Est.\n');
+        fprintf('  Tab 6: Gain Est. (7-state)\n');
+    else
+        % --- Tab 6: Lambda Estimation (23-state) ---
+        tab6 = uitab(tabgroup, 'Title', 'Lambda Est.');
+        lam_labels = {'c_{para}', 'c_{perp}'};
+        for li = 1:2
+            ax_l = uiaxes(tab6, 'Position', pos_2x1{li});
+            ax_l.PositionConstraint = 'innerposition';
+            plot(ax_l, t_plot, lambda_true_log(li,idx_ctrl), '-', 'Color', COL_REF, 'LineWidth', LINE_REF);
+            hold(ax_l, 'on');
+            plot(ax_l, t_plot, lamda_hat_log(li,idx_ctrl), '-', 'Color', COL_OUT, 'LineWidth', LINE_OUT);
+            hold(ax_l, 'off');
+            legend(ax_l, {'True', 'Estimated'}, ...
+                'Location', 'northoutside', 'Orientation', 'horizontal', ...
+                'FontSize', LEGEND_FS, 'FontWeight', 'bold');
+            ylabel(ax_l, lam_labels{li}, 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+            set(ax_l, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+            ax_l.Box = 'on'; grid(ax_l, 'off'); axis(ax_l, 'tight');
+            if li == 1; ax_l.XTickLabel = []; end
+            if li == 2
+                xlabel(ax_l, 'Time (sec)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+            end
+        end
+        fprintf('  Tab 6: Lambda Est.\n');
 
-    % --- Tab 7: Theta Estimation ---
-    tab7 = uitab(tabgroup, 'Title', 'Theta Est.');
-    theta_labels = {'\theta_x (rad)', '\theta_y (rad)'};
-    for ti = 1:2
-        ax_t = uiaxes(tab7, 'Position', pos_2x1{ti});
-        ax_t.PositionConstraint = 'innerposition';
-        plot(ax_t, t_sample, theta_hat_log(ti,:), '-', 'Color', COL_OUT, 'LineWidth', LINE_OUT);
-        ylabel(ax_t, theta_labels{ti}, 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
-        set(ax_t, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
-        ax_t.Box = 'on'; grid(ax_t, 'off'); axis(ax_t, 'tight');
-        if ti == 1
-            title(ax_t, 'Theta Estimation Convergence', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
-            ax_t.XTickLabel = [];
+        % --- Tab 7: Theta Estimation ---
+        tab7 = uitab(tabgroup, 'Title', 'Theta Est.');
+        theta_labels = {'\theta_x (rad)', '\theta_y (rad)'};
+        for ti = 1:2
+            ax_t = uiaxes(tab7, 'Position', pos_2x1{ti});
+            ax_t.PositionConstraint = 'innerposition';
+            plot(ax_t, t_plot, theta_hat_log(ti,idx_ctrl), '-', 'Color', COL_OUT, 'LineWidth', LINE_OUT);
+            ylabel(ax_t, theta_labels{ti}, 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+            set(ax_t, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+            ax_t.Box = 'on'; grid(ax_t, 'off'); axis(ax_t, 'tight');
+            if ti == 1
+                title(ax_t, 'Theta Estimation Convergence', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+                ax_t.XTickLabel = [];
+            end
+            if ti == 2
+                xlabel(ax_t, 'Time (sec)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
+            end
         end
-        if ti == 2
-            xlabel(ax_t, 'Time (sec)', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
-        end
+        fprintf('  Tab 7: Theta Est.\n');
     end
-    fprintf('  Tab 7: Theta Est.\n');
 
     % --- Tab 8: Error Statistics ---
     tab8 = uitab(tabgroup, 'Title', 'Error Stats');
     COL_XYZ = {[0.0 0.2 0.8], [0.0 0.6 0.0], [0.8 0.0 0.0]};
 
-    errors_nm = {error_x, error_y, error_z};
-    running_mean = zeros(3, N_samples);
-    running_std_val = zeros(3, N_samples);
+    errors_nm_plot = {error_x_plot, error_y_plot, error_z_plot};
+    N_plot = length(t_plot);
+    running_mean = zeros(3, N_plot);
+    running_std_val = zeros(3, N_plot);
     for ai = 1:3
-        cs = cumsum(errors_nm{ai});
-        cs2 = cumsum(errors_nm{ai}.^2);
-        n_vec = 1:N_samples;
+        cs = cumsum(errors_nm_plot{ai});
+        cs2 = cumsum(errors_nm_plot{ai}.^2);
+        n_vec = 1:N_plot;
         running_mean(ai,:) = cs ./ n_vec;
         running_std_val(ai,:) = sqrt(max(cs2 ./ n_vec - (cs ./ n_vec).^2, 0));
     end
@@ -346,7 +451,7 @@ if is_closed_loop
     ax9_top.PositionConstraint = 'innerposition';
     hold(ax9_top, 'on');
     for ai = 1:3
-        plot(ax9_top, t_sample, running_mean(ai,:), '-', 'Color', COL_XYZ{ai}, 'LineWidth', LINE_OUT);
+        plot(ax9_top, t_plot, running_mean(ai,:), '-', 'Color', COL_XYZ{ai}, 'LineWidth', LINE_OUT);
     end
     hold(ax9_top, 'off');
     legend(ax9_top, {'X', 'Y', 'Z'}, ...
@@ -362,7 +467,7 @@ if is_closed_loop
     ax9_bot.PositionConstraint = 'innerposition';
     hold(ax9_bot, 'on');
     for ai = 1:3
-        plot(ax9_bot, t_sample, running_std_val(ai,:), '-', 'Color', COL_XYZ{ai}, 'LineWidth', LINE_OUT);
+        plot(ax9_bot, t_plot, running_std_val(ai,:), '-', 'Color', COL_XYZ{ai}, 'LineWidth', LINE_OUT);
     end
     hold(ax9_bot, 'off');
     legend(ax9_bot, {'X', 'Y', 'Z'}, ...
@@ -524,9 +629,9 @@ clf(fig_exp);
 % Export Tabs 2-4: X/Y/Z Axis (2x1)
 for ai = 1:3
     ax_top_e = subplot(2,1,1);
-    plot(ax_top_e, t_sample, p_d_log(ai,:), '-', 'Color', COL_REF, 'LineWidth', EXP_LR);
+    plot(ax_top_e, t_plot, p_d_plot(ai,:), '-', 'Color', COL_REF, 'LineWidth', EXP_LR);
     hold(ax_top_e, 'on');
-    plot(ax_top_e, t_sample, p_m_log(ai,:), '-', 'Color', COL_OUT, 'LineWidth', EXP_LO);
+    plot(ax_top_e, t_plot, p_m_plot(ai,:), '-', 'Color', COL_OUT, 'LineWidth', EXP_LO);
     hold(ax_top_e, 'off');
     legend(ax_top_e, {'Reference', 'Measured'}, 'Location', 'northoutside', ...
         'Orientation', 'horizontal', 'FontSize', EXP_LFS, 'FontWeight', 'bold');
@@ -535,7 +640,7 @@ for ai = 1:3
     axis(ax_top_e, 'tight');
 
     ax_bot_e = subplot(2,1,2);
-    plot(ax_bot_e, t_sample, axis_errors{ai}, '-', 'Color', COL_ERR, 'LineWidth', EXP_LO);
+    plot(ax_bot_e, t_plot, axis_errors{ai}, '-', 'Color', COL_ERR, 'LineWidth', EXP_LO);
     xlabel(ax_bot_e, 'Time (sec)'); ylabel(ax_bot_e, 'Error (nm)');
     title(ax_bot_e, sprintf('%s-Axis Tracking Error', axis_names{ai}));
     set(ax_bot_e, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
@@ -548,7 +653,7 @@ end
 % Export Tab 5: Control Force (3x1)
 for fi = 1:3
     ax_fe = subplot(3,1,fi);
-    plot(ax_fe, t_sample, f_d_log(fi,:), '-', 'Color', COL_ERR, 'LineWidth', EXP_LO);
+    plot(ax_fe, t_plot, f_d_plot(fi,:), '-', 'Color', COL_ERR, 'LineWidth', EXP_LO);
     ylabel(ax_fe, force_labels{fi});
     set(ax_fe, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
     axis(ax_fe, 'tight');
@@ -560,42 +665,61 @@ clf(fig_exp);
 
 % Export closed-loop tabs (6-8)
 if is_closed_loop
-    % Tab 6: Lambda Est.
-    for li = 1:2
-        ax_le = subplot(2,1,li);
-        plot(ax_le, t_sample, lambda_true_log(li,:), '-', 'Color', COL_REF, 'LineWidth', EXP_LR);
-        hold(ax_le, 'on');
-        plot(ax_le, t_sample, lamda_hat_log(li,:), '-', 'Color', COL_OUT, 'LineWidth', EXP_LO);
-        hold(ax_le, 'off');
-        legend(ax_le, {'True', 'Estimated'}, 'Location', 'northoutside', ...
-            'Orientation', 'horizontal', 'FontSize', EXP_LFS, 'FontWeight', 'bold');
-        ylabel(ax_le, lam_labels{li});
-        set(ax_le, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
-        axis(ax_le, 'tight');
-        if li == 2; xlabel(ax_le, 'Time (sec)'); end
-    end
-    exportgraphics(fig_exp, fullfile(output_dir, '6_lambda_est.png'), 'Resolution', 150);
-    clf(fig_exp);
+    if is_7state
+        % Tab 6: Gain Est. (7-state)
+        for gi = 1:2
+            ax_ge = subplot(2,1,gi);
+            plot(ax_ge, t_plot, a_true_plot(gi,:), '-', 'Color', COL_REF, 'LineWidth', EXP_LR);
+            hold(ax_ge, 'on');
+            plot(ax_ge, t_plot, a_hat_plot(gi,:), '-', 'Color', COL_OUT, 'LineWidth', EXP_LO);
+            hold(ax_ge, 'off');
+            legend(ax_ge, {'True', 'Estimated'}, 'Location', 'northoutside', ...
+                'Orientation', 'horizontal', 'FontSize', EXP_LFS, 'FontWeight', 'bold');
+            ylabel(ax_ge, gain_labels{gi});
+            set(ax_ge, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
+            axis(ax_ge, 'tight');
+            if gi == 2; xlabel(ax_ge, 'Time (sec)'); end
+        end
+        exportgraphics(fig_exp, fullfile(output_dir, '6_gain_est.png'), 'Resolution', 150);
+        clf(fig_exp);
+    else
+        % Tab 6: Lambda Est. (23-state)
+        for li = 1:2
+            ax_le = subplot(2,1,li);
+            plot(ax_le, t_plot, lambda_true_log(li,idx_ctrl), '-', 'Color', COL_REF, 'LineWidth', EXP_LR);
+            hold(ax_le, 'on');
+            plot(ax_le, t_plot, lamda_hat_log(li,idx_ctrl), '-', 'Color', COL_OUT, 'LineWidth', EXP_LO);
+            hold(ax_le, 'off');
+            legend(ax_le, {'True', 'Estimated'}, 'Location', 'northoutside', ...
+                'Orientation', 'horizontal', 'FontSize', EXP_LFS, 'FontWeight', 'bold');
+            ylabel(ax_le, lam_labels{li});
+            set(ax_le, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
+            axis(ax_le, 'tight');
+            if li == 2; xlabel(ax_le, 'Time (sec)'); end
+        end
+        exportgraphics(fig_exp, fullfile(output_dir, '6_lambda_est.png'), 'Resolution', 150);
+        clf(fig_exp);
 
-    % Tab 7: Theta Est.
-    for ti = 1:2
-        ax_te = subplot(2,1,ti);
-        plot(ax_te, t_sample, theta_hat_log(ti,:), '-', 'Color', COL_OUT, 'LineWidth', EXP_LO);
-        ylabel(ax_te, theta_labels{ti});
-        set(ax_te, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
-        axis(ax_te, 'tight');
-        if ti == 1; title(ax_te, 'Theta Estimation Convergence'); end
-        if ti == 2; xlabel(ax_te, 'Time (sec)'); end
+        % Tab 7: Theta Est. (23-state)
+        for ti = 1:2
+            ax_te = subplot(2,1,ti);
+            plot(ax_te, t_plot, theta_hat_log(ti,idx_ctrl), '-', 'Color', COL_OUT, 'LineWidth', EXP_LO);
+            ylabel(ax_te, theta_labels{ti});
+            set(ax_te, 'FontSize', EXP_FS, 'FontWeight', 'bold', 'LineWidth', EXP_LW, 'Box', 'on');
+            axis(ax_te, 'tight');
+            if ti == 1; title(ax_te, 'Theta Estimation Convergence'); end
+            if ti == 2; xlabel(ax_te, 'Time (sec)'); end
+        end
+        exportgraphics(fig_exp, fullfile(output_dir, '7_theta_est.png'), 'Resolution', 150);
+        clf(fig_exp);
     end
-    exportgraphics(fig_exp, fullfile(output_dir, '7_theta_est.png'), 'Resolution', 150);
-    clf(fig_exp);
 
     % Tab 8: Error Stats
     COL_XYZ_arr = {[0.0 0.2 0.8], [0.0 0.6 0.0], [0.8 0.0 0.0]};
     ax_me = subplot(2,1,1);
     hold(ax_me, 'on');
     for ai = 1:3
-        plot(ax_me, t_sample, running_mean(ai,:), '-', 'Color', COL_XYZ_arr{ai}, 'LineWidth', EXP_LO);
+        plot(ax_me, t_plot, running_mean(ai,:), '-', 'Color', COL_XYZ_arr{ai}, 'LineWidth', EXP_LO);
     end
     hold(ax_me, 'off');
     legend(ax_me, {'X', 'Y', 'Z'}, 'Location', 'northoutside', ...
@@ -607,7 +731,7 @@ if is_closed_loop
     ax_se = subplot(2,1,2);
     hold(ax_se, 'on');
     for ai = 1:3
-        plot(ax_se, t_sample, running_std_val(ai,:), '-', 'Color', COL_XYZ_arr{ai}, 'LineWidth', EXP_LO);
+        plot(ax_se, t_plot, running_std_val(ai,:), '-', 'Color', COL_XYZ_arr{ai}, 'LineWidth', EXP_LO);
     end
     hold(ax_se, 'off');
     legend(ax_se, {'X', 'Y', 'Z'}, 'Location', 'northoutside', ...
@@ -684,9 +808,14 @@ result.meta.thermal_mode = thermal_str;
 result.meta.traj_type = traj_type_str;
 
 if is_closed_loop
-    result.lamda_hat = lamda_hat_log;
-    result.theta_hat = theta_hat_log;
-    result.lambda_true = lambda_true_log;
+    if is_7state
+        result.a_hat = a_hat_log;
+        result.a_true = a_true_log;
+    else
+        result.lamda_hat = lamda_hat_log;
+        result.theta_hat = theta_hat_log;
+        result.lambda_true = lambda_true_log;
+    end
 end
 
 save(fullfile(output_dir, 'result.mat'), 'result');
@@ -705,13 +834,13 @@ fprintf('  Thermal: %s\n', thermal_str);
 fprintf('  Trajectory: %s\n', traj_type_str);
 fprintf('  Duration: %.1f sec (%d samples)\n', T_sim, N_samples);
 fprintf('\n');
-fprintf('Tracking Performance (3D):\n');
-fprintf('  Max error: %.4f um (%.2f nm)\n', max(error_3d), max(error_3d)*1000);
+fprintf('Tracking Performance (3D, t >= %.1fs):\n', t_warmup);
+fprintf('  Max error: %.4f um (%.2f nm)\n', max(error_3d_ctrl), max(error_3d_ctrl)*1000);
 fprintf('\n');
-fprintf('Tracking Performance (per axis):\n');
-fprintf('  X-axis Max: %.2f nm\n', max(abs(error_x)));
-fprintf('  Y-axis Max: %.2f nm\n', max(abs(error_y)));
-fprintf('  Z-axis Max: %.2f nm\n', max(abs(error_z)));
+fprintf('Tracking Performance (per axis, t >= %.1fs):\n', t_warmup);
+fprintf('  X-axis Max: %.2f nm\n', max(abs(error_x_ctrl)));
+fprintf('  Y-axis Max: %.2f nm\n', max(abs(error_y_ctrl)));
+fprintf('  Z-axis Max: %.2f nm\n', max(abs(error_z_ctrl)));
 fprintf('\n');
 fprintf('Control Force:\n');
 fprintf('  Max |f_x|: %.4f pN\n', max(abs(f_d_log(1,:))));
