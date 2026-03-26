@@ -195,67 +195,107 @@ end
 % --- Theory ---
 lc_dense = 0.1:0.005:0.95;
 
-% C_dpm theory
+% C_dpm theory: K + 1/(1-lc^2)
+%   Controller 1: K = 2
+%   Controller 2: K = 3
+%   Controller 3: no analytic formula (EKF is nonlinear)
 C_dpm_theory = zeros(n_ctrl, length(lc_dense));
-K_values = [2, 3, NaN];  % Controller 3 K is unknown
-
-% Controller 3: extract s
-ci_ekf = find(ctrl_list == 7);
-if ~isempty(ci_ekf)
-    residual = C_dpm_sim(ci_ekf, :) - 1./(1 - lc_list.^2);
-    K_ekf = mean(residual);
-    s_value = K_ekf - 3;
-    K_values(ci_ekf) = K_ekf;
-    fprintf('Controller 3 (EKF): K = %.4f, s = %.4f\n', K_ekf, s_value);
-end
+K_values = [2, 3, NaN];
+has_C_dpm_theory = [true, true, false];
 
 for ci = 1:n_ctrl
-    K = K_values(ci);
-    C_dpm_theory(ci, :) = K + 1./(1 - lc_dense.^2);
+    if has_C_dpm_theory(ci)
+        K = K_values(ci);
+        C_dpm_theory(ci, :) = K + 1./(1 - lc_dense.^2);
+    end
 end
 
-% C_dpmr theory
+% C_dpmr theory (corrected formulas with (1-av)^2 prefactor):
+%   Controller 1: K=2 (constant)
+%     C_dpmr = (1-av)^2 * [2*(1-av)*(1-lc)/(1-(1-av)*lc)
+%              + (2/(2-av)) / ((1+lc)*(1-(1-av)*lc))]
+%   Controller 2: K_eff(av) = 2 + 2*(1-av)^2/(2-av)
+%     C_dpmr = (1-av)^2 * [K_eff*(1-av)*(1-lc)/(1-(1-av)*lc)
+%              + (2/(2-av)) / ((1+lc)*(1-(1-av)*lc))]
+%   Controller 3: no analytic formula
 C_dpmr_theory = zeros(n_ctrl, length(lc_dense), n_avar);
+has_C_dpmr_theory = [true, true, false];
+
 for ci = 1:n_ctrl
-    K = K_values(ci);
+    if ~has_C_dpmr_theory(ci), continue; end
+
     for ai = 1:n_avar
         av = a_var_list(ai);
-        C_dpmr_theory(ci, :, ai) = ...
-            K * (1-av)*(1-lc_dense) ./ (1 - (1-av)*lc_dense) ...
-            + (2/(2-av)) * 1 ./ ((1+lc_dense) .* (1 - (1-av)*lc_dense));
+
+        % Determine K for this controller and a_var
+        if ctrl_list(ci) == 1
+            K = 2;  % constant for all a_var
+        elseif ctrl_list(ci) == 2
+            K = 2 + 2*(1-av)^2 / (2-av);  % K_eff depends on a_var
+        end
+
+        C_dpmr_theory(ci, :, ai) = (1-av)^2 * ( ...
+            K * (1-av) * (1-lc_dense) ./ (1 - (1-av)*lc_dense) ...
+            + (2/(2-av)) ./ ((1+lc_dense) .* (1 - (1-av)*lc_dense)));
     end
 end
 
 % --- Print results ---
 fprintf('\n--- C_dpm Results (z-axis) ---\n');
 for ci = 1:n_ctrl
-    K = K_values(ci);
-    fprintf('\n%s (K=%.2f):\n', ctrl_names(ctrl_list(ci)), K);
-    fprintf('  lc     sim       theory    err%%\n');
-    for li = 1:n_lc
-        lc = lc_list(li);
-        theory = K + 1/(1 - lc^2);
-        sim_val = C_dpm_sim(ci, li);
-        err_pct = abs(sim_val - theory) / theory * 100;
-        fprintf('  %.1f    %.4f    %.4f    %.1f%%\n', lc, sim_val, theory, err_pct);
+    if has_C_dpm_theory(ci)
+        K = K_values(ci);
+        fprintf('\n%s (K=%.2f):\n', ctrl_names(ctrl_list(ci)), K);
+        fprintf('  lc     sim       theory    err%%\n');
+        for li = 1:n_lc
+            lc = lc_list(li);
+            theory = K + 1/(1 - lc^2);
+            sim_val = C_dpm_sim(ci, li);
+            err_pct = abs(sim_val - theory) / theory * 100;
+            fprintf('  %.1f    %.4f    %.4f    %.1f%%\n', lc, sim_val, theory, err_pct);
+        end
+    else
+        fprintf('\n%s (no analytic formula):\n', ctrl_names(ctrl_list(ci)));
+        fprintf('  lc     sim\n');
+        for li = 1:n_lc
+            fprintf('  %.1f    %.4f\n', lc_list(li), C_dpm_sim(ci, li));
+        end
     end
 end
 
 fprintf('\n--- C_dpmr Results (z-axis) ---\n');
 for ci = 1:n_ctrl
-    K = K_values(ci);
-    fprintf('\n%s (K=%.2f):\n', ctrl_names(ctrl_list(ci)), K);
-    for ai = 1:n_avar
-        av = a_var_list(ai);
-        fprintf('  a_var=%.3f:\n', av);
-        fprintf('    lc     sim       theory    err%%\n');
-        for li = 1:n_lc
-            lc = lc_list(li);
-            theory = K*(1-av)*(1-lc)/(1-(1-av)*lc) ...
-                   + (2/(2-av)) / ((1+lc)*(1-(1-av)*lc));
-            sim_val = C_dpmr_sim(ci, li, ai);
-            err_pct = abs(sim_val - theory) / theory * 100;
-            fprintf('    %.1f    %.4f    %.4f    %.1f%%\n', lc, sim_val, theory, err_pct);
+    if has_C_dpmr_theory(ci)
+        fprintf('\n%s:\n', ctrl_names(ctrl_list(ci)));
+        for ai = 1:n_avar
+            av = a_var_list(ai);
+
+            if ctrl_list(ci) == 1
+                K = 2;
+            elseif ctrl_list(ci) == 2
+                K = 2 + 2*(1-av)^2 / (2-av);
+            end
+
+            fprintf('  a_var=%.3f (K=%.4f):\n', av, K);
+            fprintf('    lc     sim       theory    err%%\n');
+            for li = 1:n_lc
+                lc = lc_list(li);
+                theory = (1-av)^2 * (K*(1-av)*(1-lc)/(1-(1-av)*lc) ...
+                       + (2/(2-av)) / ((1+lc)*(1-(1-av)*lc)));
+                sim_val = C_dpmr_sim(ci, li, ai);
+                err_pct = abs(sim_val - theory) / theory * 100;
+                fprintf('    %.1f    %.4f    %.4f    %.1f%%\n', lc, sim_val, theory, err_pct);
+            end
+        end
+    else
+        fprintf('\n%s (no analytic formula):\n', ctrl_names(ctrl_list(ci)));
+        for ai = 1:n_avar
+            av = a_var_list(ai);
+            fprintf('  a_var=%.3f:\n', av);
+            fprintf('    lc     sim\n');
+            for li = 1:n_lc
+                fprintf('    %.1f    %.4f\n', lc_list(li), C_dpmr_sim(ci, li, ai));
+            end
         end
     end
 end
@@ -264,71 +304,91 @@ end
 
 fprintf('\n=== Generating Figures ===\n');
 
+% Style overrides for figure generation
+FIG_FONT_SIZE = 28;
+FIG_LEGEND_FS = 18;
+FIG_LINE_TH   = 3.5;
+FIG_MK_SIZE   = 10;
+FIG_LINE_SIM  = 2.0;
+
 for ci = 1:n_ctrl
     ctrl_type = ctrl_list(ci);
-    K = K_values(ci);
 
     % --- Fig 1: C_dpm vs lc ---
-    fig1 = figure('Position', [100 100 800 600]);
+    fig1 = figure('Position', [100 100 900 650], 'Visible', 'off');
     ax1 = axes(fig1);
     hold(ax1, 'on');
 
-    % Theory line
-    plot(ax1, lc_dense, C_dpm_theory(ci, :), '-', ...
-        'Color', COL_REF, 'LineWidth', LINE_REF);
+    if has_C_dpm_theory(ci)
+        % Theory line + simulation points
+        plot(ax1, lc_dense, C_dpm_theory(ci, :) * sigma2_deltaXT, '-', ...
+            'Color', COL_REF, 'LineWidth', FIG_LINE_TH);
+        plot(ax1, lc_list, C_dpm_sim(ci, :) * sigma2_deltaXT, 'o', ...
+            'Color', COL_OUT, 'MarkerSize', FIG_MK_SIZE, 'LineWidth', FIG_LINE_SIM, ...
+            'MarkerFaceColor', COL_OUT);
+        legend(ax1, {'Theory', 'Simulation'}, 'FontSize', FIG_LEGEND_FS, ...
+            'Location', 'northoutside', 'Orientation', 'horizontal');
+    else
+        % No theory: simulation points connected with line
+        plot(ax1, lc_list, C_dpm_sim(ci, :) * sigma2_deltaXT, '-o', ...
+            'Color', COL_OUT, 'LineWidth', FIG_LINE_SIM, ...
+            'MarkerSize', FIG_MK_SIZE, 'MarkerFaceColor', COL_OUT);
+        legend(ax1, 'Simulation', 'FontSize', FIG_LEGEND_FS, ...
+            'Location', 'northoutside', 'Orientation', 'horizontal');
+    end
 
-    % Simulation points
-    plot(ax1, lc_list, C_dpm_sim(ci, :), 'o', ...
-        'Color', COL_OUT, 'MarkerSize', MK_SIZE, 'LineWidth', LINE_OUT, ...
-        'MarkerFaceColor', COL_OUT);
+    xlabel(ax1, '\lambda_c', 'FontSize', FIG_FONT_SIZE, 'FontWeight', 'bold');
+    ylabel(ax1, 'Variance [um^2]', 'FontSize', FIG_FONT_SIZE, 'FontWeight', 'bold');
+    set(ax1, 'FontSize', FIG_FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+    box(ax1, 'on'); grid(ax1, 'off');
 
-    xlabel(ax1, '\lambda_c', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
-    ylabel(ax1, 'C_{dpm}', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
-    set(ax1, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
-    grid(ax1, 'on'); box(ax1, 'on');
-
-    saveas(fig1, fullfile(out_dir, sprintf('fig_ctrl%d_C_dpm.png', ctrl_type)));
+    exportgraphics(fig1, fullfile(out_dir, sprintf('fig_ctrl%d_C_dpm.png', ctrl_type)), ...
+        'Resolution', 150);
     fprintf('  Saved fig_ctrl%d_C_dpm.png\n', ctrl_type);
+    close(fig1);
 
     % --- Fig 2: C_dpmr vs lc ---
-    fig2 = figure('Position', [100 100 800 600]);
+    fig2 = figure('Position', [100 100 900 650], 'Visible', 'off');
     ax2 = axes(fig2);
     hold(ax2, 'on');
 
-    legend_entries = {};
+    h_leg = gobjects(n_avar, 1);
+    leg_labels = cell(n_avar, 1);
+
     for ai = 1:n_avar
         av = a_var_list(ai);
 
-        % Theory line
-        plot(ax2, lc_dense, squeeze(C_dpmr_theory(ci, :, ai)), ...
-            LINE_STYLES{ai}, 'Color', COL_AVAR{ai}, 'LineWidth', LINE_REF);
+        if has_C_dpmr_theory(ci)
+            % Theory line
+            plot(ax2, lc_dense, squeeze(C_dpmr_theory(ci, :, ai)) * sigma2_deltaXT, ...
+                '-', 'Color', COL_AVAR{ai}, 'LineWidth', FIG_LINE_TH);
+            % Simulation points
+            h_leg(ai) = plot(ax2, lc_list, squeeze(C_dpmr_sim(ci, :, ai)) * sigma2_deltaXT, ...
+                'o', 'Color', COL_AVAR{ai}, ...
+                'MarkerSize', FIG_MK_SIZE, 'LineWidth', FIG_LINE_SIM, ...
+                'MarkerFaceColor', COL_AVAR{ai});
+        else
+            % No theory: lines connecting simulation points
+            h_leg(ai) = plot(ax2, lc_list, squeeze(C_dpmr_sim(ci, :, ai)) * sigma2_deltaXT, ...
+                '-o', 'Color', COL_AVAR{ai}, 'LineWidth', FIG_LINE_SIM, ...
+                'MarkerSize', FIG_MK_SIZE, 'MarkerFaceColor', COL_AVAR{ai});
+        end
 
-        % Simulation points
-        plot(ax2, lc_list, squeeze(C_dpmr_sim(ci, :, ai)), ...
-            MK_STYLES{ai}, 'Color', COL_AVAR{ai}, ...
-            'MarkerSize', MK_SIZE, 'LineWidth', LINE_OUT, ...
-            'MarkerFaceColor', COL_AVAR{ai});
-
-        legend_entries{end+1} = sprintf('a_{var}=%.3f', av); %#ok<AGROW>
-        legend_entries{end+1} = '';  %#ok<AGROW> % skip marker entry
+        leg_labels{ai} = sprintf('a_{var}=%.3f', av);
     end
 
-    xlabel(ax2, '\lambda_c', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
-    ylabel(ax2, 'C_{dpmr}', 'FontSize', FONT_SIZE, 'FontWeight', 'bold');
-    set(ax2, 'FontSize', FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
-    grid(ax2, 'on'); box(ax2, 'on');
+    xlabel(ax2, '\lambda_c', 'FontSize', FIG_FONT_SIZE, 'FontWeight', 'bold');
+    ylabel(ax2, 'Variance [um^2]', 'FontSize', FIG_FONT_SIZE, 'FontWeight', 'bold');
+    set(ax2, 'FontSize', FIG_FONT_SIZE, 'FontWeight', 'bold', 'LineWidth', AXIS_LW);
+    box(ax2, 'on'); grid(ax2, 'off');
 
-    % Legend: only theory lines (odd entries)
-    h_all = ax2.Children;
-    h_lines = h_all(end:-2:1);  % theory lines are plotted first
-    leg_labels = {};
-    for ai = 1:n_avar
-        leg_labels{ai} = sprintf('a_{var}=%.3f', a_var_list(ai)); %#ok<AGROW>
-    end
-    legend(ax2, h_lines, leg_labels, 'FontSize', LEGEND_FS, 'Location', 'best');
+    legend(ax2, h_leg, leg_labels, 'FontSize', FIG_LEGEND_FS, ...
+        'Location', 'northoutside', 'Orientation', 'horizontal');
 
-    saveas(fig2, fullfile(out_dir, sprintf('fig_ctrl%d_C_dpmr.png', ctrl_type)));
+    exportgraphics(fig2, fullfile(out_dir, sprintf('fig_ctrl%d_C_dpmr.png', ctrl_type)), ...
+        'Resolution', 150);
     fprintf('  Saved fig_ctrl%d_C_dpmr.png\n', ctrl_type);
+    close(fig2);
 end
 
 fprintf('\n=== Verification Complete ===\n');
