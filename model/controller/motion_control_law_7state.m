@@ -135,9 +135,9 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
     del_pmr_var    = max(del_pmr2_avg - del_pmrd.^2, 0);                  % 3x1 [um^2]
 
     %% Eq.13 Gain Recovery (runs during warm-up AND normal operation)
-    C_dx  = 2*(1-a_pd)*(1-lambda_c) / (1-(1-a_pd)*lambda_c) ...
-          + (2/(2-a_pd)) / ((1+lambda_c)*(1-(1-a_pd)*lambda_c));
-    den   = C_dx * 4 * k_B * T_temp;                        % [pN*um]
+    C_dpmr = 2*(1-a_pd)*(1-lambda_c) / (1-(1-a_pd)*lambda_c) ...
+           + (2/(2-a_pd)) / ((1+lambda_c)*(1-(1-a_pd)*lambda_c));
+    den    = C_dpmr * 4 * k_B * T_temp;                     % [pN*um]
     noise_corr = (2 / (1 + lambda_c)) * sigma2_noise;       % 3x1 [um^2]
     a_m   = max((del_pmr_var - noise_corr) / den, 0);       % 3x1 [um/pN]
 
