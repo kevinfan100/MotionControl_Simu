@@ -46,8 +46,10 @@ Scope: wall-effect, simulation, control, analysis, etc.
 ## Workflow
 
 - 大功能實作前使用 brainstorming + writing-plans skills
+- 公式驗證流程：討論(interview) → notation 定義 → 實作 → Lyapunov 驗證 → Simulink 驗證 → 出圖
 - 主模型: `model/system_model.slx`
 - 主模擬腳本: `test_script/run_simulation.m`
+- 驗證腳本: `test_script/verify_variance.m`
 
 ---
 
@@ -68,7 +70,7 @@ IIR HP filter `H_HP(z) = (1-a_pd)*(1-z^-1)/(1-(1-a_pd)*z^-1)` 的 `(1-a_pd)` 前
 - Controller 2: 同結構但 `K_eff(av) = 2 + 2*(1-av)^2/(2-av)` 替代 K=2
 - Controller 3: 無解析公式（EKF 為非線性系統）
 
-詳見 `test_results/verify/derivation_C_dpmr_correction.md`。
+詳見 `reference/for_test/verification_report.md`。
 
 ## 專案結構
 
@@ -86,7 +88,9 @@ MotionControl_Simu/
 │   └── verify_variance.m               # 變異數驗證：C_dpm/C_dpmr vs 理論公式（3 種控制器）
 ├── agent_docs/                       # 詳細技術文件
 ├── reference/                        # 參考文件
+│   └── for_test/                      # 驗證用文件、報告、圖表（committed）
 ├── test_results/                     # 模擬結果（不納入 Git）
+│   └── verify/                        # 驗證數據 .mat（可用 verify_variance.m 重生）
 └── .claude/                          # Claude Code 配置
     ├── rules/                           # 自動載入規則
     └── commands/                        # Slash commands
