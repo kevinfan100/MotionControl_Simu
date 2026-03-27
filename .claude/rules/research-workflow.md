@@ -21,6 +21,16 @@
 - 大型可重生的數據（.mat）放在 test_results/（gitignored）
 - temp_*.m 腳本用完必須刪除
 
+## 跨電腦同步
+
+重要發現必須同步更新到 git-tracked 位置（確保另一台電腦可見）：
+- 結論和公式 → agent_docs/verification-notes.md
+- 規則和偏好 → .claude/rules/
+- 完整報告 → reference/for_test/
+
+記憶（~/.claude/projects/.../memory/）只存在本機，作為 session 連續性用。
+關鍵內容必須同時存在 agent_docs/ 中。
+
 ## 驗證標準
 
 - 解析公式 vs Lyapunov：應達到 machine precision（< 1e-10）
