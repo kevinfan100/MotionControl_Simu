@@ -60,6 +60,7 @@ function config = user_config()
     config.ctrl_enable = true;
     config.lambda_c = 0.7;
     config.controller_type = 23;        % 23 or 7
+    config.lambda_e = 0;               % Observer pole (0 = deadbeat, used by controller_type=2)
     config.meas_noise_enable = false;
     config.meas_noise_std = [0.01; 0.01; 0.01];
 

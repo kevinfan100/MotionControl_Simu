@@ -4,14 +4,14 @@ function ctrl = calc_ctrl_params(config, constants)
 %   ctrl = calc_ctrl_params(config, constants)
 %
 %   Inputs:
-%       config    - User config with fields: ctrl_enable, lambda_c,
+%       config    - User config with fields: ctrl_enable, lambda_c, lambda_e,
 %                   meas_noise_enable, meas_noise_std,
 %                   a_pd, a_prd, a_cov, epsilon
 %       constants - Physical constants with fields: gamma_N, Ts, k_B, T
 %
 %   Outputs:
 %       ctrl - Struct with fields:
-%           enable, lambda_c, gamma, Ts,
+%           enable, lambda_c, gamma, Ts, lambda_e,
 %           meas_noise_enable, meas_noise_std, meas_noise_seed,
 %           a_pd, a_prd, a_cov, epsilon, g_cov, sigma2_deltaXT, k_B, T
 
@@ -46,6 +46,14 @@ function ctrl = calc_ctrl_params(config, constants)
 
     % Controller type and 7-state parameters
     ctrl.controller_type = config.controller_type;
+
+    % Observer pole for controller_type=2 (0 = deadbeat)
+    if isfield(config, 'lambda_e')
+        ctrl.lambda_e = config.lambda_e;
+    else
+        ctrl.lambda_e = 0;  % default: deadbeat
+    end
+
     ctrl.beta = config.beta;
     ctrl.lamdaF = config.lamdaF;
     ctrl.sigma2_noise = config.meas_noise_std.^2;  % 3x1 [um^2]

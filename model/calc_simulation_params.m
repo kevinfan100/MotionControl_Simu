@@ -129,7 +129,7 @@ function params = calc_simulation_params(config)
     assignin('base', 'TrajBus', TrajBus);
 
     % --- CtrlBus ---
-    elems_ctrl = Simulink.BusElement.empty(0, 22);
+    elems_ctrl = Simulink.BusElement.empty(0, 23);
     elems_ctrl(1) = Simulink.BusElement; elems_ctrl(1).Name = 'enable';
     elems_ctrl(1).Dimensions = [1 1]; elems_ctrl(1).DataType = 'double';
     elems_ctrl(2) = Simulink.BusElement; elems_ctrl(2).Name = 'lambda_c';
@@ -162,18 +162,20 @@ function params = calc_simulation_params(config)
     elems_ctrl(15).Dimensions = [1 1]; elems_ctrl(15).DataType = 'double';
     elems_ctrl(16) = Simulink.BusElement; elems_ctrl(16).Name = 'controller_type';
     elems_ctrl(16).Dimensions = [1 1]; elems_ctrl(16).DataType = 'double';
-    elems_ctrl(17) = Simulink.BusElement; elems_ctrl(17).Name = 'beta';
+    elems_ctrl(17) = Simulink.BusElement; elems_ctrl(17).Name = 'lambda_e';
     elems_ctrl(17).Dimensions = [1 1]; elems_ctrl(17).DataType = 'double';
-    elems_ctrl(18) = Simulink.BusElement; elems_ctrl(18).Name = 'lamdaF';
+    elems_ctrl(18) = Simulink.BusElement; elems_ctrl(18).Name = 'beta';
     elems_ctrl(18).Dimensions = [1 1]; elems_ctrl(18).DataType = 'double';
-    elems_ctrl(19) = Simulink.BusElement; elems_ctrl(19).Name = 'sigma2_noise';
-    elems_ctrl(19).Dimensions = [3 1]; elems_ctrl(19).DataType = 'double';
-    elems_ctrl(20) = Simulink.BusElement; elems_ctrl(20).Name = 'Pf_init_diag';
-    elems_ctrl(20).Dimensions = [7 1]; elems_ctrl(20).DataType = 'double';
-    elems_ctrl(21) = Simulink.BusElement; elems_ctrl(21).Name = 'Qz_diag_scaling';
+    elems_ctrl(19) = Simulink.BusElement; elems_ctrl(19).Name = 'lamdaF';
+    elems_ctrl(19).Dimensions = [1 1]; elems_ctrl(19).DataType = 'double';
+    elems_ctrl(20) = Simulink.BusElement; elems_ctrl(20).Name = 'sigma2_noise';
+    elems_ctrl(20).Dimensions = [3 1]; elems_ctrl(20).DataType = 'double';
+    elems_ctrl(21) = Simulink.BusElement; elems_ctrl(21).Name = 'Pf_init_diag';
     elems_ctrl(21).Dimensions = [7 1]; elems_ctrl(21).DataType = 'double';
-    elems_ctrl(22) = Simulink.BusElement; elems_ctrl(22).Name = 'Rz_diag_scaling';
-    elems_ctrl(22).Dimensions = [2 1]; elems_ctrl(22).DataType = 'double';
+    elems_ctrl(22) = Simulink.BusElement; elems_ctrl(22).Name = 'Qz_diag_scaling';
+    elems_ctrl(22).Dimensions = [7 1]; elems_ctrl(22).DataType = 'double';
+    elems_ctrl(23) = Simulink.BusElement; elems_ctrl(23).Name = 'Rz_diag_scaling';
+    elems_ctrl(23).Dimensions = [2 1]; elems_ctrl(23).DataType = 'double';
 
     CtrlBus = Simulink.Bus;
     CtrlBus.Elements = elems_ctrl;
