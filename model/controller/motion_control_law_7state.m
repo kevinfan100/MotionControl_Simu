@@ -4,7 +4,7 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
 %   [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
 %
 %   Implements 3 independent 7-state EKF controllers (one per axis) with
-%   corrected execution order: control -> measurement -> IIR -> EKF.
+%   execution order: control -> measurement -> IIR -> EKF.
 %
 %   State vector per axis: [del_p1, del_p2, del_p3, d, del_d, a, del_a]
 %     del_p1..3: tracking error delay chain
@@ -19,7 +19,7 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
 %
 %   Outputs:
 %       f_d     - Control force f_d[k] [3x1, pN]
-%       ekf_out - EKF diagnostic [4x1]: [a_hat_x/a_nom; a_hat_z/a_nom; 0; 0]
+%       ekf_out - EKF diagnostic [4x1]: [a_hat_x; a_hat_z; 0; 0]
 
     % Check if control is enabled
     if params.ctrl.enable < 0.5
@@ -41,12 +41,11 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
     % Delay buffers
     persistent pd_k1 pd_k2
 
-    % IIR states (3x1 vectors, same as 23-state dual-layer highpass)
+    % IIR states (3x1 vectors)
     persistent del_pmd_k1 del_pmrd_k1
     persistent del_pmr2_avg
 
-    % Previous a_m and warm-up counter
-    persistent a_m_k1
+    % Warm-up counter
     persistent warmup_count
 
     % Constants (extracted once)
@@ -106,51 +105,54 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
         % 0G. IIR states
         del_pmd_k1  = zeros(3,1);
         del_pmrd_k1 = zeros(3,1);
-        del_pmr2_avg       = zeros(3,1);
+        del_pmr2_avg = zeros(3,1);
 
-        % 0H. Previous values
-        a_m_k1  = [a_nom; a_nom; a_nom];
-
-        % 0I. IIR warm-up counter (0.2s at Ts rate)
+        % 0H. IIR warm-up counter (0.2s at Ts rate)
         warmup_count = round(0.2 / Ts);
 
-        % 0J. Return zeros on first call
+        % 0I. Return zeros on first call
         f_d = zeros(3, 1);
         ekf_out = [a_nom; a_nom; 0; 0];
         return;
     end
 
-    %% Step [1]: Measurement Processing
+    %% Step [1]: Control Force (uses persistent [k] forecast estimates)
+    %  f_d[k] = (1./a_hat[k|k-1]) .* (del_pd + (1-lc)*del_p3_hat[k|k-1] - d_hat[k|k-1])
+
+    f_d = (1 ./ a_hat) .* ...
+          (del_pd + (1 - lambda_c) * del_p3_hat - d_hat);
+
+    %% Step [2]: Measurement Processing
     %  del_pm = p_d[k-2] - p_m[k]
     del_pm = pd_k2 - p_m;
 
-    %% Step [2]: IIR Single-layer Highpass + Proper Variance
+    %% Step [3]: IIR Single-layer Highpass + Gain Recovery
+
     %  LP of measurement
     del_pmd  = (1 - a_pd) * del_pmd_k1 + a_pd * del_pm;
     del_pmr  = del_pm - del_pmd;                             % HP residual
     %  Running mean and mean-square of HP residual
     del_pmrd = (1 - a_prd) * del_pmrd_k1 + a_prd * del_pmr; % E[del_pmr]
-    del_pmr2_avg    = (1 - a_cov) * del_pmr2_avg + a_cov * del_pmr.^2;    % E[del_pmr^2]
+    del_pmr2_avg = (1 - a_cov) * del_pmr2_avg + a_cov * del_pmr.^2; % E[del_pmr^2]
     %  Variance = E[X^2] - E[X]^2
-    del_pmr_var    = max(del_pmr2_avg - del_pmrd.^2, 0);                  % 3x1 [um^2]
+    del_pmr_var = max(del_pmr2_avg - del_pmrd.^2, 0);       % 3x1 [um^2]
 
-    %% Eq.13 Gain Recovery (runs during warm-up AND normal operation)
+    %  Eq.13 Gain Recovery
     C_dx  = 2*(1-a_pd)*(1-lambda_c) / (1-(1-a_pd)*lambda_c) ...
           + (2/(2-a_pd)) / ((1+lambda_c)*(1-(1-a_pd)*lambda_c));
     den   = C_dx * 4 * k_B * T_temp;                        % [pN*um]
     noise_corr = (2 / (1 + lambda_c)) * sigma2_noise;       % 3x1 [um^2]
     a_m   = max((del_pmr_var - noise_corr) / den, 0);       % 3x1 [um/pN]
 
-    %% IIR Warm-up gate: only run measurement + IIR + Eq.13, skip control + EKF
+    %% IIR Warm-up gate: only run measurement + IIR + Eq.13, skip EKF
     if warmup_count > 0
         warmup_count = warmup_count - 1;
 
-        % Update delay buffers, IIR states, and a_m history
+        % Update delay buffers and IIR states
         pd_k2 = pd_k1;
         pd_k1 = pd;
         del_pmd_k1  = del_pmd;
         del_pmrd_k1 = del_pmrd;
-        a_m_k1 = a_m;
 
         % On last warmup step: seed EKF del_p states with IIR LP estimate
         if warmup_count == 0
@@ -164,12 +166,6 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
         return;
     end
 
-    %% Step [3]: Control Force (uses persistent [k] estimates, BEFORE EKF update)
-    %  f_d = (1./a_hat) .* (del_pd + (1-lc)*del_p3_hat - d_hat)
-
-    f_d = (1 ./ a_hat) .* ...
-          (del_pd + (1 - lambda_c) * del_p3_hat - d_hat);
-
     %% Step [4]: EKF Update
 
     % Pack per-axis state vectors
@@ -180,10 +176,10 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
     states_z = [del_p1_hat(3); del_p2_hat(3); del_p3_hat(3); ...
                 d_hat(3); del_d_hat(3); a_hat(3); del_a_hat(3)];
 
-    % Measurements: [del_pm_i; a_m_k1_i] (a_m uses previous step delay)
-    meas_x = [del_pm(1); a_m_k1(1)];
-    meas_y = [del_pm(2); a_m_k1(2)];
-    meas_z = [del_pm(3); a_m_k1(3)];
+    % Measurements: [del_pm_i; a_m_i]
+    meas_x = [del_pm(1); a_m(1)];
+    meas_y = [del_pm(2); a_m(2)];
+    meas_z = [del_pm(3); a_m(3)];
 
     % Adaptive R: when del_pmr_var is too small (no thermal excitation),
     % inflate gain channel noise to prevent EKF from trusting a_m = 0.
@@ -200,81 +196,82 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
         R_i{i} = diag([r_pos_base, r_gain_i]);
     end
 
-    % --- Fe_err matrices for covariance propagation ---
-    Fe_err_x = [0 1 0  0  0  0           0; ...
-                0 0 1  0  0  0           0; ...
-                0 0 1 -1  0 -f_d(1)  0; ...
-                0 0 0  1  1  0           0; ...
-                0 0 0  0  1  0           0; ...
-                0 0 0  0  0  1           1; ...
-                0 0 0  0  0  0           1];
-    Fe_err_y = [0 1 0  0  0  0           0; ...
-                0 0 1  0  0  0           0; ...
-                0 0 1 -1  0 -f_d(2)  0; ...
-                0 0 0  1  1  0           0; ...
-                0 0 0  0  1  0           0; ...
-                0 0 0  0  0  1           1; ...
-                0 0 0  0  0  0           1];
-    % z axis: beta coupling (chart extension)
-    Fe_err_z = [0 1 0  0          0         0          0; ...
-                0 0 1  0          0         0          0; ...
-                0 0 1 -1          0        -f_d(3) 0; ...
-                0 0 0  1+beta    -beta      0          0; ...
-                0 0 0  1          0         0          0; ...
-                0 0 0  0          0         1+beta    -beta; ...
-                0 0 0  0          0         1          0];
+    % --- F[k] Error dynamics matrices ---
+    F_x = [0 1 0  0  0  0        0; ...
+           0 0 1  0  0  0        0; ...
+           0 0 1 -1  0 -f_d(1)   0; ...
+           0 0 0  1  1  0        0; ...
+           0 0 0  0  1  0        0; ...
+           0 0 0  0  0  1        1; ...
+           0 0 0  0  0  0        1];
+    F_y = [0 1 0  0  0  0        0; ...
+           0 0 1  0  0  0        0; ...
+           0 0 1 -1  0 -f_d(2)   0; ...
+           0 0 0  1  1  0        0; ...
+           0 0 0  0  1  0        0; ...
+           0 0 0  0  0  1        1; ...
+           0 0 0  0  0  0        1];
+    % z axis: beta coupling
+    F_z = [0 1 0  0        0     0        0; ...
+           0 0 1  0        0     0        0; ...
+           0 0 1 -1        0    -f_d(3)   0; ...
+           0 0 0  1+beta  -beta  0        0; ...
+           0 0 0  1        0     0        0; ...
+           0 0 0  0        0     1+beta  -beta; ...
+           0 0 0  0        0     1        0];
 
-    % --- EKF injection + covariance (returns inj, not states) ---
+    % --- EKF injection + covariance ---
     % x-axis: lamdaF=1
     [inj_x, Pf_1] = ekf_update_7state( ...
-        states_x, Pf_1, meas_x, Q_1, R_i{1}, Fe_err_x, 1);
+        states_x, Pf_1, meas_x, Q_1, R_i{1}, F_x, 1);
     % y-axis: lamdaF=1
     [inj_y, Pf_2] = ekf_update_7state( ...
-        states_y, Pf_2, meas_y, Q_2, R_i{2}, Fe_err_y, 1);
+        states_y, Pf_2, meas_y, Q_2, R_i{2}, F_y, 1);
     % z-axis: beta coupling, lamdaF=lamdaF
     [inj_z, Pf_3] = ekf_update_7state( ...
-        states_z, Pf_3, meas_z, Q_3, R_i{3}, Fe_err_z, lamdaF);
+        states_z, Pf_3, meas_z, Q_3, R_i{3}, F_z, lamdaF);
 
-    % --- Explicit state update  ---
-    del_p1_hat_new = zeros(3,1);
-    del_p2_hat_new = zeros(3,1);
-    del_p3_hat_new = zeros(3,1);
-    d_hat_new      = zeros(3,1);
-    del_d_hat_new  = zeros(3,1);
-    a_hat_new      = zeros(3,1);
-    del_a_hat_new  = zeros(3,1);
+    %% Step [5]: State Update
+
+    del_p1_hat_kA1 = zeros(3,1);
+    del_p2_hat_kA1 = zeros(3,1);
+    del_p3_hat_kA1 = zeros(3,1);
+    d_hat_kA1      = zeros(3,1);
+    del_d_hat_kA1  = zeros(3,1);
+    a_hat_kA1      = zeros(3,1);
+    del_a_hat_kA1  = zeros(3,1);
 
     for ax = 1:2   % x, y axes
         if ax == 1, inj = inj_x; else, inj = inj_y; end
-        del_p1_hat_new(ax) = del_p2_hat(ax)                           + inj(1);
-        del_p2_hat_new(ax) = del_p3_hat(ax)                           + inj(2);
-        del_p3_hat_new(ax) = lambda_c * del_p3_hat(ax)                + inj(3);
-        d_hat_new(ax)      = d_hat(ax) + del_d_hat(ax)                + inj(4);
-        del_d_hat_new(ax)  = del_d_hat(ax)                            + inj(5);
-        a_hat_new(ax)      = a_hat(ax) + del_a_hat(ax)                + inj(6);
-        del_a_hat_new(ax)  = del_a_hat(ax)                            + inj(7);
+        del_p1_hat_kA1(ax) = del_p2_hat(ax)                           + inj(1);
+        del_p2_hat_kA1(ax) = del_p3_hat(ax)                           + inj(2);
+        del_p3_hat_kA1(ax) = lambda_c * del_p3_hat(ax)                + inj(3);
+        d_hat_kA1(ax)      = d_hat(ax) + del_d_hat(ax)                + inj(4);
+        del_d_hat_kA1(ax)  = del_d_hat(ax)                            + inj(5);
+        a_hat_kA1(ax)      = a_hat(ax) + del_a_hat(ax)                + inj(6);
+        del_a_hat_kA1(ax)  = del_a_hat(ax)                            + inj(7);
     end
 
-    % z-axis — beta coupling (chart extension)
+    % z-axis -- beta coupling
     inj = inj_z;
-    del_p1_hat_new(3) = del_p2_hat(3)                                 + inj(1);
-    del_p2_hat_new(3) = del_p3_hat(3)                                 + inj(2);
-    del_p3_hat_new(3) = lambda_c * del_p3_hat(3)                      + inj(3);
-    d_hat_new(3)      = (1+beta)*d_hat(3) - beta*del_d_hat(3)         + inj(4);
-    del_d_hat_new(3)  = d_hat(3)                                      + inj(5);
-    a_hat_new(3)      = (1+beta)*a_hat(3) - beta*del_a_hat(3)         + inj(6);
-    del_a_hat_new(3)  = a_hat(3)                                      + inj(7);
+    del_p1_hat_kA1(3) = del_p2_hat(3)                                 + inj(1);
+    del_p2_hat_kA1(3) = del_p3_hat(3)                                 + inj(2);
+    del_p3_hat_kA1(3) = lambda_c * del_p3_hat(3)                      + inj(3);
+    d_hat_kA1(3)      = (1+beta)*d_hat(3) - beta*del_d_hat(3)         + inj(4);
+    del_d_hat_kA1(3)  = d_hat(3)                                      + inj(5);
+    a_hat_kA1(3)      = (1+beta)*a_hat(3) - beta*del_a_hat(3)         + inj(6);
+    del_a_hat_kA1(3)  = a_hat(3)                                      + inj(7);
 
     %% Step [6]: Persistent Shifts
 
     % Apply updated states
-    del_p1_hat = del_p1_hat_new;
-    del_p2_hat = del_p2_hat_new;
-    del_p3_hat = del_p3_hat_new;
-    d_hat      = d_hat_new;
-    del_d_hat  = del_d_hat_new;
-    a_hat      = a_hat_new;
-    del_a_hat  = del_a_hat_new;
+    del_p1_hat = del_p1_hat_kA1;
+    del_p2_hat = del_p2_hat_kA1;
+    del_p3_hat = del_p3_hat_kA1;
+    d_hat      = d_hat_kA1;
+    del_d_hat  = del_d_hat_kA1;
+    a_hat      = a_hat_kA1;
+    del_a_hat  = del_a_hat_kA1;
 
     % Delay buffers
     pd_k2 = pd_k1;
@@ -282,10 +279,7 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
 
     % IIR states
     del_pmd_k1  = del_pmd;
-    del_pmrd_k1 = del_pmrd;  % stores running mean of HP residual
-
-    % Previous values
-    a_m_k1  = a_m;
+    del_pmrd_k1 = del_pmrd;
 
     %% Step [7]: Output
     ekf_out = [a_hat(1); ...            % x-axis gain [um/pN]
@@ -298,13 +292,13 @@ end
 %% ==================== Local Function ====================
 
 function [inj, Pf_new] = ekf_update_7state( ...
-    states, Pf, meas, Q, R, Fe_err, lamdaF_i)
+    states, Pf, meas, Q, R, F, lamdaF_i)
 %EKF_UPDATE_7STATE Single-axis 7-state EKF: injection + covariance
 %
 %   Split design per paper Eq.16-21:
 %     - Returns injection vector (L * innovation), NOT updated states
 %     - Caller performs explicit state update (Eq.16)
-%     - Covariance uses Fe_err from error dynamics (Eq.18)
+%     - Covariance uses F from error dynamics (Eq.18)
 %
 %   Inputs:
 %       states:    7x1 = [del_p1; del_p2; del_p3; d; del_d; a; del_a]
@@ -312,7 +306,7 @@ function [inj, Pf_new] = ekf_update_7state( ...
 %       meas:      2x1 = [del_pm_i; a_m_i]
 %       Q:         7x7 process noise
 %       R:         2x2 measurement noise
-%       Fe_err:    7x7 error dynamics matrix (Eq.18), Fe_err(3,3) = 1
+%       F:         7x7 error dynamics matrix (Eq.18)
 %       lamdaF_i:  scalar, forgetting factor
 %
 %   Outputs:
@@ -332,15 +326,15 @@ function [inj, Pf_new] = ekf_update_7state( ...
     % Kalman gain (Eq.19)
     L = (Pf * H') / S;
 
-    % Injection vector — caller uses this for explicit state update
+    % Injection vector -- caller uses this for explicit state update
     inj = L * err;
 
     % Posterior covariance (Eq.20) with forgetting factor
     P = (1 / lamdaF_i) * (eye(7) - L * H) * Pf;
     P = 0.5 * (P + P');
 
-    % Forecast covariance (Eq.21) — uses Fe_err (error dynamics)
-    Pf_new = Fe_err * P * Fe_err' + Q;
+    % Forecast covariance (Eq.21) -- uses F (error dynamics)
+    Pf_new = F * P * F' + Q;
     Pf_new = 0.5 * (Pf_new + Pf_new');
 
 end
