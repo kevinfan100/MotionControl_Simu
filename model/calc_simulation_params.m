@@ -129,7 +129,7 @@ function params = calc_simulation_params(config)
     assignin('base', 'TrajBus', TrajBus);
 
     % --- CtrlBus ---
-    elems_ctrl = Simulink.BusElement.empty(0, 23);
+    elems_ctrl = Simulink.BusElement.empty(0, 24);
     elems_ctrl(1) = Simulink.BusElement; elems_ctrl(1).Name = 'enable';
     elems_ctrl(1).Dimensions = [1 1]; elems_ctrl(1).DataType = 'double';
     elems_ctrl(2) = Simulink.BusElement; elems_ctrl(2).Name = 'lambda_c';
@@ -176,6 +176,8 @@ function params = calc_simulation_params(config)
     elems_ctrl(22).Dimensions = [7 1]; elems_ctrl(22).DataType = 'double';
     elems_ctrl(23) = Simulink.BusElement; elems_ctrl(23).Name = 'Rz_diag_scaling';
     elems_ctrl(23).Dimensions = [2 1]; elems_ctrl(23).DataType = 'double';
+    elems_ctrl(24) = Simulink.BusElement; elems_ctrl(24).Name = 'kf_R';
+    elems_ctrl(24).Dimensions = [1 1]; elems_ctrl(24).DataType = 'double';
 
     CtrlBus = Simulink.Bus;
     CtrlBus.Elements = elems_ctrl;

@@ -54,6 +54,13 @@ function ctrl = calc_ctrl_params(config, constants)
         ctrl.lambda_e = 0;  % default: deadbeat
     end
 
+    % KF measurement noise variance for controller_type=4 (0 = use default)
+    if isfield(config, 'kf_R')
+        ctrl.kf_R = config.kf_R;
+    else
+        ctrl.kf_R = 0;
+    end
+
     ctrl.beta = config.beta;
     ctrl.lamdaF = config.lamdaF;
     ctrl.sigma2_noise = config.meas_noise_std.^2;  % 3x1 [um^2]
