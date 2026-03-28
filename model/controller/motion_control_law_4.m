@@ -59,33 +59,11 @@ function [f_d, ekf_out] = motion_control_law_4(del_pd, pd, p_m, params)
         lambda_c = params.ctrl.lambda_c;
         a_x      = params.ctrl.Ts / params.ctrl.gamma;  % [um/pN]
 
-        % Plant model for Kalman filter
-        F_kf = [0, 1, 0; 0, 0, 1; 0, 0, lambda_c];
-        H_kf = [1, 0, 0];
-
-        % Process noise: only state 3 is driven by thermal noise
-        sigma2_deltaXT = params.ctrl.sigma2_deltaXT;
-        Q_kf = sigma2_deltaXT * diag([0, 0, 1]);
-
-        % Measurement noise (from params, or default small value)
-        if isfield(params.ctrl, 'kf_R') && params.ctrl.kf_R > 0
-            R_kf = params.ctrl.kf_R;
-        else
-            R_kf = sigma2_deltaXT * 0.01;  % default: small R (fast observer)
-        end
-
-        % Solve DARE for steady-state covariance
-        % dare(F', H', Q, R) gives the steady-state forecast covariance
-        [Pf_ss, ~, ~] = dare(F_kf', H_kf', Q_kf, R_kf);
-
-        % Steady-state Kalman gain
-        S_ss = H_kf * Pf_ss * H_kf' + R_kf;
-        L_ss = Pf_ss * H_kf' / S_ss;  % 3x1
-
-        % Use L_ss as fixed gains
-        L1 = L_ss(1);
-        L2 = L_ss(2);
-        L3 = L_ss(3);
+        % KF gain pre-computed in calc_ctrl_params via DARE
+        % L1=L2=L3=kf_L for Fe-based KF (closed-loop error dynamics)
+        L1 = params.ctrl.kf_L;
+        L2 = params.ctrl.kf_L;
+        L3 = params.ctrl.kf_L;
 
         % Delay buffers
         pd_k1 = pd;

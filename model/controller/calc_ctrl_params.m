@@ -54,6 +54,13 @@ function ctrl = calc_ctrl_params(config, constants)
         ctrl.lambda_e = 0;  % default: deadbeat
     end
 
+    ctrl.beta = config.beta;
+    ctrl.lamdaF = config.lamdaF;
+    ctrl.sigma2_noise = config.meas_noise_std.^2;  % 3x1 [um^2]
+    ctrl.Pf_init_diag = config.Pf_init_diag;
+    ctrl.Qz_diag_scaling = config.Qz_diag_scaling;
+    ctrl.Rz_diag_scaling = config.Rz_diag_scaling;
+
     % KF measurement noise variance for controller_type=4 (0 = use default)
     if isfield(config, 'kf_R')
         ctrl.kf_R = config.kf_R;
@@ -61,11 +68,16 @@ function ctrl = calc_ctrl_params(config, constants)
         ctrl.kf_R = 0;
     end
 
-    ctrl.beta = config.beta;
-    ctrl.lamdaF = config.lamdaF;
-    ctrl.sigma2_noise = config.meas_noise_std.^2;  % 3x1 [um^2]
-    ctrl.Pf_init_diag = config.Pf_init_diag;
-    ctrl.Qz_diag_scaling = config.Qz_diag_scaling;
-    ctrl.Rz_diag_scaling = config.Rz_diag_scaling;
+    % Pre-compute KF gain via DARE (Fe-based, closed-loop error dynamics)
+    % L1=L2=L3=kf_L due to Fe structure
+    if ctrl.kf_R > 0
+        Fe = [0, 1, 0; 0, 0, 1; 0, 0, 1];
+        H_kf = [1, 0, 0];
+        Q_kf = ctrl.sigma2_deltaXT * diag([0, 0, 1]);
+        [Pf_ss, ~, ~] = dare(Fe', H_kf', Q_kf, ctrl.kf_R);
+        ctrl.kf_L = Pf_ss(1,1) / (Pf_ss(1,1) + ctrl.kf_R);
+    else
+        ctrl.kf_L = 1;  % deadbeat (R=0 equivalent)
+    end
 
 end
