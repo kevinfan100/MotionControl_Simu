@@ -192,6 +192,42 @@ observer eigenvalues = (0, 0, le)，部分 deadbeat。
 | le=0 | 相同（deadbeat） | 相同 |
 | le>0 | C_dpm 更小 | C_dpm 更大 |
 
+### C_kf 分解
+
+```
+C_dpm = C_kf(lc, le) + 1/(1-lc^2)
+
+C_kf(lc, le) = [2*lc^2*le^3 - 3*lc^2*le + 2*lc*le^3 - 4*lc*le^2 - lc*le + 3*lc - 2*le^2 + 3]
+             / [(le^2-1)(lc*le-1)(lc+1)]
+
+C_kf(lc, 0) = 3
+```
+
+### 含量測噪音驗證（r=0.0435, z 軸）
+
+sigma_n = 0.00331 um, r = sigma2_n / sigma2_deltaXT = 0.0435
+
+理論 Lyapunov 含噪音項: Q_total = B_th*B_th'*sigma2_deltaXT + B_meas*B_meas'*sigma2_n
+
+| lc | C_dpm(sim) | C_dpm(theory) | Error |
+|---|---|---|---|
+| 0.4 | 4.345 | 4.232 | +2.7% |
+| 0.5 | 4.331 | 4.375 | -1.0% |
+| 0.6 | 4.625 | 4.604 | +0.5% |
+| 0.7 | 4.855 | 5.003 | -3.0% |
+| 0.8 | 5.978 | 5.820 | +2.7% |
+| 0.9 | 8.208 | 8.305 | -1.2% |
+
+### 專案量測噪音對應的 r
+
+| 軸 | noise_std [um] | r | le | C_kf (lc=0.7) |
+|---|---|---|---|---|
+| x | 0.00062 | 0.0015 | 0.002 | 3.001 |
+| y | 0.000057 | 0.00001 | ~0 | 3.000 |
+| z | 0.00331 | 0.0435 | 0.040 | 3.034 |
+
+r < 0.05 → C_kf 接近 3 → 和 deadbeat 差 < 1%
+
 ---
 
 ## Code 影響
@@ -209,3 +245,5 @@ K=2 在 EKF context 下為近似值。
 | spectral_analysis_ctrl{1,2}.mat | test_results/verify/ | 積分/Lyapunov 分析數據 |
 | analysis_ctrl7.mat | test_results/verify/ | Controller 3 分析 |
 | lyapunov_le_sweep.mat | test_results/verify/ | le=0/0.3/0.5 掃描數據 |
+| riccati_analysis.mat | test_results/verify/ | KF rho sweep 數據 |
+| verify_kf_ctrl4.mat | test_results/verify/ | KF Simulink 驗證數據 |
