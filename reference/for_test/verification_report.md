@@ -228,6 +228,39 @@ sigma_n = 0.00331 um, r = sigma2_n / sigma2_deltaXT = 0.0435
 
 r < 0.05 → C_kf 接近 3 → 和 deadbeat 差 < 1%
 
+### C_dpmr 三項分解
+
+```
+C_dpmr = (1-av)^2 * [term1(lc, le, av) + term2(lc, av)]
+
+term1 = K(av) * (1-av)*(1-lc)/(1-(1-av)*lc) + le * g(lc, le, av)
+        ^ctrl2 部分（deadbeat baseline）        ^observer pole 修正
+
+term2 = (2/(2-av)) / ((1+lc)*(1-(1-av)*lc))    ← 和 ctrl1/2 相同
+
+K(av) = 2 + 2*(1-av)^2/(2-av)
+```
+
+le=0 時 le*g=0 → 退化為 ctrl2 公式。
+g 的分母包含 (1-(1-av)*le) 耦合項。精確公式由 7-state symbolic Lyapunov 得出。
+
+### C_dpmr Simulink 驗證（r=0.0435, measurement noise ON）
+
+| a_var | Error range |
+|---|---|
+| 0.005 | -2.6% ~ +2.7% |
+| 0.05 | -1.4% ~ +2.9% |
+| 0.5 | +0.3% ~ +5.2% |
+
+### le*g 佔比分析
+
+| 情境 | r | le | le*g/total |
+|---|---|---|---|
+| Free space | 0.04 | 0.04 | < 2%（可忽略） |
+| Near wall h=2.5um | 0.45 | 0.25 | 5-10%（不可忽略） |
+
+Near wall: drag 增大 10.4 倍 → sigma2_deltaXT 減小 → r 增大 → le 增大 → le*g 修正變重要。
+
 ---
 
 ## Code 影響
