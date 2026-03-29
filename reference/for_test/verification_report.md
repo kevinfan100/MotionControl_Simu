@@ -148,6 +148,52 @@ C_dpmr(lc, av) = (1-av)^2 * [ K(av)*(1-av)*(1-lc) / (1-(1-av)*lc)
 
 ---
 
+---
+
+## Controller 4 — 3-State KF Observer (type=4)
+
+用 Kalman filter 取代 pole-placement 設計 observer gain。
+
+### Fe vs F 設計差異
+
+Kalman filter 必須用 Fe（closed-loop error dynamics, (3,3)=1），
+不能用 F（open-loop state dynamics, (3,3)=lc）。
+
+用 F 設計會得到次優 gain（C_dpm 偏大 30-140%），
+因為 KF 不知道 controller 的存在。
+
+### rho → le 解析公式
+
+```
+rho = R / sigma2_deltaXT    (量測噪音 / thermal noise 比例)
+a = (1 + sqrt(1 + 4*rho)) / 2
+L = 1/a = 2 / (1 + sqrt(1 + 4*rho))
+le = 1 - L = (sqrt(1+4*rho) - 1) / (sqrt(1+4*rho) + 1)
+```
+
+Fe-based KF 的特殊性質：L1=L2=L3=L（三個 gain 相等），
+observer eigenvalues = (0, 0, le)，部分 deadbeat。
+
+### Simulink 驗證（lc=0.7）
+
+| rho | le | C_dpm(sim) | C_dpm(theory) | Error |
+|---|---|---|---|---|
+| 0.01 | 0.010 | 5.04 | 4.97 | +1.4% |
+| 0.1 | 0.084 | 4.97 | 5.04 | -1.3% |
+| 1 | 0.382 | 5.42 | 5.44 | -0.5% |
+| 10 | 0.730 | 6.47 | 6.81 | -5.0% |
+| 100 | 0.905 | 10.88 | 10.55 | +3.1% |
+
+### KF vs Pole-placement
+
+| | Fe-based KF | Pole-placement |
+|---|---|---|
+| Observer eigenvalues | (0, 0, le) | (le, le, le) |
+| le=0 | 相同（deadbeat） | 相同 |
+| le>0 | C_dpm 更小 | C_dpm 更大 |
+
+---
+
 ## Code 影響
 
 `motion_control_law_7state.m` 的 C_dpmr 公式已修正（加入 (1-a_pd)^2 prefactor）。
