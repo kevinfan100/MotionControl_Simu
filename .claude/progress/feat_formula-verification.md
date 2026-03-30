@@ -45,6 +45,12 @@ Self-consistent a_m recovery verification revealed:
 - Analytic formula for noise_corr_dpmr: TBD
 - This explains why the "old formula" accidentally worked: wrong C_dpmr compensated wrong noise_corr
 
+### Self-Consistent Verification (2026-03-30)
+- ✅ thermal C_dpmr + Lyapunov noise_corr → a_m/a_x = 1.0000 (EXACT)
+- ✅ Confirmed: C_dpmr formula is correct, noise_corr needs IIR-aware version
+- ✅ Core insight: A7 correct → C_dpmr correct → noise_corr_dpmr correct (same system, different Q)
+- ⏸️ noise_corr_dpmr analytic formula: TBD (same symbolic Lyapunov, B_meas instead of B_thermal)
+
 ### Git
-Branch: feat/formula-verification (18 commits, all pushed)
-Last commit: `6c89bc5` - docs: add C_dpmr 3-term decomposition, le*g analysis, and near-wall figures
+Branch: feat/formula-verification (20 commits, all pushed)
+Last commit: `c96e740` - docs: update progress with noise_corr discovery
