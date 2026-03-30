@@ -37,6 +37,14 @@
 💡 le_eff concept may be novel contribution (not found in literature)
 💡 IIR-estimator-control feedback loop must be considered for motion gain estimation
 
+### CRITICAL DISCOVERY (2026-03-30)
+Self-consistent a_m recovery verification revealed:
+- **thermal C_dpmr + Lyapunov noise_corr → a_m/a_x = 1.0000 (EXACT)**
+- Old noise_corr `(2/(1+lc))*sigma2_n` is for del_pm (before IIR), 8.3x too large for del_pmr
+- Correct noise_corr for del_pmr comes from Lyapunov with Q_noise only
+- Analytic formula for noise_corr_dpmr: TBD
+- This explains why the "old formula" accidentally worked: wrong C_dpmr compensated wrong noise_corr
+
 ### Git
 Branch: feat/formula-verification (18 commits, all pushed)
 Last commit: `6c89bc5` - docs: add C_dpmr 3-term decomposition, le*g analysis, and near-wall figures
