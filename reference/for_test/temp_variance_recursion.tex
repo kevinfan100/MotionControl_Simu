@@ -1,0 +1,171 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath, amssymb, bm}
+\usepackage[margin=2.5cm]{geometry}
+
+\newcommand{\Se}{\bm{\Sigma}_e}
+
+\begin{document}
+
+\section*{Closed-Loop Tracking Error Variance Recursion}
+
+\subsection*{Notation}
+
+\begin{alignat*}{3}
+&T_s &&:\ \text{sampling period} &\qquad
+&\lambda_c:\ \text{closed-loop pole} \\
+&\gamma[k] &&= \gamma_N \cdot c_\perp\!\bigl(h[k]/R\bigr) &\qquad
+&a[k] = T_s\,/\,\gamma[k] \\
+&f_T[k] &&:\ \text{white noise},\;
+\mathrm{E}[f_T^2] = 4k_BT\,\gamma[k]\,/\,T_s &\qquad
+&R:\ \text{measurement noise variance}
+\end{alignat*}
+
+\subsection*{1. Plant and Controller}
+
+\begin{align}
+x[k\!+\!1] &= x[k] + a[k]\bigl(f_d[k] + f_T[k]\bigr) \\[4pt]
+f_d[k] &= \frac{1}{a[k]}\Bigl(\delta p_d[k]
++ (1-\lambda_c)\,\hat{\delta x}_3[k]\Bigr)
+\end{align}
+
+\subsection*{2. Error Vector}
+
+\begin{align}
+\delta x[k] &= x_d[k] - x[k] \\[2pt]
+\delta x_i[k] &= \delta x[k\!-\!(3\!-\!i)],\quad i=1,2,3 \\[2pt]
+e_i[k] &= \delta x_i[k] - \hat{\delta x}_i[k]
+\end{align}
+
+\begin{align}
+\mathbf{e}[k] = \begin{bmatrix}
+\delta x[k] \\ e_1[k] \\ e_2[k] \\ e_3[k]
+\end{bmatrix}
+\end{align}
+
+\subsection*{3. Error Dynamics}
+
+\begin{align}
+\mathbf{e}[k\!+\!1] &= \mathbf{A}[k]\,\mathbf{e}[k] + \mathbf{q}[k]
+\end{align}
+
+\begin{align}
+\mathbf{A}[k] &= \begin{bmatrix}
+\lambda_c & 0 & 0 & 1\!-\!\lambda_c \\[2pt]
+0 & -L_1[k] & 1 & 0 \\
+0 & -L_2[k] & 0 & 1 \\
+0 & -L_3[k] & 0 & 1
+\end{bmatrix}
+\end{align}
+
+\begin{align}
+\mathbf{q}[k] &= \mathbf{b}\;a[k]\,f_T[k],\qquad
+\mathbf{b} = \begin{bmatrix}-1\\0\\0\\-1\end{bmatrix}
+\end{align}
+
+\subsection*{4. Kalman Filter (produces $L_i[k]$)}
+
+\begin{align}
+\mathbf{F}_e &= \begin{bmatrix}0&1&0\\0&0&1\\0&0&1\end{bmatrix},\quad
+\mathbf{H} = \begin{bmatrix}1&0&0\end{bmatrix}
+\end{align}
+
+\begin{align}
+\mathbf{L}[k] &= \frac{\mathbf{P}^f\![k]\;\mathbf{H}^\top}
+{\mathbf{H}\,\mathbf{P}^f\![k]\;\mathbf{H}^\top + R}
+\tag{R1a}\\[6pt]
+\mathbf{P}[k] &= \bigl(\mathbf{I} - \mathbf{L}[k]\,\mathbf{H}\bigr)
+\,\mathbf{P}^f\![k]
+\tag{R1b}\\[6pt]
+\mathbf{P}^f\![k\!+\!1] &= \mathbf{F}_e\,\mathbf{P}[k]\,\mathbf{F}_e^\top
++ 4k_BT\cdot a[k]\;\mathrm{diag}(0,0,1)
+\tag{R1c}
+\end{align}
+
+\subsection*{5. Error Covariance Recursion}
+
+\begin{align}
+\Se[k] &\equiv \mathrm{E}\!\bigl[\mathbf{e}[k]\,\mathbf{e}[k]^\top\bigr]
+\end{align}
+
+\noindent From (3):
+\begin{align}
+\Se[k\!+\!1]
+&= \mathrm{E}\!\bigl[
+\bigl(\mathbf{A}[k]\,\mathbf{e}[k]+\mathbf{q}[k]\bigr)
+\bigl(\mathbf{A}[k]\,\mathbf{e}[k]+\mathbf{q}[k]\bigr)^\top
+\bigr] \notag\\[4pt]
+&= \mathbf{A}[k]\;\mathrm{E}[\mathbf{e}\,\mathbf{e}^\top]\;\mathbf{A}[k]^\top
++ \mathbf{A}[k]\;\underbrace{\mathrm{E}[\mathbf{e}\,\mathbf{q}^\top]}_{=\,0}\;
++ \underbrace{\mathrm{E}[\mathbf{q}\,\mathbf{e}^\top]}_{=\,0}\;\mathbf{A}[k]^\top
++ \mathrm{E}[\mathbf{q}\,\mathbf{q}^\top]
+\end{align}
+
+\noindent $\mathrm{E}[\mathbf{e}[k]\,\mathbf{q}[k]^\top]=0$\; since
+$f_T[k] \perp \{f_T[0],\dots,f_T[k\!-\!1]\}$.
+
+\medskip\noindent $\mathrm{E}[\mathbf{q}\,\mathbf{q}^\top]$:
+\begin{align}
+\mathrm{E}[\mathbf{q}[k]\,\mathbf{q}[k]^\top]
+&= \mathbf{b}\,\mathbf{b}^\top\;a[k]^2\;\mathrm{E}[f_T^2[k]] \notag\\
+&= \mathbf{b}\,\mathbf{b}^\top\;a[k]^2\;\frac{4k_BT\,\gamma[k]}{T_s} \notag\\
+&= \mathbf{b}\,\mathbf{b}^\top\;\frac{T_s^2}{\gamma[k]^2}
+\;\frac{4k_BT\,\gamma[k]}{T_s} \notag\\
+&= 4k_BT\cdot a[k]\;\mathbf{b}\,\mathbf{b}^\top
+\end{align}
+
+\noindent Therefore:
+\begin{align}
+\boxed{\;
+\Se[k\!+\!1]
+= \mathbf{A}[k]\;\Se[k]\;\mathbf{A}[k]^\top
++ 4k_BT\cdot a[k]\;\mathbf{b}\,\mathbf{b}^\top
+\;}
+\tag{R2}
+\end{align}
+
+\subsection*{6. Scalar Expansion of $(\Se)_{11}$}
+
+\noindent (R2) element $(1,1)$,\; with
+$\mathbf{A}(1,:) = [\lambda_c,\;0,\;0,\;1\!-\!\lambda_c]$:
+
+\begin{align}
+(\Se)_{11}[k\!+\!1]
+&= \sum_{i}\sum_{j} A_{1i}\,A_{1j}\;(\Se)_{ij}[k]
+\;+\; 4k_BT\cdot a[k]\;b_1^2
+\end{align}
+
+\noindent Non-zero: $A_{11}=\lambda_c$,\; $A_{14}=1\!-\!\lambda_c$,\;
+$b_1^2=1$.\; $\Se$ symmetric $\Rightarrow (\Se)_{14}=(\Se)_{41}$:
+
+\begin{align}
+(\Se)_{11}[k\!+\!1]
+&= \lambda_c^2\;(\Se)_{11}[k]
+\;+\; 2\lambda_c(1\!-\!\lambda_c)\;(\Se)_{14}[k] \notag\\
+&\quad+\; (1\!-\!\lambda_c)^2\;(\Se)_{44}[k]
+\;+\; 4k_BT\cdot a[k]
+\tag{R3}
+\end{align}
+
+\noindent Equivalently, from the scalar dynamics
+$\;\delta x[k\!+\!1]=\lambda_c\,\delta x[k]+(1\!-\!\lambda_c)\,e_3[k]-a[k]\,f_T[k]$:
+
+\begin{align}
+\mathrm{Var}\bigl(\delta x[k\!+\!1]\bigr)
+&= \mathrm{Var}\bigl(\lambda_c\,\delta x + (1\!-\!\lambda_c)\,e_3\bigr)
+ + \mathrm{Var}\bigl(a[k]\,f_T[k]\bigr) \notag\\[4pt]
+&= \lambda_c^2\;\mathrm{E}[\delta x^2]
+ + 2\lambda_c(1\!-\!\lambda_c)\;\mathrm{E}[\delta x\cdot e_3]
+ + (1\!-\!\lambda_c)^2\;\mathrm{E}[e_3^2]
+ + 4k_BT\cdot a[k]
+\end{align}
+
+\noindent $(\Se)_{11}[k\!+\!1]$ depends on $(\Se)_{14}[k]$ and $(\Se)_{44}[k]$
+$\;\Rightarrow\;$ requires full $4\!\times\!4$ recursion (R2).
+
+\subsection*{7. Output}
+
+\begin{align}
+\mathrm{Var}(\delta x_m)[k] &= (\Se)_{11}[k\!-\!2]
+\end{align}
+
+\end{document}

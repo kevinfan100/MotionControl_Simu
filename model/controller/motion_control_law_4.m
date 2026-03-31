@@ -135,6 +135,6 @@ function [f_d, ekf_out] = motion_control_law_4(del_pd, pd, p_m, params)
     pd_k1 = pd;
 
     %% Output
-    ekf_out = [L1; 0; 0; 0];  % diagnostic: current L1 value
+    ekf_out = [L1; L2; L3; 0];  % diagnostic: Kalman gains L1,L2,L3
 
 end
