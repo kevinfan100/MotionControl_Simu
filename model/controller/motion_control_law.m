@@ -23,6 +23,8 @@ function [f_d, ekf_out] = motion_control_law(del_pd, pd, p_m, params)
             [f_d, ekf_out] = motion_control_law_2(del_pd, pd, p_m, params);
         case 4
             [f_d, ekf_out] = motion_control_law_4(del_pd, pd, p_m, params);
+        case 5
+            [f_d, ekf_out] = motion_control_law_5state(del_pd, pd, p_m, params);
         case 7
             [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params);
         case 23
