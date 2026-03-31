@@ -80,6 +80,58 @@ Self-consistent a_m recovery verification revealed:
 - [ ] Q/R sensitivity sweep
 - [ ] Scenario B2/B3 (deeper wall / higher frequency)
 
+---
+
+## 2026-04-01 — Time-Varying Variance Recursion (Sigma_e)
+
+### Completed Parts
+- ✅ 推導 4x4 Σ_e recursion (Controller 4 + wall effect + trajectory)
+- ✅ 證明 F_e 在 a[k] time-varying 時仍為常數
+- ✅ Notation 統一（δx, a[k], Σ_e, 4k_BT·a[k]）並寫入規則
+- ✅ Phase 1 驗證：stationary, recursion vs Lyapunov = 0.002%
+- ✅ Phase 2 驗證：time-varying, MC 500, mean error 5.05%, R^2 = 0.915
+- ✅ 發現 controller 用固定 a_nom 時 F_e 變 time-varying（65% error）
+- ✅ 釐清 C_dpm 是 Σ_e recursion 的 stationary 特例
+- ✅ 提出 Σ_e 取代 Eq.13/C_dpmr 的新方法
+- ⏸️ 5-state + Σ_e 修正法 — 計畫已寫，待實作
+
+### Key Findings
+- Σ_e[k+1] = A[k]Σ_e[k]A[k]' + 4k_BT·a[k]·bb' (R2)
+- C_dpm = (Σ_e)_11_ss / (4k_BT·a) 是 stationary 特例
+- Time-varying 下無法分離結構(C_dpm)和噪音(sigma2_deltaXT)
+- Quasi-static C_dpm[k] 是無記憶近似，a[k] 變化慢時有效
+- 新方法：IIR(Var_measured) vs Σ_e(Var_predicted) → 修正 â，不需要 C_dpmr
+
+### File Changes
+**Committed (5d1b978):**
+- `motion_control_law_4.m` — ekf_out 輸出 L1,L2,L3
+- `verify_sigma_recursion.m` (409 lines) — Simulink 驗證腳本
+- `temp_variance_recursion.tex` — 數學推導 LaTeX
+- `fig_sigma_*.png` (3 files) — 驗證圖
+- `verification-notes.md` — 加入 Σ_e 摘要
+
+### ⚠️ Temp Files (未 commit)
+- `temp_sigma_phase1.m` — Simulink Phase 1
+- `temp_sigma_phase2.m` — Simulink Phase 2
+- `temp_sigma_verify_1d.m` — 1D 離散驗證（agent 修過 delay buffer bug）
+
+### Testing Status
+✅ Σ_e recursion 數學正確性（stationary: 0.002%）
+✅ Σ_e recursion time-varying 預測（MC 500: R^2=0.915）
+⬜ 5-state + Σ_e 修正法
+
+### Next Steps
+- [ ] 實作 5-state + Σ_e 修正法（temp_5state_sigma_verify.m）
+- [ ] Phase A: 5-state baseline（Eq.13 dual measurement）
+- [ ] Phase B: 5-state + Σ_e（取代 Eq.13）
+- [ ] Phase C: 比較 A vs B
+- [ ] 清理 temp 檔案
+
+### Issues & Notes
+⚠️ temp_sigma_verify_1d.m 被 debug agent 修改（delay buffer bug），未 commit
+💡 壁面幾何未知 → 必須從數據估計 a[k]
+💡 Quasi-static C_dpm 可能已夠用（最簡單方案）
+
 ### Git
 Branch: feat/formula-verification
-Last commit: `881f282` - feat(control): add 5-state KF estimator with dual measurement
+Last commit: `5d1b978` - feat(analysis): add time-varying tracking error variance recursion (Sigma_e)
