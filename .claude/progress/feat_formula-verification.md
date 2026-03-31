@@ -51,6 +51,35 @@ Self-consistent a_m recovery verification revealed:
 - ✅ Core insight: A7 correct → C_dpmr correct → noise_corr_dpmr correct (same system, different Q)
 - ⏸️ noise_corr_dpmr analytic formula: TBD (same symbolic Lyapunov, B_meas instead of B_thermal)
 
+### 5-State KF Estimator (2026-03-31)
+
+**Architecture**: 5-state dual measurement (del_pm + Eq.13 a_m)
+- States: [del_p1, del_p2, del_p3, a, del_a] (simplified 7-state, no disturbance)
+- controller_type = 5
+
+**Key finding: single-measurement Plan B diverges**
+- f_d = (1/a_hat)*stuff creates circular feedback: a_hat error -> f_d change -> Fe coupling -> worse a_hat
+- Fe(3,3)=1 is mathematically correct for error dynamics, but L4 << L1 (~0.05 vs ~0.99) makes gain correction fragile
+- f_d threshold + Pf freeze insufficient: Pf accumulates during inactive, explodes on activation
+- Solution: add Eq.13 as 2nd measurement channel (stable gain baseline)
+
+**Scenario B1 (near-wall osc, wall ON, meas noise OFF)**:
+- Gain RMSE: 9.7% (cycle1) -> 5.9% (cycle3)
+- Tracking z: 31 nm (cycle1) -> 27 nm (cycle3)
+- a_hat/a_true correlation: r=0.94, lag=27 samples (6.1 deg at 1Hz)
+- a_hat/a_true ratio range: [0.40, 1.74] (turning point lag)
+
+**Frozen-f_d analysis**:
+- det(O) = f_d^2 confirmed (observability depends on coupling)
+- DARE fails for 5-state (symplectic spectrum near unit circle), iterative fallback works
+- Pf_ss(4,4) drops 3700x from f_d=0 to f_d=5 pN
+
+**Pending**:
+- [ ] ctrl7 benchmark comparison (same B1 config)
+- [ ] Measurement noise ON test
+- [ ] Q/R sensitivity sweep
+- [ ] Scenario B2/B3 (deeper wall / higher frequency)
+
 ### Git
-Branch: feat/formula-verification (20 commits, all pushed)
-Last commit: `c96e740` - docs: update progress with noise_corr discovery
+Branch: feat/formula-verification
+Last commit: `881f282` - feat(control): add 5-state KF estimator with dual measurement
