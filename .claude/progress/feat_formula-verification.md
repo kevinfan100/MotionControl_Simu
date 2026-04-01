@@ -121,10 +121,10 @@ Self-consistent a_m recovery verification revealed:
 ⬜ 5-state + Σ_e 修正法
 
 ### Next Steps
-- [ ] 實作 5-state + Σ_e 修正法（temp_5state_sigma_verify.m）
-- [ ] Phase A: 5-state baseline（Eq.13 dual measurement）
-- [ ] Phase B: 5-state + Σ_e（取代 Eq.13）
-- [ ] Phase C: 比較 A vs B
+- [x] 實作 5-state + Σ_e 修正法（temp_5state_sigma_verify.m）
+- [x] Phase A: 5-state baseline（Eq.13 dual measurement）
+- [x] Phase B: 5-state + Σ_e（取代 Eq.13）
+- [x] Phase C: 比較 A vs B
 - [ ] 清理 temp 檔案
 
 ### Issues & Notes
@@ -132,6 +132,35 @@ Self-consistent a_m recovery verification revealed:
 💡 壁面幾何未知 → 必須從數據估計 a[k]
 💡 Quasi-static C_dpm 可能已夠用（最簡單方案）
 
+---
+
+## 2026-04-01 — 5-State + Sigma_e Gain Estimation Verification
+
+### Completed Parts
+- ✅ 5-state KF 1D 離散模擬框架（oracle/eq13/sigma_e 三種模式）
+- ✅ 修復 delay buffer、KF innovation timing、Fe coupling 等 bug
+- ✅ 發現 Fe(3,4)=-f_d circular feedback → 加 fe_clamp
+- ✅ 三階段驗證：Oracle(42%,0.74) / Eq.13(42%,0.48) / Sigma_e(46%,0.46)
+- ⏸️ Sigma_e 未明顯優於 Eq.13
+
+### Key Findings
+- Fe(3,4)=-f_d coupling 是不穩定根源（和 ctrl5 單量測失敗一致）
+- 需要 fe_clamp 限制耦合強度才能穩定
+- 即使 oracle (a_m=a_true)，RMSE 也有 42% — fe_clamp 限制了 observability
+- Sigma_e 和 quasi-static Eq.13 表現接近 → Eq.13 改用 C_dpm(rho) 可能已足夠
+
+### Testing Status
+✅ Oracle: RMSE=42.0%, corr=0.74
+✅ Eq.13: RMSE=42.1%, corr=0.48
+✅ Sigma_e: RMSE=45.6%, corr=0.46
+⚠️ Sigma_e 未優於 Eq.13
+
+### Next Steps
+- [ ] 分析 fe_clamp 對 observability 的影響
+- [ ] Quasi-static C_dpm 取代 K=2 近似（最簡單改進）
+- [ ] 在 Simulink ctrl5/ctrl7 中驗證
+- [ ] 清理 temp 檔案
+
 ### Git
 Branch: feat/formula-verification
-Last commit: `5d1b978` - feat(analysis): add time-varying tracking error variance recursion (Sigma_e)
+Last commit: `1dc0061` - docs(analysis): add 5-state Sigma_e gain estimation verification figures
