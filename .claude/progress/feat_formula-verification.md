@@ -164,3 +164,47 @@ Self-consistent a_m recovery verification revealed:
 ### Git
 Branch: feat/formula-verification
 Last commit: `1dc0061` - docs(analysis): add 5-state Sigma_e gain estimation verification figures
+
+---
+
+## 2026-04-02 — Σ_e Sync Method + Complete KF Analysis
+
+### Completed Parts
+- ✅ C_dpmr 從 7-state augmented Lyapunov 精確計算（K=2=3.16 vs correct=4.32, 偏低 27%）
+- ✅ IIR + correct C_dpmr(ρ) 測試: RMSE=27%, 比 K=2(35%) 改善 8pp
+- ✅ Innovation-based â estimation: RMSE=24%, corr=0.79（不需 C_dpmr）
+- ✅ Σ_e 同步法（7-state Σ_e + IIR matching）: RMSE=27%, corr=0.62
+- ✅ Block-update 方法: bias 改善但 corr 下降（追蹤 vs 精度 trade-off）
+- ✅ ctrl5 Simulink 重新分析: RMSE=20.3%, corr=0.93（修正之前記錄的 6%）
+- ✅ 完整 KF 內部分析（variance 傳播、P^f、innovation、Q/R 物理推導）
+- ✅ Per-step ratio 的 SNR 問題（SNR=0.18 → â random walk）
+- ⏸️ Σ_e sync bias 未解決
+
+### Key Findings
+1. a_m 必須獨立於 â（IIR 好，innovation ratio 壞）
+2. Fe coupling 不是不穩定 — Q/R 正確就能穩定工作
+3. Q(3,3)=10000× 是 robustness 策略（不信模型，信數據）
+4. Per-step variance ratio 的 SNR 太低 → random walk
+5. Block update 解決 bias 但犧牲 corr
+6. 所有 1D 方法 RMSE 24-29%，Simulink ctrl5 是 20%
+
+### Method Comparison
+
+| Method | RMSE | Corr | Bias | C_dpmr? |
+|---|---|---|---|---|
+| Innovation ratio | 24% | 0.79 | 0.81 | No |
+| IIR + C_dpmr(ρ) | 27% | 0.45 | 0.85 | Yes |
+| Σ_e sync per-step | 27% | 0.62 | 0.87 | No |
+| Σ_e sync block | 25% | 0.36 | 0.90 | No |
+| Simulink ctrl5 | 20% | 0.93 | 0.94 | Yes(K=2) |
+| Oracle | 13% | 0.77 | 1.02 | N/A |
+
+### Next Steps
+- [ ] 決定最終方案
+- [ ] Simulink 驗證
+- [ ] 整理 temp 檔案（10 個 .m + 3 個 doc）
+- [ ] 更新 verification_report.md
+
+### Git
+Branch: feat/formula-verification
+Last commit: `6198915` - docs(analysis): add Sigma_e sync verification and KF analysis summary
