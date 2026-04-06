@@ -1,56 +1,55 @@
 # Sigma_e Ratio Filter Development Progress
 
-## 2026-04-06 22:10 - Level 0-2 Verification Complete
+## 2026-04-07 00:30 - Level 0-4 Complete
 
 ### Completed Parts
-- ✅ Level 0: Mathematical verification (Lyapunov match, chi^2 distribution, linearity, noise)
+- ✅ Level 0: Mathematical verification (Lyapunov match, chi^2 distribution, linearity exact, noise)
 - ✅ Level 1: Stationary oracle test (constant a, ctrl2 deadbeat)
 - ✅ Level 2: Time-varying oracle test (MC 500, DECISION GATE PASSED)
-- ⏸️ Level 3: Closed-loop self-update (pending)
-- ⬜ Level 4: 5-state KF integration
-- ⬜ Level 5: Simulink validation
+- ✅ Level 3: Closed-loop self-update (ctrl4, converges, RMSE 25% vs IIR 27%)
+- ✅ Level 4: 5-state KF integration (Sigma7 TV C_dpmr doesn't help; observer model mismatch)
+- ⬜ Level 5: Simulink validation (deferred — see conclusions)
 
 ### Key Results
-**Level 0 (All Pass):**
-- 7-state Lyapunov vs recursion: 0.000000% error
-- Chi^2(1) distribution: mean=1.003, var=2.016
-- Linearity: max deviation = 0.000000 (EXACT)
-- C_dpmr (7-state, le=0, rho=0.05) = 4.3177
 
-**Level 2 (DECISION GATE PASSED):**
+**Level 2 (Oracle, MC 500):**
 | Method | RMSE | Corr |
 |--------|------|------|
 | IIR oracle (a_cov=0.05) | 42.93% | 0.41 |
 | Ratio oracle (a_ratio=0.002) | **13.13%** | **0.92** |
 | Improvement | **69.4%** | -- |
 
-### File Changes
-**New Files (gitignored - temp):**
-- `test_script/temp_ratio_L0.m` (224 lines) -- Level 0 math verification
-- `test_script/temp_ratio_L2.m` (324 lines) -- Level 1+2 oracle comparison
+**Level 3 (Closed-loop, single realization):**
+| Method | RMSE | Corr | Bias |
+|--------|------|------|------|
+| IIR + C_dpmr | 27.3% | 0.64 | 0.81 |
+| Sigma_e sync | 28.0% | 0.62 | 0.85 |
+| Sigma_e ratio (a_r=0.02, beta=0.005) | **25.0%** | 0.47 | 1.09 |
 
-**New Files (to commit):**
-- `reference/for_test/fig_ratio_L2_oracle.png` -- Oracle comparison figure
+**Level 4 (5-state KF):**
+- Sigma7 TV C_dpmr does NOT improve 5-state KF
+- Root cause: Sigma7 models 3-state observer, but 5-state KF has Q(3,3)=10000x
+- IIR const C_dpmr is sufficient (RMSE 45-50%)
+- Dynamics channel (Fe coupling) dominates gain estimation in 5-state
 
-**Data (gitignored):**
-- `test_results/verify/ratio_L2_results.mat` -- MC 500 results
+### Conclusions
+1. **Sigma_e ratio filter oracle is dramatically better** (69% improvement, Level 2)
+2. **Closed-loop improvement is modest** (25% vs 27%, Level 3) because beta limits adaptation speed
+3. **5-state KF doesn't benefit** from Sigma7 TV C_dpmr (Level 4) — observer model mismatch
+4. **Best use case**: standalone a estimator (Level 3 architecture) for controllers without Fe coupling
+5. **Level 5 Simulink deferred**: the 5-state KF's dynamics channel dominates, so the ratio filter adds little in the augmented-state framework
 
-### Testing Status
-✅ Level 0-2 verified (MC 500 runs, all pass criteria met)
-⬜ Level 3-5 pending
+### Key Insight: Self-Referential Measurement Problem
+Ratio-based a_m = a_hat * ratio_smooth is coupled to a_hat. In standalone mode (Level 3), this works via negative feedback. In the 5-state KF, the dynamics channel destabilizes a_hat faster than the ratio's IIR can correct it. Independent a_m (like IIR Eq.13) is required for the augmented-state KF.
 
-### Next Steps
-- [ ] Level 3: Closed-loop test (a_hat self-updating, ctrl4)
-- [ ] Level 4: 5-state KF integration with physical R(2,2)
-- [ ] Level 5: Simulink validation
-- [ ] Investigate Phase 1 bias (0.79) -- possibly IIR warmup artifact
+### Files
+**Temp scripts** (gitignored): temp_ratio_L0.m, temp_ratio_L2.m, temp_ratio_L3.m, temp_ratio_L4.m
+**Committed figures**: fig_ratio_L2_oracle.png, fig_ratio_L3_closedloop.png, fig_ratio_L4_5state.png
+**Data** (gitignored): ratio_L2_results.mat, ratio_L3_results.mat, ratio_L4_results.mat
 
-### Issues & Notes
-- Phase 1 stationary bias = 0.79 (both methods): likely IIR warmup or C_dpmr mismatch for ctrl2 structure. Does not affect ratio vs IIR comparison.
-- Ratio filter a_ratio=0.002 gives best RMSE, but even a_ratio=0.01 (RMSE 21.7%) significantly beats IIR (42.9%).
-
-### Branch
-`feat/sigma-ratio-filter` (from `feat/formula-verification` @ 78485ae)
+### Git
+Branch: `feat/sigma-ratio-filter`
+Commits: 07d5ab2 (L0-2), 55bd65c (L3), 0f79c5f (L4)
 
 ### Plan
 `.claude/plans/moonlit-leaping-snowglobe.md`
