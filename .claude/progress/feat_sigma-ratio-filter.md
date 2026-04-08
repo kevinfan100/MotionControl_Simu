@@ -1,53 +1,49 @@
-# Sigma_e Ratio Filter & 6-State Analysis Progress
+# Sigma_e Analysis & Q/R Optimization — Final Progress
 
-## 2026-04-07 — Complete: Ratio Filter L0-L4 + 6-State Analysis + MC Q/R Optimization
+## 2026-04-08 — All Short-Term Tasks Complete
 
-### Phase 1: Ratio Filter (L0-L4)
+### Summary of All Work
 
-- ✅ L0: Math verification ALL PASS (linearity exact, chi^2 confirmed, Lyapunov 0%)
-- ✅ L2: Oracle: ratio RMSE=13.1% vs IIR RMSE=42.9% (69% improvement)
-- ✅ L3: Closed-loop: ratio 25% vs IIR 27% (modest, beta-limited)
-- ✅ L4: 5-state KF: ratio filter FAILS (positive feedback from Sigma_e lag)
+#### Phase 1: Ratio Filter (L0-L4)
+- ✅ Oracle: 69% improvement (ratio RMSE 13% vs IIR 43%)
+- ✅ Closed-loop: modest (25% vs 27%, beta-limited)
+- ✅ 5-state KF: fails (positive feedback from Sigma_e lag)
+- **Conclusion**: Ratio filter works standalone, not inside 5-state KF feedback loop
 
-**Key finding**: Sigma_e ratio filter works as standalone estimator but NOT inside 5-state KF feedback loop. Root cause: structural lag in Sigma7 (noise propagates 2-3 steps through delay chain) creates positive feedback when a_hat changes.
+#### Phase 2: 6-State Sigma_e Analysis
+- ✅ A_cl verified (Var(delta_x) matches MC 1.6%)
+- ✅ f_d coupling quantified (3.5x tracking error growth at f_d=20pN)
+- ✅ Var(e_a) limitation identified (a_m noise linearization inadequate)
+- **Conclusion**: Sigma_e for design/analysis, not real-time use
 
-### Phase 2: 6-State Sigma_e Analysis
+#### Phase 3: Theory-Guided MC Q/R Optimization
+- ✅ MC sweep found optimal: Q33=100, Q44=0.01, R22=100
+- ✅ Gain estimation 2x better (39→18% RMSE)
+- ✅ 1D tracking 7% better (23.6→22.0nm)
 
-- ✅ L0: A_cl correct (eigenvalues stable, one-step exact, Var(delta_x) MC match 1.6%)
-- ✅ L0 limitation: Var(e_a) doesn't match MC (a_m noise linearization inadequate)
-- ✅ L1: f_d coupling quantified (tracking error grows 3.5x at f_d=20pN)
-- ✅ R_actual measured: 2.14e-5 (2.5x chi^2 theory, 12x smaller than R_kf)
+#### Phase 4: Validation (NEW)
+- ✅ **Simulink 3D**: 57% w-dir tracking improvement (53→22.6nm), 60% less force
+- ✅ **Noise robustness**: optimal holds across sigma_n=0-10nm
+- ✅ **Near-wall FAILURE**: optimal Q/R diverges at h=1.5-3um. Current heuristic (Q33=1e4) needed.
 
-**Key insight**: Var(delta_x) correct but Var(e_a) wrong because at f_d=0, delta_x is DECOUPLED from e_a. The a_m measurement noise is state-dependent (nonlinear), linearized model can't capture it.
+### Key Conclusions
 
-### Phase 3: Theory-Guided MC Optimization
+1. **No universal optimal Q/R** — regime-dependent:
+   - Standard trajectory (h=2.5-5um): Q33=100, R22=100 is better
+   - Near-wall (h<3um): Q33=1e4, R22=1.0 is necessary
+   - This motivates ADAPTIVE Q/R
 
-- ✅ R(2,2) sweep: optimal at 100x sigma2 (ignore a_m, dynamics channel sufficient)
-- ✅ Q(3,3) x Q(4,4) sweep: optimal at Q33=100, Q44=0.01
-- ✅ Final comparison:
+2. **Simulink validates 1D findings with even bigger improvement** (57% vs 7%)
 
-| Config | std(delta_x) | e_a RMSE | corr |
-|--------|-------------|----------|------|
-| Current (Q33=1e4, R22=1.0) | 23.56 nm | 39.2% | 0.973 |
-| **Optimal (Q33=100, R22=100)** | **21.96 nm** | **18.1%** | 0.939 |
+3. **The role of Sigma_e**:
+   - Analysis tool for understanding f_d x e_a coupling
+   - Guides MC parameter search
+   - NOT for real-time KF integration
 
-### Overall Conclusions
+### Pending (Medium-Term)
+- [ ] Adaptive Q/R: switch Q33 based on operating regime (h threshold)
+- [ ] Test with ctrl7 (7-state) architecture
+- [ ] Formal write-up in reference/for_test/
 
-1. **Sigma_e role**: Analysis tool for controller DESIGN, not for real-time use in KF
-2. **f_d x e_a coupling**: Real and quantified. Gain error amplified by control force.
-3. **Q(3,3) = 10000x is overkill**: Q33=100 sufficient, saves unnecessary noise injection
-4. **R(2,2) should be large**: Dynamics channel dominates gain estimation. a_m adds noise.
-5. **Gain estimation improves 2x** with optimized Q/R (39% → 18% RMSE)
-
-### Pending
-- [ ] Verify optimal Q/R in Simulink 3D (Level 5)
-- [ ] Test with measurement noise (sigma2_n > 0)
-- [ ] Investigate if adaptive R(2,2) based on f_d improves further
-
-### Files
-**Committed**: fig_ratio_L2_oracle.png, fig_ratio_L3_closedloop.png, fig_ratio_L4_5state.png, fig_ratio_L4a_matched.png, fig_6state_L1_fd_sweep.png, fig_6state_L1_QR_contour.png, fig_6state_mc_sweep.png
-**Temp** (gitignored): temp_ratio_L0-L4.m, temp_6state_L0-L1.m, temp_6state_Ractual.m, temp_6state_mc_sweep.m
-**Data** (gitignored): ratio_L2-L4_results.mat, mc_qr_sweep_results.mat
-
-### Branch
-`feat/sigma-ratio-filter` — 9 commits from 78485ae
+### Git
+Branch `feat/sigma-ratio-filter` — 12 commits, pushed.
