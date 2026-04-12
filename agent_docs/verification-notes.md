@@ -42,12 +42,19 @@ E[V_IIR]/γ(0) = 1 - (a_prd/(2-a_prd)) · (1 + 2 · Σ_{L>=1} ρ(L) · (1-a_prd)
 `c(idx_dx_d2)=1, c(idx_pmd_prev)=-1`. Σ_aug predicts ρ that decays slightly
 slower than sample → over-predicts bias by ~1pt at a_prd=0.05 (0.9069 vs 0.9162).
 
-**Correction (Task 1c)**: apply `bias_factor(lc, a_prd) = 1 / E[V_IIR]/γ(0)`
-as multiplier on `a_m` or equivalently `C_dpmr_eff_corrected = C_dpmr_eff × E[V_IIR]/γ(0)`.
-At nominal (lc=0.7, a_prd=0.05): `bias_factor ≈ 1.1027`.
+**Task 1c (integrated)**: 1-D lookup `bias_factor_lookup.mat` over `lc`,
+new Bus element `ctrl.IIR_bias_factor`, controller unbiases
+`del_pmr_var /= IIR_bias_factor_const` before noise subtraction.
+30 sec Simulink verification (lc=0.7, free space): z-axis
+mean(a_m)/a_nom 0.9193 → 1.0137 (6x bias reduction). Residual +1.37%
+matches Task 1b's known ~1 pt Σ_aug over-prediction.
 
-Artifacts: `reference/for_test/task1b_report.md`, `test_script/analyze_task1b_iir_bias.m`,
-`reference/for_test/fig_task1b_iir_bias.png`.
+Caveat: bias_factor uses Σ_th only. For measurement noise case (non-free-space),
+a separate factor for C_np_eff term would be needed.
+
+Artifacts: `reference/for_test/task1b_report.md`, `task1c_report.md`,
+`test_script/analyze_task1b_iir_bias.m`, `build_bias_factor_lookup.m`,
+`verify_task1c_correction.m`.
 
 ## Time-Varying Variance Recursion (Σ_e)
 

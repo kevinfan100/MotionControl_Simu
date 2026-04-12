@@ -111,4 +111,29 @@ function ctrl = calc_ctrl_params(config, constants)
         ctrl.C_np_eff   = -1;
     end
 
+    % ---------------------------------------------------------------
+    % 7-state EKF: load IIR_bias_factor lookup (Task 1c)
+    % Correction for finite-sample + autocorrelation bias of the EMA
+    % variance estimator. Default 1.0 (no correction) if lookup missing.
+    % See test_script/build_bias_factor_lookup.m for derivation.
+    % ---------------------------------------------------------------
+    bf_path = fullfile(project_root, 'test_results', 'verify', 'bias_factor_lookup.mat');
+    if exist(bf_path, 'file')
+        BF = load(bf_path);
+        if isfield(BF, 'bias_factor_tab') && isfield(BF, 'lc_grid')
+            lc_clamped_bf = max(min(ctrl.lambda_c, BF.lc_grid(end)), BF.lc_grid(1));
+            ctrl.IIR_bias_factor = interp1(BF.lc_grid, BF.bias_factor_tab, ...
+                                            lc_clamped_bf, 'linear');
+            if abs(config.a_prd - BF.a_prd) > 1e-6
+                warning('calc_ctrl_params:aprd_bf_mismatch', ...
+                    'config.a_prd=%.4f but bias_factor_lookup built at a_prd=%.4f', ...
+                    config.a_prd, BF.a_prd);
+            end
+        else
+            ctrl.IIR_bias_factor = 1.0;
+        end
+    else
+        ctrl.IIR_bias_factor = 1.0;
+    end
+
 end
