@@ -180,6 +180,10 @@ function params = calc_simulation_params(config)
     elems_ctrl(24).Dimensions = [1 1]; elems_ctrl(24).DataType = 'double';
     elems_ctrl(25) = Simulink.BusElement; elems_ctrl(25).Name = 'kf_L';
     elems_ctrl(25).Dimensions = [1 1]; elems_ctrl(25).DataType = 'double';
+    elems_ctrl(26) = Simulink.BusElement; elems_ctrl(26).Name = 'C_dpmr_eff';
+    elems_ctrl(26).Dimensions = [1 1]; elems_ctrl(26).DataType = 'double';
+    elems_ctrl(27) = Simulink.BusElement; elems_ctrl(27).Name = 'C_np_eff';
+    elems_ctrl(27).Dimensions = [1 1]; elems_ctrl(27).DataType = 'double';
 
     CtrlBus = Simulink.Bus;
     CtrlBus.Elements = elems_ctrl;

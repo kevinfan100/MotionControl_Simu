@@ -55,6 +55,7 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
     persistent a_pd a_prd a_cov beta lamdaF
     persistent sigma2_noise sigma2_deltaXT
     persistent Q_1 Q_2 Q_3 Rz_scaling
+    persistent C_dpmr_eff_const C_np_eff_const use_lookup
 
     %% Step [0]: Initialization
     if isempty(initialized)
@@ -99,6 +100,20 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
         Q_base = sigma2_deltaXT * diag(Qz_scaling);
         Q_1 = Q_base;  Q_2 = Q_base;  Q_3 = Q_base;
 
+        % 0E.1 C_dpmr_eff / C_np_eff from augmented Lyapunov lookup
+        % (computed offline by build_cdpmr_eff_lookup.m)
+        if isfield(params.ctrl, 'C_dpmr_eff') && params.ctrl.C_dpmr_eff > 0
+            C_dpmr_eff_const = params.ctrl.C_dpmr_eff;
+            C_np_eff_const   = params.ctrl.C_np_eff;
+            use_lookup       = true;
+        else
+            % Fallback: K=2 approximation (legacy formula)
+            C_dpmr_eff_const = (1-a_pd)^2 * (2*(1-a_pd)*(1-lambda_c) / (1-(1-a_pd)*lambda_c) ...
+                             + (2/(2-a_pd)) / ((1+lambda_c)*(1-(1-a_pd)*lambda_c)));
+            C_np_eff_const   = 2 / (1 + lambda_c);  % legacy noise_corr formula
+            use_lookup       = false;
+        end
+
         % 0F. Delay buffers
         pd_k1 = pd;
         pd_k2 = pd;
@@ -135,17 +150,17 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
     del_pmr_var    = max(del_pmr2_avg - del_pmrd.^2, 0);                  % 3x1 [um^2]
 
     %% Eq.13 Gain Recovery (runs during warm-up AND normal operation)
-    % Corrected: (1-a_pd)^2 prefactor accounts for the HP filter gain
-    % H_HP(z) = (1-a_pd)*(1-z^-1) / (1-(1-a_pd)*z^-1).
-    % Note: the K=2 term in the bracket assumes the simple delay compensation
-    % structure. For the 7-state EKF, the effective K depends on EKF dynamics
-    % and may differ from 2. This remains an approximation pending further
-    % analysis of the EKF closed-loop spectral structure.
-    C_dpmr = (1-a_pd)^2 * (2*(1-a_pd)*(1-lambda_c) / (1-(1-a_pd)*lambda_c) ...
-           + (2/(2-a_pd)) / ((1+lambda_c)*(1-(1-a_pd)*lambda_c)));
-    den    = C_dpmr * 4 * k_B * T_temp;                     % [pN*um]
-    noise_corr = (2 / (1 + lambda_c)) * sigma2_noise;       % 3x1 [um^2]
-    a_m   = max((del_pmr_var - noise_corr) / den, 0);       % 3x1 [um/pN]
+    % Uses C_dpmr_eff and C_np_eff from augmented Lyapunov lookup
+    % (motion_control_law_7state_cdpmr_eff). If lookup unavailable,
+    % falls back to K=2 formula (legacy, 24% bias at lc=0.7 vs truth).
+    %
+    % See:
+    %   test_script/compute_7state_cdpmr_eff.m  (derivation)
+    %   test_script/build_cdpmr_eff_lookup.m    (offline construction)
+    %   test_results/verify/cdpmr_eff_lookup.mat (the lookup table)
+    den        = C_dpmr_eff_const * 4 * k_B * T_temp;        % [pN*um]
+    noise_corr = C_np_eff_const * sigma2_noise;              % 3x1 [um^2]
+    a_m        = max((del_pmr_var - noise_corr) / den, 0);   % 3x1 [um/pN]
 
     %% IIR Warm-up gate: only run measurement + IIR + Eq.13, skip control + EKF
     if warmup_count > 0
@@ -193,6 +208,11 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
 
     % Adaptive R: when del_pmr_var is too small (no thermal excitation),
     % inflate gain channel noise to prevent EKF from trusting a_m = 0.
+    %
+    % Note: adaptive R(2,2) based on chi-squared statistics was tested but
+    % destabilizes the system because Q and R were co-tuned as a pair.
+    % Changing R alone breaks the balance. Proper adaptive R requires
+    % re-sweeping Q simultaneously (future work).
     var_threshold = sigma2_deltaXT * 0.001;
     r_pos_base = sigma2_deltaXT * Rz_scaling(1);
     r_gain_base = sigma2_deltaXT * Rz_scaling(2);

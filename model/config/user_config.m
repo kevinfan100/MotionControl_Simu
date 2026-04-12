@@ -69,6 +69,10 @@ function config = user_config()
     config.a_pd = 0.05;             % EMA smoothing for LP (deterministic removal)
     config.a_prd = 0.05;            % EMA smoothing for HP residual mean
     config.a_cov = 0.05;            % EMA smoothing for HP residual mean-square
+                                    %   (Phase 3 tested 0.005-0.1: free-space static
+                                    %   benefits from smaller values, but near-wall
+                                    %   dynamic loses precision due to lag. 0.05 is
+                                    %   the best balance for mixed scenarios.)
     config.epsilon = 0.01;          % Anisotropy threshold for theta measurement
 
     % 7-state EKF specific parameters

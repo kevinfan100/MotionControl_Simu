@@ -80,4 +80,35 @@ function ctrl = calc_ctrl_params(config, constants)
         ctrl.kf_L = 1;  % deadbeat (R=0 equivalent)
     end
 
+    % ---------------------------------------------------------------
+    % 7-state EKF: load C_dpmr_eff / C_np_eff lookup from augmented Lyapunov
+    % See test_script/compute_7state_cdpmr_eff.m for derivation.
+    % Fallback to K=2 approximation if lookup file is missing.
+    % ---------------------------------------------------------------
+    % Determine project root from this file's location
+    here = fileparts(mfilename('fullpath'));              % .../model/controller
+    project_root = fileparts(fileparts(here));            % .../
+    lut_path = fullfile(project_root, 'test_results', 'verify', 'cdpmr_eff_lookup.mat');
+    if exist(lut_path, 'file')
+        LUT = load(lut_path);
+        if isfield(LUT, 'Cdpmr_tab') && isfield(LUT, 'Cnp_tab') && isfield(LUT, 'lc_grid')
+            lc_clamped = max(min(ctrl.lambda_c, LUT.lc_grid(end)), LUT.lc_grid(1));
+            % Use first rho column (lookup is effectively 1-D over lc since
+            % Q_kf/R_kf are fixed design parameters; rho dimension is redundant)
+            ctrl.C_dpmr_eff = interp1(LUT.lc_grid, LUT.Cdpmr_tab(:, 1), lc_clamped, 'linear');
+            ctrl.C_np_eff   = interp1(LUT.lc_grid, LUT.Cnp_tab(:, 1),   lc_clamped, 'linear');
+            if abs(config.a_pd - LUT.a_pd) > 1e-6
+                warning('calc_ctrl_params:apd_mismatch', ...
+                    'config.a_pd=%.4f but lookup built at a_pd=%.4f', ...
+                    config.a_pd, LUT.a_pd);
+            end
+        else
+            ctrl.C_dpmr_eff = -1;   % sentinel -> use fallback in controller
+            ctrl.C_np_eff   = -1;
+        end
+    else
+        ctrl.C_dpmr_eff = -1;       % sentinel -> use fallback in controller
+        ctrl.C_np_eff   = -1;
+    end
+
 end
