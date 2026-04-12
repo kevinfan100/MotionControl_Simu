@@ -22,6 +22,33 @@ Kalman filter 必須用 Fe（closed-loop error dynamics, (3,3)=1）設計。
 用 F（open-loop, (3,3)=lc）會得到次優 gain。
 原因：controller 把 error dynamics 的 (3,3) 從 lc 補成 1。
 
+## IIR Finite-Sample Bias (Task 1b, 2026-04-12)
+
+Closed-form for the controller's EMA variance estimator applied to zero-mean
+stationary x with autocorrelation ρ(L):
+
+```
+E[V_IIR]/γ(0) = 1 - (a_prd/(2-a_prd)) · (1 + 2 · Σ_{L>=1} ρ(L) · (1-a_prd)^L)
+```
+
+- White-noise baseline (`ρ(L)=0`): `1 - a_prd/(2-a_prd)` = 2.56% bias at a_prd=0.05.
+- `del_pmr` autocorrelation (ρ(1)≈0.85, ρ(5)≈0.08) amplifies ~3.5× → ~9% bias.
+- Verified against Phase 2A offline rerun: formula matches empirical within 0.1%
+  across a_prd ∈ {0.005, 0.01, 0.02, 0.05, 0.1} when using sample ρ.
+- Explains 100% of the residual 7.5% `a_m_z` negative bias left over after
+  Phase 1's `C_dpmr_eff` fix.
+
+ρ(L) from `Σ_aug`: `ρ_L = c' A_aug^L Σ_aug c / (c' Σ_aug c)` with
+`c(idx_dx_d2)=1, c(idx_pmd_prev)=-1`. Σ_aug predicts ρ that decays slightly
+slower than sample → over-predicts bias by ~1pt at a_prd=0.05 (0.9069 vs 0.9162).
+
+**Correction (Task 1c)**: apply `bias_factor(lc, a_prd) = 1 / E[V_IIR]/γ(0)`
+as multiplier on `a_m` or equivalently `C_dpmr_eff_corrected = C_dpmr_eff × E[V_IIR]/γ(0)`.
+At nominal (lc=0.7, a_prd=0.05): `bias_factor ≈ 1.1027`.
+
+Artifacts: `reference/for_test/task1b_report.md`, `test_script/analyze_task1b_iir_bias.m`,
+`reference/for_test/fig_task1b_iir_bias.png`.
+
 ## Time-Varying Variance Recursion (Σ_e)
 
 從 Controller 4 + wall effect + trajectory 推導出 4x4 error covariance recursion：
