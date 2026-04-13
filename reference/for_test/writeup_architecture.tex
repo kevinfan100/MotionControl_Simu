@@ -125,4 +125,158 @@ h = 2.5\ \mu\mathrm{m}:\ &\quad c_\perp \approx 10.4,
   \quad a_{\mathrm{true}} \approx 0.10\,a_{\mathrm{nom}}
 \end{align*}
 
+% =====================================================================
+\section{Closed-Loop Steady-State Analysis: $C_{\mathrm{dpmr}}$ and $C_{n}$}
+% =====================================================================
+
+\emph{Per-axis scalar derivation; the 3-axis case is analogous.}
+
+\noindent
+Section 2 used $C_{\mathrm{dpmr}}$ and $C_{n}$ as placeholders in the
+steady-state map
+$\sigma^{2}_{\delta\bm{p}_{mr}}[k] = C_{\mathrm{dpmr}}\cdot 4\kB T\,a[k]
+ + C_{n}\,\sigma^{2}_{n_p}$.
+This section derives both from the joint dynamics of the plant, the
+control law, the 7-state EKF estimation errors, and the IIR LP filter.
+The strategy: build an 11-dimensional augmented linear system driven by
+white thermal and sensor noise, solve a discrete Lyapunov equation for its
+steady-state covariance, and extract the variance of $\delta p_{mr}[k]$
+through a selector vector.
+
+\paragraph{Augmented state.}
+Let $\delta x[k] \triangleq p_d[k{-}2] - p[k]$ be the noise-free true
+tracking error (so that $\delta p_m[k] = \delta x[k] + n_p[k]$), and let
+$e_i[k] \triangleq x_i[k] - \hat{x}_i[k]$ for $i=1,\ldots,7$ be the a priori
+estimation errors of the 7-state EKF from Section 3. The 11-dimensional
+augmented state is
+\begin{equation}
+  \bm{z}[k] =
+  \bigl[\,\delta x,\;\delta x_{d1},\;\delta x_{d2},\;
+         e_1,\;e_2,\;e_3,\;e_4,\;e_5,\;e_6,\;e_7,\;
+         \delta p_{md}[k{-}1]\,\bigr]\T[k]
+  \;\in\; \mathbb{R}^{11},
+\end{equation}
+where $\delta x_{d1}[k] = \delta x[k{-}1]$ and $\delta x_{d2}[k] = \delta x[k{-}2]$
+are shift-register delays matching the 2-step sensor lag, and the last
+entry is the previous-step value of the IIR LP state from Section 2
+(per-axis scalar form).
+
+\paragraph{EKF error closed-loop transition.}
+Using $\bm{F}_e,\bm{H},\bm{L}_{ss}$ from Section 3, define the 7$\times$7
+block
+\begin{equation}
+  \bm{A}_e \;\triangleq\; \bm{F}_e\bigl(\bm{I} - \bm{L}_{ss}\,\bm{H}\bigr),
+\end{equation}
+which governs the free evolution of $\bm{e}[k]=[e_1,\ldots,e_7]\T[k]$.
+
+\paragraph{Augmented dynamics $\bm{A}_{aug}$.}
+Substituting the control law of Section 1 into the plant equation, applying
+$\hat{a}[k]\approx a[k]$ and $f_0 = 0$, and expressing $\delta\hat{x}_3$ and
+$\hat{x}_D$ in terms of true values minus EKF errors yields
+\begin{equation}
+  \delta x[k{+}1]
+  = \lambda_c\,\delta x[k] + (1{-}\lambda_c)\,e_3[k] - e_4[k]
+    - a[k]\,f_T[k].
+\end{equation}
+Combined with the two delay shifts, the EKF error dynamics
+$\bm{e}[k{+}1] = \bm{A}_e\,\bm{e}[k] + \text{(noise)}$, and the IIR LP
+recursion
+$\delta p_{md}[k] = (1{-}a_{pd})\,\delta p_{md}[k{-}1]
+                   + a_{pd}\,(\delta x_{d2}[k] + n_p[k])$, the full 11-state
+dynamics becomes
+\begin{equation}
+  \bm{z}[k{+}1]
+  = \bm{A}_{aug}\,\bm{z}[k]
+    + \bm{b}_{th}\,\bigl(a[k]\,f_T[k]\bigr)
+    + \bm{b}_{np}\,n_p[k].
+\end{equation}
+The matrix $\bm{A}_{aug}\in\mathbb{R}^{11\times 11}$ is sparse, with non-zero
+entries
+\begin{align*}
+  &\text{row 1:}\ (1,1)=\lambda_c,\ (1,6)=1{-}\lambda_c,\ (1,7)={-}1, \\
+  &\text{rows 2--3 (shift):}\ (2,1)=1,\ (3,2)=1, \\
+  &\text{rows 4--10 (EKF block):}\ \bm{A}_{aug}(4{:}10,\,4{:}10) = \bm{A}_e, \\
+  &\text{row 11 (IIR LP):}\ (11,3)=a_{pd},\ (11,11)=1-a_{pd}.
+\end{align*}
+
+\paragraph{Noise injection.}
+Thermal noise $a[k]\,f_T[k]$ drives the true tracking error (row 1) and,
+because the EKF cannot observe $f_T$ directly, also the third EKF error
+component (row 6, i.e., $e_3$). Sensor noise $n_p[k]$ propagates through
+the Kalman injection into all 7 EKF error rows via $-\bm{F}_e\bm{L}_{ss}(:,1)$
+and enters the IIR LP state (row 11) directly with coefficient $a_{pd}$:
+\begin{equation}
+  \bm{b}_{th} =
+  \begin{bmatrix}
+    {-}1 & 0 & 0 & 0 & 0 & {-}1 & 0 & 0 & 0 & 0 & 0
+  \end{bmatrix}\T\!,
+  \quad
+  \bm{b}_{np} =
+  \begin{bmatrix}
+    0 \\[1pt] 0 \\[1pt] 0 \\[1pt] {-}\bm{F}_e\bm{L}_{ss}(:,1) \\[1pt] a_{pd}
+  \end{bmatrix}.
+\end{equation}
+
+\paragraph{Discrete Lyapunov equation.}
+Because the thermal and sensor noise sources are independent, the
+steady-state covariance $\bm{\Sigma}[k] = \mathrm{E}[\bm{z}[k]\bm{z}[k]\T]$
+decomposes linearly into
+\begin{equation}
+  \bm{\Sigma}[k]
+  = 4\kB T\,a[k]\cdot \bm{\Sigma}_{th}
+  \;+\; \sigma^{2}_{n_p}\cdot \bm{\Sigma}_{np},
+\end{equation}
+where $\bm{\Sigma}_{th}$ and $\bm{\Sigma}_{np}$ are the \emph{unit} solutions
+of two independent discrete Lyapunov equations
+\begin{align}
+  \bm{\Sigma}_{th} &= \bm{A}_{aug}\,\bm{\Sigma}_{th}\,\bm{A}_{aug}\T
+                    + \bm{b}_{th}\,\bm{b}_{th}\T, \\
+  \bm{\Sigma}_{np} &= \bm{A}_{aug}\,\bm{\Sigma}_{np}\,\bm{A}_{aug}\T
+                    + \bm{b}_{np}\,\bm{b}_{np}\T.
+\end{align}
+Both are solved offline (Cholesky-based \texttt{dlyapchol} with fallback to
+a fixed-point iteration, because $\bm{A}_{aug}$ has four eigenvalues
+marginally on the unit circle inherited from the integrator states of
+$\bm{F}_e$).
+
+\paragraph{Selector extraction.}
+From Section 2 we have
+$\delta p_{mr}[k] = \delta p_m[k] - \delta p_{md}[k]$. Substituting the
+LP recursion,
+\begin{equation}
+  \delta p_{mr}[k]
+  = (1-a_{pd})\,\bigl(\delta p_m[k] - \delta p_{md}[k{-}1]\bigr)
+  = (1-a_{pd})\,\bigl(\bm{c}_s\T\bm{z}[k] + n_p[k]\bigr),
+\end{equation}
+where the selector vector $\bm{c}_s\in\mathbb{R}^{11}$ has entries
+$\bm{c}_s(3) = +1$, $\bm{c}_s(11) = -1$, and zero elsewhere. Taking the
+variance (using that $n_p[k]$ is independent of $\bm{z}[k]$),
+\begin{equation}
+  \sigma^{2}_{\delta p_{mr}}[k]
+  = (1-a_{pd})^{2}\,\Bigl[\,\bm{c}_s\T\bm{\Sigma}[k]\,\bm{c}_s
+                         \;+\;\sigma^{2}_{n_p}\,\Bigr].
+\end{equation}
+Substituting the decomposition of $\bm{\Sigma}[k]$ and matching the target
+form $\sigma^{2}_{\delta p_{mr}} = C_{\mathrm{dpmr}}\cdot 4\kB T\,a + C_{n}\,\sigma^{2}_{n_p}$:
+\begin{gather}
+  \boxed{\;C_{\mathrm{dpmr}}
+    = (1-a_{pd})^{2}\,\bm{c}_s\T\bm{\Sigma}_{th}\,\bm{c}_s\;} \\[4pt]
+  \boxed{\;C_{n}
+    = (1-a_{pd})^{2}\,\bigl[\,\bm{c}_s\T\bm{\Sigma}_{np}\,\bm{c}_s + 1\,\bigr]\;}
+\end{gather}
+The extra $+1$ in $C_n$ accounts for the direct contribution of $n_p[k]$
+to $\delta p_{mr}[k]$ that does not pass through the augmented state.
+
+\paragraph{Numerical reference.}
+Evaluating at $\lambda_c = 0.7$, $a_{pd} = 0.05$, and the $Q_z, R_z$
+scalings of Section 4, the numerical solver returns
+\begin{equation}
+  C_{\mathrm{dpmr}} \;=\; 3.9242,
+  \qquad
+  C_{n} \;=\; 1.1141.
+\end{equation}
+For comparison, a simplified $K{=}2$ closed form that neglects the EKF
+error cross-couplings and the IIR LP state yields
+$C_{\mathrm{dpmr}}^{(K=2)} = 3.1610$, underestimating by $24\%$.
+
 \end{document}
