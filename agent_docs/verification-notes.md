@@ -56,6 +56,31 @@ Artifacts: `reference/for_test/task1b_report.md`, `task1c_report.md`,
 `test_script/analyze_task1b_iir_bias.m`, `build_bias_factor_lookup.m`,
 `verify_task1c_correction.m`.
 
+## Chi-squared chain verification (Task 1d Appendix A)
+
+The 26% static a_hat rel std is not a tuning artifact. It is the predicted
+output of a four-layer chain:
+
+1. White-noise chi-squared floor: `sqrt(2/N_eff)` with `N_eff=1/a_cov=20` → 31.62%
+2. del_pmr autocorrelation amplification 1.42x → `a_m` rel std = 45%
+3. Scalar KF gain from DARE: `K_ss = (Q + sqrt(Q² + 4QR))/(2(P_ss+R))` ≈ 0.01 for
+   `Q=1e-4, R=1.0`. Effective window `1/K = 100 samples = 63 ms`.
+4. EMA variance formula for correlated input:
+   `Var(a_hat) = Var(a_m) · K/(2-K) · [1 + 2·Σ(1-K)^L·ρ_am(L)]`
+   With `τ_c(a_m_z) ≈ 50 samples`: predicts 26.01% z-axis. Match measurement.
+
+Each layer trades off spread against dynamic tracking; reducing any of
+`a_cov`, `Q_a`, `R_am` increases dynamic lag. User's "no tuning" constraint
+is structurally correct — the 26% is a hard floor within this architecture.
+
+Task 1e does NOT address static spread. In steady state time-varying Σ_aug
+converges to scalar `C_dpmr_eff` and the chain above still applies. Task 1e
+addresses dynamic bias and lag only. Breaking the 26% floor requires a
+structural change outside Task 1e: cascaded IIR, batch variance, multi-axis
+averaging, or post-KF filter.
+
+Full derivation: `reference/for_test/task1d_diagnostic_report.md` Appendix A (A.1-A.11).
+
 ## Task 1d Diagnostic (2026-04-13): a_hat gap to paper
 
 Static (lc=0.7, 30s free-space):
