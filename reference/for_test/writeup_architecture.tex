@@ -1,0 +1,128 @@
+% ======================================================
+% Stage 1 — Architecture summary
+% Compiler: pdflatex (or xelatex)
+% ======================================================
+\documentclass[11pt]{article}
+\usepackage{amsmath, amssymb, bm}
+\usepackage[margin=2cm]{geometry}
+
+\newcommand{\T}{^{\top}}
+\newcommand{\lc}{\lambda_c}
+\newcommand{\Ts}{T_s}
+\newcommand{\kB}{k_B}
+
+
+\begin{document}
+
+\noindent Positioning\_kf\_a
+\vspace{0.5em}
+
+% =====================================================================
+\section{Plant and Control Law}
+% =====================================================================
+
+\begin{align}
+\gamma(p)\,\dot{p} &= f_d + f_T \\[2pt]
+a[k] &\equiv \Ts \,/\, \gamma(p[k]) \\[2pt]
+p[k\!+\!1] &= p[k] + a[k]\bigl(f_d[k] + f_T[k]\bigr),
+  \qquad \mathrm{Var}\bigl(a[k]\,f_T[k]\bigr) = 4\kB T\,a[k] \\[4pt]
+f_d[k] &= \frac{1}{\hat{a}[k]}\Bigl[\bigl(p_d[k\!-\!1] - p_d[k\!-\!2]\bigr)
+  + (1-\lc)\,\delta\hat{x}_3[k] - \hat{x}_D[k]\Bigr]
+\end{align}
+
+% =====================================================================
+\section{IIR Variance Estimator for $a[k]$}
+% =====================================================================
+
+\begin{align}
+\delta\bm{p}_m[k] &= p_d[k\!-\!2] - p_m[k] \\[2pt]
+\delta\bm{p}_{md}[k] &= (1-a_{pd})\,\delta\bm{p}_{md}[k\!-\!1] + a_{pd}\,\delta\bm{p}_m[k] \\[2pt]
+\delta\bm{p}_{mr}[k] &= \delta\bm{p}_m[k] - \delta\bm{p}_{md}[k] \\[2pt]
+\delta\bm{p}_{mrd}[k] &= (1-a_{prd})\,\delta\bm{p}_{mrd}[k\!-\!1] + a_{prd}\,\delta\bm{p}_{mr}[k] \\[2pt]
+\overline{(\delta\bm{p}_{mr})^{2}}[k] &= (1-a_{cov})\,\overline{(\delta\bm{p}_{mr})^{2}}[k\!-\!1]
+  + a_{cov}\,\bigl(\delta\bm{p}_{mr}[k]\bigr)^{2} \\[2pt]
+\sigma^{2}_{\delta\bm{p}_{mr}}[k] &= \overline{(\delta\bm{p}_{mr})^{2}}[k]
+  - \bigl(\delta\bm{p}_{mrd}[k]\bigr)^{2} \\[4pt]
+\sigma^{2}_{\delta\bm{p}_{mr}}[k] &= C_{\mathrm{dpmr}}\cdot 4\kB T\,a[k]
+  \;+\; C_{n}\,\sigma^{2}_{n_p} \\[4pt]
+\boxed{\;\;
+a_m[k] \;=\; \dfrac{\sigma^{2}_{\delta\bm{p}_{mr}}[k] - C_{n}\,\sigma^{2}_{n_p}}
+                    {C_{\mathrm{dpmr}}\cdot 4\kB T}
+\;\;}
+\end{align}
+
+% =====================================================================
+\section{Seven-State Augmented Kalman Filter}
+% =====================================================================
+
+\begin{align}
+\bm{x}[k] &= \bigl[\,\delta x_1,\;\delta x_2,\;\delta x_3,\;
+  x_D,\;\delta x_D,\;a,\;\delta a\,\bigr]\T[k] \\[4pt]
+\bm{x}[k\!+\!1] &= \bm{F}_{e}\,\bm{x}[k] + \bm{q}[k],
+  \qquad
+  \bm{y}[k] = \bm{H}\,\bm{x}[k] + \bm{v}[k]
+  = \begin{bmatrix}\delta x_m[k]\\[2pt] a_m[k]\end{bmatrix} \\[6pt]
+\bm{F}_{e} &=
+\begin{bmatrix}
+  0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+  0 & 0 & 1 & 0 & 0 & 0 & 0 \\
+  0 & 0 & 1 & -1 & 0 & -f_0 & 0 \\
+  0 & 0 & 0 & 1 & 1 & 0 & 0 \\
+  0 & 0 & 0 & 0 & 1 & 0 & 0 \\
+  0 & 0 & 0 & 0 & 0 & 1 & 1 \\
+  0 & 0 & 0 & 0 & 0 & 0 & 1
+\end{bmatrix},
+\qquad
+\bm{H} =
+\begin{bmatrix}
+  1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+  0 & 0 & 0 & 0 & 0 & 1 & 0
+\end{bmatrix} \\[6pt]
+\bm{L}[k] &= \bm{P}'[k]\,\bm{H}\T\bigl(\bm{H}\,\bm{P}'[k]\,\bm{H}\T + \bm{R}\bigr)^{-1} \\[2pt]
+\bm{P}[k] &= (\bm{I} - \bm{L}[k]\,\bm{H})\,\bm{P}'[k] \\[2pt]
+\bm{P}'[k\!+\!1] &= \bm{F}_{e}\,\bm{P}[k]\,\bm{F}_{e}\T + \bm{Q} \\[4pt]
+\hat{\bm{x}}[k\!+\!1\,|\,k] &= \bm{F}_{e}\,\hat{\bm{x}}[k\,|\,k\!-\!1]
+  + \bm{F}_{e}\,\bm{L}_{ss}\bigl(\bm{y}[k] - \bm{H}\,\hat{\bm{x}}[k\,|\,k\!-\!1]\bigr)
+\end{align}
+
+% =====================================================================
+\section{Simulation Setup}
+% =====================================================================
+
+\begin{align}
+h_{\mathrm{init}} &\in \{50,\ 2.5\}\ \mu\mathrm{m},
+  \qquad \sigma^{2}_{n_p} = 0 \\[2pt]
+\lc &= 0.7,
+  \qquad a_{pd} = a_{prd} = a_{cov} = 0.05,
+  \qquad f_0 = 0 \\[4pt]
+\hat{a}[0] &= \Bigl[\;
+  \tfrac{a_{\mathrm{nom}}}{c_{\parallel}(h_{\mathrm{init}}/R)},\;
+  \tfrac{a_{\mathrm{nom}}}{c_{\parallel}(h_{\mathrm{init}}/R)},\;
+  \tfrac{a_{\mathrm{nom}}}{c_{\perp}(h_{\mathrm{init}}/R)}
+\;\Bigr]\T,
+  \qquad a_{\mathrm{nom}} \equiv \Ts / \gamma_N \\[6pt]
+\bm{Q} &= \frac{4\kB T\,\Ts}{\gamma_N}\cdot
+\begin{bmatrix}
+  0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+  0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+  0 & 0 & 10^{4} & 0 & 0 & 0 & 0 \\
+  0 & 0 & 0 & 10^{-1} & 0 & 0 & 0 \\
+  0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+  0 & 0 & 0 & 0 & 0 & 10^{-4} & 0 \\
+  0 & 0 & 0 & 0 & 0 & 0 & 0
+\end{bmatrix} \\[6pt]
+\bm{R} &= \frac{4\kB T\,\Ts}{\gamma_N}\cdot
+\begin{bmatrix}
+  10^{-2} & 0 \\[2pt]
+  0 & 10^{0}
+\end{bmatrix}
+\end{align}
+
+\begin{align*}
+h = 50\ \mu\mathrm{m}:\ &\quad c_\perp \approx 1.05,
+  \quad a_{\mathrm{true}} \approx a_{\mathrm{nom}} \\
+h = 2.5\ \mu\mathrm{m}:\ &\quad c_\perp \approx 10.4,
+  \quad a_{\mathrm{true}} \approx 0.10\,a_{\mathrm{nom}}
+\end{align*}
+
+\end{document}
