@@ -56,6 +56,37 @@ Artifacts: `reference/for_test/task1b_report.md`, `task1c_report.md`,
 `test_script/analyze_task1b_iir_bias.m`, `build_bias_factor_lookup.m`,
 `verify_task1c_correction.m`.
 
+## Task 1d Diagnostic (2026-04-13): a_hat gap to paper
+
+Static (lc=0.7, 30s free-space):
+- `a_hat_z` rel std = 25.86% (EKF output)
+- `a_m_corr_z` rel std = 44.95% (raw IIR, Task 1c applied)
+- EKF smoothing factor = 1.74x
+- EKF autocorrelation time constant ~52 ms
+
+Dynamic near-wall (lc=0.4, 1 Hz 2.5 um, 10 seeds x 12 s):
+- z-axis median |a_hat - a_true|/a_true = **17.88%** (pooled)
+- z-axis 90-percentile = 53.26%
+- z-axis cross-correlation lag = **+49.6 samples = 31.0 ms** (a_hat lags a_true)
+- 3D tracking RMSE = 40.9 nm (matches paper; control is fine)
+- Per-seed z-median range: 15.93% - 19.72% (robust)
+- x-axis analysis had ground-truth bug (used c_perp instead of c_para); z numbers are correct
+
+Gap decomposition:
+- Bias (Task 1c fixed): <1%
+- Spread: ~10-13% (chi-squared floor partially smoothed by EKF)
+- Dynamic lag: ~7-10% at 11° phase @ 1 Hz
+- Total: matches observed 17.88%
+
+Verdict: Task 1c necessary but not sufficient. Architecture change required
+because `C_dpmr_eff` is steady-state while true variance is time-varying
+under dynamic `a(t)`. Proposed Task 1e: time-varying Σ_aug recursion closed
+with `a_hat[k-1]` feedback. Design doc: `task1e_design.md`.
+
+Artifacts: `task1d_diagnostic_report.md`, `task1e_design.md`,
+`analyze_task1d_ahat_static.m`, `verify_task1d_paper_benchmark_mc.m`,
+`fig_task1d_ahat_vs_am_static.png`, `fig_task1d_paper_benchmark.png`.
+
 ## Time-Varying Variance Recursion (Σ_e)
 
 從 Controller 4 + wall effect + trajectory 推導出 4x4 error covariance recursion：
