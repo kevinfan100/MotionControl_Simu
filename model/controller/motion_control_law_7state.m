@@ -85,7 +85,17 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
         del_p3_hat = zeros(3,1);
         d_hat      = zeros(3,1);
         del_d_hat  = zeros(3,1);
-        a_hat      = [a_nom; a_nom; a_nom];
+        % Wall-aware initial a_hat: compute h_bar from initial position and wall model
+        % to avoid slow EKF convergence when starting near wall.
+        p0_init       = params.common.p0;           % 3x1 initial position [um]
+        w_hat_init    = params.wall.w_hat;          % 3x1 wall normal
+        pz_init       = params.wall.pz;             % scalar wall offset [um]
+        R_init        = params.common.R;            % particle radius [um]
+        h_init        = p0_init(:)' * w_hat_init(:) - pz_init;
+        h_bar_init    = max(h_init / R_init, 1.001);
+        [cpara_init, cperp_init] = calc_correction_functions(h_bar_init);
+        % For wall-normal w_hat = [0;0;1], this maps: x,y use c_para, z uses c_perp
+        a_hat         = [a_nom / cpara_init; a_nom / cpara_init; a_nom / cperp_init];
         del_a_hat  = zeros(3,1);
 
         % 0D. Covariance initialization
