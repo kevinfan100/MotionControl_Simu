@@ -1,5 +1,5 @@
 % ======================================================
-% Stage 1 — Architecture summary
+% writeup_architecture.tex
 % Compiler: pdflatex (or xelatex)
 % ======================================================
 \documentclass[11pt]{article}
@@ -22,46 +22,46 @@
 % =====================================================================
 
 \begin{align}
-\gamma(p)\,\dot{p} &= f_d + f_T \\[2pt]
-a[k] &\equiv \Ts \,/\, \gamma(p[k]) \\[2pt]
-p[k\!+\!1] &= p[k] + a[k]\bigl(f_d[k] + f_T[k]\bigr),
-  \qquad \mathrm{Var}\bigl(a[k]\,f_T[k]\bigr) = 4\kB T\,a[k] \\[4pt]
-f_d[k] &= \frac{1}{\hat{a}[k]}\Bigl[\bigl(p_d[k\!-\!1] - p_d[k\!-\!2]\bigr)
+\gamma(x)\,\dot{x} &= f_{dx} + f_T \\[2pt]
+a_x[k] &\equiv \Ts \,/\, \gamma(x[k]) \\[2pt]
+x[k\!+\!1] &= x[k] + a_x[k]\bigl(f_{dx}[k] + f_T[k]\bigr),
+  \qquad \mathrm{Var}\bigl(a_x[k]\,f_T[k]\bigr) = 4\kB T\,a_x[k] \\[4pt]
+f_{dx}[k] &= \frac{1}{\hat{a}_x[k]}\Bigl[\bigl(x_d[k\!+\!1] - x_d[k]\bigr)
   + (1-\lc)\,\delta\hat{x}_3[k] - \hat{x}_D[k]\Bigr]
 \end{align}
 
 % =====================================================================
-\section{IIR Variance Estimator for $a[k]$}
+\section{IIR Variance Estimator for $a_x[k]$}
 % =====================================================================
 
 \begin{align}
-\delta\bm{p}_m[k] &= p_d[k\!-\!2] - p_m[k] \\[2pt]
-\delta\bm{p}_{md}[k] &= (1-a_{pd})\,\delta\bm{p}_{md}[k\!-\!1] + a_{pd}\,\delta\bm{p}_m[k] \\[2pt]
-\delta\bm{p}_{mr}[k] &= \delta\bm{p}_m[k] - \delta\bm{p}_{md}[k] \\[2pt]
-\delta\bm{p}_{mrd}[k] &= (1-a_{prd})\,\delta\bm{p}_{mrd}[k\!-\!1] + a_{prd}\,\delta\bm{p}_{mr}[k] \\[2pt]
-\overline{(\delta\bm{p}_{mr})^{2}}[k] &= (1-a_{cov})\,\overline{(\delta\bm{p}_{mr})^{2}}[k\!-\!1]
-  + a_{cov}\,\bigl(\delta\bm{p}_{mr}[k]\bigr)^{2} \\[2pt]
-\sigma^{2}_{\delta\bm{p}_{mr}}[k] &= \overline{(\delta\bm{p}_{mr})^{2}}[k]
-  - \bigl(\delta\bm{p}_{mrd}[k]\bigr)^{2} \\[4pt]
-\sigma^{2}_{\delta\bm{p}_{mr}}[k] &= C_{\mathrm{dpmr}}\cdot 4\kB T\,a[k]
-  \;+\; C_{n}\,\sigma^{2}_{n_p} \\[4pt]
+\delta x_m[k] &= x_d[k\!-\!2] - x_m[k] \\[2pt]
+\delta x_{md}[k] &= (1-a_{pd})\,\delta x_{md}[k\!-\!1] + a_{pd}\,\delta x_m[k] \\[2pt]
+\delta x_{mr}[k] &= \delta x_m[k] - \delta x_{md}[k] \\[2pt]
+\delta x_{mrd}[k] &= (1-a_{prd})\,\delta x_{mrd}[k\!-\!1] + a_{prd}\,\delta x_{mr}[k] \\[2pt]
+\overline{(\delta x_{mr})^{2}}[k] &= (1-a_{cov})\,\overline{(\delta x_{mr})^{2}}[k\!-\!1]
+  + a_{cov}\,\bigl(\delta x_{mr}[k]\bigr)^{2} \\[2pt]
+\sigma^{2}_{\delta x_{mr}}[k] &= \overline{(\delta x_{mr})^{2}}[k]
+  - \bigl(\delta x_{mrd}[k]\bigr)^{2} \\[4pt]
+\sigma^{2}_{\delta x_{mr}}[k] &= C_{\mathrm{dpmr}}\cdot 4\kB T\,a_x[k]
+  \;+\; C_{n}\,\sigma^{2}_n \\[4pt]
 \boxed{\;\;
-a_m[k] \;=\; \dfrac{\sigma^{2}_{\delta\bm{p}_{mr}}[k] - C_{n}\,\sigma^{2}_{n_p}}
+a_{xm}[k] \;=\; \dfrac{\sigma^{2}_{\delta x_{mr}}[k] - C_{n}\,\sigma^{2}_n}
                     {C_{\mathrm{dpmr}}\cdot 4\kB T}
 \;\;}
 \end{align}
 
 % =====================================================================
-\section{Seven-State Augmented Kalman Filter}
+\section{Kalman Filter}
 % =====================================================================
 
 \begin{align}
 \bm{x}[k] &= \bigl[\,\delta x_1,\;\delta x_2,\;\delta x_3,\;
-  x_D,\;\delta x_D,\;a,\;\delta a\,\bigr]\T[k] \\[4pt]
+  x_D,\;\delta x_D,\;a_x,\;\delta a_x\,\bigr]\T[k] \\[4pt]
 \bm{x}[k\!+\!1] &= \bm{F}_{e}\,\bm{x}[k] + \bm{q}[k],
   \qquad
   \bm{y}[k] = \bm{H}\,\bm{x}[k] + \bm{v}[k]
-  = \begin{bmatrix}\delta x_m[k]\\[2pt] a_m[k]\end{bmatrix} \\[6pt]
+  = \begin{bmatrix}\delta x_m[k]\\[2pt] a_{xm}[k]\end{bmatrix} \\[6pt]
 \bm{F}_{e} &=
 \begin{bmatrix}
   0 & 1 & 0 & 0 & 0 & 0 & 0 \\
@@ -91,7 +91,7 @@ a_m[k] \;=\; \dfrac{\sigma^{2}_{\delta\bm{p}_{mr}}[k] - C_{n}\,\sigma^{2}_{n_p}}
 
 \begin{align}
 h_{\mathrm{init}} &\in \{50,\ 2.5\}\ \mu\mathrm{m},
-  \qquad \sigma^{2}_{n_p} = 0 \\[2pt]
+  \qquad \sigma^{2}_n = 0 \\[2pt]
 \lc &= 0.7,
   \qquad a_{pd} = a_{prd} = a_{cov} = 0.05,
   \qquad f_0 = 0 \\[4pt]
@@ -126,157 +126,191 @@ h = 2.5\ \mu\mathrm{m}:\ &\quad c_\perp \approx 10.4,
 \end{align*}
 
 % =====================================================================
-\section{Closed-Loop Steady-State Analysis: $C_{\mathrm{dpmr}}$ and $C_{n}$}
+\section{Closed-Loop Steady-State Variance: $C_{\mathrm{dpmr}}$ and $C_{n}$}
 % =====================================================================
 
-\emph{Per-axis scalar derivation; the 3-axis case is analogous.}
+\subsection*{5.1\quad Augmented state}
 
-\noindent
-Section 2 used $C_{\mathrm{dpmr}}$ and $C_{n}$ as placeholders in the
-steady-state map
-$\sigma^{2}_{\delta\bm{p}_{mr}}[k] = C_{\mathrm{dpmr}}\cdot 4\kB T\,a[k]
- + C_{n}\,\sigma^{2}_{n_p}$.
-This section derives both from the joint dynamics of the plant, the
-control law, the 7-state EKF estimation errors, and the IIR LP filter.
-The strategy: build an 11-dimensional augmented linear system driven by
-white thermal and sensor noise, solve a discrete Lyapunov equation for its
-steady-state covariance, and extract the variance of $\delta p_{mr}[k]$
-through a selector vector.
+\[
+\bm{e}[k] \;=\; \bigl[\,
+  \delta x_1,\; \delta x_2,\; \delta x_3,\;\;
+  e_{x1},\; e_{x2},\; e_{x3},\;\;
+  e_{xD},\; e_{\delta xD},\; e_{a},\; e_{\delta a},\;\;
+  \delta x_{md}[k\!-\!1]
+\,\bigr]\T[k]
+\;\in\; \mathbb{R}^{11}
+\]
 
-\paragraph{Augmented state.}
-Let $\delta x[k] \triangleq p_d[k{-}2] - p[k]$ be the noise-free true
-tracking error (so that $\delta p_m[k] = \delta x[k] + n_p[k]$), and let
-$e_i[k] \triangleq x_i[k] - \hat{x}_i[k]$ for $i=1,\ldots,7$ be the a priori
-estimation errors of the 7-state EKF from Section 3. The 11-dimensional
-augmented state is
-\begin{equation}
-  \bm{z}[k] =
-  \bigl[\,\delta x,\;\delta x_{d1},\;\delta x_{d2},\;
-         e_1,\;e_2,\;e_3,\;e_4,\;e_5,\;e_6,\;e_7,\;
-         \delta p_{md}[k{-}1]\,\bigr]\T[k]
-  \;\in\; \mathbb{R}^{11},
-\end{equation}
-where $\delta x_{d1}[k] = \delta x[k{-}1]$ and $\delta x_{d2}[k] = \delta x[k{-}2]$
-are shift-register delays matching the 2-step sensor lag, and the last
-entry is the previous-step value of the IIR LP state from Section 2
-(per-axis scalar form).
 
-\paragraph{EKF error closed-loop transition.}
-Using $\bm{F}_e,\bm{H},\bm{L}_{ss}$ from Section 3, define the 7$\times$7
-block
-\begin{equation}
-  \bm{A}_e \;\triangleq\; \bm{F}_e\bigl(\bm{I} - \bm{L}_{ss}\,\bm{H}\bigr),
-\end{equation}
-which governs the free evolution of $\bm{e}[k]=[e_1,\ldots,e_7]\T[k]$.
 
-\paragraph{Augmented dynamics $\bm{A}_{aug}$.}
-Substituting the control law of Section 1 into the plant equation, applying
-$\hat{a}[k]\approx a[k]$ and $f_0 = 0$, and expressing $\delta\hat{x}_3$ and
-$\hat{x}_D$ in terms of true values minus EKF errors yields
+\subsection*{5.2\quad Closed-loop recursion for $\delta x_3$}
+
+Plant $+$ Section 1 control law (fluctuation frame, $x_D\!=\!0$, $f_0\!=\!0$, $\hat{a}_x \!\approx\! a_x$):
+
 \begin{equation}
-  \delta x[k{+}1]
-  = \lambda_c\,\delta x[k] + (1{-}\lambda_c)\,e_3[k] - e_4[k]
-    - a[k]\,f_T[k].
+\delta x_3[k\!+\!1] \;=\; \lc\,\delta x_3[k]
+   \;+\; (1{-}\lc)\,e_{x3}[k]
+   \;-\; e_{xD}[k]
+   \;-\; a_x[k]\,f_T[k]
 \end{equation}
-Combined with the two delay shifts, the EKF error dynamics
-$\bm{e}[k{+}1] = \bm{A}_e\,\bm{e}[k] + \text{(noise)}$, and the IIR LP
-recursion
-$\delta p_{md}[k] = (1{-}a_{pd})\,\delta p_{md}[k{-}1]
-                   + a_{pd}\,(\delta x_{d2}[k] + n_p[k])$, the full 11-state
-dynamics becomes
+
+\subsection*{5.3\quad Augmented dynamics}
+
 \begin{equation}
-  \bm{z}[k{+}1]
-  = \bm{A}_{aug}\,\bm{z}[k]
-    + \bm{b}_{th}\,\bigl(a[k]\,f_T[k]\bigr)
-    + \bm{b}_{np}\,n_p[k].
+\bm{e}[k\!+\!1] \;=\; \bm{A}\,\bm{e}[k]
+  \;+\; \bm{b}_T\bigl(a_x[k]\,f_T[k]\bigr)
+  \;+\; \bm{b}_n\,n[k]
 \end{equation}
-The matrix $\bm{A}_{aug}\in\mathbb{R}^{11\times 11}$ is sparse, with non-zero
-entries
+
+
+
+\[
+\bm{A} \;=\;
+\left[\begin{array}{ccc|ccccccc|c}
+0 & 1 & 0   & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 1   & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & \lc & 0 & 0 & 1{-}\lc & {-}1 & 0 & 0 & 0 & 0 \\
+\hline
+\multicolumn{3}{c|}{\bm{0}_{7\times 3}} & \multicolumn{7}{c|}{\bm{A}_e} & \multicolumn{1}{c}{\bm{0}_{7\times 1}} \\
+\hline
+a_{pd} & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 1{-}a_{pd}
+\end{array}\right]
+\]
+
+\noindent Noise vectors:
+\[
+\bm{b}_T \;=\; \bigl[\,0,\,0,\,{-}1,\;\;0,\,0,\,{-}1,\,0,\,0,\,0,\,0,\;\;0\,\bigr]\T,
+\qquad
+\bm{b}_n \;=\; \bigl[\,0,\,0,\,0,\;\;{-}\bm{F}_e\bm{L}_{ss}(:,1),\;\;{-}a_{pd}\,\bigr]\T
+\]
+
+\subsection*{5.4\quad Lyapunov decomposition and computation}
+
+Define $\bm{\Sigma}[k] \!\equiv\! \mathrm{E}\bigl[\bm{e}[k]\bm{e}[k]\T\bigr]$.
+Because $f_T[k]$ and $n[k]$ are independent zero-mean white processes,
+\begin{align}
+\bm{\Sigma}[k] &\;=\; 4\kB T\,a_x[k]\;\bm{\Sigma}_T \;+\; \sigma^{2}_n\;\bm{\Sigma}_n \\[2pt]
+\bm{\Sigma}_T  &\;=\; \bm{A}\,\bm{\Sigma}_T\,\bm{A}\T \;+\; \bm{b}_T\,\bm{b}_T\T \\[2pt]
+\bm{\Sigma}_n  &\;=\; \bm{A}\,\bm{\Sigma}_n\,\bm{A}\T \;+\; \bm{b}_n\,\bm{b}_n\T
+\end{align}
+
+
+
+\subsection*{5.5\quad Variance of $\delta x_{mr}$}
+
+Inverting the Section 2 LP recursion, with $\delta x_m[k] = \delta x_1[k] - n[k]$:
+
+\begin{equation}
+\delta x_{mr}[k] \;=\; (1-a_{pd})\bigl(\delta x_1[k] - \delta x_{md}[k\!-\!1] - n[k]\bigr)
+\end{equation}
+
+\noindent Variance ($n[k]$ independent of $\bm{e}[k]$):
+
+\begin{equation}
+\sigma^{2}_{\delta x_{mr}}[k]
+  \;=\; (1-a_{pd})^{2}\Bigl[\,
+    (\bm{\Sigma}[k])_{1,1} \,-\, 2\,(\bm{\Sigma}[k])_{1,11} \,+\, (\bm{\Sigma}[k])_{11,11}
+    \,+\, \sigma^{2}_n
+  \,\Bigr]
+\end{equation}
+
+\subsection*{5.6\quad $C_{\mathrm{dpmr}}$ and $C_{n}$}
+
+Substitute $\bm{\Sigma}[k] = 4\kB T\,a_x[k]\,\bm{\Sigma}_T + \sigma^{2}_n\,\bm{\Sigma}_n$ and match
+$\sigma^{2}_{\delta x_{mr}} = C_{\mathrm{dpmr}}\!\cdot\! 4\kB T\,a_x + C_{n}\!\cdot\! \sigma^{2}_n$:
+
+\begin{gather}
+\boxed{\;C_{\mathrm{dpmr}} \;=\; (1-a_{pd})^{2}\bigl[\,
+  (\bm{\Sigma}_T)_{1,1} \,-\, 2\,(\bm{\Sigma}_T)_{1,11} \,+\, (\bm{\Sigma}_T)_{11,11}
+  \,\bigr]\;} \\[6pt]
+\boxed{\;C_{n} \;=\; (1-a_{pd})^{2}\bigl[\,
+  (\bm{\Sigma}_n)_{1,1} \,-\, 2\,(\bm{\Sigma}_n)_{1,11} \,+\, (\bm{\Sigma}_n)_{11,11}
+  \,+\, 1
+  \,\bigr]\;}
+\end{gather}
+
+The $+1$ in $C_{n}$ is the direct contribution of $n[k]$ to $\delta x_{mr}[k]$ (does not pass through $\bm{e}[k]$).
+
+% =====================================================================
+\section{IIR Finite-Sample Bias Factor $\beta$}
+% =====================================================================
+
+\subsection*{6.1\quad Bias source}
+
+The Section 2 IIR algorithm computes
+$\sigma^{2}_{\delta x_{mr}}[k] = \overline{(\delta x_{mr})^{2}}[k] - (\delta x_{mrd}[k])^{2}$.
+In stationary steady state ($\delta x_{mr}$ zero-mean):
+\begin{align}
+\mathrm{E}\bigl[\,\overline{(\delta x_{mr})^{2}}\,\bigr] &\;=\; \mathrm{Var}(\delta x_{mr}) \\[2pt]
+\mathrm{E}\bigl[\,(\delta x_{mrd})^{2}\,\bigr] &\;=\; \mathrm{Var}(\delta x_{mrd})
+\end{align}
+so the IIR output is biased low by $\mathrm{Var}(\delta x_{mrd}) > 0$. Define
+\begin{equation}
+\beta \;\equiv\; \frac{\mathrm{E}\!\bigl[\,\sigma^{2}_{\delta x_{mr}}\,\bigr]}{\mathrm{Var}(\delta x_{mr})}
+       \;=\; 1 \;-\; \frac{\mathrm{Var}(\delta x_{mrd})}{\mathrm{Var}(\delta x_{mr})}
+\end{equation}
+
+\subsection*{6.2\quad $\mathrm{Var}(\delta x_{mr})$ and $\rho(L)$ from Section 5}
+
+For the noise-free case ($\sigma^{2}_n = 0$), Section 5's selector form gives
+\begin{equation}
+\mathrm{Var}(\delta x_{mr}) \;=\; (1{-}a_{pd})^{2}\bigl[\,(\bm{\Sigma}_T)_{1,1} - 2(\bm{\Sigma}_T)_{1,11} + (\bm{\Sigma}_T)_{11,11}\,\bigr]\cdot 4\kB T\, a_x
+\end{equation}
+The lag-$L$ autocorrelation
+$\rho(L) \equiv \mathrm{Cov}(\delta x_{mr}[k], \delta x_{mr}[k\!-\!L]) / \mathrm{Var}(\delta x_{mr})$
+follows from $\bm{A}^{L}\bm{\Sigma}_T$ via the same selector
+(the $(1{-}a_{pd})^{2}$ and $4\kB T\, a_x$ prefactors cancel):
+\begin{equation}
+\rho(L) \;=\; \frac{(\bm{A}^{L}\bm{\Sigma}_T)_{1,1} - 2(\bm{A}^{L}\bm{\Sigma}_T)_{1,11} + (\bm{A}^{L}\bm{\Sigma}_T)_{11,11}}
+                     {(\bm{\Sigma}_T)_{1,1} - 2(\bm{\Sigma}_T)_{1,11} + (\bm{\Sigma}_T)_{11,11}}
+\end{equation}
+
+\subsection*{6.3\quad $\mathrm{Var}(\delta x_{mrd})$ closed form}
+
+Unroll the Section 2 LP recursion:
+\begin{equation}
+\delta x_{mrd}[k] \;=\; a_{prd}\sum_{j=0}^{\infty}(1{-}a_{prd})^{j}\,\delta x_{mr}[k\!-\!j]
+\end{equation}
+Take variance, split diagonal $j\!=\!l$ from off-diagonal $j\!\neq\!l$, and use
+$\sum_{j=0}^{\infty}(1{-}a_{prd})^{2j} = 1/\bigl[a_{prd}(2{-}a_{prd})\bigr]$:
+\begin{equation}
+\mathrm{Var}(\delta x_{mrd}) \;=\; \frac{a_{prd}}{2 - a_{prd}}\,\mathrm{Var}(\delta x_{mr})\,\Bigl[\,1 + 2\sum_{m=1}^{\infty}\rho(m)(1{-}a_{prd})^{m}\,\Bigr]
+\end{equation}
+
+\subsection*{6.4\quad Bias factor (boxed)}
+
+Substitute 6.3 into 6.1:
+\begin{equation}
+\boxed{\;\beta(\lc, a_{prd}) \;=\; 1 \;-\; \frac{a_{prd}}{2 - a_{prd}}\,\Bigl[\,1 + 2\sum_{m=1}^{\infty}\rho(m)(1{-}a_{prd})^{m}\,\Bigr]\;}
+\end{equation}
+The bracket $\bigl[\,1 + 2\sum_{m\geq 1}\rho(m)(1{-}a_{prd})^{m}\,\bigr]$ is the
+\emph{autocorrelation amplification}: equals $1$ for white $\delta x_{mr}$,
+$>\!1$ for positively-correlated (the typical closed-loop case).
+
+In practice the sum is truncated at $m_{\max}\!=\!100$; with $a_{prd}\!=\!0.05$,
+the residual $(1{-}a_{prd})^{m_{\max}}\!\approx\!0.006$ lies below numerical noise.
+
+\subsection*{6.5\quad Numerical}
+
+At $\lc = 0.7$, $a_{prd} = 0.05$:
 \begin{align*}
-  &\text{row 1:}\ (1,1)=\lambda_c,\ (1,6)=1{-}\lambda_c,\ (1,7)={-}1, \\
-  &\text{rows 2--3 (shift):}\ (2,1)=1,\ (3,2)=1, \\
-  &\text{rows 4--10 (EKF block):}\ \bm{A}_{aug}(4{:}10,\,4{:}10) = \bm{A}_e, \\
-  &\text{row 11 (IIR LP):}\ (11,3)=a_{pd},\ (11,11)=1-a_{pd}.
+\beta_{\mathrm{white}} &\;\equiv\; \frac{2 - 2 a_{prd}}{2 - a_{prd}} \;=\; 0.9744
+  &&\text{(white reference; bracket}=1) \\[2pt]
+\beta &\;=\; 0.9069
+  &&\text{(closed-loop; bracket}\!\approx\!3.6) \\[2pt]
+\text{bias amplification} &\;=\; \frac{1 - \beta}{1 - \beta_{\mathrm{white}}} \;\approx\; 3.6\times
 \end{align*}
 
-\paragraph{Noise injection.}
-Thermal noise $a[k]\,f_T[k]$ drives the true tracking error (row 1) and,
-because the EKF cannot observe $f_T$ directly, also the third EKF error
-component (row 6, i.e., $e_3$). Sensor noise $n_p[k]$ propagates through
-the Kalman injection into all 7 EKF error rows via $-\bm{F}_e\bm{L}_{ss}(:,1)$
-and enters the IIR LP state (row 11) directly with coefficient $a_{pd}$:
-\begin{equation}
-  \bm{b}_{th} =
-  \begin{bmatrix}
-    {-}1 & 0 & 0 & 0 & 0 & {-}1 & 0 & 0 & 0 & 0 & 0
-  \end{bmatrix}\T\!,
-  \quad
-  \bm{b}_{np} =
-  \begin{bmatrix}
-    0 \\[1pt] 0 \\[1pt] 0 \\[1pt] {-}\bm{F}_e\bm{L}_{ss}(:,1) \\[1pt] a_{pd}
-  \end{bmatrix}.
-\end{equation}
+\subsection*{6.6\quad Bias-corrected }
 
-\paragraph{Discrete Lyapunov equation.}
-Because the thermal and sensor noise sources are independent, the
-steady-state covariance $\bm{\Sigma}[k] = \mathrm{E}[\bm{z}[k]\bm{z}[k]\T]$
-decomposes linearly into
+Section 2's estimator output satisfies
+$\mathrm{E}\!\bigl[\,\sigma^{2}_{\delta x_{mr}}\,\bigr] = \beta\cdot\mathrm{Var}(\delta x_{mr})$.
+To recover unbiased $a_x$, replace $C_{\mathrm{dpmr}}$ by $\beta\!\cdot\!C_{\mathrm{dpmr}}$
+in Section 2's boxed $a_{xm}$ formula:
 \begin{equation}
-  \bm{\Sigma}[k]
-  = 4\kB T\,a[k]\cdot \bm{\Sigma}_{th}
-  \;+\; \sigma^{2}_{n_p}\cdot \bm{\Sigma}_{np},
+\boxed{\;a_{xm}[k] \;=\; \frac{\sigma^{2}_{\delta x_{mr}}[k] - C_{n}\,\sigma^{2}_n}
+                                   {\beta\cdot C_{\mathrm{dpmr}}\cdot 4\kB T}\;}
 \end{equation}
-where $\bm{\Sigma}_{th}$ and $\bm{\Sigma}_{np}$ are the \emph{unit} solutions
-of two independent discrete Lyapunov equations
-\begin{align}
-  \bm{\Sigma}_{th} &= \bm{A}_{aug}\,\bm{\Sigma}_{th}\,\bm{A}_{aug}\T
-                    + \bm{b}_{th}\,\bm{b}_{th}\T, \\
-  \bm{\Sigma}_{np} &= \bm{A}_{aug}\,\bm{\Sigma}_{np}\,\bm{A}_{aug}\T
-                    + \bm{b}_{np}\,\bm{b}_{np}\T.
-\end{align}
-Both are solved offline (Cholesky-based \texttt{dlyapchol} with fallback to
-a fixed-point iteration, because $\bm{A}_{aug}$ has four eigenvalues
-marginally on the unit circle inherited from the integrator states of
-$\bm{F}_e$).
-
-\paragraph{Selector extraction.}
-From Section 2 we have
-$\delta p_{mr}[k] = \delta p_m[k] - \delta p_{md}[k]$. Substituting the
-LP recursion,
-\begin{equation}
-  \delta p_{mr}[k]
-  = (1-a_{pd})\,\bigl(\delta p_m[k] - \delta p_{md}[k{-}1]\bigr)
-  = (1-a_{pd})\,\bigl(\bm{c}_s\T\bm{z}[k] + n_p[k]\bigr),
-\end{equation}
-where the selector vector $\bm{c}_s\in\mathbb{R}^{11}$ has entries
-$\bm{c}_s(3) = +1$, $\bm{c}_s(11) = -1$, and zero elsewhere. Taking the
-variance (using that $n_p[k]$ is independent of $\bm{z}[k]$),
-\begin{equation}
-  \sigma^{2}_{\delta p_{mr}}[k]
-  = (1-a_{pd})^{2}\,\Bigl[\,\bm{c}_s\T\bm{\Sigma}[k]\,\bm{c}_s
-                         \;+\;\sigma^{2}_{n_p}\,\Bigr].
-\end{equation}
-Substituting the decomposition of $\bm{\Sigma}[k]$ and matching the target
-form $\sigma^{2}_{\delta p_{mr}} = C_{\mathrm{dpmr}}\cdot 4\kB T\,a + C_{n}\,\sigma^{2}_{n_p}$:
-\begin{gather}
-  \boxed{\;C_{\mathrm{dpmr}}
-    = (1-a_{pd})^{2}\,\bm{c}_s\T\bm{\Sigma}_{th}\,\bm{c}_s\;} \\[4pt]
-  \boxed{\;C_{n}
-    = (1-a_{pd})^{2}\,\bigl[\,\bm{c}_s\T\bm{\Sigma}_{np}\,\bm{c}_s + 1\,\bigr]\;}
-\end{gather}
-The extra $+1$ in $C_n$ accounts for the direct contribution of $n_p[k]$
-to $\delta p_{mr}[k]$ that does not pass through the augmented state.
-
-\paragraph{Numerical reference.}
-Evaluating at $\lambda_c = 0.7$, $a_{pd} = 0.05$, and the $Q_z, R_z$
-scalings of Section 4, the numerical solver returns
-\begin{equation}
-  C_{\mathrm{dpmr}} \;=\; 3.9242,
-  \qquad
-  C_{n} \;=\; 1.1141.
-\end{equation}
-For comparison, a simplified $K{=}2$ closed form that neglects the EKF
-error cross-couplings and the IIR LP state yields
-$C_{\mathrm{dpmr}}^{(K=2)} = 3.1610$, underestimating by $24\%$.
+$\beta(\lc, a_{prd})$ is precomputed offline as a 2-D lookup table; runtime cost zero.
 
 \end{document}
