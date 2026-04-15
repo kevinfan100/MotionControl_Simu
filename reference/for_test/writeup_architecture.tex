@@ -66,7 +66,7 @@ a_{xm}[k] \;=\; \dfrac{\sigma^{2}_{\delta x_{mr}}[k] - C_{n}\,\sigma^{2}_n}
 \begin{bmatrix}
   0 & 1 & 0 & 0 & 0 & 0 & 0 \\
   0 & 0 & 1 & 0 & 0 & 0 & 0 \\
-  0 & 0 & 1 & -1 & 0 & -f_0 & 0 \\
+  0 & 0 & 1 & -1 & 0 & -f_{dx}[k] & 0 \\
   0 & 0 & 0 & 1 & 1 & 0 & 0 \\
   0 & 0 & 0 & 0 & 1 & 0 & 0 \\
   0 & 0 & 0 & 0 & 0 & 1 & 1 \\
@@ -85,6 +85,34 @@ a_{xm}[k] \;=\; \dfrac{\sigma^{2}_{\delta x_{mr}}[k] - C_{n}\,\sigma^{2}_n}
   + \bm{F}_{e}\,\bm{L}_{ss}\bigl(\bm{y}[k] - \bm{H}\,\hat{\bm{x}}[k\,|\,k\!-\!1]\bigr)
 \end{align}
 
+\paragraph{Z-axis chart extension ($\beta$-coupling).}
+For the z axis (wall normal, where $a_z(h)$ is most time-varying), the
+disturbance and motion-gain state pairs use a modified transition
+matrix $\bm{F}_{e,z}$ with a predictor parameter $\beta \in [0, 1)$:
+\begin{equation}
+\bm{F}_{e,z} \;=\;
+\begin{bmatrix}
+  0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+  0 & 0 & 1 & 0 & 0 & 0 & 0 \\
+  0 & 0 & 1 & -1 & 0 & -f_{dz}[k] & 0 \\
+  0 & 0 & 0 & 1{+}\beta & -\beta & 0 & 0 \\
+  0 & 0 & 0 & 1 & 0 & 0 & 0 \\
+  0 & 0 & 0 & 0 & 0 & 1{+}\beta & -\beta \\
+  0 & 0 & 0 & 0 & 0 & 1 & 0
+\end{bmatrix}
+\end{equation}
+
+\noindent In $\bm{F}_{e,z}$, $\delta x_D$ and $\delta a_x$ are reinterpreted
+as the \emph{previous-step values} of $x_D$ and $a_x$ (not their rates), so
+each state pair follows a second-order autoregressive process
+\[
+  x[k\!+\!1] \;=\; (1{+}\beta)\,x[k] \,-\, \beta\,x[k{-}1],
+\]
+with eigenvalues $\{1,\,\beta\}$. At $\beta = 0$ this collapses to the x/y
+random-walk form above; at $\beta > 0$ it provides mild prediction to
+track the time-varying $a_z(h(t))$ near the wall. In this work,
+$\beta = 0.5$ is used for the z axis only; x/y retain $\bm{F}_e$.
+
 % =====================================================================
 \section{Simulation Setup}
 % =====================================================================
@@ -94,7 +122,7 @@ h_{\mathrm{init}} &\in \{50,\ 2.5\}\ \mu\mathrm{m},
   \qquad \sigma^{2}_n = 0 \\[2pt]
 \lc &= 0.7,
   \qquad a_{pd} = a_{prd} = a_{cov} = 0.05,
-  \qquad f_0 = 0 \\[4pt]
+  \qquad \beta = 0.5 \ \text{(z axis)} \\[4pt]
 \hat{a}[0] &= \Bigl[\;
   \tfrac{a_{\mathrm{nom}}}{c_{\parallel}(h_{\mathrm{init}}/R)},\;
   \tfrac{a_{\mathrm{nom}}}{c_{\parallel}(h_{\mathrm{init}}/R)},\;
@@ -129,6 +157,18 @@ h = 2.5\ \mu\mathrm{m}:\ &\quad c_\perp \approx 10.4,
 \section{Closed-Loop Steady-State Variance: $C_{\mathrm{dpmr}}$ and $C_{n}$}
 % =====================================================================
 
+\emph{Scope note.} This section derives $C_{\mathrm{dpmr}}$ and $C_n$
+using two linearization simplifications: (i)~the $f_{dx}[k]$ sensitivity
+entry $\bm{F}_e(3,6) = -f_{dx}[k]$ is treated as a small zero-mean
+contribution and dropped, equivalent to setting $f_{dx} \!\to\! 0$ in the
+Riccati solve; and (ii)~the x/y-axis $\bm{F}_e$ is used, omitting the
+z-axis $\beta$-coupling of Section~3. Both simplifications are accurate
+at the free-space operating point ($h \!\gg\! R$, $c_\perp \!\approx\! 1$),
+where empirical variance matches the derived $C_{\mathrm{dpmr}}$ within
+$\pm 2\%$ (Task P2 report). At extreme near-wall ($h \!\lesssim\! 3\,\mu\text{m}$),
+the empirical variance shows a $\sim\!15\%$ excess attributable to these
+dropped terms.
+
 \subsection*{5.1\quad Augmented state}
 
 \[
@@ -145,7 +185,7 @@ h = 2.5\ \mu\mathrm{m}:\ &\quad c_\perp \approx 10.4,
 
 \subsection*{5.2\quad Closed-loop recursion for $\delta x_3$}
 
-Plant $+$ Section 1 control law (fluctuation frame, $x_D\!=\!0$, $f_0\!=\!0$, $\hat{a}_x \!\approx\! a_x$):
+Plant $+$ Section 1 control law (fluctuation frame, $x_D\!=\!0$, $\hat{a}_x \!\approx\! a_x$; $f_{dx}$ sensitivity dropped per §5 scope note):
 
 \begin{equation}
 \delta x_3[k\!+\!1] \;=\; \lc\,\delta x_3[k]
@@ -301,15 +341,19 @@ At $\lc = 0.7$, $a_{prd} = 0.05$:
 \text{bias amplification} &\;=\; \frac{1 - \beta}{1 - \beta_{\mathrm{white}}} \;\approx\; 3.6\times
 \end{align*}
 
-\subsection*{6.6\quad Bias-corrected }
+\subsection*{6.6\quad Bias-corrected estimator}
 
 Section 2's estimator output satisfies
-$\mathrm{E}\!\bigl[\,\sigma^{2}_{\delta x_{mr}}\,\bigr] = \beta\cdot\mathrm{Var}(\delta x_{mr})$.
-To recover unbiased $a_x$, replace $C_{\mathrm{dpmr}}$ by $\beta\!\cdot\!C_{\mathrm{dpmr}}$
-in Section 2's boxed $a_{xm}$ formula:
+\[
+\mathrm{E}\!\bigl[\,\sigma^{2}_{\delta x_{mr}}\,\bigr]
+  \;=\; \beta\cdot\mathrm{Var}(\delta x_{mr})
+  \;=\; \beta\,\bigl(C_{\mathrm{dpmr}}\cdot 4\kB T\,a_x + C_{n}\,\sigma^{2}_n\bigr).
+\]
+Inverting for $a_x$: first unbias $\sigma^{2}_{\delta x_{mr}}$ by $\beta$,
+then apply Section 2's boxed formula:
 \begin{equation}
-\boxed{\;a_{xm}[k] \;=\; \frac{\sigma^{2}_{\delta x_{mr}}[k] - C_{n}\,\sigma^{2}_n}
-                                   {\beta\cdot C_{\mathrm{dpmr}}\cdot 4\kB T}\;}
+\boxed{\;a_{xm}[k] \;=\; \frac{\sigma^{2}_{\delta x_{mr}}[k]/\beta \,-\, C_{n}\,\sigma^{2}_n}
+                                   {C_{\mathrm{dpmr}}\cdot 4\kB T}\;}
 \end{equation}
 $\beta(\lc, a_{prd})$ is precomputed offline as a 2-D lookup table; runtime cost zero.
 
