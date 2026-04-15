@@ -76,8 +76,8 @@ function config = user_config()
     config.epsilon = 0.01;          % Anisotropy threshold for theta measurement
 
     % 7-state EKF specific parameters
-    config.beta = 0.5;                  % Disturbance/gain coupling parameter
-    config.lamdaF = 1.0;                % EKF forgetting factor
+    config.beta = 0;                    % z-axis chart-extension coupling (0 = x/y Jordan-block form canonical; 0.5 = experimental predictor, off by default)
+    config.lamdaF = 1.0;                % EKF forgetting factor (1.0 = no forgetting, standard KF)
     config.Pf_init_diag = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];  % 7x1
     config.Qz_diag_scaling = [0; 0; 1e4; 1e-1; 0; 1e-4; 0];           % 7x1 (tuned near-wall)
     config.Rz_diag_scaling = [1e-2; 1e0];                              % 2x1

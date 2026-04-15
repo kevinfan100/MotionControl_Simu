@@ -51,21 +51,35 @@ theoretical"); we interpret as ≤~10% NRMSE where possible.
 
 **✓ PASS** within ±2% (below chi-squared estimator noise).
 
-### 3.2 Near-wall static — P2 near-wall (new)
+### 3.2 Near-wall static — P2 near-wall (canonical config, β=0)
 
 - Source: `verify_p2_static_h25.m` → `p2_static_h25.mat`
-- Config: `h_init = 2.5 µm`, `lc = 0.7`, `amplitude = 0`, `T_sim = 30 s`, `wall_effect = on`, `thermal = on`, `noise = off`
+- Config: `h_init = 2.5 µm`, `lc = 0.7`, `amplitude = 0`, `T_sim = 30 s`, `wall_effect = on`, `thermal = on`, `noise = off`, **`β = 0`** (canonical; user confirmed z-axis β-coupling was experimental, now disabled)
 - `h_bar = 1.111`, `c_∥ = 2.311`, `c_⊥ = 10.438`
 - Theoretical: 20.68 nm (x/y), 9.73 nm (z)
 
 | Axis | mean [nm] | emp std [nm] | theory [nm] | **ratio** |
 |---|---:|---:|---:|---:|
-| x | −0.08 | 23.33 | 20.68 | **1.128** |
-| y | +0.08 | 23.62 | 20.68 | **1.142** |
-| z | −0.00 | 11.36 |  9.73 | **1.167** |
+| x | +0.04 | 23.34 | 20.68 | **1.129** |
+| y | +0.04 | 23.74 | 20.68 | **1.148** |
+| z | +0.04 | 11.00 |  9.73 | **1.130** |
 
-**P1 ✓** (mean essentially 0)
-**P2 ⚠ PARTIAL** (~13-17% excess on all three axes, consistent)
+**P1 ✓** (mean essentially 0, ±0.04 nm)
+**P2 ⚠ PARTIAL** (~13-15% excess, **near-uniform across all three axes** — this uniformity is the key new finding)
+
+**Earlier run with `β = 0.5` (experimental z-axis chart extension, removed from canonical)**:
+
+| Axis | ratio at β=0.5 | ratio at β=0 | Δratio |
+|---|---:|---:|---:|
+| x | 1.128 | 1.129 | ~0 |
+| y | 1.142 | 1.148 | ~0 |
+| z | **1.167** | **1.130** | **−0.037** |
+
+Removing `β` improved z by 3.7 pp but did NOT explain the bulk of the
+near-wall excess. The remaining ~13% is near-uniform on all axes and likely
+stems from the `f_{dx}` sensitivity drop (Section 5 scope-note simplification
+(i)) — this simplification applies equally to all axes via `L_ss`, producing
+a symmetric excess, which matches what we see.
 
 ### 3.3 Dynamic near-wall h-binning — P2 & P3 dynamic
 
@@ -93,44 +107,60 @@ x/y-axis ratios across all bins: ~1.10 flat (minimal wall effect on tangential a
 
 **P4 ✓**
 
-## 4. Error decomposition at h = 2.5 µm
+## 4. Error decomposition at h = 2.5 µm (β=0 canonical)
 
-Combining results from 3.2 (static) and 3.3 (dynamic):
+Combining results from 3.2 (static, β=0) and 3.3 (dynamic, legacy β=0.5 data):
 ```
-empirical_dynamic² = thermal_floor² + static_residual² + dynamic_residual²
-14.29² nm²        = 9.73² + 5.86²              + 8.7²
-204               = 95    + 34                 + 76        ✓
+empirical_dynamic² ≈ thermal_floor² + static_residual² + dynamic_residual²
+14.29² nm²        ≈ 9.73²          + 5.13²            + 8.7²
+204               ≈  95             + 26                + 76        ✓
 ```
 
 | Component | std [nm] | Contribution |
 |---|---:|---|
 | Thermal floor (Section 5 Lyapunov) | 9.73 | 68% of variance, physics-limited, cannot reduce |
-| **Static architectural residual** | **5.86** | 17% of variance, **new finding** (see §5) |
-| Dynamic lag residual (1 Hz) | 8.70 | 15% of variance, Task 1d A2 identified |
+| **Static architectural residual** (β=0) | **5.13** | 13% of variance, likely from `f_dx` drop simplification |
+| Dynamic lag residual (1 Hz) | ~8.7 | ~19% of variance, Task 1d A2 identified |
 
-## 5. Open question: the ~15% static near-wall excess
+**Note**: dynamic case still uses legacy `task1d_paper_benchmark_mc.mat` data
+generated under `β = 0.5`. Re-running dynamic sweep with `β = 0` is a
+candidate future task, but the β contribution to dynamic is expected to
+be similarly small (~0.4 nm) as in static.
 
-All three axes show similar ~13-17% excess in static h=2.5 simulation. If it
-were purely a wall-effect modeling error, we'd expect z-axis to dominate
-(since `c_⊥ = 10.4` vs `c_∥ = 2.3`). The near-uniform excess across axes
-suggests a **system-level** issue, not a wall-tangent-vs-normal asymmetry.
+## 5. Open question: the ~13% static near-wall excess (β=0)
 
-Candidate causes:
-1. **L_ss operating-point mismatch**: EKF steady-state gain `L_ss` is
-   precomputed with `a_x = a_nom` (free-space Q scaling). At near-wall
-   where `a_x ≈ a_nom/10`, the Q/R ratio is 10× higher than it "should"
-   be → sub-optimal L_ss → effective `C_dpmr` bigger than Section 5
-   prediction.
-2. **Section 5 simplification #6 breakdown**: The augmented Lyapunov
-   assumes `a_x` is a constant scaling factor. Section 5's `C_dpmr =
-   3.9242` is computed under that assumption. At near-wall the assumption
-   is literally satisfied (static h), but the 7-state EKF is tuned for
-   the opposite operating point.
-3. **Slower EKF convergence at near-wall**: smaller `a_x` means slower
-   dynamics; the 10-s warmup may not be sufficient. (Unlikely but worth
-   testing by extending warmup.)
+**Near-uniform across all three axes** (x: 1.129, y: 1.148, z: 1.130):
+a key finding that **rules out wall-effect asymmetry as the cause**. If the
+excess were purely a `c_⊥`-related modeling error, z-axis would dominate
+(since `c_⊥ = 10.4 ≫ c_∥ = 2.3`). The near-uniformity instead points to
+a system-level simplification that affects all axes equally.
 
-No debug pursued in this task — flagged for follow-up.
+Candidate causes (in order of likelihood):
+1. **`f_{dx}` sensitivity drop** (Section 5 scope-note simplification):
+   Section 5 analyzes the Lyapunov with `F_e(3,6) = 0` instead of the
+   real `-f_{dx}[k]` (time-varying). At near-wall, `a_x` is small so
+   `f_{dx}` is not proportionally smaller (controller still needs to
+   compensate thermal kicks), and the `f_{dx}/a` ratio that enters the
+   sensitivity term is larger. **This effect applies equally to all
+   three axes via their respective `f_{dx/y/z}[k]`** — consistent with
+   the observed uniform ~13% excess.
+2. **`L_ss` operating-point mismatch**: EKF `L_ss` is precomputed with
+   `a_x = a_nom` (free-space Q scaling). At near-wall, sub-optimal
+   `L_ss` → effective `C_dpmr` bigger than Section 5 prediction. Also
+   axis-uniform if all axes use the same Q, R tuning.
+3. **Section 5 simplification #6 breakdown** (`a_x` treated as constant
+   in Lyapunov): static h=2.5 literally satisfies constant-a assumption,
+   so this should NOT contribute in the static case — can be ruled out.
+4. **Slower EKF convergence at near-wall**: smaller `a_x` → slower
+   dynamics; 10-s warmup may not fully settle. Testable by extending
+   warmup to 30 s.
+
+**Earlier erroneous hypothesis (now ruled out)**: z-axis β-coupling was a
+candidate when β=0.5 gave ratio 1.167; removing β only dropped z ratio by
+3.7 pp to 1.130, leaving the bulk of the excess intact and symmetric across
+axes. **β is NOT the dominant cause.**
+
+No debug of the remaining ~13% pursued yet — flagged for follow-up.
 
 ## 6. P1–P4 final status
 

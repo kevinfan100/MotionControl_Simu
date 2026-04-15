@@ -85,33 +85,8 @@ a_{xm}[k] \;=\; \dfrac{\sigma^{2}_{\delta x_{mr}}[k] - C_{n}\,\sigma^{2}_n}
   + \bm{F}_{e}\,\bm{L}_{ss}\bigl(\bm{y}[k] - \bm{H}\,\hat{\bm{x}}[k\,|\,k\!-\!1]\bigr)
 \end{align}
 
-\paragraph{Z-axis chart extension ($\beta$-coupling).}
-For the z axis (wall normal, where $a_z(h)$ is most time-varying), the
-disturbance and motion-gain state pairs use a modified transition
-matrix $\bm{F}_{e,z}$ with a predictor parameter $\beta \in [0, 1)$:
-\begin{equation}
-\bm{F}_{e,z} \;=\;
-\begin{bmatrix}
-  0 & 1 & 0 & 0 & 0 & 0 & 0 \\
-  0 & 0 & 1 & 0 & 0 & 0 & 0 \\
-  0 & 0 & 1 & -1 & 0 & -f_{dz}[k] & 0 \\
-  0 & 0 & 0 & 1{+}\beta & -\beta & 0 & 0 \\
-  0 & 0 & 0 & 1 & 0 & 0 & 0 \\
-  0 & 0 & 0 & 0 & 0 & 1{+}\beta & -\beta \\
-  0 & 0 & 0 & 0 & 0 & 1 & 0
-\end{bmatrix}
-\end{equation}
-
-\noindent In $\bm{F}_{e,z}$, $\delta x_D$ and $\delta a_x$ are reinterpreted
-as the \emph{previous-step values} of $x_D$ and $a_x$ (not their rates), so
-each state pair follows a second-order autoregressive process
-\[
-  x[k\!+\!1] \;=\; (1{+}\beta)\,x[k] \,-\, \beta\,x[k{-}1],
-\]
-with eigenvalues $\{1,\,\beta\}$. At $\beta = 0$ this collapses to the x/y
-random-walk form above; at $\beta > 0$ it provides mild prediction to
-track the time-varying $a_z(h(t))$ near the wall. In this work,
-$\beta = 0.5$ is used for the z axis only; x/y retain $\bm{F}_e$.
+All three axes use the same $\bm{F}_e$ above (random-walk Jordan blocks
+for the disturbance and motion-gain state pairs).
 
 % =====================================================================
 \section{Simulation Setup}
@@ -121,8 +96,7 @@ $\beta = 0.5$ is used for the z axis only; x/y retain $\bm{F}_e$.
 h_{\mathrm{init}} &\in \{50,\ 2.5\}\ \mu\mathrm{m},
   \qquad \sigma^{2}_n = 0 \\[2pt]
 \lc &= 0.7,
-  \qquad a_{pd} = a_{prd} = a_{cov} = 0.05,
-  \qquad \beta = 0.5 \ \text{(z axis)} \\[4pt]
+  \qquad a_{pd} = a_{prd} = a_{cov} = 0.05 \\[4pt]
 \hat{a}[0] &= \Bigl[\;
   \tfrac{a_{\mathrm{nom}}}{c_{\parallel}(h_{\mathrm{init}}/R)},\;
   \tfrac{a_{\mathrm{nom}}}{c_{\parallel}(h_{\mathrm{init}}/R)},\;
@@ -158,16 +132,13 @@ h = 2.5\ \mu\mathrm{m}:\ &\quad c_\perp \approx 10.4,
 % =====================================================================
 
 \emph{Scope note.} This section derives $C_{\mathrm{dpmr}}$ and $C_n$
-using two linearization simplifications: (i)~the $f_{dx}[k]$ sensitivity
+using one linearization simplification: the $f_{dx}[k]$ sensitivity
 entry $\bm{F}_e(3,6) = -f_{dx}[k]$ is treated as a small zero-mean
-contribution and dropped, equivalent to setting $f_{dx} \!\to\! 0$ in the
-Riccati solve; and (ii)~the x/y-axis $\bm{F}_e$ is used, omitting the
-z-axis $\beta$-coupling of Section~3. Both simplifications are accurate
-at the free-space operating point ($h \!\gg\! R$, $c_\perp \!\approx\! 1$),
-where empirical variance matches the derived $C_{\mathrm{dpmr}}$ within
-$\pm 2\%$ (Task P2 report). At extreme near-wall ($h \!\lesssim\! 3\,\mu\text{m}$),
-the empirical variance shows a $\sim\!15\%$ excess attributable to these
-dropped terms.
+contribution and dropped, equivalent to setting $f_{dx} \!\to\! 0$ in
+the Riccati solve. This is accurate at the free-space operating point
+($h \!\gg\! R$, $c_\perp \!\approx\! 1$), where empirical variance
+matches the derived $C_{\mathrm{dpmr}}$ within $\pm 2\%$ (Task P2 report).
+The behavior at extreme near-wall is quantified in the same report.
 
 \subsection*{5.1\quad Augmented state}
 

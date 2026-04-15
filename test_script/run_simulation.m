@@ -55,7 +55,7 @@ config.epsilon = 0.01;              % Anisotropy threshold for theta_m
 config.Qz_diag_scaling = [0; 0; 1e4; 1e-1; 0; 1e-4; 0];
 config.Rz_diag_scaling = [1e-2; 1e0];
 config.Pf_init_diag    = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];
-config.beta   = 0.5;                % z-axis disturbance/gain coupling
+config.beta   = 0;                  % z-axis chart extension (0 = canonical x/y-style; 0.5 = experimental)
 config.lamdaF = 1.0;                % Forgetting factor (1.0 = no forgetting)
 
 % --- Measurement Noise ---
