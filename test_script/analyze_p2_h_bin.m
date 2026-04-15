@@ -40,14 +40,37 @@ h_raw   = d.h_k(:)';
 a_true  = d.a_true_traj(:)';
 N_raw   = numel(t_raw);
 
-% ---- Convention A: dxm[k] = p_d[k-2] - p_m[k] ----
-% Drop first 2 samples to align, then also skip transient (before ss_start)
-dxm       = p_d_raw(:, 1:end-2) - p_m_raw(:, 3:end);   % 3 x (N-2)
+% ---- Convention A: del_pm[k] = p_d[k-2] - p_m[k] (raw) ----
+% NOTE: Section 5 predicts Var(del_pmr), not Var(del_pm). Reapply the
+% controller's IIR offline to get del_pmr before binning. Using del_pm
+% directly overestimates by ~27% in variance (=13% in std) due to strong
+% closed-loop autocorrelation being absorbed by the LP del_pmd.
+N_raw2     = size(p_d_raw, 2);
+del_pm_raw = zeros(3, N_raw2);
+for k = 3:N_raw2
+    del_pm_raw(:, k) = p_d_raw(:, k-2) - p_m_raw(:, k);
+end
+
+% Offline IIR (same constants as controller)
+a_pd  = 0.05;
+a_prd = 0.05;
+a_cov = 0.05;
+del_pmd_raw  = zeros(3, N_raw2);
+del_pmr_raw  = zeros(3, N_raw2);
+del_pmrd_raw = zeros(3, N_raw2);
+for k = 2:N_raw2
+    del_pmd_raw(:,k)  = (1-a_pd)*del_pmd_raw(:,k-1) + a_pd*del_pm_raw(:,k);
+    del_pmr_raw(:,k)  = del_pm_raw(:,k) - del_pmd_raw(:,k);
+    del_pmrd_raw(:,k) = (1-a_prd)*del_pmrd_raw(:,k-1) + a_prd*del_pmr_raw(:,k);
+end
+
+% Drop first 2 samples to align with Convention A (sensor delay)
+dxm       = del_pmr_raw(:, 3:end);      % <-- NOW THE IIR HP RESIDUAL, not raw
 t_dxm     = t_raw(3:end);
 h_dxm     = h_raw(3:end);
 a_true_z  = a_true(3:end);
 
-ss_start_idx = max(d.ss(1) - 2, 1);     % shift by 2 because of the drop
+ss_start_idx = max(d.ss(1) - 2, 1);
 ss_idx = ss_start_idx:size(dxm, 2);
 
 dxm_ss      = dxm(:, ss_idx);

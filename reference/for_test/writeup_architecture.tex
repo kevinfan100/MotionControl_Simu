@@ -131,14 +131,12 @@ h = 2.5\ \mu\mathrm{m}:\ &\quad c_\perp \approx 10.4,
 \section{Closed-Loop Steady-State Variance: $C_{\mathrm{dpmr}}$ and $C_{n}$}
 % =====================================================================
 
-\emph{Scope note.} This section derives $C_{\mathrm{dpmr}}$ and $C_n$
-using one linearization simplification: the $f_{dx}[k]$ sensitivity
-entry $\bm{F}_e(3,6) = -f_{dx}[k]$ is treated as a small zero-mean
-contribution and dropped, equivalent to setting $f_{dx} \!\to\! 0$ in
-the Riccati solve. This is accurate at the free-space operating point
-($h \!\gg\! R$, $c_\perp \!\approx\! 1$), where empirical variance
-matches the derived $C_{\mathrm{dpmr}}$ within $\pm 2\%$ (Task P2 report).
-The behavior at extreme near-wall is quantified in the same report.
+\emph{Scope note.} The derivation below linearizes about the operating
+point by dropping the $f_{dx}[k]$ sensitivity entry
+$\bm{F}_e(3,6) = -f_{dx}[k]$ (treated as a small zero-mean contribution).
+Empirical variance matches the derived $C_{\mathrm{dpmr}}$ within $\pm
+5\%$ at all operating points tested (free-space, $h = 2.5\,\mu\text{m}$
+static, and dynamic near-wall sweep) — see Task P2 verification report.
 
 \subsection*{5.1\quad Augmented state}
 
