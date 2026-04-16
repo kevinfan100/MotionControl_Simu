@@ -95,8 +95,8 @@ function ctrl = calc_ctrl_params(config, constants)
             lc_clamped = max(min(ctrl.lambda_c, LUT.lc_grid(end)), LUT.lc_grid(1));
             % Use first rho column (lookup is effectively 1-D over lc since
             % Q_kf/R_kf are fixed design parameters; rho dimension is redundant)
-            ctrl.C_dpmr_eff = interp1(LUT.lc_grid, LUT.Cdpmr_tab(:, 1), lc_clamped, 'linear');
-            ctrl.C_np_eff   = interp1(LUT.lc_grid, LUT.Cnp_tab(:, 1),   lc_clamped, 'linear');
+            ctrl.C_dpmr_eff = interp1(LUT.lc_grid, LUT.Cdpmr_tab(:, end), lc_clamped, 'linear');
+            ctrl.C_np_eff   = interp1(LUT.lc_grid, LUT.Cnp_tab(:, end),   lc_clamped, 'linear');
             if abs(config.a_pd - LUT.a_pd) > 1e-6
                 warning('calc_ctrl_params:apd_mismatch', ...
                     'config.a_pd=%.4f but lookup built at a_pd=%.4f', ...

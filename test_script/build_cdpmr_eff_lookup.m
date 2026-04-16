@@ -1,12 +1,16 @@
 %% build_cdpmr_eff_lookup.m — Build 2-D lookup table for C_dpmr_eff and C_np_eff
 %
-% Sweeps (lc, f_0) grid at fixed a_pd = 0.05, computes C_dpmr_eff and C_np_eff
-% via augmented Lyapunov for 7-state EKF.
+% Sweeps (lc, a/a_nom) grid at fixed a_pd = 0.05, computes C_dpmr_eff and
+% C_np_eff via augmented Lyapunov for 7-state EKF.
 %
-% f_0 is the linearization point for Fe(3,6) = -f_dx[k], i.e., the control
-% force magnitude. At f_0 = 0, lookup matches original Phase 1 (free-space).
-% At f_0 > 0, lookup captures how closed-loop dynamics change with |f_d|,
-% addressing the ~8% persistent bias observed in Phase 2.
+% a/a_nom (= 1/c(h_bar)) is the wall-proximity indicator: 1.0 in free space,
+% ~0.1 near wall (z-axis). At each grid point, Q and R are set self-consistently:
+%   Q(3,3) = 4*k_B*T*a = sigma2_dXT * aratio     (thermal process noise)
+%   R(1,1) = sigma2_n                              (sensor noise, fixed)
+%   R(2,2) = chi_sq_R * aratio^2 * sigma2_dXT      (a_m estimator variance)
+%
+% This ensures the DARE solution matches the physical noise levels at each
+% wall proximity, and C_dpmr_eff adapts consistently.
 %
 % Output: test_results/verify/cdpmr_eff_lookup.mat
 %         reference/for_test/fig_cdpmr_eff_lookup.png
@@ -19,41 +23,55 @@ addpath(script_dir);
 addpath(fullfile(project_root, 'model'));
 addpath(fullfile(project_root, 'model', 'config'));
 
-fprintf('===== build_cdpmr_eff_lookup (2-D lc x f_0) =====\n\n');
+fprintf('===== build_cdpmr_eff_lookup (2-D lc x a/a_nom) =====\n\n');
 
 %% Grid definition
-lc_grid = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9];        % 6 values
-f0_grid = [0, 0.5, 1, 2, 5, 10, 20];              % 7 values [pN]
+lc_grid = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9];                   % 6 values
+aratio_grid = [0.03, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 1.0];   % 8 values (a/a_nom)
 a_pd = 0.05;
 
-% rho for compute_7state_cdpmr_eff is a cosmetic parameter (not used in
-% the computation, stored only in diagnostics). Use any value.
+% Physical constants for self-consistent Q/R
+phys = physical_constants();
+a_nom = phys.Ts / phys.gamma_N;
+sigma2_dXT = 4 * phys.k_B * phys.T * a_nom;
+sigma2_n = 0.01^2;   % sensor noise variance [um^2], noise ON
+
+% chi-squared factor for R(2,2) = chi_sq_R * aratio^2 * sigma2_dXT
+% chi_sq_R = (2*a_cov/(2-a_cov)) * autocorr_amp * a_nom / (4*k_B*T)
+a_cov = 0.05;
+white_chi_sq = 2 * a_cov / (2 - a_cov);   % = 0.0513
+autocorr_amp = 4.0;                         % from Task 1d Layer 2
+chi_sq_R = white_chi_sq * autocorr_amp * a_nom / (4 * phys.k_B * phys.T);
+% chi_sq_R ≈ 0.176 — at aratio=1, R(2,2)_scaling = 0.176
+
 rho_dummy = 0.05;
 
-Q_kf_scale = [0; 0; 1e4; 1e-1; 0; 1e-4; 0];
-R_kf_scale = [1e-2; 1e0];
-
 n_lc = length(lc_grid);
-n_f0 = length(f0_grid);
-total = n_lc * n_f0;
+n_ar = length(aratio_grid);
+total = n_lc * n_ar;
 
-Cdpmr_tab = nan(n_lc, n_f0);
-Cnp_tab   = nan(n_lc, n_f0);
-max_eig_tab = nan(n_lc, n_f0);
-dare_iters_tab = nan(n_lc, n_f0);
-dare_err_tab = nan(n_lc, n_f0);
+Cdpmr_tab = nan(n_lc, n_ar);
+Cnp_tab   = nan(n_lc, n_ar);
+max_eig_tab = nan(n_lc, n_ar);
+dare_iters_tab = nan(n_lc, n_ar);
+dare_err_tab = nan(n_lc, n_ar);
 
 %% Loop
-fprintf('Grid: %d lc x %d f_0 = %d points\n', n_lc, n_f0, total);
-fprintf('a_pd = %.4f, Q_kf_scale = [%s], R_kf_scale = [%s]\n\n', ...
-        a_pd, sprintf('%.1e ', Q_kf_scale), sprintf('%.1e ', R_kf_scale));
+fprintf('Grid: %d lc x %d a/a_nom = %d points\n', n_lc, n_ar, total);
+fprintf('a_pd = %.4f, chi_sq_R = %.4f, sigma2_n = %.1e\n', a_pd, chi_sq_R, sigma2_n);
+fprintf('R(1,1)_scaling = %.4f (fixed)\n\n', sigma2_n / sigma2_dXT);
 
 t_start = tic;
 for i = 1:n_lc
-    for j = 1:n_f0
+    for j = 1:n_ar
         lc = lc_grid(i);
-        f0 = f0_grid(j);
-        opts = struct('f0', f0);
+        ar = aratio_grid(j);
+
+        % Self-consistent Q/R at this wall proximity
+        Q_kf_scale = [0; 0; ar; 0; 0; 0; 0];
+        R_kf_scale = [sigma2_n / sigma2_dXT; chi_sq_R * ar^2];
+
+        opts = struct('f0', 0);
         try
             [C_dpmr_eff, C_np_eff, L, A_aug, diag_out] = ...
                 compute_7state_cdpmr_eff(lc, rho_dummy, a_pd, ...
@@ -64,7 +82,7 @@ for i = 1:n_lc
             dare_iters_tab(i, j) = diag_out.dare_iters;
             dare_err_tab(i, j) = diag_out.dare_err;
         catch ME
-            fprintf('  ERROR at lc=%.2f f_0=%.2f: %s\n', lc, f0, ME.message);
+            fprintf('  ERROR at lc=%.2f ar=%.3f: %s\n', lc, ar, ME.message);
             Cdpmr_tab(i, j) = NaN;
             Cnp_tab(i, j)   = NaN;
         end
@@ -76,8 +94,8 @@ t_total = toc(t_start);
 fprintf('\nTotal time: %.1f sec\n', t_total);
 
 %% Summary
-fprintf('\nC_dpmr_eff table (rows = lc, cols = f_0 [pN]):\n');
-fprintf('      f_0: '); fprintf('%9.2f ', f0_grid); fprintf('\n');
+fprintf('\nC_dpmr_eff table (rows = lc, cols = a/a_nom):\n');
+fprintf('  a/a_nom: '); fprintf('%9.3f ', aratio_grid); fprintf('\n');
 for i = 1:n_lc
     fprintf('  lc=%.2f: ', lc_grid(i));
     fprintf('%9.4f ', Cdpmr_tab(i, :));
@@ -85,38 +103,38 @@ for i = 1:n_lc
 end
 
 fprintf('\nC_np_eff table:\n');
-fprintf('      f_0: '); fprintf('%9.2f ', f0_grid); fprintf('\n');
+fprintf('  a/a_nom: '); fprintf('%9.3f ', aratio_grid); fprintf('\n');
 for i = 1:n_lc
     fprintf('  lc=%.2f: ', lc_grid(i));
     fprintf('%9.4f ', Cnp_tab(i, :));
     fprintf('\n');
 end
 
-%% Reference point check (matches original Phase 1 at f_0 = 0)
-[~, f0_ref_idx] = min(abs(f0_grid - 0));   % f_0 = 0
+%% Reference point check (free-space: a/a_nom = 1)
+[~, ar_ref_idx] = min(abs(aratio_grid - 1.0));
 [~, lc_ref_idx] = min(abs(lc_grid - 0.7));
-fprintf('\nReference point (matches Phase 1 at f_0=0):\n');
-fprintf('  lc=%.2f f_0=%.2f  ->  C_dpmr_eff=%.4f, C_np_eff=%.4f\n', ...
-        lc_grid(lc_ref_idx), f0_grid(f0_ref_idx), ...
-        Cdpmr_tab(lc_ref_idx, f0_ref_idx), Cnp_tab(lc_ref_idx, f0_ref_idx));
-fprintf('  Phase 1 value (expected): 3.9242\n');
+fprintf('\nReference point (free-space, a/a_nom=1):\n');
+fprintf('  lc=%.2f ar=%.3f  ->  C_dpmr_eff=%.4f, C_np_eff=%.4f\n', ...
+        lc_grid(lc_ref_idx), aratio_grid(ar_ref_idx), ...
+        Cdpmr_tab(lc_ref_idx, ar_ref_idx), Cnp_tab(lc_ref_idx, ar_ref_idx));
 
-%% Monotonicity check: C_dpmr_eff should increase with |f_0|
-fprintf('\nMonotonicity check (lc=0.70 slice):\n');
+%% Monotonicity check: C_dpmr_eff should increase as a/a_nom decreases (near wall)
+fprintf('\nMonotonicity check (lc=0.70 slice, expect increasing as ar decreases):\n');
 slice_ref = Cdpmr_tab(lc_ref_idx, :);
-for j = 1:n_f0
-    fprintf('  f_0=%5.2f: C_dpmr_eff=%.4f', f0_grid(j), slice_ref(j));
+for j = 1:n_ar
+    fprintf('  ar=%5.3f: C_dpmr_eff=%.4f', aratio_grid(j), slice_ref(j));
     if j > 1
-        d = slice_ref(j) - slice_ref(1);
-        fprintf('   (delta vs f_0=0: %+.4f)', d);
+        d = slice_ref(j) - slice_ref(j-1);
+        fprintf('   (delta: %+.4f)', d);
     end
     fprintf('\n');
 end
-mono_ok = all(diff(slice_ref) >= -1e-3);  % allow tiny numerical noise
+% C_dpmr should DECREASE as ar increases (decreasing toward wall normal)
+mono_ok = all(diff(slice_ref) <= 1e-3);
 if mono_ok
-    fprintf('  MONOTONIC: PASS\n');
+    fprintf('  MONOTONIC (decreasing with ar): PASS\n');
 else
-    fprintf('  MONOTONIC: WARN — not strictly monotonic\n');
+    fprintf('  MONOTONIC: WARN — not strictly decreasing\n');
 end
 
 %% Sanity checks for lookup table
@@ -133,19 +151,19 @@ if ~exist(out_dir, 'dir'), mkdir(out_dir); end
 
 lookup = struct();
 lookup.lc_grid = lc_grid;
-lookup.f0_grid = f0_grid;
+lookup.aratio_grid = aratio_grid;
 lookup.a_pd = a_pd;
-lookup.Cdpmr_tab = Cdpmr_tab;    % [n_lc x n_f0]
-lookup.Cnp_tab = Cnp_tab;        % [n_lc x n_f0]
-lookup.Q_kf_scale = Q_kf_scale;
-lookup.R_kf_scale = R_kf_scale;
+lookup.chi_sq_R = chi_sq_R;
+lookup.sigma2_n = sigma2_n;
+lookup.Cdpmr_tab = Cdpmr_tab;    % [n_lc x n_ar]
+lookup.Cnp_tab = Cnp_tab;        % [n_lc x n_ar]
 lookup.max_eig_tab = max_eig_tab;
 lookup.dare_iters_tab = dare_iters_tab;
 lookup.dare_err_tab = dare_err_tab;
 lookup.build_timestamp = datestr(now, 'yyyy-mm-dd HH:MM:SS');
 lookup.note = ['2-D augmented Lyapunov lookup for 7-state EKF + IIR HP filter. ', ...
-               '(lc, f_0) grid. f_0 axis captures dependence on |f_d| via Fe(3,6). ', ...
-               'a_pd = 0.05 fixed.'];
+               '(lc, a/a_nom) grid with self-consistent Q/R at each point: ', ...
+               'Q(3,3)=4kBT*a, R(2,2)=chi_sq*a^2. Wall-effect-aware.'];
 
 save(fullfile(out_dir, 'cdpmr_eff_lookup.mat'), '-struct', 'lookup');
 fprintf('\nSaved: %s\n', fullfile(out_dir, 'cdpmr_eff_lookup.mat'));
@@ -157,34 +175,32 @@ if ~exist(fig_dir, 'dir'), mkdir(fig_dir); end
 fig = figure('Position', [100, 100, 1400, 600]);
 
 subplot(1, 2, 1);
-imagesc(f0_grid, lc_grid, Cdpmr_tab);
+imagesc(aratio_grid, lc_grid, Cdpmr_tab);
 set(gca, 'YDir', 'normal');
 colorbar;
-xlabel('f_0 [pN]');
-ylabel('lc');
-title('C_{dpmr,eff}(lc, f_0)');
+xlabel('a / a_{nom}');
+ylabel('\lambda_c');
 set(gca, 'FontSize', 14, 'LineWidth', 1.5);
 
 subplot(1, 2, 2);
-imagesc(f0_grid, lc_grid, Cnp_tab);
+imagesc(aratio_grid, lc_grid, Cnp_tab);
 set(gca, 'YDir', 'normal');
 colorbar;
-xlabel('f_0 [pN]');
-ylabel('lc');
-title('C_{np,eff}(lc, f_0)');
+xlabel('a / a_{nom}');
+ylabel('\lambda_c');
 set(gca, 'FontSize', 14, 'LineWidth', 1.5);
 
 saveas(fig, fullfile(fig_dir, 'fig_cdpmr_eff_lookup.png'));
 fprintf('Figure saved: fig_cdpmr_eff_lookup.png\n');
 
-%% Gate: reference point within expected band (matches Phase 1)
-ref_val = Cdpmr_tab(lc_ref_idx, f0_ref_idx);
-if ref_val >= 3.90 && ref_val <= 3.95
-    fprintf('\nGATE G1 (reference match): PASS (C_dpmr_eff[0.7, 0] = %.4f in [3.90, 3.95])\n', ref_val);
+%% Gate: free-space reference
+ref_val = Cdpmr_tab(lc_ref_idx, ar_ref_idx);
+if ref_val >= 3.95 && ref_val <= 4.10
+    fprintf('\nGATE G1 (free-space ref): PASS (C_dpmr_eff[0.7, 1.0] = %.4f in [3.95, 4.10])\n', ref_val);
 else
-    fprintf('\nGATE G1: FAIL (C_dpmr_eff[0.7, 0] = %.4f NOT in [3.90, 3.95])\n', ref_val);
+    fprintf('\nGATE G1: FAIL (C_dpmr_eff[0.7, 1.0] = %.4f NOT in [3.95, 4.10])\n', ref_val);
     error('build_cdpmr_eff_lookup:reference_fail', ...
-          'Reference point out of expected band');
+          'Free-space reference out of expected band');
 end
 
 if mono_ok
