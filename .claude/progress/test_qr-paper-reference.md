@@ -1,51 +1,68 @@
 # Q/R Theoretization — Progress Record
 
-## 2026-04-16 — Step (b) derivation + Step (a) simulation + Problem identification
+## 2026-04-16 (Session 2) — Q/R Coupled Stability Analysis
 
 ### Completed Parts
-- ✅ Step (b): Paper Q/R entry-by-entry theoretical derivation (9 entries, 8 derivable)
-- ✅ Step (a): Simulation with paper Q/R vs baseline (noise OFF + noise ON)
-- ✅ C_dpmr_eff sensitivity to Q(3,3) and Q(6,6) — confirmed numerically
-- ✅ Warmup drift quantification: z-axis 1σ=±21.8%, 3σ=±65% at h=2.5um
-- ✅ Seed variance verification: baseline config + seed 12345 = normal, paper Q/R + seed 12345 = +67% z bias
+- ✅ Step (b): Q/R entry-by-entry derivation (8/9 from physics)
+- ✅ Step (a): Paper Q/R simulation + seed instability discovery
 - ✅ 5 near-wall problem points identified and severity-ranked
-- ✅ Adaptive Q(3,3) = 4kBT·a_hat derivation (from paper Eq.21 + wall effect)
-- ✅ Self-consistent Q/R lookup verification: C_dpmr_eff(lc, a/a_nom) smooth, Q/R ratio increases near wall
-- ⏸️ Phase 2-5: Adaptive Q/R implementation (plan approved, not started)
+- ✅ Self-consistent C_dpmr_eff lookup rebuilt (lc x a/a_nom, 48 DARE points)
+- ✅ Warmup drift quantification: z 1sig=+-22%, x 1sig=+-11%
+- ✅ h=50um free-space verification: paper Q/R ALSO unstable (NOT wall-effect specific)
+- ✅ Q(6,6)-R(2,2) coupled stability mechanism identified and documented
+- ✅ Forgetting factor sweep (lf=0.99/0.98/0.95): lf=0.99 stabilizes z (spread 6pp) but not x
+- ⏸️ Adaptive Q(3,3)/C_dpmr_eff implementation attempted, blocked by Stateflow limitations
+- ⏸️ Combined Q(6,6)+R(2,2) coupled fix not yet tested
 
 ### File Changes
-**New Files:**
-- `reference/for_test/qr_theoretical_values.md` (440 lines)
-  Purpose: Entry-by-entry Q/R derivation from physics, comparison table
-- `reference/for_test/task_qr_reference_report.md` (124 lines)
-  Purpose: Step (a) simulation results, 3 configs comparison, key findings
-
 **Modified Files:**
-- `.claude/settings.local.json` (+4 lines) — settings change
-- `reference/for_test/fig_*.png` — lookup figures regenerated (restored to original)
-
-**Data Files (gitignored):**
-- `test_results/verify/paper_qr_paper_qr_noiseOFF.mat`
-- `test_results/verify/paper_qr_paper_qr_noiseON.mat`
+- `test_script/build_cdpmr_eff_lookup.m` (+94/-72 lines)
+  Changed: f0 axis -> aratio axis, self-consistent Q/R per grid point
+- `model/controller/calc_ctrl_params.m` (+2/-2 lines)
+  Changed: read last column (free-space) instead of first column
+- `reference/for_test/fig_cdpmr_eff_lookup.png` (regenerated for aratio lookup)
+- `reference/for_test/fig_bias_factor_lookup.png` (regenerated)
 
 ### Testing Status
-⏸️ Phase 1 verification complete, Phase 2-5 pending
-- Verified: C_dpmr_eff sensitivity, warmup drift physics, seed robustness ✅
-- Pending: adaptive Q/R implementation + multi-seed MC verification ⬜
+⏸️ Extensive testing completed, key findings documented
+- Tested: paper Q/R multi-seed (h=2.5, h=50) ✅
+- Tested: forgetting factor lf=0.99/0.98/0.95 ✅
+- Tested: adaptive Q(3,3) + C_dpmr_eff (Stateflow blocked) ✅
+- Pending: Q(6,6)+R(2,2) coupled sweep ⬜
+- Pending: lf=0.99 + R(2,2)=1.0 combined test ⬜
 
 ### Next Steps
-- [ ] Phase 2: Build new lookup (lc x a/a_nom) with self-consistent Q/R
-- [ ] Phase 3: Implement adaptive Q(3,3), R(2,2), C_dpmr_eff, warmup re-init
-- [ ] Phase 4: Multi-seed verification (5 seeds, h=2.5 + h=20)
-- [ ] Phase 5: Update documentation
+- [ ] Test lf=0.99 + R(2,2)=1.0 (coupled fix, config-only, no code change)
+- [ ] Resolve Stateflow compatibility for adaptive Q(3,3)/C_dpmr_eff
+- [ ] Update qr_theoretical_values.md with Q(6,6)-R(2,2) coupling analysis
+- [ ] Update task_qr_reference_report.md with all test results
+- [ ] Decide writeup narrative: physical derivation + coupled stability story
 
 ### Issues & Notes
-⚠️ **Critical finding**: Paper Q/R with fixed Q is seed-dependent (a_z: +9% to +67% across seeds)
-⚠️ **C_dpmr_eff dependency**: With paper R, Q(3,3)=0.096->1 causes 12.75% C_dpmr_eff change -> must co-adapt
-💡 **Key insight**: Self-consistent Q/R ratio INCREASES near wall (proportional to 1/a) -> EKF more responsive near wall -> physically correct
-💡 **Q(4,4)**: Set to 0 initially; add back empirically if needed after verification
+⚠️ **Critical finding**: Q(6,6)=0 is structurally fragile at ANY h (not wall-specific)
+- P(6,6) collapses in ~100 steps -> L(6,2)->0 -> a_hat permanently frozen
+- Combined with small R(2,2)=0.176 -> L(6,2) approx 1 during critical window -> a_hat slammed by noise
+
+⚠️ **Stateflow limitation**: if/else branches, evalin, load, local functions all fail compilation
+- Workaround: analytic C_dpmr approximation passed but overall still unstable
+
+💡 **Key insight**: Q(6,6) and R(2,2) are a COUPLED stability pair
+- Physical values (both small) -> fragile estimator
+- Code values (both inflated) -> robust but conservative
+- Forgetting factor lf<1 can replace Q(6,6) but NOT R(2,2)
+
+💡 **Writeup value**: physical Q/R derivation is correct but insufficient without stability mechanisms
+
+### Git Commit
+`c3214c2` - WIP(test/qr): Q/R coupled stability analysis + forgetting factor + free-space verification
+
+---
+
+## 2026-04-16 (Session 1) — Step (b) derivation + Step (a) simulation
 
 ### Git Commit
 `8a212eb` - WIP(test/qr): Q/R theoretical derivation + simulation verification + adaptive Q plan
+
+(See previous progress entry for details)
 
 ---
