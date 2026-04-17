@@ -833,11 +833,141 @@ ratio_x = 30.86/31.04 = 0.994; ratio_y = 31.46/31.04 = 1.014;
 ratio_z = 30.60/30.63 = 0.999 → all within ±2%. Section 5 C_dpmr_eff re-confirmed
 at free-space on fresh (non-legacy) data.
 
-## 3.3 Remaining Phase 3 items (pending)
+## 3.3 Multi-seed P2 static at h=2.5 (β=0)
 
-- **Multi-seed P2 static at h=2.5**: currently single-seed (ratio 1.009 / 1.027 / 1.007).
-  Run 5 seeds to get CI and confirm within ±5% band is not single-seed luck.
-- **Gain-meas-noise channel quantification**: flagged in Phase 1 §5.4. Not yet done.
+**Command**: `verify_p2_static_h25_mc.m` — 5 seeds × 30 s, lc=0.7, h_init=2.5,
+thermal ON, meas_noise OFF, β=0. Base seed 20260430.
+
+| Axis | Mean ratio | Std | 95% CI on mean | All seeds within ±5%? |
+|---|---:|---:|---:|---|
+| x | 1.0034 | 0.0047 | ±0.0041 | **yes (5/5)** |
+| y | 1.0158 | 0.0112 | ±0.0099 | **yes (5/5)** |
+| z | 1.0111 | 0.0121 | ±0.0106 | **yes (5/5)** |
+
+Per-seed ratios:
+
+| Seed | ratio_x | ratio_y | ratio_z |
+|---|---:|---:|---:|
+| 20260431 | 1.0048 | 1.0211 | 0.9939 |
+| 20260432 | 0.9960 | 1.0030 | 1.0122 |
+| 20260433 | 1.0066 | 1.0317 | 1.0176 |
+| 20260434 | 1.0017 | 1.0153 | 1.0259 |
+| 20260435 | 1.0076 | 1.0080 | 1.0061 |
+
+**Verdict**: all three axes PASS the ±5% gate at h=2.5 (near-wall) on a 5-seed
+sample. Mean ratios are within 1–2% of 1.0; std per seed ≈ 0.5–1.2% (consistent
+with chi-squared floor at 20 s of steady state data per seed, ~32000 samples).
+
+The earlier single-seed result (20260415: ratio 1.009 / 1.027 / 1.007) was
+well within the multi-seed distribution, not a lucky draw.
+
+`[PASS — P2 static at h=2.5 verified with CI]`
+
+## 3.4 Gain-meas-noise channel quantification (deferred)
+
+Phase 1 §5.4 flagged that Σ_n only captures the position-measurement-noise
+channel; the gain-measurement noise on a_xm enters error states via
+`-Fe·L(:,2)·v[2]` and is excluded. Quantifying its contribution to Var(δx_mr)
+requires a separate Lyapunov run with a `B_na` driver. Deferred as not
+blocking — σ_n experiments above show C_n = 1.1141 matches empirical within
+±6%, so any gain-channel contribution is within the chi-squared floor.
+
+`[DEFERRED]` Phase 3 item, not critical.
+
+---
+
+# Overall Summary — Phases 1 through 3
+
+## Scope
+Audit of the `a_xm` IIR-side formula chain (writeup_architecture.tex §5,
+§6, §6.6) — derivation correctness, code cross-check, simulation setup,
+and result stability. EKF back-end (Q/R tuning, Q(6,6), a_hat precision)
+explicitly excluded.
+
+## One real finding (documentation-only)
+
+**`[ISSUE writeup §5.3]`** — `b_n(err states)` should be `+Fe·L_ss(:,1)`, not
+`-Fe·L_ss(:,1)`. Code is internally consistent and numerically correct via
+the Lyapunov invariant (`b·b' = (−b)·(−b)'`) because code uses the opposite
+n-convention and flips BOTH the err block and the `pmd_prev` sign.
+
+- If writeup formula taken literally: C_n = 1.0417 (−6.5% off at lc=0.7)
+- Code value: C_n_eff = 1.1141 ✓
+- Empirical (4-point σ_n sweep, least-squares slope): 1.14–1.18 per axis
+- Writeup-literal would be 9–13% below empirical → clearly wrong
+- Code is 2.5–5.8% below empirical → within chi-squared floor
+
+**Runtime impact: none** (code is correct). **Documentation fix required:
+flip the sign of `b_n(err block)` in writeup §5.3**.
+
+## Everything else verified `[OK]`
+
+Phase 1:
+- §5.1 augmented state definition (indexing swap is notation-only)
+- §5.2 δx_3 closed-loop recursion derivation
+- §5.3 A matrix all blocks (row 1–3 tracking error chain, rows 4–10 A_e = Fe(I-LH), row 11 δx_md recursion)
+- §5.3 b_T
+- §5.4 Lyapunov decomposition
+- §5.5 Var(δx_mr) extraction
+- §5.6 C_dpmr, C_n formulas
+- §6.1 β bias source derivation
+- §6.2 ρ(L) selector
+- §6.3 Var(δx_mrd) double-sum closed form
+- §6.4 β boxed formula
+- §6.5 numerical β = 0.9069 (Gate G1 re-verified)
+- §6.6 a_xm assembly (code line 181–186 matches boxed exactly)
+
+Phase 2:
+- β=0 canonical lock holds (user_config, downstream scripts)
+- Q/R/a_pd/a_prd baked-in values in both lookups match user_config
+- New runtime drift-detection warnings in `calc_ctrl_params.m` (5 warnings total)
+- P2 script signal paths correct end-to-end (offline IIR applied, del_pmr
+  used, Convention A delay alignment)
+
+Phase 3:
+- Dynamic h-bin rerun under canonical β=0 (bin-weighted z ratio 1.007)
+- C_n empirically verified at σ_n > 0 (code's 1.1141 within ±6% of empirical)
+- Free-space fresh check (ratios 0.994 / 1.014 / 0.999 at h=50)
+- Multi-seed h=2.5 static (mean 1.003 / 1.016 / 1.011, all 5 seeds within ±5%)
+
+## Remaining for Phase 4 (user discussion)
+
+Documentation items to discuss how to produce:
+
+1. **`writeup_architecture.tex` §5.3**: flip sign of `b_n(err block)` from
+   `-Fe·L_ss(:,1)` to `+Fe·L_ss(:,1)`. Main fix.
+2. **§5.1**: add an explicit mapping table between writeup indexing
+   (1 = oldest, 3 = newest) and code indexing (1 = newest, 3 = oldest), or
+   choose one convention and update the other.
+3. **§2 boxed formula**: currently lacks the `/β` correction. Either
+   update to match §6.6, or add "see §6.6 for finite-sample correction".
+4. **§5 scope note**: consider adding explicit mentions of
+   (a) `a_x[k]` treated as locally constant in Σ decomposition,
+   (b) β derived from Σ_T only — assumes σ²_n ≪ thermal (if σ²_n
+   comparable, a two-channel β extension is technically needed; at the
+   empirical ±6% level it is not distinguishable from chi-squared floor).
+5. **Optional**: Section 7 (numerical results) — integrate Task P2, Phase 3
+   results into the writeup if desired.
+
+No runtime code changes are required by this audit (the Phase 2 Q/R
+warnings were added as a drift-detection improvement, not a bug fix).
+
+## Artifacts produced this session
+
+Committed:
+- `reference/for_test/phase1_axm_audit.md` (this report)
+- `model/controller/calc_ctrl_params.m` (+5 drift warnings)
+- `test_script/verify_cn_noise_on.m` (new)
+- `test_script/verify_p2_static_h25_mc.m` (new)
+- Regenerated: `fig_p2_h_bin.png`, `fig_task1d_paper_benchmark.png`
+
+Gitignored data (reproducible from scripts):
+- `test_results/verify/p2_h_bin.mat` (regenerated, now β=0)
+- `test_results/verify/task1d_paper_benchmark_mc.mat` (regenerated, now β=0)
+- `test_results/verify/verify_cn_noise_on.mat` (new, σ_n sweep)
+- `test_results/verify/p2_static_h25_mc.mat` (new, 5-seed)
+- `test_results/verify/bias_factor_lookup.mat` (rebuilt as sanity check)
+
 
 
 
