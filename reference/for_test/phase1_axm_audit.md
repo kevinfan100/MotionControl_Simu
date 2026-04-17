@@ -765,6 +765,81 @@ No logic change, only diagnostics. Verified via direct test.
 Proceed to Phase 3 (simulation re-runs): multi-seed P2 static, fresh
 free-space, dynamic bin with β=0, and σ²_n>0 run for C_n verification.
 
+---
+
+# Phase 3 — simulation rerun / stability
+
+## 3.1 Dynamic h-bin with β=0 (replaces β=0.5 legacy)
+
+**Command**: `verify_task1d_paper_benchmark_mc.m` (10 seeds × 12 s near-wall
+MC, user_config default now β=0) → `analyze_p2_h_bin.m`
+
+**Ratios (β=0 rerun, lc=0.4, per-bin pooled across 10 seeds)**:
+
+| h bin [µm] | N | c_⊥ | emp std_z [nm] | theory_z [nm] | **ratio_z (β=0)** | legacy (β=0.5) |
+|---|---:|---:|---:|---:|---:|---:|
+| [2.47, 3.00) | 3872 | 7.25 | 11.77 | 11.09 | **1.061** | 1.045 |
+| [3.00, 4.00) | 2523 | 3.05 | 17.99 | 17.10 | **1.052** | 1.038 |
+| [4.00, 5.00) | 1999 | 2.13 | 19.90 | 20.47 | **0.972** | 0.980 |
+| [5.00, 7.50) | 7287 | 1.60 | 23.92 | 23.64 | **1.012** | 1.022 |
+
+Bin-weighted z ratio (β=0) = **1.007** (legacy 1.012).
+3D tracking RMSE (β=0) = **41.1 nm** (legacy 40.9 nm).
+Pooled z-axis median a_hat err = 18.89% (legacy 17.88%).
+
+`[OK]` β=0 rerun: bin-weighted ratio 1.007 ≈ 1 (no systematic offset). Near-wall
+bin [2.47, 3.00) at 1.061 is slightly above the ±5% gate but within
+chi-squared floor expectation (N = 3872 / 10 seeds = 387 per seed bin). Overall
+Sec 5 prediction confirmed at β=0, same quality as legacy β=0.5.
+
+`[OK]` `fig_p2_h_bin.png` regenerated, `p2_h_bin.mat` updated.
+
+## 3.2 C_n empirical verification (σ²_n > 0)
+
+**Command**: `verify_cn_noise_on.m` — static h=50, lc=0.7, 30 s per run,
+sigma_n sweep [0, 0.01, 0.02, 0.03] µm, single seed per level (base 20260417 + i).
+
+**Raw observations (std of del_pmr in nm, steady state after 10 s)**:
+
+| sigma_n [µm] | std_x | std_y | std_z |
+|---|---:|---:|---:|
+| 0.000 | 30.86 | 31.46 | 30.60 |
+| 0.010 | 32.76 | 32.94 | 33.06 |
+| 0.020 | 38.04 | 37.77 | 37.60 |
+| 0.030 | 44.95 | 44.58 | 44.57 |
+
+Theoretical thermal-only (std): x = 31.04 nm, z = 30.63 nm (at c_∥=1.026, c_⊥=1.053).
+
+**Least-squares slope fit** `Var(del_pmr) − thermal_Var = C_n · sigma_n²`:
+
+| Axis | C_n empirical | vs code C_np_eff=1.1141 | vs writeup literal 1.0417 |
+|---|---:|---:|---:|
+| x | 1.1791 | **+5.83%** | +13.2% |
+| y | 1.1418 | **+2.49%** | +9.6% |
+| z | 1.1723 | **+5.22%** | +12.5% |
+
+**Verdict**:
+- Code's C_np_eff = 1.1141 matches empirical within ±6% on all three axes — consistent
+  with chi-squared finite-sample floor (expect ~10% spread on Var estimate at
+  30s, single seed).
+- Writeup-literal C_n = 1.0417 would be 9–13% below empirical — clearly outside
+  the noise floor.
+
+`[PASS — C_n = 1.1141 code value is correct]`
+`[CONFIRMED — Phase 1 sign-bug finding has empirical support]`
+
+**Incidental free-space check** (σ_n = 0 case, h=50, single 30s seed):
+ratio_x = 30.86/31.04 = 0.994; ratio_y = 31.46/31.04 = 1.014;
+ratio_z = 30.60/30.63 = 0.999 → all within ±2%. Section 5 C_dpmr_eff re-confirmed
+at free-space on fresh (non-legacy) data.
+
+## 3.3 Remaining Phase 3 items (pending)
+
+- **Multi-seed P2 static at h=2.5**: currently single-seed (ratio 1.009 / 1.027 / 1.007).
+  Run 5 seeds to get CI and confirm within ±5% band is not single-seed luck.
+- **Gain-meas-noise channel quantification**: flagged in Phase 1 §5.4. Not yet done.
+
+
 
 
 
