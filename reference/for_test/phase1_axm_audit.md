@@ -656,5 +656,115 @@ Phase 1 is **complete** for the derivation + code cross-check scope. The derivat
 
 **Proceed to Phase 2** (script/config audit) after user review.
 
+---
+
+# Phase 2 — script / config audit
+
+Scope: verify the runtime configuration matches what the lookups were built
+with, confirm β=0 is locked, confirm P2 analysis scripts apply the right
+signal processing.
+
+## 2.1 β=0 canonical lock
+
+Per user decision (option A): default=0, no code deletion, no assertion added.
+
+- `user_config.m` line 79: `config.beta = 0` ✓
+- `verify_p2_static_h25.m`: doesn't touch `config.beta` explicitly — inherits 0 ✓
+- `run_simulation.m`: not checked here; standalone P2 scripts confirmed
+
+`motion_control_law_7state.m` lines 268–274 still contain the z-axis Fe_err_z
+chart extension and lines 312–315 the `(1+β)·d - β·del_d` updates. Under β=0
+these reduce to the same structure as x/y, so runtime behavior is identical.
+
+`[OK]` — β=0 default holds. Code path remains but is a no-op at β=0.
+
+## 2.2 Q/R lookup ↔ user_config consistency
+
+### Baseline values (cross-checked)
+
+| Location | Q_kf_scale | R_kf_scale |
+|---|---|---|
+| `user_config.m` line 82-83 | `[0, 0, 1e4, 1e-1, 0, 1e-4, 0]` | `[1e-2, 1e0]` |
+| `build_cdpmr_eff_lookup.m` line 33-34 | `[0, 0, 1e4, 1e-1, 0, 1e-4, 0]` | `[1e-2, 1e0]` |
+| `build_bias_factor_lookup.m` line 34-35 | `[0, 0, 1e4, 1e-1, 0, 1e-4, 0]` | `[1e-2, 1e0]` |
+
+All three match exactly. ✓
+
+### Runtime drift safeguard (added this phase)
+
+Before Phase 2: `calc_ctrl_params.m` only warned on `a_pd`/`a_prd` mismatch
+between config and lookups, not on `Qz_diag_scaling`/`Rz_diag_scaling`.
+If a user changed Q or R in config but didn't rebuild the lookups, the
+stale lookup values would be used silently.
+
+**Added** four warnings in `calc_ctrl_params.m`:
+- `calc_ctrl_params:cdpmr_Q_mismatch` — config Qz vs cdpmr_eff_lookup Q_kf_scale
+- `calc_ctrl_params:cdpmr_R_mismatch` — config Rz vs cdpmr_eff_lookup R_kf_scale
+- `calc_ctrl_params:bf_Q_mismatch` — config Qz vs bias_factor_lookup Q_kf_scale
+- `calc_ctrl_params:bf_R_mismatch` — config Rz vs bias_factor_lookup R_kf_scale
+
+Also added `calc_ctrl_params:apd_bf_mismatch` (bias_factor lookup also bakes
+in `a_pd`, not just `a_prd`).
+
+### Verification
+Ran with default config → no warnings, correct values emitted (C_dpmr_eff=3.9242,
+C_np_eff=1.1141, IIR_bias_factor=0.9069). Ran with `Qz(3) = 2e4` (doubled Q33)
+→ both cdpmr and bias_factor Q-mismatch warnings fire. ✓
+
+`[OK]` Drift safeguard in place.
+
+## 2.3 P2 script signal-path audit
+
+### `verify_p2_static_h25.m` (fresh sim at h=2.5)
+- `simOut.p_d_out`, `simOut.p_m_out` captured via ToWorkspace blocks at Ts=1/1600
+- `del_pm[k] = p_d[:,k-2] - p_m[:,k]` (Convention A: sensor-delayed tracking error) ✓
+- Reapplied offline IIR: `a_pd=a_prd=a_cov=0.05` (matches controller and user_config) ✓
+- Computes `del_pmr_var` on `del_pmr`, not `del_pm` (the post-`8cd6f81` fix) ✓
+- Single seed (`rng(20260415)`), 30s, ss window = samples >10s
+- `std_theory = sqrt(C_dpmr_eff · sigma2_dXT · a_axis/a_nom)` where C_dpmr_eff
+  pulled from params (same lookup code uses at runtime) ✓
+
+`[OK]` signal path correct end-to-end.
+
+### `analyze_p2_h_bin.m` (dynamic bin from pre-existing MC)
+- Reads `task1d_paper_benchmark_mc.mat` — data generated under β=0.5 legacy
+- Reapplies offline IIR (same coefs) ✓
+- Uses `C_dpmr` = `o.C_dpmr_eff` stored in the MC data (lc=0.4 context)
+- Uses `IIR_bias_factor = 0.9363` (lc=0.4, also stored in MC data)
+- Drops first 2 samples (Convention A: delay alignment) ✓
+
+`[FLAG Phase 3]` β=0.5 legacy data — user wants to redo this bin analysis with
+fresh β=0 MC data.
+
+`[OK]` script logic correct; input dataset is what needs refresh.
+
+### Free-space data (`phase2_chisquared_mc.mat`)
+- Report §3.1 cites this as source for the 0.989/0.979/1.005 free-space ratios
+- Pre-existing MC run with `del_pmr` field already stored
+- IIR coefficients of that pre-computed `del_pmr` are not re-documented in the
+  file (assumes it was built with the same 0.05 coefs)
+
+`[FLAG Phase 3]` Re-generate free-space data from a fresh run with current
+pipeline for parity with h=2.5 static methodology.
+
+## 2.4 Phase 2 summary
+
+| Item | Status |
+|---|---|
+| β=0 canonical | `[OK]` (per user option A, no code change) |
+| Q/R consistency — baseline match | `[OK]` |
+| Q/R consistency — runtime drift safeguard | `[OK]` — warnings added |
+| a_pd/a_prd consistency — a_pd on bias_factor | `[OK]` — warning added |
+| P2 fresh script signal path | `[OK]` |
+| P2 dynamic bin script signal path | `[OK]` script; dataset is legacy β=0.5 |
+| Free-space data provenance | `[FLAG]` — redo fresh in Phase 3 |
+
+**Code changes**: `calc_ctrl_params.m` — added 5 warnings for drift detection.
+No logic change, only diagnostics. Verified via direct test.
+
+Proceed to Phase 3 (simulation re-runs): multi-seed P2 static, fresh
+free-space, dynamic bin with β=0, and σ²_n>0 run for C_n verification.
+
+
 
 
