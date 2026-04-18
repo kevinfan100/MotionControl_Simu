@@ -1,5 +1,79 @@
 # Q/R Theoretization — Progress Record
 
+## 2026-04-18 (Session 5) — a_hat quality discovery: 19% → 4%
+
+### Completed Parts
+- ✅ Theory chain validation (Task 1d Appendix A): empirical std 19% matches prediction exactly
+- ✅ a_cov sweep: 0.05 → 0.005 reduces a_hat std 1.6× (from chi-sq formula)
+- ✅ frozen mechanism explained and tested (Q ≈ 0 + small Pf → P decays → frozen)
+- ✅ frozen_correct variant: a_hat std drops to **4.4%** (paper level achieved)
+- ✅ frozen_smartPf variant tested (allow snap then freeze): unreliable due to chi-sq snap noise
+- ✅ Per-variant Pf_init and a_cov support added to verify_qr_positioning_run.m
+- ✅ 24 runs (4 variants × 2 sc × 3 seeds), all completed successfully
+- ✅ ahat_quality_prediction.md (pre-sim prediction)
+- ✅ session5_ahat_quality_findings.md (full findings + optimal route design)
+- ⏸️ Optimal route (frozen_correct_init with wall-aware init) — needs EKF code modification, not yet tested
+
+### File Changes
+**New Files:**
+- `reference/for_test/ahat_quality_prediction.md` — pre-simulation theoretical predictions for 3 variants
+- `reference/for_test/session5_ahat_quality_findings.md` — comprehensive findings, optimal route design
+
+**Modified Files:**
+- `test_script/verify_qr_positioning_run.m` — added Pf and a_cov fields per variant, added 4 variant configs
+
+### Key Results
+
+**Theory validated for empirical**:
+- Predicted a_hat_z std at lc=0.7, a_cov=0.05: 19%
+- Measured: 18.0-20.1% across 12 runs
+- Match within ±5%
+
+**a_hat std reductions**:
+| variant | a_hat_z std (h=2.5) | a_hat_z std (h=50) | reduction vs empirical |
+|---|---|---|---|
+| empirical | 20.1 ± 1.5% | 18.0 ± 0.4% | baseline |
+| emp_acov005 | 12.6 ± 0.8% | 11.1 ± 1.8% | 1.6× |
+| frozen_correct | **4.4 ± 0.2%** | **4.0 ± 0.4%** | **4-5×** |
+| frozen_smartPf | 4.5 ± 0.2% | 4.4 ± 5.2% (high seed variance) | similar mean |
+
+**Bias issue at h=50**:
+- frozen_correct: +6.4% bias (init mismatch a_nom vs a_nom/c_perp(22.2))
+- frozen_smartPf: +9.3% bias on average, but with seed 11111 outlier (+24%)
+- Solution: wall-aware init (proposed for next session)
+
+### Testing Status
+✅ 24 positioning runs (4 variants × 2 sc × 3 seeds) all completed
+- 3-parallel batches of 6 each, ~10 min wall time
+- Incremental checkpoint per run
+- Theory chain quantitatively validated for empirical baseline
+
+### Next Steps
+- [ ] **Optimal route**: Implement wall-aware init in motion_control_law_7state.m
+- [ ] Test `frozen_correct_init` variant (predict bias < 1% at both scenarios, std ~4%)
+- [ ] Refine theory for emp_acov005 prediction (account for EKF smoothing factor adaptation at low a_cov)
+- [ ] Move to dynamic scenario testing for the optimal positioning Q/R
+
+### Issues & Notes
+
+⚠️ **emp_acov005 prediction inaccuracy**: predicted std 6%, measured 11-13%. EKF smoothing factor adapts when a_m gets cleaner — this needs to be incorporated into the theory.
+
+⚠️ **frozen_smartPf snap unreliability**: 1 out of 3 seeds at h=50 had +24% bias due to chi-sq outlier in first measurement. Pf_init=1e-3 gives L=0.8 first update — too aggressive for noisy initial measurements.
+
+💡 **a_hat std 19% is NOT a hard floor** — it's the chi-sq prediction at a_cov=0.05. Reducing a_cov directly reduces std.
+
+💡 **Frozen mechanism is the biggest a_hat std lever**:
+- 4-5× reduction (20% → 4%)
+- Achieves paper-equivalent precision (5-10% target)
+- But requires correct init (because frozen can't correct) → needs wall-aware init for h-far scenarios
+
+💡 **3D RMSE Q/R-independent confirmed across 4 variants and 2 scenarios** — Q/R cannot improve tracking, only a_hat quality.
+
+### Git Commit
+(to be filled after commit)
+
+---
+
 ## 2026-04-18 (Session 4) — Positioning verification + baseline alignment
 
 ### Completed Parts

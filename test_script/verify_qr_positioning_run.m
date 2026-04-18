@@ -27,9 +27,14 @@ function verify_qr_positioning_run(start_idx, end_idx, output_file)
     scenarios(1) = struct('name', 'near_wall_h25',  'h_init', 2.5);
     scenarios(2) = struct('name', 'free_space_h50', 'h_init', 50);
 
-    % Reduced to 2 variants for direct baseline comparison (2026-04-18)
-    variants(1) = struct('name','empirical', 'Qz',[0;0;1e4;0.1;0;1e-4;0],            'Rz',[0.01;1.0]);
-    variants(2) = struct('name','beta',      'Qz',[0;0;1;0;0;1.3444e-11;1.3444e-11], 'Rz',[0.397;1.7185]);
+    % 2026-04-18 Session 5: a_hat quality discovery via a_cov + Pf_init tuning
+    Pf_default = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];
+    Pf_small   = [0; 0; 1e-4; 1e-4; 0; 1e-5; 0];
+    Pf_smart   = [0; 0; 1e-4; 1e-4; 0; 1e-3; 0];
+    variants(1) = struct('name','empirical',       'Qz',[0;0;1e4;0.1;0;1e-4;0],   'Rz',[0.01;1.0],   'Pf', Pf_default, 'a_cov', 0.05);
+    variants(2) = struct('name','emp_acov005',     'Qz',[0;0;1e4;0.1;0;1e-4;0],   'Rz',[0.01;1.0],   'Pf', Pf_default, 'a_cov', 0.005);
+    variants(3) = struct('name','frozen_correct',  'Qz',[0;0;1;0;0;1e-8;1e-8],    'Rz',[0.397;1.0],  'Pf', Pf_small,   'a_cov', 0.005);
+    variants(4) = struct('name','frozen_smartPf',  'Qz',[0;0;1;0;0;1e-8;1e-8],    'Rz',[0.397;1.0],  'Pf', Pf_smart,   'a_cov', 0.005);
 
     seeds = [12345, 67890, 11111];
 
@@ -87,14 +92,25 @@ function r = run_one(scenario, variant, seed, idx, n_total)
     config.ctrl_enable = true;
     config.controller_type = 7;
     config.lambda_c = 0.7;
-    config.a_pd = 0.05; config.a_prd = 0.05; config.a_cov = 0.05;
+    % a_cov per-variant (overrides default)
+    if isfield(variant, 'a_cov')
+        config.a_cov = variant.a_cov;
+    else
+        config.a_cov = 0.05;
+    end
+    config.a_pd = 0.05; config.a_prd = 0.05;
     config.epsilon = 0.01;
     config.meas_noise_enable = true;
     % Use main-project sensor noise spec to align with baseline (2026-04-18 fix)
     config.meas_noise_std = [0.00062; 0.000057; 0.00331];
     config.thermal_enable = true;
     config.thermal_seed = seed;
-    config.Pf_init_diag = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];
+    % Pf_init per-variant (overrides default)
+    if isfield(variant, 'Pf')
+        config.Pf_init_diag = variant.Pf;
+    else
+        config.Pf_init_diag = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];
+    end
     config.beta = 0; config.lamdaF = 1.0;
     config.T_sim = 15;
     config.Qz_diag_scaling = variant.Qz;
