@@ -71,8 +71,12 @@ for si = 1:n_seeds
     config.meas_noise_std     = [0; 0; 0];
     config.T_sim              = T_sim;
 
-    params = calc_simulation_params(config);
+    % IMPORTANT: rng(seed) MUST be set before calc_simulation_params, because
+    % calc_thermal_params.m generates thermal.seed via randi() at params-build
+    % time. If rng is set after, parallel matlab instances all get the same
+    % randi result and produce bit-identical simulations.
     rng(seed);
+    params = calc_simulation_params(config);
 
     assignin('base', 'params', params);
     assignin('base', 'p0', params.Value.common.p0);
