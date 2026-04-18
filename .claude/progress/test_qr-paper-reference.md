@@ -1,5 +1,75 @@
 # Q/R Theoretization — Progress Record
 
+## 2026-04-18 (Session 6) — frozen_correct steady-state reveal: bias +6.4% → +1.4%
+
+### Completed Parts
+- ✅ Diagnostic trace of a_hat_z(t) in frozen_correct h=50 revealed IIR gate transient spike at k=1000
+- ✅ Root cause identified: var_threshold gate in motion_control_law_7state.m opens suddenly when del_pmr_var crosses threshold (slower with small a_cov)
+- ✅ Session 5 +6.4% bias at h=50 confirmed as measurement window artifact (not steady-state failure)
+- ✅ Re-ran with T_sim=30s, t_warmup=10s (P2 standard) to capture true steady state
+- ✅ frozen_correct h=50: bias 1.4 ± 0.6%, std 1.3 ± 0.7% (was +6.4%/+4.0%)
+- ✅ Wall-aware init confirmed already in code (motion_control_law_7state.m lines 88-99, commit 9a0e8db)
+
+### File Changes
+**New Files:**
+- `reference/for_test/session6_frozen_steady_state.md` — Session 6 full findings
+- `test_results/verify/diag_frozen_correct_h50.mat` — diagnostic trace
+
+**Modified Files:**
+- `test_script/verify_qr_positioning_run.m`:
+  - `T_sim`: 15 → 30 (allow transient decay)
+  - `t_warmup`: 5 → 10 (P2 standard, also clear of transient)
+
+### Key Results (Session 6, 12 runs with 3 seeds each)
+
+| scenario | variant | 3D RMSE (nm) | bias (%) | std (%) |
+|---|---|---|---|---|
+| h=2.5 | empirical | 34.9 ± 0.2 | +1.8 ± 1.2 | 20.9 ± 1.0 |
+| h=2.5 | frozen_correct | 35.7 ± 0.1 | **+1.4 ± 0.4** | **4.6 ± 0.1** |
+| h=50 | empirical | 60.5 ± 0.3 | +0.1 ± 1.2 | 19.9 ± 1.3 |
+| h=50 | frozen_correct | 61.8 ± 0.2 | **+1.4 ± 0.6** | **1.3 ± 0.7** |
+
+**frozen_correct is the optimal positioning Q/R**:
+- a_hat_z std: 1-5% (below paper target 5-10%)
+- a_hat_z bias: ~1.4% (essentially 0)
+- 3D RMSE: within ±2 nm of empirical
+
+### Testing Status
+✅ Optimal positioning Q/R identified and validated under true steady state
+- 4-parallel batches of 3 runs each, T_sim=30s, ~15 min wall time
+- Steady-state window 20s captures post-transient true behavior
+- Seed variability confirmed low (std of means < 1 nm 3D RMSE, < 2% bias)
+
+### Next Steps
+- [ ] Commit Session 6 deliverables + push
+- [ ] Option (root cause): implement pre-fill IIR V_meas to eliminate gate transient (shorter warmup possible)
+- [ ] Dynamic scenario test with frozen_correct to characterize breaking point
+- [ ] Thesis writeup preparation
+
+### Issues & Notes
+
+⚠️ **Session 5 "+6.4% bias" conclusion was wrong root-cause** (I thought init mismatch, but init is wall-aware-correct since commit 9a0e8db). The bias was entirely from IIR gate transient not yet decayed within T_sim=15s window.
+
+⚠️ **Wall-aware init already in code**: lines 88-99 of motion_control_law_7state.m compute h_bar from p0 + wall, then set a_hat = a_nom/c_perp/c_para accordingly. My "implement element 1" proposal was redundant.
+
+💡 **True performance of frozen_correct**:
+- In steady state, a_hat_z std drops from empirical's 20% to **1.3% (h=50)** or **4.6% (h=2.5)**.
+- Bias stays at ~1.4% (was 0 for empirical but 1.4% is negligible and consistent).
+- 3D tracking RMSE unchanged (Q/R-insensitive, confirmed again).
+
+💡 **"Optimal Q/R for positioning" is clearly frozen_correct**:
+```matlab
+Qz_diag_scaling = [0; 0; 1; 0; 0; 1e-8; 1e-8];
+Rz_diag_scaling = [0.397; 1.0];
+Pf_init_diag    = [0; 0; 1e-4; 1e-4; 0; 1e-5; 0];
+a_cov           = 0.005;
+```
+
+### Git Commit
+(to be filled after commit)
+
+---
+
 ## 2026-04-18 (Session 5) — a_hat quality discovery: 19% → 4%
 
 ### Completed Parts

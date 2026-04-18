@@ -112,7 +112,7 @@ function r = run_one(scenario, variant, seed, idx, n_total)
         config.Pf_init_diag = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];
     end
     config.beta = 0; config.lamdaF = 1.0;
-    config.T_sim = 15;
+    config.T_sim = 30;   % Session 6: extended to 30s for true steady-state analysis
     config.Qz_diag_scaling = variant.Qz;
     config.Rz_diag_scaling = variant.Rz;
 
@@ -161,8 +161,8 @@ function r = run_one(scenario, variant, seed, idx, n_total)
         a_true_z(k) = a_nom / c_perp;
     end
 
-    % --- Steady-state window (reduced from P2 standard 10s for speed) ---
-    t_warmup = 5;
+    % --- Steady-state window (P2 standard 10s + T_sim=30s for frozen transient decay) ---
+    t_warmup = 10;
     idx_ss = t >= t_warmup;
 
     % --- Tracking error stats (per-axis nm) ---
