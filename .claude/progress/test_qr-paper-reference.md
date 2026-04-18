@@ -70,7 +70,7 @@
 💡 **3D RMSE Q/R-independent confirmed across 4 variants and 2 scenarios** — Q/R cannot improve tracking, only a_hat quality.
 
 ### Git Commit
-(to be filled after commit)
+`87e0295` - feat(test/qr): a_hat quality breakthrough - 20% to 4% via frozen + a_cov tuning
 
 ---
 
