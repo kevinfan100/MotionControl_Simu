@@ -71,7 +71,7 @@
 💡 **The a_hat std 19% is INTRINSIC** to the chi-squared statistics of the IIR estimator (Task 1d Appendix A). Q/R cannot push it lower without freezing β-style. The "right" a_hat std is bounded below by physics.
 
 ### Git Commit
-(to be filled after commit)
+`8f9e924` - feat(test/qr): positioning verification framework + baseline alignment fix
 
 ---
 
