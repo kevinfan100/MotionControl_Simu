@@ -42,6 +42,16 @@ function [C_dpmr_eff, C_np_eff, L, A_aug, diagnostics] = ...
     if ~isfield(opts, 'dare_tol'),   opts.dare_tol = 1e-10; end
     if ~isfield(opts, 'dare_maxit'), opts.dare_maxit = 30000; end
     if ~isfield(opts, 'verbose'),    opts.verbose = false; end
+    % Optional: provide physical scaling to get Sigma_aug_phys in physical units.
+    % opts.physical_scaling = struct with fields:
+    %   .sigma2_dXT  : natural thermal unit (e.g. 2.5190e-4 um^2)
+    %   .a_phys      : physical motion gain (e.g. a_nom for free-space)
+    %   .a_nom       : free-space a_nom = Ts/gamma_N
+    %   .sigma2_n    : sensor noise variance (um^2) - e.g. 1e-4 noise ON, 0 OFF
+    %   .Q66_abs     : physical Q(6,6) absolute value (default 0)
+    %   .Q77_abs     : physical Q(7,7) absolute value (default 0)
+    % When supplied, diagnostics.Sigma_aug_phys is populated.
+    if ~isfield(opts, 'physical_scaling'), opts.physical_scaling = []; end
 
     % ---------------------------------------------------------------
     % 1. Build Fe and H for the 7-state EKF (paper Eq.18)
@@ -157,8 +167,16 @@ function [C_dpmr_eff, C_np_eff, L, A_aug, diagnostics] = ...
     B_na = zeros(n_aug, 1);
     B_na(idx_e)         = -(Fe * L(:, 2));
 
+    % Process noise on state 6 (a): enters idx_e(6) only
+    B_q66 = zeros(n_aug, 1);
+    B_q66(idx_e(6))     = 1;
+
+    % Process noise on state 7 (delta_a): enters idx_e(7) only
+    B_q77 = zeros(n_aug, 1);
+    B_q77(idx_e(7))     = 1;
+
     % ---------------------------------------------------------------
-    % 6. Solve two Lyapunov equations (unit-variance inputs)
+    % 6. Solve Lyapunov equations (unit-variance inputs)
     %    Use dlyapchol for numerical stability; dlyap fails when A_aug
     %    has eigenvalues very close to unit circle (common for this 7-state
     %    KF due to marginal eigenvalues).
@@ -168,6 +186,10 @@ function [C_dpmr_eff, C_np_eff, L, A_aug, diagnostics] = ...
 
     % Position noise unit solve
     Sigma_np = solve_dlyap_robust(A_aug, B_np);
+
+    % Process-noise unit solves for Q(6,6) and Q(7,7) drivers
+    Sigma_q66 = solve_dlyap_robust(A_aug, B_q66);
+    Sigma_q77 = solve_dlyap_robust(A_aug, B_q77);
 
     % ---------------------------------------------------------------
     % 7. Extract C_dpmr_eff and C_np_eff
@@ -197,15 +219,56 @@ function [C_dpmr_eff, C_np_eff, L, A_aug, diagnostics] = ...
     diagnostics.dare_err      = dare_err;
     diagnostics.Sigma_th      = Sigma_th;
     diagnostics.Sigma_np      = Sigma_np;
+    diagnostics.Sigma_q66     = Sigma_q66;
+    diagnostics.Sigma_q77     = Sigma_q77;
     diagnostics.A_e           = A_e;
     diagnostics.Fe            = Fe;
     diagnostics.H             = H;
     diagnostics.B_th          = B_th;
     diagnostics.B_np          = B_np;
     diagnostics.B_na          = B_na;
+    diagnostics.B_q66         = B_q66;
+    diagnostics.B_q77         = B_q77;
     diagnostics.Var_dpmr_th_state = var_state_th;
     diagnostics.Var_dpmr_np_state = var_state_np;
     diagnostics.rho           = rho;
+    diagnostics.idx_dx        = idx_dx;
+    diagnostics.idx_dx_d2     = idx_dx_d2;
+    diagnostics.idx_e         = idx_e;
+    diagnostics.idx_pmd_prev  = idx_pmd_prev;
+
+    % ---------------------------------------------------------------
+    % 8b. Optional physical-scaling combination
+    %     Sigma_aug_phys = (a_phys/a_nom)^2 * sigma2_dXT * Sigma_th
+    %                    + sigma2_n * Sigma_np
+    %                    + Q66_abs * Sigma_q66
+    %                    + Q77_abs * Sigma_q77
+    %     Rationale: each Sigma_X is solved for unit-variance driver, so
+    %     physical variance = (physical driver variance) * Sigma_X.
+    % ---------------------------------------------------------------
+    if ~isempty(opts.physical_scaling)
+        ps = opts.physical_scaling;
+        if ~isfield(ps, 'Q66_abs'), ps.Q66_abs = 0; end
+        if ~isfield(ps, 'Q77_abs'), ps.Q77_abs = 0; end
+        if ~isfield(ps, 'sigma2_n'), ps.sigma2_n = 0; end
+        if ~isfield(ps, 'a_nom') || ~isfield(ps, 'a_phys') || ~isfield(ps, 'sigma2_dXT')
+            error('compute_7state_cdpmr_eff:physical_scaling_missing', ...
+                  'opts.physical_scaling requires sigma2_dXT, a_phys, a_nom');
+        end
+        a_ratio = ps.a_phys / ps.a_nom;
+        thermal_variance = (a_ratio^2) * ps.sigma2_dXT;
+
+        Sigma_aug_phys =   thermal_variance * Sigma_th ...
+                         + ps.sigma2_n      * Sigma_np ...
+                         + ps.Q66_abs       * Sigma_q66 ...
+                         + ps.Q77_abs       * Sigma_q77;
+        Sigma_aug_phys = 0.5 * (Sigma_aug_phys + Sigma_aug_phys');
+
+        diagnostics.Sigma_aug_phys = Sigma_aug_phys;
+        diagnostics.Sigma_e_dx_phys     = Sigma_aug_phys(idx_dx,    idx_dx);     % Var(delta_x[k])
+        diagnostics.Sigma_e_dx_d2_phys  = Sigma_aug_phys(idx_dx_d2, idx_dx_d2);  % Var(delta_x[k-2])
+        diagnostics.physical_scaling_used = ps;
+    end
 
     if opts.verbose
         fprintf('  [compute_7state_cdpmr_eff] lc=%.3f a_pd=%.4f f0=%.3f\n', ...

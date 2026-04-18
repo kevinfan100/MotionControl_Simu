@@ -1,440 +1,552 @@
-# Q/R Theoretical Derivation — Entry-by-Entry
+# Q/R Derivation for Our Simulation — Entry-by-Entry
 
-**Date**: 2026-04-15 (revised 2026-04-16)
+**Date**: 2026-04-15 (revised 2026-04-17 — framework rewrite)
 **Branch**: `test/qr-paper-reference`
-**Paper**: Meng et al., IEEE TIE 72(1), Jan 2025, pp. 929-938.
-**Purpose**: Derive the theoretical value of every Q(i,i) and R(i,i) in the
-7-state EKF, entry-by-entry, from paper equations and first principles.
-Each entry gets: paper basis, derivation, theoretical numerical value,
-and comparison to the code's current value.
+**Paper reference**: Meng et al., IEEE TIE 72(1), Jan 2025, pp. 929-938.
 
 ---
 
-## 1. Physical constants and derived quantities
+## 0. Framing
 
-From `physical_constants.m` and `user_config.m`:
+### 0.1 This document's purpose
+
+The paper **does not specify** numerical Q/R values. It specifies the
+7-state model (Eq.14), the process noise structure (Eq.17), and the
+measurement variance formulas (Eq.11-13). From these plus **our**
+simulation's conditions (thermal model, sensor spec, IIR architecture),
+Q and R can be derived entry-by-entry.
+
+The goal is a principled derivation that gives each Q(i,i) and R(i,i) a
+**unique** value (or a fixed-point equation) with clear basis. Entries
+that cannot be derived are explicitly marked as tuning.
+
+### 0.2 Key framing principles
+
+1. **Closed-loop is required context.** Sigma_e (tracking error variance),
+   C_dpmr_eff (augmented Lyapunov), and R(2,2) itself are all closed-loop
+   quantities. Open-loop evaluation has no steady state.
+
+2. **No tradeoff in the derivation.** Each entry is either a physical
+   fact, a structural 0, or a closed-loop fixed-point solution. Tradeoffs
+   only appear when Q/R is used as a tuning knob to compensate for model
+   errors — that is explicitly outside the derivation pipeline.
+
+3. **Ratios appear as derivation outputs, not tuning choices.** For
+   example, `R(2,2)/sigma2_dXT = chi-sq · autocorr · (C_dpmr_eff·beta)²`
+   is a product of structural constants; every factor is determined by
+   the system, none is chosen.
+
+4. **Tuning bucket** (explicitly separated from derivation):
+   Q(4,4), Q(5,5) — the x_D / delta_x_D states have no clear physical
+   meaning in our simulation (no actuator drift, no DC offset, wall
+   effect already captured by time-varying a). These are initialized to
+   0 and will be tuned empirically if needed. Q(4,4) is optimized first;
+   Q(5,5) afterwards.
+
+---
+
+## 1. Physical constants and natural unit
+
+From `model/config/physical_constants.m` and `user_config.m`:
 
 | Symbol | Value | Units | Source |
 |---|---|---|---|
-| k_B | 1.3806503e-5 | pN*um/K | physical_constants.m |
+| k_B | 1.3806503e-5 | pN·um/K | physical_constants.m |
 | T | 310.15 | K | physical_constants.m |
-| gamma_N | 0.0425 | pN*sec/um | physical_constants.m |
+| gamma_N | 0.0425 | pN·sec/um | physical_constants.m |
 | Ts | 6.25e-4 | sec | physical_constants.m |
-| a_nom = Ts/gamma_N | 1.47059e-2 | um/pN | motion gain (free-space) |
-| 4*k_B*T | 1.71291e-2 | pN*um | |
-| sigma2_deltaXT = 4*k_B*T*a_nom | 2.5190e-4 | um^2 | calc_ctrl_params.m:40-41 |
-| lambda_c | 0.7 | - | user_config.m |
-| a_cov | 0.05 | - | user_config.m |
-| sigma2_n (noise ON) | 1.0e-4 | um^2 | meas_noise_std(i)^2 |
-| sigma2_n (noise OFF) | 0 | - | baseline test scenario |
+| R (radius) | 2.25 | um | physical_constants.m |
+| a_nom = Ts/gamma_N | 1.4706e-2 | um/pN | motion gain (free-space) |
+| 4·k_B·T | 1.7129e-2 | pN·um | |
+| sigma2_dXT = 4·k_B·T·a_nom | 2.5190e-4 | um² | per-step thermal variance |
+| lambda_c | 0.7 | — | closed-loop pole |
+| a_cov | 0.05 | — | EMA smoothing for V_est |
+| sigma2_n (noise ON) | 1.0e-4 | um² | (0.01 um std)² |
+| sigma2_n (noise OFF) | 0 | um² | baseline test scenario |
 
-### 1.1 sigma2_deltaXT derivation
+### 1.1 Natural unit for Q/R scaling
 
+`sigma2_dXT` is the per-step position variance from thermal force alone,
+evaluated in free space (a = a_nom). All Q/R entries in
+`user_config.m` are reported as dimensionless multipliers on `sigma2_dXT`.
+
+Derivation:
 ```
-sigma2_deltaXT := 4 * k_B * T * Ts / gamma_N
-               = 4 * k_B * T * a_nom
-               = 2.5190e-4 um^2
+f_th has Var(f_th) = 4·k_B·T·gamma_N / Ts       (calc_thermal_force.m:67)
+Delta_x per step   = a_nom · f_th               (discrete-time convention)
+Var(Delta_x)       = a_nom² · 4·k_B·T·gamma_N/Ts
+                   = 4·k_B·T·Ts/gamma_N
+                   = 4·k_B·T·a_nom
+                   = sigma2_dXT
 ```
-
-Physical meaning: the per-step position variance from thermal force.
-The simulation's thermal model (`calc_thermal_force.m:67-72`) generates
-```
-f_th = sqrt(4 * k_B * T * gamma_N / Ts) * randn
-```
-so `Var(f_th) = 4*k_B*T*gamma_N/Ts`. Through the plant dynamics
-(`Delta_x = a_nom * f_th`):
-```
-Var(Delta_x) = a_nom^2 * Var(f_th) = (Ts/gamma_N)^2 * (4*k_B*T*gamma_N/Ts)
-             = 4*k_B*T*Ts/gamma_N = sigma2_deltaXT
-```
-
-This is the natural unit for both Q and R entries. All `Qz_diag_scaling`
-and `Rz_diag_scaling` values in `user_config.m` are dimensionless
-multipliers on sigma2_deltaXT.
-
-### 1.2 Paper Eq.(11)-(13) structural constants
-
-| Symbol | Formula | Value |
-|---|---|---|
-| C_dpmr | 2 + 2/(1 - lambda_c^2) | 5.92157 |
-| C_n (Eq.11) | (1 - lambda_c)/(1 + lambda_c) | 0.17647 |
-| C_n (Eq.12) | 2/(1 + lambda_c) | 1.17647 |
-
-These are the paper's coefficients for the IIR-filtered tracking error
-variance. Note: the paper's IIR uses pole = lambda_c = 0.7 (Eq.9);
-the code uses a different architecture with a_pd = 0.05 (Section 5
-of writeup_architecture.tex derives the corresponding C_dpmr_eff =
-3.9242 for the code's dual-layer IIR via augmented Lyapunov).
 
 ---
 
-## 2. Q matrix — entry-by-entry derivation
+## 2. Measurement architecture constants
+
+From the IIR / HP filter structure in the 7-state EKF:
+
+| Symbol | Formula | Value (lc=0.7, a_cov=0.05) | Source |
+|---|---|---|---|
+| C_dpmr (paper Eq.11) | 2 + 2/(1 - lc²) | 5.9216 | Paper, single-layer IIR |
+| C_n (paper Eq.11) | (1 - lc)/(1 + lc) | 0.1765 | Paper |
+| C_dpmr_eff (our architecture) | augmented 11-dim Lyapunov | 3.924 @ a=a_nom, rises to ~4.99 extreme near-wall | writeup Sec.5, `cdpmr_eff_lookup.mat` |
+| beta (finite-sample IIR bias) | Task 1c derivation | 0.907 @ lc=0.7 | writeup Sec.6, `bias_factor_lookup.mat` |
+| chi-sq EMA coefficient | 2·a_cov/(2-a_cov) | 0.05128 @ a_cov=0.05 | Exact steady-state EMA variance (white input) |
+| rho_a (autocorr amplification) | Var(V_est non-white) / Var(V_est white) | ~4 empirically; rigorous = Var(V_est) via augmented Lyapunov | Task 1d Appendix A Layer 2 |
+
+`C_dpmr_eff` differs from paper `C_dpmr` because our architecture has two
+IIR stages (a_pd HP residual LP + a_cov variance EMA). Writeup Section 5
+derives the augmented-state Lyapunov correctly. Session 2 built a 2-D
+lookup (`lc × a/a_nom`, 48 grid points, DARE self-consistent per point).
+
+---
+
+## 3. State model and derivation summary
 
 State vector (per axis):
 ```
 x = [dx1, dx2, dx3, x_D, delta_x_D, a, delta_a]
-```
-where dx1 = dx[k-2], dx2 = dx[k-1], dx3 = dx[k] (tracking error delay chain).
-
-Paper's process noise model from Eq.(17):
-```
-q[k] = a[k] * f_T[k] * [0, 0, -1, 0, 0, 0, 0]^T
-Q[k] = E[q[k] * q[k]^T]
+     [=dx[k-2]]                     [motion gain]
 ```
 
-Only the 3rd state (dx3) has a stochastic driver. All others are
-deterministic random-walk integrators.
-
----
-
-### Q(1,1) — state dx1 = dx[k-2]
-
-**Paper basis**: Eq.(14) line 1: `dx1[k+1] = dx2[k]`. Pure delay.
-No process noise enters this equation.
-
-**Theoretical value**: **0**
-
-**Code current**: 0. Matches paper.
-
----
-
-### Q(2,2) — state dx2 = dx[k-1]
-
-**Paper basis**: Eq.(14) line 2: `dx2[k+1] = dx3[k]`. Pure delay.
-
-**Theoretical value**: **0**
-
-**Code current**: 0. Matches paper.
-
----
-
-### Q(3,3) — state dx3 = dx[k] (tracking error)
-
-**Paper basis**: Eq.(14) line 3 contains the thermal force term
-`-a[k] * f_T[k]`. This is the only stochastic driver in the system.
-Process noise q(3) = a[k] * f_T[k].
-
-**Derivation**:
+Process noise structure (paper Eq.17):
 ```
-Q(3,3) = Var(a[k] * f_T[k])
-       = a[k]^2 * Var(f_T[k])
+q[k] = a[k]·f_T[k] · [0, 0, -1, 0, 0, 0, 0]^T
 ```
-From the simulation's thermal model (calc_thermal_force.m:67):
-```
-Var(f_T) = 4 * k_B * T * gamma_N / Ts
-```
-Substituting a_nom = Ts/gamma_N:
-```
-Q(3,3) = (Ts/gamma_N)^2 * (4*k_B*T*gamma_N/Ts)
-       = 4*k_B*T*Ts/gamma_N
-       = sigma2_deltaXT
-       = 2.5190e-4 um^2
-```
+— only dx3 has a direct physical stochastic driver in the paper's model.
+This is **insufficient for our simulation** (see Q(7,7) derivation below).
 
-**Theoretical value**: **sigma2_deltaXT** (scaling = **1**)
+### 3.1 Decision summary table
 
-**Code current**: 1e4 * sigma2_deltaXT (scaling = 1e4). 10000x inflation.
-
-**Gap note**: Phase 3 MC sweep (documented in `project_sigma_ratio_filter.md`)
-directly tested scaling = 1 and observed EKF divergence in the near-wall
-regime h_bar in [2.5, 20]. The 10000x inflation is empirically necessary
-for near-wall stability; it absorbs modeling errors not represented
-in the linear F_e (wall-effect nonlinearity, c_perp(h_bar) variation,
-linearization bias). Q(3,3) in practice is "physical thermal + model error",
-not "physical thermal" alone.
-
----
-
-### Q(4,4) — state x_D (disturbance position)
-
-**Paper basis**: Eq.(14) line 4: `x_D[k+1] = x_D[k] + delta_x_D[k]`.
-Pure random-walk integrator with no explicit process noise.
-Paper's q(4) = 0.
-
-**Theoretical value**: **0** (paper provides no theoretical basis for
-a nonzero value)
-
-**Code current**: 1e-1 * sigma2_deltaXT. Nonzero.
-
-**Gap note**: Setting Q(4,4) = 0 tells the EKF that x_D is constant.
-In practice, the "effective disturbance" includes: thermal-force DC drift,
-wall-effect nonlinearity entering as slowly-varying model mismatch,
-and linearization residuals. Q(4,4) > 0 allows the Riccati equation
-to allocate nonzero Kalman gain to the disturbance channel, enabling
-the estimator to track these unmodeled drifts. Paper's Q(4,4) = 0
-works only when the plant model is exact — which it is in paper's
-experiment but not in our near-wall simulation.
-
----
-
-### Q(5,5) — state delta_x_D (disturbance rate)
-
-**Paper basis**: Eq.(14) line 5: `delta_x_D[k+1] = delta_x_D[k]`.
-Pure integrator, no noise.
-
-**Theoretical value**: **0**
-
-**Code current**: 0. Matches paper.
-
----
-
-### Q(6,6) — state a (motion gain)
-
-**Paper basis**: Eq.(14) line 6: `a[k+1] = a[k] + delta_a[k]`.
-Pure random-walk integrator, no explicit noise.
-Paper's q(6) = 0.
-
-**Theoretical value**: **0** (paper provides no theoretical basis for
-a nonzero value)
-
-**Code current**: 1e-4 * sigma2_deltaXT. Nonzero.
-
-**Gap note**: Setting Q(6,6) = 0 tells the EKF that the motion gain
-is constant. In the near-wall regime, a_x(h_bar) = Ts/(gamma_N * c_perp(h_bar))
-varies by ~3x as h_bar goes from 20 to 2.5. Q(6,6) > 0 allows the
-estimator to track this time-varying gain. Without it, a_hat is frozen
-at its initial value and the controller cannot adapt to wall-proximity
-changes in the drag coefficient.
-
----
-
-### Q(7,7) — state delta_a (gain rate)
-
-**Paper basis**: Eq.(14) line 7: `delta_a[k+1] = delta_a[k]`.
-Pure integrator, no noise.
-
-**Theoretical value**: **0**
-
-**Code current**: 0. Matches paper.
-
----
-
-## 3. R matrix — entry-by-entry derivation
-
-Measurement vector (Eq.15): `y[k] = H * x[k] + v[k]`
-where `H = [1 0 0 0 0 0 0; 0 0 0 0 0 1 0]` selects state 1 (dx1)
-and state 6 (a). R = Cov(v).
-
-### Code-vs-paper measurement alignment
-
-Code (`motion_control_law_7state.m:228`):
-```matlab
-meas_x = [del_pm(1); a_m_k1(1)];
-```
-- Channel 1: `del_pm = pd_k2 - p_m` = raw measured dx[k-2] (unfiltered)
-- Channel 2: `a_m_k1` = Eq.(13) output from previous step
-
-State 1 in the code is dx1_hat = EKF estimate of true dx[k-2].
-Both the state and measurement represent the same physical quantity
-(2-step-delayed tracking error), so the innovation = sensor noise.
-This is consistent with writeup Section 3 (Convention A per-axis form).
-
----
-
-### R(1,1) — measurement dx_m[k]
-
-**Paper basis**: Measurement channel 1 observes `dx_m[k] = dx[k-2] + n[k-2]`
-(raw, 2-step-delayed measured tracking error with sensor noise n).
-State 1 = dx1[k] = true dx[k-2] (no noise). Innovation = n[k-2].
-
-**Derivation**:
-```
-R(1,1) = Var(n[k-2]) = sigma2_n = meas_noise_std^2
-```
-
-**Theoretical value (noise ON)**: **sigma2_n = 1e-4 um^2**
-In code scaling: `1e-4 / 2.5190e-4 = **0.397**`
-
-**Theoretical value (noise OFF)**: **0** (degenerate; requires
-regularization epsilon for KF to function)
-
-**Code current**: 1e-2 * sigma2_deltaXT = 2.52e-6 um^2 (scaling = 0.01).
-
-**Comparison (noise ON)**: paper 0.397 vs code 0.01. Code is **40x smaller**.
-Current code's R(1,1) is very small, making the EKF heavily trust the
-position measurement channel. Paper's value would moderate this trust.
-
-**Note**: Paper Eq.(15) writes `y_1 = dx_m_bar` (IIR-filtered), which
-would give R(1,1) = (1-lc)/(1+lc) * sigma2_n = 0.070 scaling (5.7x
-smaller than the raw interpretation). But the code's measurement is
-raw (unfiltered), and writeup Section 3 follows the code, so the
-raw interpretation R(1,1) = sigma2_n is the one that matches our
-architecture.
-
----
-
-### R(2,2) — measurement a_m[k]
-
-**Paper basis**: Measurement channel 2 observes `a_m[k]`, back-solved
-from the IIR variance via Eq.(13). State 6 = a[k] = true motion gain.
-Innovation = a_m - a = estimation error from the variance-based
-back-calculation.
-
-**Derivation**:
-
-From Eq.(13):
-```
-a_m[k] = (V_meas[k] - C_n * sigma2_n) / (C_dpmr * 4*k_B*T)
-```
-where `V_meas` is a running IIR estimate of the tracking-error variance.
-The estimation error delta_a_m = a_m - a comes entirely from the noise
-in `V_meas` (in steady state E[V_meas] = V_true, so E[a_m] = a):
-```
-Var(a_m) = Var(V_est) / (C_dpmr * 4*k_B*T)^2
-```
-
-For a first-order IIR EMA variance estimator
-`V_est[k+1] = (1 - a_cov)*V_est[k] + a_cov * x[k+1]^2`
-applied to white Gaussian input x with true variance V:
-```
-Var(V_est) = (2*a_cov / (2 - a_cov)) * V^2
-```
-This is the exact steady-state result (derivation: geometric sum of
-squared IIR weights times Var(x^2) = 2*V^2 for Gaussian x).
-
-With `a_cov = 0.05`: coefficient = `2*0.05/1.95 = 0.05128`.
-
-**Autocorrelation correction** (from Task 1d Appendix A, Layer 2):
-
-The HP residual del_pmr is NOT white — it has autocorrelation inherited
-from the lambda_c pole (~5 lags). Task 1d measured the raw a_m relative
-std as 44% (empirical), vs the white-input prediction of 22.6% (exact
-EMA formula above). The ratio 44/22.6 = 1.95x on std, i.e., **~4x on
-variance**. This factor is structural (from del_pmr autocorrelation)
-and does not depend on Q/R tuning.
-
-**Numerical values**:
-
-Denominator: `C_dpmr * 4*k_B*T = 5.92157 * 1.71291e-2 = 0.10143 pN*um`
-
-| Scenario | V_nom | Var(V_est) white | Var(V_est) autocorr-corrected | Var(a_m) white | Var(a_m) corrected |
-|---|---|---|---|---|---|
-| noise OFF | 1.4913e-3 um^2 | 1.140e-7 um^4 | 4.561e-7 um^4 | 1.108e-5 (um/pN)^2 | 4.432e-5 (um/pN)^2 |
-| noise ON  | 1.6090e-3 um^2 | 1.327e-7 um^4 | 5.310e-7 um^4 | 1.290e-5 (um/pN)^2 | 5.160e-5 (um/pN)^2 |
-
-Relative std of a_m vs a_nom (= 1.4706e-2 um/pN):
-| | White | Autocorr-corrected |
-|---|---|---|
-| noise OFF | 22.6% | 45.3% |
-| noise ON  | 24.4% | 48.8% |
-
-The autocorr-corrected 45.3% matches Phase 2's empirical raw a_m
-rel std of 44% within 3%. Note: these are raw `a_m` values (EKF
-input), NOT `a_hat` (EKF output). Task 1d's chi-sq chain (Layer 3)
-shows the EKF smoothing reduces this to 26% (z-axis) / 19% (x-axis)
-for `a_hat`, but R(2,2) governs the raw measurement noise, not the
-filtered output.
-
-**Theoretical value (noise OFF, white-input)**:
-```
-R(2,2) = Var(a_m) = 1.108e-5 (um/pN)^2
-```
-In code scaling: `1.108e-5 / 2.519e-4 = **0.044**`
-
-**Theoretical value (noise OFF, autocorrelation-corrected)**:
-```
-R(2,2) = Var(a_m) = 4.432e-5 (um/pN)^2
-```
-In code scaling: `4.432e-5 / 2.519e-4 = **0.176**`
-
-**Code current**: 1.0 * sigma2_deltaXT (scaling = 1.0).
-
-**Comparison**: paper white 0.044, paper corrected 0.176, code 1.0.
-Code is 5.7x to 22.7x larger than theory. Larger R(2,2) means the
-EKF trusts a_m less and relies more on the dynamics channel (F_e
-coupling through dx3). Phase 3 MC sweep confirmed that R(2,2) = 100
-(ignoring a_m almost entirely) gives the best a_hat precision
-far from wall (18.1% RMSE), while current R(2,2) = 1.0 is a
-compromise needed for near-wall regime stability.
-
-**Which R(2,2) to cite in writeup**: the white-input value 0.044 is
-the direct paper-derivable number (from Eq.13 + chi-sq statistics).
-The corrected 0.176 incorporates Task 1b/1d results (autocorrelation
-amplification from Section 6 autocovariance analysis). Both are
-citable; the corrected value is more honest.
-
----
-
-## 4. Summary table
-
-All values in `Qz_diag_scaling` / `Rz_diag_scaling` convention
-(dimensionless multipliers on sigma2_deltaXT).
-
-### Q matrix
-
-| Entry | State | Paper theoretical | Code current | Derivable from paper? |
+| Entry | State | Type | Derived value | Needs simulation? |
 |---|---|---|---|---|
-| Q(1,1) | dx1 (delay) | 0 | 0 | Yes: Eq.(14) line 1, no noise |
-| Q(2,2) | dx2 (delay) | 0 | 0 | Yes: Eq.(14) line 2, no noise |
-| Q(3,3) | dx3 (tracking err) | **1** | 1e4 | Yes: Eq.(14)+(17), thermal force |
-| Q(4,4) | x_D (disturbance) | **0** | 1e-1 | **No**: paper assumes zero, no derivation for nonzero |
-| Q(5,5) | delta_x_D (dist rate) | 0 | 0 | Yes: Eq.(14) line 5, no noise |
-| Q(6,6) | a (gain) | **0** | 1e-4 | **No**: paper assumes zero, no derivation for nonzero |
-| Q(7,7) | delta_a (gain rate) | 0 | 0 | Yes: Eq.(14) line 7, no noise |
-
-### R matrix (noise ON, sigma2_n = 1e-4 um^2)
-
-| Entry | Measurement | Paper (white) | Paper (autocorr-corrected) | Code current | Derivable? |
-|---|---|---|---|---|---|
-| R(1,1) | dx_m (position) | **0.397** | 0.397 | 0.01 | Yes: sensor spec |
-| R(2,2) | a_m (gain est) | **0.044** | **0.176** | 1.0 | Yes: Eq.(13) + chi-sq |
-
-### R matrix (noise OFF)
-
-| Entry | Paper (white) | Paper (corrected) | Code current |
-|---|---|---|---|
-| R(1,1) | 0 + epsilon | 0 + epsilon | 0.01 |
-| R(2,2) | 0.044 | 0.176 | 1.0 |
+| Q(1,1) | dx1 | structural 0 | 0 | No |
+| Q(2,2) | dx2 | structural 0 | 0 | No |
+| Q(3,3) | dx3 | physical | sigma2_dXT·(a[k]/a_nom)² (adaptive, Eq.21) | No |
+| Q(4,4) | x_D | **tuning bucket** | 0 initially | — |
+| Q(5,5) | delta_x_D | **tuning bucket** | 0 initially | — |
+| Q(6,6) | a | clean decomposition | 0 | No |
+| Q(7,7) | delta_a | closed-loop trajectory | Var(a[k+2] - 2·a[k+1] + a[k]) along reference | **Yes** (reference-trajectory-based, but deterministic) |
+| R(1,1) | dx_m channel | sensor spec | sigma2_n | No |
+| R(2,2) | a_m channel | **self-consistent fixed point** | iterate DARE ↔ Lyapunov ↔ V_meas ↔ R(2,2) | Yes (offline script) |
 
 ---
 
-## 5. What this means for writeup Section 3
+## 4. Q matrix — entry-by-entry derivation
 
-### Fully derivable entries (5 of 9)
-Q(1,1), Q(2,2), Q(5,5), Q(7,7) = 0 (trivial, from state dynamics).
-Q(3,3) = sigma2_deltaXT (from thermal model + Eq.14 process noise).
-R(1,1) = sigma2_n (from sensor noise specification).
-R(2,2) = 0.044-0.176 * sigma2_deltaXT (from Eq.13 + EMA chi-sq statistics).
+### 4.1 Q(1,1), Q(2,2) — structural zeros
 
-These can be stated in Section 3 as "derived from paper Eq.(X)" with
-full mathematical justification.
+Paper Eq.14 lines 1-2:
+```
+dx1[k+1] = dx2[k]
+dx2[k+1] = dx3[k]
+```
+Pure delay chain. No stochastic input at these equations.
 
-### Not derivable from paper (2 of 9)
-Q(4,4) and Q(6,6). Paper sets both to 0 (implicit modeling choice:
-disturbance and gain are assumed constant within the observation window).
-Code uses nonzero values (1e-1 and 1e-4 respectively) to allow the
-estimator to track slowly-varying states. **No closed-form derivation
-exists in the paper** for what these values should be when nonzero.
+**Value**: **0** (exact, structural).
 
-Section 3 writeup strategy for these entries:
-- State that paper assumes Q(4,4) = Q(6,6) = 0
-- Explain that our simulation has time-varying a(h_bar) and unmodeled
-  disturbances that require nonzero Q for estimator adaptability
-- Cite current values as empirical (from MC optimization, Phase 3)
-- Optionally note that Q(4,4) physically represents "allowable drift
-  rate of the disturbance state" and Q(6,6) represents "allowable
-  rate of change of the motion gain"
+### 4.2 Q(3,3) — thermal injection (adaptive)
 
-### Gap entries (Q(3,3), R(1,1), R(2,2))
-Paper-derived values differ from code by 1-4 orders of magnitude.
-The code values are not wrong — they are regime-stability tuning:
-- Q(3,3) = 1e4: absorbs wall-effect model error beyond thermal noise
-- R(1,1) = 0.01: tighter than sensor spec (noise OFF baseline makes
-  physical R(1,1) ≈ 0, so code uses small positive value as regularization)
-- R(2,2) = 1.0: intentionally larger than theory to reduce chi-sq
-  noise injection into a_hat (dynamics channel provides better
-  gain information when f_d != 0)
+Paper Eq.14 line 3 contains `-a[k]·f_T[k]`. The process noise at dx3 is:
+```
+q_3[k] = a[k]·f_T[k]
+Var(q_3[k]) = a[k]² · Var(f_T)
+             = a[k]² · 4·k_B·T·gamma_N / Ts
+             = 4·k_B·T · a[k]² / a_nom
+             = sigma2_dXT · (a[k] / a_nom)²
+```
 
-Section 3 can present these as "theoretical baseline X, simulation
-tuning Y, rationale Z" — a three-column structure parallel to what
-Task 1d did for the a_hat precision floor.
+**Value**: **Q(3,3)[k] = sigma2_dXT · (a[k]/a_nom)²** (time-varying in a).
+
+**Paper consistency**: this is exactly Eq.21's time-varying form. The
+code's current constant `Q(3,3) = 1e4·sigma2_dXT` is tuning compensation,
+not derivation.
+
+**Implementation note**: in practice a[k] is replaced by â[k] (EKF
+estimate) or â[k|k-1]. The adaptive form honors the paper's Eq.21
+literally. Stateflow syntactic constraints on this form are a separate
+implementation issue (see `project_qr_theoretization.md` for prior
+attempts). The correct *derivation* is adaptive regardless.
+
+### 4.3 Q(4,4) — tuning bucket
+
+x_D is the "disturbance state" in the paper's model. In our simulation
+there is **no clear physical disturbance source**:
+- No actuator drift.
+- No DC offset.
+- No creep.
+- Wall effect enters through `a(h_bar)`, already captured by the a state.
+
+Options that could force a derivation (rejected):
+- "x_D absorbs F_e linearization residuals": ambiguous without a specific
+  model of the residual structure, and path A (add c_perp(h_bar) to F_e)
+  was rejected because it requires unknown wall position.
+- "x_D represents unmodeled coupling": not present in our per-axis
+  Convention A architecture after P2 fix (z-axis beta coupling disabled).
+
+**Status**: **tuning bucket**, initial value **0**.
+
+**Tuning order**: Q(4,4) is optimized first (before Q(5,5)) in a later
+phase. Criterion TBD.
+
+### 4.4 Q(5,5) — tuning bucket
+
+delta_x_D is the rate-of-change of x_D. Same ambiguity as Q(4,4);
+inherited status.
+
+**Status**: **tuning bucket**, initial value **0**.
+
+**Tuning order**: Q(5,5) is optimized after Q(4,4) is determined.
+
+### 4.5 Q(6,6) — clean decomposition gives zero
+
+State equations for (a, delta_a):
+```
+a[k+1]        = a[k] + delta_a[k] + q_a[k]       q_a ~ N(0, Q(6,6))
+delta_a[k+1]  = delta_a[k]        + q_δa[k]      q_δa ~ N(0, Q(7,7))
+```
+
+**Clean decomposition**: Define delta_a_true[k] := a_true[k+1] - a_true[k]
+(forward first difference of the true motion gain along the trajectory).
+By construction:
+```
+a_true[k+1] = a_true[k] + delta_a_true[k]
+```
+holds **exactly** — no residual on the a equation. Hence:
+
+**Value**: **Q(6,6) = 0** (derivation output, not structural).
+
+All curvature of a(t) is absorbed into Q(7,7) via the delta_a equation.
+
+### 4.6 Q(7,7) — closed-loop trajectory residual (path B)
+
+From the clean decomposition:
+```
+q_δa[k] = delta_a_true[k+1] - delta_a_true[k]
+        = (a_true[k+2] - a_true[k+1]) - (a_true[k+1] - a_true[k])
+        = a_true[k+2] - 2·a_true[k+1] + a_true[k]
+        = Δ²a_true[k]            (second forward difference)
+```
+
+**Value**: **Q(7,7) = Var(Δ²a_true[k])** evaluated along the closed-loop
+trajectory.
+
+**Why closed-loop**: a_true = Ts/(gamma_N · c_perp(h_bar(t))) depends on
+the trajectory h_bar(t). h_bar(t) is set by the reference p_d(t) plus
+tracking error (which depends on Q/R). Strictly this is self-consistent,
+but because tracking error (≤ tens of nm) is much smaller than h_bar
+excursion (um scale), h_bar(t) ≈ h_bar_ref(t) to high precision. Q(7,7)
+can therefore be computed from the **reference trajectory** alone
+without running Simulink.
+
+**Continuous-time approximation** (sanity check):
+```
+Δ²a ≈ a''(t)·Ts²  as Ts → 0
+Q(7,7) ≈ Ts⁴ · Var(a''(t) along trajectory)
+```
+
+For p_d(t) = p_0 + A·cos(2πf·t)·w_hat (our default 'osc' trajectory):
+- h_bar(t) = (h_bottom + A·(1 + cos(2πf·t))/2) / R
+- a(t) = Ts/(gamma_N · c_perp(h_bar(t)))
+- a''(t) involves (da/dh_bar)², (d²a/dh_bar²), and (dh_bar/dt)²
+
+Numerical value of Q(7,7) is computed by a small script (Section 6).
+
+**Paper inconsistency**: paper sets Q(7,7) = 0, which states "delta_a is
+perfectly constant" — but along any trajectory with h_bar variation,
+delta_a is not constant. This is a paper modeling choice we explicitly
+reject in favor of the correct derivation.
 
 ---
 
-## 6. Files
+## 5. R matrix — entry-by-entry derivation
 
-- This file: `reference/for_test/qr_theoretical_values.md`
-- No code changes. No .mat regeneration.
-- Dependent on: paper pp. 931-932 (Eq.11-13, 14, 17, 21),
-  writeup Section 5/6 (C_dpmr_eff, beta), Task 1d Appendix A (chi-sq chain),
-  Phase 3 MC sweep results (project_sigma_ratio_filter.md).
+### 5.1 R(1,1) — sensor noise (direct)
+
+Measurement channel 1: `dx_m[k] = dx[k-2] + n[k-2]` where n is sensor
+noise. State dx1[k] represents true dx[k-2]. Innovation = n[k-2].
+
+**Value**: **R(1,1) = sigma2_n** (sensor noise variance from spec).
+
+Numerical values:
+- Noise ON: R(1,1) = sigma2_n = 1.0e-4 um² → scaling = 0.397
+- Noise OFF: R(1,1) = 0 (degenerate). In code implementation a small
+  positive epsilon (e.g., 1e-8·sigma2_dXT) is required for DARE
+  conditioning. This is regularization, not derivation.
+
+### 5.2 R(2,2) — self-consistent closed-loop fixed point
+
+This is the only entry where closed-loop self-consistency is intrinsic
+to the derivation.
+
+**Physical structure**:
+```
+a_m[k] = (V_meas[k] - C_n·sigma2_n) / (C_dpmr · 4·k_B·T)      (paper Eq.13)
+```
+where `V_meas[k]` is an IIR estimate of the HP-residual variance.
+Expected value in closed-loop steady state:
+```
+E[V_meas] = beta · C_dpmr_eff · Sigma_e(3,3)
+```
+where:
+- `Sigma_e(3,3)` is the closed-loop steady-state tracking error variance
+- `beta` accounts for finite-sample IIR bias (Task 1c)
+- `C_dpmr_eff` is the augmented-Lyapunov effective ratio for our
+  two-stage IIR architecture (writeup Sec.5).
+
+**Variance of a_m**: since V_meas varies around its expectation with
+chi-sq-like statistics amplified by del_pmr autocorrelation:
+```
+Var(V_meas) = chi_sq · rho_a · (E[V_meas])²
+            = [2·a_cov/(2-a_cov)] · rho_a · (beta · C_dpmr_eff · Sigma_e(3,3))²
+```
+and therefore:
+```
+R(2,2) = Var(a_m)
+       = Var(V_meas) / (C_dpmr · 4·k_B·T)²
+       = chi_sq · rho_a · (beta · C_dpmr_eff · Sigma_e(3,3))² / (C_dpmr · 4·k_B·T)²
+```
+
+**The self-referential loop**:
+```
+R(2,2)  →  DARE(F_aug, Q, H, R)  →  L_ss
+L_ss    →  F_e(closed-loop error dynamics)
+F_e     →  Sigma_e = Lyapunov(F_e, Q_driver)
+Sigma_e →  V_meas (via beta · C_dpmr_eff)
+V_meas  →  R(2,2)'    (new estimate)
+iterate until R(2,2)' ≈ R(2,2)
+```
+
+R(2,2) is the unique fixed point of this map. Section 7 describes the
+iteration algorithm.
+
+**Important**: every factor in the R(2,2) expression is a derivation
+output (chi_sq from a_cov; rho_a from lc via HP autocorrelation;
+C_dpmr_eff from lookup; beta from finite-sample analysis; Sigma_e from
+Lyapunov). Nothing is a free parameter. This is the "ratio of structural
+constants" form the user identified.
+
+---
+
+## 6. Q(7,7) computation procedure
+
+**Input**: reference trajectory parameters from `user_config.m`
+(h_bottom, amplitude, frequency, n_cycles, t_hold, wall geometry,
+c_perp polynomial coefficients).
+
+**Steps**:
+
+1. Generate the discrete-time reference `p_d[k]` for k = 0, …, N-1 at
+   sample rate Ts.
+2. Compute `h[k] = projection of p_d[k] onto w_hat minus wall location`.
+3. Compute `h_bar[k] = h[k] / R`.
+4. Evaluate `a_true[k] = Ts / (gamma_N · c_perp(h_bar[k]))`.
+5. Compute second difference: `Δ²a[k] = a_true[k+2] - 2·a_true[k+1] + a_true[k]` for k = 0, …, N-3.
+6. **Q(7,7) = var(Δ²a)** (sample variance over the full trajectory).
+
+**Output**: a single numerical value (scalar) for Q(7,7) in um²/pN².
+Normalized scaling = Q(7,7) / sigma2_dXT for use in `Qz_diag_scaling`.
+
+**Notes**:
+- The sample variance is taken over the full trajectory including hold,
+  descent, and oscillation phases. The oscillation phase dominates.
+- Per-axis: strictly the same procedure applied to each axis. For the
+  w_hat-aligned trajectory, only the normal-direction axis sees
+  variation; tangential axes have a(t) ≈ const and Q(7,7) ≈ 0.
+- Normalized by sigma2_dXT, Q(7,7) scaling depends on trajectory
+  (amplitude, frequency, h_bottom). Different operating scenarios yield
+  different Q(7,7). This is correct — Q(7,7) is trajectory-specific.
+
+---
+
+## 7. R(2,2) self-consistency iteration
+
+**Input**: lc, a_cov, a_pd, a_prd, sigma2_n, sensor_delay, all Q entries
+(including Q(7,7) from Section 6 and Q(3,3) function of a).
+
+**Iteration**:
+
+```
+0. Initialize R22 (e.g., use code's current 1.0·sigma2_dXT).
+1. For current (Q, R), solve DARE on (F_aug, H, Q, R) for L_ss.
+2. Construct closed-loop F_e from L_ss (11-dim augmented state including
+   IIR filter states).
+3. Solve Lyapunov: Sigma_e = F_e · Sigma_e · F_e' + Q_driver.
+   (Q_driver injects Q(3,3) at dx3.)
+4. Extract Sigma_e(3,3) = tracking error variance.
+5. E[V_meas]_new = beta · C_dpmr_eff · Sigma_e(3,3).
+6. Var(V_meas)_new = chi_sq · rho_a · (E[V_meas]_new)².
+7. R22_new = Var(V_meas)_new / (C_dpmr · 4·k_B·T)².
+8. If |R22_new - R22| / R22 < tol (e.g., 1e-4), converged; else R22 ← R22_new, goto 1.
+```
+
+**Infrastructure**: Session 2 already built essentially this loop in
+`test_script/build_cdpmr_eff_lookup.m` for each (lc, a/a_nom) grid
+point. That script resolves DARE self-consistently per grid point. It
+can be repurposed to produce a single (Q,R) pair at a chosen operating
+point.
+
+**Output**: a single scalar R(2,2) and the corresponding Sigma_e, for
+the chosen operating point (lc, a_ref). Normalized scaling = R(2,2) /
+sigma2_dXT.
+
+---
+
+## 8. Side effect: Session 2 fragility resolved by correct Q(7,7)
+
+Session 2 documented that Q(6,6) = 0 caused P(6,6) collapse in ~100
+steps, leading to a_hat being permanently frozen. The mechanism:
+
+```
+L(6,2) = P(6,6) / (P(6,6) + R(2,2))
+```
+
+With Q(6,6) = 0 AND Q(7,7) = 0, P(6,6) has no injection and collapses
+exponentially to 0. L(6,2) → 0. a_hat frozen.
+
+**But this was the paper's Q(6,6) = Q(7,7) = 0 configuration.** In the
+correct derivation, Q(7,7) > 0 (from path B). The covariance propagation
+becomes:
+```
+P(7,7)[k+1] = P(7,7)[k] + Q(7,7)              linear growth
+P(6,7)[k+1] = P(6,7)[k] + P(7,7)[k]           quadratic growth
+P(6,6)[k+1] = P(6,6)[k] + 2·P(6,7) + P(7,7)   cubic growth (bounded by Kalman pull-back)
+```
+
+P(6,6) no longer collapses — it is sustained by cross-coupling from
+P(7,7) through the `[1 1; 0 1]` block of F. L(6,2) stays bounded away
+from 0. a_hat tracks the measurement channel properly.
+
+**Implication**: the correct derivation of Q(7,7) (which paper sets to
+0 but we derive as Var(Δ²a) > 0) **naturally resolves the coupled
+fragility that Session 2 identified**. The fragility was not a Q/R
+design problem — it was a consequence of paper's over-simplified
+`delta_a = const` assumption, which fails the moment a(t) has curvature.
+
+This is strong evidence the current derivation framework is correct.
+
+---
+
+## 9. Summary (all values as scalings on sigma2_dXT)
+
+### Two interpretations of Q(6,6) / Q(7,7)
+
+The state decomposition `a[k+1] = a[k] + δa[k] + q_a[k]` and
+`δa[k+1] = δa[k] + q_δa[k]` is not unique in how noise is split
+between `q_a` and `q_δa`. Two principled choices give different values:
+
+**Interpretation 1 — Forward-diff clean decomposition (τ → 0 limit)**:
+δa_true[k] := a_true[k+1] - a_true[k] → Q(6,6) = 0, Q(7,7) = Var(Δ²a).
+Mathematically unique given the decomposition. At Ts = 6.25e-4, this is
+operationally insufficient — Simulink shows `a_hat` tracking degrades.
+
+**Interpretation 2 — Backward-diff β (strict but with rank-1 Q)**:
+δa_true[k] := a_true[k] - a_true[k-1] → Q(6,6) = Q(7,7) = Var(Δ²a).
+Same numerical magnitude but applied to both; diagonal approximation loses
+rank-1 correlation.
+
+**Interpretation 3 — B'-2 white-noise equivalent (time-scale self-consistent)**:
+For deterministic signal with correlation time T_c = 1/(2πf₀):
+`Q(6,6) = Var(a) · Ts / T_c`, `Q(7,7) = Var(δa) · Ts / T_c` along
+oscillation phase. Captures the full-signal effective noise rather than
+per-step residual. Numerically ~10⁷× larger Q(6,6) than interpretation 1/2.
+
+### Numerical values at lc=0.7, a_pd=0.05, a_cov=0.05, default trajectory, noise ON
+
+#### Q matrix
+
+| Entry | Value | Interpretation |
+|---|---|---|
+| Q(1,1), Q(2,2), Q(5,5) | 0 | structural zeros |
+| Q(3,3) | 1.0 (constant free-space approx) | adaptive (a/a_nom)² blocked by Stateflow |
+| Q(4,4) | 0 (initial) | tuning bucket |
+| Q(6,6) | 1.3444e-11 (β) / **1.3016e-04 (B'-2)** | B'-2 matches empirical Q(6,6) = 1e-4 |
+| Q(7,7) | 1.3444e-11 (β) / **2.4368e-09 (B'-2)** | B'-2 nearly zero (matches empirical = 0) |
+
+#### R matrix
+
+| Entry | Value | Notes |
+|---|---|---|
+| R(1,1) | **0.3970** (= σ²_n/σ²_dXT) | sensor spec, noise ON |
+| R(2,2) | **1.7016** (self-consistent theoretical) | derived |
+| R(2,2) | 1.0 (empirical, used in code) | Simulink prefers lower R |
+
+#### Structural constants (lc=0.7, ar=1.0)
+
+| Symbol | Value |
+|---|---|
+| C_dpmr_paper | 5.9216 |
+| C_dpmr_eff (augmented Lyapunov with Q77 > 0) | 4.0275 |
+| β (IIR finite-sample bias) | 0.9024 |
+| chi_sq = 2·a_cov/(2-a_cov) | 0.0513 |
+| ρ_a (rigorous via A_aug autocorrelation) | 3.70 |
+| Sigma_e(3,3) closed-loop | 1.327e-3 um² (std 36 nm) |
+| V_meas = β·C_dpmr_eff·Sigma_e | 4.82e-3 um² |
+
+### Simulink verification summary (2026-04-17 autonomous run)
+
+Best configuration empirically: **B' Q + empirical R = 1.0** (not fully
+theoretical). Achieves 3D RMSE 53 nm (vs empirical 57 nm) and `a_hat_z`
+rel err 14.6% (vs empirical 21.7%). See `qr_verification_findings.md`
+for full 5-variant comparison table.
+
+---
+
+## 10. Open implementation items
+
+Items needed to produce concrete numerical values:
+
+1. **Q(7,7) script** (Section 6): one-shot MATLAB function that reads
+   trajectory parameters, returns scaling on sigma2_dXT.
+2. **R(2,2) script** (Section 7): extract/repurpose
+   `build_cdpmr_eff_lookup.m` into a single-point self-consistency
+   solver.
+3. **Adaptive Q(3,3) in controller**: Stateflow has syntactic
+   constraints (see `project_qr_theoretization.md`). Implementation
+   path separate from derivation.
+
+Items in tuning phase (post-derivation):
+
+4. **Q(4,4) optimization**: criterion to be defined. Options: minimize
+   mean bias in a_hat, minimize 3D RMSE, minimize innovation
+   whiteness-test residual.
+5. **Q(5,5) optimization**: after Q(4,4) converged.
+
+Items not in this derivation (reserved for later):
+
+6. **Trajectory representativeness**: Q(7,7) and R(2,2) depend on
+   trajectory. Baseline = default 'osc' trajectory from `user_config.m`.
+   Other scenarios yield different (Q(7,7), R(2,2)).
+
+---
+
+## 11. Files and cross-references
+
+**This document**: `reference/for_test/qr_theoretical_values.md`
+
+**Dependencies** (prior derivations reused here):
+- Writeup Section 5: C_dpmr_eff augmented Lyapunov derivation
+- Writeup Section 6: F_e closed-loop error dynamics (per-axis, post-P2)
+- Task 1b: finite-sample IIR bias beta
+- Task 1c: beta integration into EKF
+- Task 1d Appendix A: chi-sq chain decomposition
+- Session 2 of this branch: coupled stability analysis,
+  `build_cdpmr_eff_lookup.m` self-consistency infrastructure
+
+**Referenced constants**:
+- `model/config/physical_constants.m` (k_B, T, gamma_N, Ts, R)
+- `model/config/user_config.m` (lambda_c, a_cov, meas_noise_std)
+- `test_results/verify/cdpmr_eff_lookup.mat` (C_dpmr_eff lookup)
+- `test_results/verify/bias_factor_lookup.mat` (beta lookup)
+
+**Related reports**:
+- `task_qr_reference_report.md` — Session 1 Simulink experiments with
+  paper-direct Q/R (historical, pre-derivation)
+- `project_qr_theoretization.md` (memory) — Session 2 findings that
+  motivated this re-derivation
+
+**Deprecated content from earlier versions of this file**: paper-vs-code
+comparison tables have been removed since the framing shifted away from
+"paper values as ground truth" to "derivation in our simulation's own
+right."

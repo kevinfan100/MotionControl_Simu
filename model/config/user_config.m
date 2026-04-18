@@ -79,8 +79,22 @@ function config = user_config()
     config.beta = 0;                    % z-axis chart-extension coupling (0 = x/y Jordan-block form canonical; 0.5 = experimental predictor, off by default)
     config.lamdaF = 1.0;                % EKF forgetting factor (1.0 = no forgetting, standard KF)
     config.Pf_init_diag = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];  % 7x1
-    config.Qz_diag_scaling = [0; 0; 1e4; 1e-1; 0; 1e-4; 0];           % 7x1 (tuned near-wall)
-    config.Rz_diag_scaling = [1e-2; 1e0];                              % 2x1
+    % === Derived Q/R (reference/for_test/qr_theoretical_values.md, 2026-04-17) ===
+    % closed-loop, no-tradeoff framework under backward-diff beta interpretation.
+    % Q(1,1), Q(2,2) = 0: structural (paper Eq.14 delay chain)
+    % Q(3,3) = 1*sigma2_dXT: free-space thermal (paper Eq.21, constant approx of
+    %                        adaptive (a/a_nom)^2 since Stateflow blocks adaptive)
+    % Q(4,4), Q(5,5) = 0: tuning bucket (x_D has no physical source in our sim)
+    % Q(6,6) = Q(7,7) = Var(d2a)/sigma2_dXT ~= 1.34e-11 (backward-diff beta,
+    %                   diagonal approx; from compute_q77_from_trajectory.m)
+    % R(1,1) = sigma2_n/sigma2_dXT = 0.397 (noise ON, sensor spec)
+    % R(2,2) = 1.72 (closed-loop self-consistent; compute_r22_self_consistent.m)
+    config.Qz_diag_scaling = [0; 0; 1; 0; 0; 1.3444e-11; 1.3444e-11];
+    config.Rz_diag_scaling = [0.3970; 1.7185];
+    % =============================================================================
+    % [historical, pre-derivation 2026-04-15 — empirical near-wall tuning]
+    % config.Qz_diag_scaling = [0; 0; 1e4; 1e-1; 0; 1e-4; 0];
+    % config.Rz_diag_scaling = [1e-2; 1e0];
 
     % Thermal
     config.thermal_enable = true;

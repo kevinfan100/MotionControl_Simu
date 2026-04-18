@@ -30,6 +30,22 @@ lc_grid = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9];                   % 6 values
 aratio_grid = [0.03, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 1.0];   % 8 values (a/a_nom)
 a_pd = 0.05;
 
+% Q(6,6) and Q(7,7) from trajectory derivation (beta: both = Var(d2a)/sigma2_dXT).
+% Loaded from q77_trajectory.mat produced by compute_q77_from_trajectory.
+% If not found, falls back to 0 (reverts to pre-derivation behavior).
+q77_path = fullfile(project_root, 'test_results', 'verify', 'q77_trajectory.mat');
+if exist(q77_path, 'file')
+    q77_data = load(q77_path, 'Q77_scaling');
+    Q66_fixed = q77_data.Q77_scaling;   % beta: Q66 = Q77
+    Q77_fixed = q77_data.Q77_scaling;
+    fprintf('Loaded Q77_scaling from q77_trajectory.mat: %.4e (deployed to slots 6 & 7)\n', ...
+            Q77_fixed);
+else
+    Q66_fixed = 0;
+    Q77_fixed = 0;
+    fprintf('q77_trajectory.mat not found; using Q66=Q77=0 (pre-derivation default)\n');
+end
+
 % Physical constants for self-consistent Q/R
 phys = physical_constants();
 a_nom = phys.Ts / phys.gamma_N;
@@ -68,7 +84,8 @@ for i = 1:n_lc
         ar = aratio_grid(j);
 
         % Self-consistent Q/R at this wall proximity
-        Q_kf_scale = [0; 0; ar; 0; 0; 0; 0];
+        % Q(6,6), Q(7,7) from beta-derivation trajectory; Q(3,3) scales with aratio
+        Q_kf_scale = [0; 0; ar; 0; 0; Q66_fixed; Q77_fixed];
         R_kf_scale = [sigma2_n / sigma2_dXT; chi_sq_R * ar^2];
 
         opts = struct('f0', 0);
@@ -160,10 +177,13 @@ lookup.Cnp_tab = Cnp_tab;        % [n_lc x n_ar]
 lookup.max_eig_tab = max_eig_tab;
 lookup.dare_iters_tab = dare_iters_tab;
 lookup.dare_err_tab = dare_err_tab;
+lookup.Q66_fixed = Q66_fixed;
+lookup.Q77_fixed = Q77_fixed;
 lookup.build_timestamp = datestr(now, 'yyyy-mm-dd HH:MM:SS');
 lookup.note = ['2-D augmented Lyapunov lookup for 7-state EKF + IIR HP filter. ', ...
                '(lc, a/a_nom) grid with self-consistent Q/R at each point: ', ...
-               'Q(3,3)=4kBT*a, R(2,2)=chi_sq*a^2. Wall-effect-aware.'];
+               'Q(3,3)=ar*sigma2_dXT, R(2,2)=chi_sq*ar^2. Q(6,6)=Q(7,7) loaded ', ...
+               'from q77_trajectory.mat (beta: Var(d2a)/sigma2_dXT).'];
 
 save(fullfile(out_dir, 'cdpmr_eff_lookup.mat'), '-struct', 'lookup');
 fprintf('\nSaved: %s\n', fullfile(out_dir, 'cdpmr_eff_lookup.mat'));
