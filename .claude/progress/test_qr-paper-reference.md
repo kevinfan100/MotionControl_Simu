@@ -66,7 +66,7 @@ a_cov           = 0.005;
 ```
 
 ### Git Commit
-(to be filled after commit)
+`f9e727f` - feat(test/qr): Session 6 - frozen_correct steady-state reveals paper-level a_hat
 
 ---
 
