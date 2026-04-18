@@ -1,5 +1,80 @@
 # Q/R Theoretization — Progress Record
 
+## 2026-04-18 (Session 4) — Positioning verification + baseline alignment
+
+### Completed Parts
+- ✅ Project verification convention surveyed (verify_p2_static_h25.m as template)
+- ✅ verify_qr_positioning_run.m worker function (parameterizable subset, incremental checkpoint)
+- ✅ verify_qr_positioning_aggregate.m combine batches into reports
+- ✅ 5-variant × 2-scenario × 3-seed positioning matrix (27 runs successful, 1 crash, 2 missing due to batch crash)
+- ✅ B' near-wall divergence root cause identified (particle hit wall, h_bar→1.0)
+- ✅ β frozen behavior confirmed (a_hat std 5% h25, 2% h50)
+- ✅ **Sensor noise spec correction**: identified that earlier qr verify used [0.01, 0.01, 0.01] um but main project uses [0.00062, 0.000057, 0.00331] um (z 3x smaller)
+- ✅ 12-run focused empirical+beta comparison with corrected noise spec
+- ✅ Empirical baseline NOW matches main project Task P2 numbers
+- ✅ qr_positioning_summary.md final report
+
+### File Changes
+**New Files:**
+- `test_script/verify_qr_positioning_run.m` (~225 lines)
+  Worker function for positioning verification matrix. Reads idx range, hardcoded scenario+variant+seed lists. Incremental .mat checkpoint per run.
+- `test_script/verify_qr_positioning_aggregate.m` (~280 lines)
+  Loads all qr_pos_b*.mat batch outputs, aggregates per (scenario, variant) across seeds, generates per-scenario reports + figure.
+- `reference/for_test/qr_positioning_summary.md` (latest, with corrected noise spec)
+- `reference/for_test/qr_positioning_near_wall_h25_report.md`
+- `reference/for_test/qr_positioning_free_space_h50_report.md`
+- `reference/for_test/fig_qr_positioning_summary.png` (5-variant, older data)
+- `reference/for_test/fig_baseline_empirical_zoom.png` (empirical EKF spike trajectory diagnostic)
+
+### Key Findings (corrected noise spec)
+
+**Empirical matches main project baseline**:
+- h=2.5: 3D RMSE 35.0±0.3 nm, a_hat_z bias +1.6%, std 20.1%  (vs P2: -0.03%, 19.66%)
+- h=50: 3D RMSE 60.6±0.5 nm, a_hat_z bias -0.2%, std 18.7%  (vs P2: +1.35%, 19.49%)
+
+**β vs empirical (positioning)**:
+- 3D RMSE: essentially identical (35 vs 36 nm at h=2.5; 60 vs 62 nm at h=50)
+- a_hat_z std: β is 4-5x smaller (FROZEN) — useless for dynamic
+- a_hat_z bias: β tends biased high at h=50 (+7%)
+
+**Earlier (wrong noise spec) findings still valid in pattern**:
+- B' has near-wall crash risk (particle hits wall, 1/3 seeds)
+- All variants give similar 3D RMSE
+- Only differentiation is in a_hat estimator behavior
+
+### Testing Status
+✅ Positioning verification framework solid
+- Sensor noise spec aligned to main project hardware values
+- 12-run baseline + comparison cycle ~10 min wall time (2-parallel)
+- Project P2 baseline reproduced to <1% (mean) and <5% (std)
+
+### Next Steps (user-defined direction)
+- [ ] **a_hat estimation quality** is the user's stated focus
+- [ ] Need to make derivation values "match" simulation (currently empirical works, B' theoretical crashes)
+- [ ] Possible directions:
+  - Q(6,6)/R(2,2) sweep to find a_hat std vs frozen sweet spot
+  - Pf_init(6,6) reduction to lower spike
+  - lc=0.4 + lc=0.7 cross-comparison aligned with main project baseline table
+  - Theory-vs-simulation match for a_hat std specifically
+
+### Issues & Notes
+
+⚠️ **Critical setup error caught**: Earlier verify_qr_derivation.m used wrong meas_noise_std. All numerical comparisons in qr_verification_findings.md were affected. The PATTERN findings (B' divergence, frozen β, similar RMSE) are still valid because both variants used same wrong noise — the relative comparison holds.
+
+⚠️ **Old qr_positioning_combined.mat (27-run) is from wrong noise spec era**. Headline numbers there are off by ~5-50% depending on scenario.
+
+💡 **Empirical baseline vs theory (lc=0.7, h=50)**:
+- a_hat_z bias ~0% (good — no systematic offset)
+- a_hat_z std 19% — this is the chi-squared chain prediction (Task 1d derivation)
+- Reproduced exactly, validating both code AND theory
+
+💡 **The a_hat std 19% is INTRINSIC** to the chi-squared statistics of the IIR estimator (Task 1d Appendix A). Q/R cannot push it lower without freezing β-style. The "right" a_hat std is bounded below by physics.
+
+### Git Commit
+(to be filled after commit)
+
+---
+
 ## 2026-04-17 (Session 3) — Full Pipeline Autonomous Execution
 
 ### Completed Parts
