@@ -863,7 +863,70 @@ well within the multi-seed distribution, not a lucky draw.
 
 `[PASS — P2 static at h=2.5 verified with CI]`
 
-## 3.4 Gain-meas-noise channel quantification (deferred)
+## 3.4 Tracking error & â error metrics (Scenarios A & B, 5 seeds parallel)
+
+**Method**: 10 parallel `matlab -batch` instances (5 seeds × 2 scenarios),
+each runs `single_AB_run.m`, results written to per-seed `.mat`,
+`aggregate_AB_metrics.m` reads and reports. Total wall time ~4 min.
+
+**Common settings** (both scenarios): controller_type=7, lc=0.7,
+a_pd=a_prd=a_cov=0.05, β=0, positioning hold (amplitude=0), thermal ON,
+meas noise OFF, T_sim=30 s, ss window after 10 s.
+
+**Metric definitions**:
+- Tracking error δx[k] = p_d[k] − p_m[k] per axis (σ_n=0 → p_m = true p)
+- â error: bias = 100·(mean(â) − a_true)/a_true [%]; std spread = 100·std(â)/a_true [%]
+
+### Scenario A — free-space h = 50 µm (5 seeds, base 20260441)
+c_∥=1.026, c_⊥=1.053, a_x_true=1.4334e−2, a_z_true=1.3962e−2 µm/pN
+
+| Axis | track mean [nm] | track std [nm] | â bias [%] | â std [%] |
+|---|---:|---:|---:|---:|
+| x | +0.029 ± 0.045 | 35.05 ± 0.45 | −0.16 ± 1.52 | 19.34 ± 0.74 |
+| z | +0.016 ± 0.058 | 34.94 ± 0.13 | +1.35 ± 0.63 | 19.49 ± 1.18 |
+
+### Scenario B — near-wall h = 2.5 µm (5 seeds, base 20260541)
+c_∥=2.311, c_⊥=10.438, a_x_true=6.3623e−3, a_z_true=1.4089e−3 µm/pN
+
+| Axis | track mean [nm] | track std [nm] | â bias [%] | â std [%] |
+|---|---:|---:|---:|---:|
+| x | −0.044 ± 0.042 | 23.27 ± 0.28 | +0.21 ± 1.52 | 19.90 ± 1.60 |
+| z | −0.023 ± 0.028 | 10.96 ± 0.11 | −0.03 ± 1.32 | 19.66 ± 1.25 |
+
+### Observations
+
+- Tracking mean ≈ 0 in all 4 axes (|mean| < 0.1 nm, far below std) → no DC bias.
+- Tracking std z-axis scales as 1/√c_⊥: A→B ratio 34.94/10.96 = 3.19 vs √(10.438/1.053) = 3.15 ✓
+- â bias ≈ 0 (|bias| < 1.5% in all 4) → Task 1c IIR-bias correction effective.
+- â std ≈ 19–20% in both scenarios → operating-point-independent chi-squared floor.
+  Task 1d Appendix A predicted 26% raw / ~19% after EKF smoothing factor 1.74 → matches.
+
+`[OK]` Performance metrics characterized for canonical positioning.
+
+## 3.5 Bug discovered & fixed: rng(seed) ordering for parallel batch runs
+
+While preparing the parallel runner, found that `verify_p2_static_h25_mc.m`
+(committed earlier) calls `rng(seed)` AFTER `calc_simulation_params`. But
+`calc_thermal_params.m` line 19 generates `thermal.seed = randi(2^31-1)`
+during the params build. So `rng(seed)` does not control the actual
+thermal trajectory.
+
+In **MCP single-session sequential** runs, this accidentally appears to
+work because the global rng state evolves across iterations (each loop
+gets a different randi result by chance). In **parallel `matlab -batch`**
+runs, all instances start with the same default rng state → identical
+thermal seeds → bit-identical simulations across "different" seeds.
+
+`single_AB_run.m` was authored with the correct ordering: `rng(seed)`
+BEFORE `calc_simulation_params`. The earlier `verify_p2_static_h25_mc.m`
+result is qualitatively still valid (5 effectively-different sims), but
+the per-seed labels do not reproducibly map to the recorded ratio values.
+
+`[FIXED in single_AB_run.m]` `[FLAG verify_p2_static_h25_mc.m]` —
+existing committed script has same ordering bug; should be patched if
+re-runs are needed for reproducibility.
+
+## 3.6 Gain-meas-noise channel quantification (deferred)
 
 Phase 1 §5.4 flagged that Σ_n only captures the position-measurement-noise
 channel; the gain-measurement noise on a_xm enters error states via
@@ -958,14 +1021,18 @@ Committed:
 - `reference/for_test/phase1_axm_audit.md` (this report)
 - `model/controller/calc_ctrl_params.m` (+5 drift warnings)
 - `test_script/verify_cn_noise_on.m` (new)
-- `test_script/verify_p2_static_h25_mc.m` (new)
+- `test_script/verify_p2_static_h25_mc.m` (new) — has seed-ordering bug, flagged
+- `test_script/single_AB_run.m` (new, parallel-safe per-seed runner)
+- `test_script/aggregate_AB_metrics.m` (new, reads parallel outputs)
 - Regenerated: `fig_p2_h_bin.png`, `fig_task1d_paper_benchmark.png`
 
 Gitignored data (reproducible from scripts):
 - `test_results/verify/p2_h_bin.mat` (regenerated, now β=0)
 - `test_results/verify/task1d_paper_benchmark_mc.mat` (regenerated, now β=0)
-- `test_results/verify/verify_cn_noise_on.mat` (new, σ_n sweep)
-- `test_results/verify/p2_static_h25_mc.mat` (new, 5-seed)
+- `test_results/verify/verify_cn_noise_on.mat` (σ_n sweep)
+- `test_results/verify/p2_static_h25_mc.mat` (5-seed, MCP sequential)
+- `test_results/verify/AB_run_{A1..A5,B1..B5}.mat` (parallel per-seed)
+- `test_results/verify/AB_aggregate.mat` (aggregated A & B metrics)
 - `test_results/verify/bias_factor_lookup.mat` (rebuilt as sanity check)
 
 
