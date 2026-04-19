@@ -1,16 +1,27 @@
-function verify_qr_positioning_run(start_idx, end_idx, output_file)
+function verify_qr_positioning_run(start_idx, end_idx, output_file, T_sim, t_warmup, variant_filter)
 %VERIFY_QR_POSITIONING_RUN Worker: runs subset of (scenario, variant, seed) matrix
 %
 %   Usage from Bash:
 %     matlab -batch "verify_qr_positioning_run(1, 13, 'test_results/verify/qr_pos_b1.mat')"
 %
-%   Matrix iteration order (50 total, [scenario, variant, seed] varying fastest in seed):
-%     for is = 1:n_sc, for iv = 1:n_var, for ie = 1:n_seed -> idx=1..50
+%   Optional args (Session 7 P1 verification):
+%     T_sim          - simulation time [s], default 30
+%     t_warmup       - steady-state window start [s], default 10
+%     variant_filter - vector of variant indices to run, default [1 2 3 4]
+%                      (1=empirical, 2=emp_acov005, 3=frozen_correct, 4=frozen_smartPf)
 %
-%   Hardcoded:
-%     scenarios = {h=2.5, h=50}
-%     variants  = {empirical, beta, Bprime, Bprime_Remp, Qemp_Rderived}
-%     seeds     = [12345 67890 11111 22222 33333]
+%   Matrix iteration order (n_sc * n_var * n_seed total):
+%     for is = 1:n_sc, for iv = 1:n_var, for ie = 1:n_seed -> idx=1..total
+%
+%   Defaults (Session 6 reproduction):
+%     T_sim=30, t_warmup=10, all 4 variants
+%
+%   P1 test (Session 7):
+%     T_sim=15, t_warmup=2, variant_filter=[1 3]
+
+    if nargin < 4 || isempty(T_sim),          T_sim = 30; end
+    if nargin < 5 || isempty(t_warmup),       t_warmup = 10; end
+    if nargin < 6 || isempty(variant_filter), variant_filter = [1 2 3 4]; end
 
     [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
     project_root = fileparts(script_dir);
@@ -31,15 +42,16 @@ function verify_qr_positioning_run(start_idx, end_idx, output_file)
     Pf_default = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];
     Pf_small   = [0; 0; 1e-4; 1e-4; 0; 1e-5; 0];
     Pf_smart   = [0; 0; 1e-4; 1e-4; 0; 1e-3; 0];
-    variants(1) = struct('name','empirical',       'Qz',[0;0;1e4;0.1;0;1e-4;0],   'Rz',[0.01;1.0],   'Pf', Pf_default, 'a_cov', 0.05);
-    variants(2) = struct('name','emp_acov005',     'Qz',[0;0;1e4;0.1;0;1e-4;0],   'Rz',[0.01;1.0],   'Pf', Pf_default, 'a_cov', 0.005);
-    variants(3) = struct('name','frozen_correct',  'Qz',[0;0;1;0;0;1e-8;1e-8],    'Rz',[0.397;1.0],  'Pf', Pf_small,   'a_cov', 0.005);
-    variants(4) = struct('name','frozen_smartPf',  'Qz',[0;0;1;0;0;1e-8;1e-8],    'Rz',[0.397;1.0],  'Pf', Pf_smart,   'a_cov', 0.005);
+    variants_all(1) = struct('name','empirical',       'Qz',[0;0;1e4;0.1;0;1e-4;0],   'Rz',[0.01;1.0],   'Pf', Pf_default, 'a_cov', 0.05);
+    variants_all(2) = struct('name','emp_acov005',     'Qz',[0;0;1e4;0.1;0;1e-4;0],   'Rz',[0.01;1.0],   'Pf', Pf_default, 'a_cov', 0.005);
+    variants_all(3) = struct('name','frozen_correct',  'Qz',[0;0;1;0;0;1e-8;1e-8],    'Rz',[0.397;1.0],  'Pf', Pf_small,   'a_cov', 0.005);
+    variants_all(4) = struct('name','frozen_smartPf',  'Qz',[0;0;1;0;0;1e-8;1e-8],    'Rz',[0.397;1.0],  'Pf', Pf_smart,   'a_cov', 0.005);
+    variants = variants_all(variant_filter);
 
     seeds = [12345, 67890, 11111];
 
     n_sc = numel(scenarios); n_var = numel(variants); n_seed = numel(seeds);
-    n_total = n_sc * n_var * n_seed;  % 50
+    n_total = n_sc * n_var * n_seed;
 
     triples = zeros(n_total, 3);
     k = 0;
@@ -67,17 +79,18 @@ function verify_qr_positioning_run(start_idx, end_idx, output_file)
     for j = 1:n_run
         idx = start_idx + j - 1;
         is = triples(idx, 1); iv = triples(idx, 2); ie = triples(idx, 3);
-        results{j} = run_one(scenarios(is), variants(iv), seeds(ie), idx, n_total);
+        results{j} = run_one(scenarios(is), variants(iv), seeds(ie), idx, n_total, T_sim, t_warmup);
         % Incremental checkpoint after every run so we never lose progress
         t_batch_total = toc(t_batch);
         save(output_file, 'results', 'start_idx', 'end_idx', 'triples', ...
-                          'scenarios', 'variants', 'seeds', 't_batch_total', 'j');
+                          'scenarios', 'variants', 'seeds', 't_batch_total', 'j', ...
+                          'T_sim', 't_warmup');
     end
     t_batch_total = toc(t_batch);
     fprintf('\nBatch DONE in %.1f s. Saved: %s\n', t_batch_total, output_file);
 end
 
-function r = run_one(scenario, variant, seed, idx, n_total)
+function r = run_one(scenario, variant, seed, idx, n_total, T_sim, t_warmup)
     config = user_config();
     config.theta = 0; config.phi = 0; config.pz = 0;
     config.h_min = 1.1 * 2.25;
@@ -112,7 +125,7 @@ function r = run_one(scenario, variant, seed, idx, n_total)
         config.Pf_init_diag = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];
     end
     config.beta = 0; config.lamdaF = 1.0;
-    config.T_sim = 30;   % Session 6: extended to 30s for true steady-state analysis
+    config.T_sim = T_sim;   % Session 6 default 30s; Session 7 P1 test: 15s
     config.Qz_diag_scaling = variant.Qz;
     config.Rz_diag_scaling = variant.Rz;
 
@@ -161,8 +174,7 @@ function r = run_one(scenario, variant, seed, idx, n_total)
         a_true_z(k) = a_nom / c_perp;
     end
 
-    % --- Steady-state window (P2 standard 10s + T_sim=30s for frozen transient decay) ---
-    t_warmup = 10;
+    % --- Steady-state window (configurable via t_warmup arg) ---
     idx_ss = t >= t_warmup;
 
     % --- Tracking error stats (per-axis nm) ---

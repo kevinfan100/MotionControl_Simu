@@ -68,33 +68,27 @@ function config = user_config()
     % EKF estimation parameters (IIR single-layer HP + variance)
     config.a_pd = 0.05;             % EMA smoothing for LP (deterministic removal)
     config.a_prd = 0.05;            % EMA smoothing for HP residual mean
-    config.a_cov = 0.05;            % EMA smoothing for HP residual mean-square
-                                    %   (Phase 3 tested 0.005-0.1: free-space static
-                                    %   benefits from smaller values, but near-wall
-                                    %   dynamic loses precision due to lag. 0.05 is
-                                    %   the best balance for mixed scenarios.)
     config.epsilon = 0.01;          % Anisotropy threshold for theta measurement
 
     % 7-state EKF specific parameters
     config.beta = 0;                    % z-axis chart-extension coupling (0 = x/y Jordan-block form canonical; 0.5 = experimental predictor, off by default)
     config.lamdaF = 1.0;                % EKF forgetting factor (1.0 = no forgetting, standard KF)
-    config.Pf_init_diag = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];  % 7x1
-    % === Derived Q/R (reference/for_test/qr_theoretical_values.md, 2026-04-17) ===
-    % closed-loop, no-tradeoff framework under backward-diff beta interpretation.
-    % Q(1,1), Q(2,2) = 0: structural (paper Eq.14 delay chain)
-    % Q(3,3) = 1*sigma2_dXT: free-space thermal (paper Eq.21, constant approx of
-    %                        adaptive (a/a_nom)^2 since Stateflow blocks adaptive)
-    % Q(4,4), Q(5,5) = 0: tuning bucket (x_D has no physical source in our sim)
-    % Q(6,6) = Q(7,7) = Var(d2a)/sigma2_dXT ~= 1.34e-11 (backward-diff beta,
-    %                   diagonal approx; from compute_q77_from_trajectory.m)
-    % R(1,1) = sigma2_n/sigma2_dXT = 0.397 (noise ON, sensor spec)
-    % R(2,2) = 1.72 (closed-loop self-consistent; compute_r22_self_consistent.m)
-    config.Qz_diag_scaling = [0; 0; 1; 0; 0; 1.3444e-11; 1.3444e-11];
-    config.Rz_diag_scaling = [0.3970; 1.7185];
-    % =============================================================================
-    % [historical, pre-derivation 2026-04-15 — empirical near-wall tuning]
-    % config.Qz_diag_scaling = [0; 0; 1e4; 1e-1; 0; 1e-4; 0];
-    % config.Rz_diag_scaling = [1e-2; 1e0];
+
+    % === Q/R Preset Selector (Session 7, 2026-04-19) ===
+    % Choose one of:
+    %   'frozen_correct' - paper-level positioning (Sessions 4-7).
+    %                      a_hat_z bias < 1%, std 1-5%. Requires P6 controller
+    %                      (P5 IIR pre-fill + warmup_count=2). 3D RMSE 35/62 nm.
+    %                      Validated for static positioning at h=2.5 and h=50.
+    %   'empirical'      - historical near-wall tuning (pre-derivation, 2026-04-15).
+    %                      a_hat_z bias ~0%, std ~20%. 3D RMSE same as frozen.
+    %                      Use for dynamic / motion scenarios where frozen Q can't
+    %                      track changing a.
+    %   'beta'           - derived backward-diff beta interpretation (2026-04-17).
+    %                      Q(6,6) = Q(7,7) = Var(d2a). Tested in Sessions 4-5,
+    %                      drifts (a_hat std 22-39%) — not recommended for use.
+    config.qr_preset = 'frozen_correct';
+    config = apply_qr_preset(config);   % sets Qz/Rz/Pf_init_diag/a_cov
 
     % Thermal
     config.thermal_enable = true;

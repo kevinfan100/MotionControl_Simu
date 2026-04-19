@@ -141,13 +141,32 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
         % 0G. IIR states
         del_pmd_k1  = zeros(3,1);
         del_pmrd_k1 = zeros(3,1);
-        del_pmr2_avg       = zeros(3,1);
+        % Pre-fill del_pmr2_avg at predicted steady-state Var(del_pmr) per axis
+        % (Option P5). This addresses both the gate transient (was Session 6
+        % finding) AND the IIR EMA growth phase that drives a_m toward 0 for
+        % ~1000 samples, biasing a_hat downward (Session 7 finding).
+        %   Var(del_pmr)_ss = Cdpmr_eff * sigma2_dXT * (a_axis/a_nom)
+        %                   + Cnp_eff  * sigma2_n(axis)
+        % Per-axis using wall-aware a_hat from line 98.
+        ar_init = a_hat / a_nom;   % 3x1
+        del_pmr2_avg = C_dpmr_eff_const * sigma2_deltaXT * ar_init ...
+                     + C_np_eff_const * sigma2_noise;
+        % Floor at 10x var_threshold to ensure gate stays open even if lookup
+        % is unavailable / reports tiny value.
+        del_pmr2_avg = max(del_pmr2_avg, 0.01 * sigma2_deltaXT);
 
         % 0H. Previous values
         a_m_k1  = [a_nom; a_nom; a_nom];
 
-        % 0I. IIR warm-up counter (0.2s at Ts rate)
-        warmup_count = round(0.2 / Ts);
+        % 0I. IIR warm-up counter
+        % P6 (Session 7): shortened from 0.2s (320 steps) to 2 steps minimum
+        % required for delay buffer (pd_k2) validity. With P5 IIR pre-fill,
+        % the original 320-step warmup is unnecessary AND harmful: during
+        % no-control phase the IIR sees noise-only del_pmr, decaying its
+        % pre-filled value toward sensor-noise floor. Result: a_m at warmup
+        % end is biased low, which (with frozen Q) produces the residual
+        % +5-9% bias seen in Sessions 5 and 7 short-window measurements.
+        warmup_count = 2;
 
         % 0J. Return zeros on first call
         f_d = zeros(3, 1);
