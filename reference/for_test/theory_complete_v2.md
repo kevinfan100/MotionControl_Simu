@@ -1,20 +1,22 @@
-# Comprehensive Theory Status v2 (2026-04-20)
+# Comprehensive Theory Status v2 (2026-04-20, updated with Level 5)
 
-完整推導 + 驗證的最終結果。涵蓋 4 個 Levels (Level 2 跳過, 反向走 wrong direction)。
+完整推導 + 驗證的最終結果。涵蓋 5 個 Levels (Level 2 跳過, 反向走 wrong direction; Level 4 跳過, Pf 已 settled).
+
+**Level 5 (a_true wall sensitivity) 是 KEY breakthrough**, 將 frozen z near-wall 預測從 3× under 修正到 ±7%。
 
 ---
 
 ## 執行摘要
 
-| 量 | 預測精度 (Level 3 後) | 適用 |
+| 量 | 預測精度 (Level 5 後) | 適用 |
 |---|---|---|
 | **Tracking std** | **±4%** (5/6 cells ±0.4%) | 全部 ✓ |
 | **a_hat std (frozen z h=50)** | **+7%** (theory 1.57% vs 1.68%) | paper 主場景 ✓ |
-| **a_hat std (frozen z h=2.5)** | 3× under | near-wall, partial |
-| **a_hat std (frozen x)** | 9× under | per-axis 限制 |
-| **a_hat std (empirical)** | 6× under (consistent) | empirical 模式 |
+| **a_hat std (frozen z h=2.5)** | **+7% (Lv5 修正)** (4.22% vs 4.52%) | near-wall ✓ |
+| **a_hat std (frozen x)** | h=2.5: 5.5×; h=50: 8.9× | per-axis 限制 |
+| **a_hat std (empirical z)** | h=2.5: 4× (Lv5); h=50: 5.8× | empirical 模式 |
 
-**3 commits**: `9dca456` (bug fix), `171aa1f` (Sigma-based tracking), `9ba1b02` (a_hat Lv0), `be744be` (Lv1 rho_a), `6164dd4` (Lv3 f_d).
+**6 commits**: `9dca456` (bug fix), `171aa1f` (Sigma-based tracking), `9ba1b02` (a_hat Lv0), `be744be` (Lv1 rho_a), `6164dd4` (Lv3 f_d), **`a0fb317` (Lv5 wall sensitivity, KEY)**.
 
 ---
 
@@ -76,6 +78,43 @@ rho_a = 1 + 2 * sum_{L=1}^{Lmax} ρ_del_pmr(L)² · (1-a_cov)^L
 
 **結論**: Pf transient already settled, time-varying 算不會改變預測。
 
+### Level 5: a_true wall-sensitivity term (KEY breakthrough)
+
+**Insight**: 之前我假設 `a_true_axis = a_nom/c_axis(h_init)` 是常數, 但實際 p_m_z 漂移
+(= tracking error_z) 改變 h_bar, c_perp/c_para 也跟著變, 所以 **a_true 隨時間波動**。
+
+`e_a = (a_hat - a_true)/a_true` 包含**兩個獨立來源**:
+1. a_hat noise (EKF 裡的 chi-sq 雜訊) — Lv1+Lv3 已 cover
+2. **a_true fluctuation** (wall sensitivity × tracking std) — **Lv5 加入**
+
+**Formula**:
+```
+rel_std(a_true_axis) = |dc/dh_bar| / c · std(p_m_z) / R
+                       (sensitivity)         (tracking std)
+```
+
+對 z 軸用 dc_perp/dh_bar; 對 x/y 軸用 dc_para/dh_bar。
+
+**Sensitivity 數值** (從 finite difference at h_init):
+- h=2.5 (h_bar=1.11): `|dc_perp|/c_perp = 7.884` per h_bar unit
+- h=50 (h_bar=22.2): `|dc_perp|/c_perp = 0.002` (3900× 小)
+
+**Combined assuming independence**:
+```
+Var(e_a)_total = Var(e_a_EKF) + Var(a_true_wall_sens)
+```
+
+**Results (z-axis)**:
+| 場景 | Lv1 ratio | **Lv5 ratio** | 改善 |
+|---|---|---|---|
+| frozen h=2.5 | 3.07 | **1.07** ✓ | HUGE |
+| frozen h=50 | 1.07 | 1.07 | unchanged (sens ~0) |
+| empirical h=2.5 | 6.58 | 4.02 | partial |
+| empirical h=50 | 5.76 | 5.76 | unchanged |
+
+**結論**: Level 5 完成 frozen z-axis 推導 (兩個高度都 ±7% 對齊)。
+empirical 部分改善, 仍剩 5-6× — 屬於不同機制 (active EKF 對 autocorrelated input 的 filtering 行為)。
+
 ---
 
 ## 為什麼 a_hat under-prediction 沒解?
@@ -121,18 +160,24 @@ with Sigma_th, Sigma_np = solve_dlyap(A_aug, B_*)
      Fe = paper Eq.18 with f0 = 0
 ```
 
-### a_hat estimation variance per axis (PARTIAL accuracy)
+### a_hat estimation variance per axis (FROZEN z: ±7%, others partial)
 
 ```
-Var(a_hat - a_true) ≈ Sigma_aug_phys(idx_e6, idx_e6) + chi_sq · rho_a · a²·Sigma_na(idx_e6, idx_e6)
+Var(e_a) = Var(e_a_EKF)        +  Var(a_true_wall_sensitivity)
+         = (Var_e_phys / a²)    + (sens · std(p_m_z)/R)²
 
-where chi_sq = 2·a_cov / (2 - a_cov)
-      rho_a  = compute_rho_a_rigorous(A_aug, Sigma_state, a_pd, a_cov, sigma2_n)
-      Sigma_na = solve_dlyap(A_aug, B_na)
-      B_na(idx_e) = -Fe · L(:, 2)  (gain channel innovation)
+where Var_e_phys = Sigma_aug_phys(idx_e6, idx_e6) + chi_sq·rho_a·a²·Sigma_na(idx_e6, idx_e6)
+      chi_sq    = 2·a_cov / (2 - a_cov)
+      rho_a     = compute_rho_a_rigorous(A_aug, Sigma_state, a_pd, a_cov, sigma2_n)
+      Sigma_na  = solve_dlyap(A_aug, B_na),  B_na(idx_e) = -Fe·L(:,2)
+      sens      = |dc_axis/dh_bar| / c_axis        % wall sensitivity, finite-diff
+      std(p_m_z) = sqrt(Sigma_aug_phys(idx_dx, idx_dx))    % tracking std
 ```
 
-**Limitation**: 對 frozen z (free-space) 準 (±7%), 對其他 cells 給 order-of-magnitude only.
+**Accuracy by case**:
+- frozen z (both h=2.5 and h=50): **±7%** ✓ (paper main scenarios)
+- empirical: ~4-6× under (active-EKF mechanism, future work)
+- x-axis: ~5-9× under (per-axis EKF coupling, future work)
 
 ---
 
@@ -140,13 +185,12 @@ where chi_sq = 2·a_cov / (2 - a_cov)
 
 ### CAN claim ✓
 - "11-dim augmented Lyapunov predicts closed-loop tracking variance to within ±4% across near-wall and free-space operating points."
-- "a_hat estimation std under frozen Q in free-space positioning matches Sigma-based prediction within +7% (1.57% theory vs 1.68% measured), validating chi-squared chain mechanism + closed-loop suppression."
+- "**a_hat z-axis estimation std under frozen Q matches Sigma-based prediction + wall-sensitivity term within ±7% across BOTH near-wall (h=2.5) AND free-space (h=50)**, validating closed-loop chi-squared chain + a_true wall-sensitivity composite formula." (Lv5 加入後)
 - "Bug-free per-axis Einstein scaling (a_axis/a_nom linear) consistent with thermal_force model; quadratic scaling fixed in commit 9dca456."
 
 ### CANNOT claim ✗
-- a_hat std for ALL operating points (theory under-predicts 3-9× in non-paper-main scenarios)
-- Per-axis a_hat asymmetry (theory predicts symmetric, measurement shows x ≠ z by factor 8 for h=50 frozen)
-- Empirical-mode a_hat std (theory under-predicts 6× consistently)
+- Per-axis a_hat asymmetry (theory predicts symmetric, measurement shows x ≠ z by factor 5-8)
+- Empirical-mode a_hat std (theory under-predicts 4-6× consistently, even after Lv5)
 
 ### SHOULD list as future work
 1. Sub-optimal Kalman with R designer ≠ actual: per-axis Lyapunov treatment
@@ -164,6 +208,7 @@ where chi_sq = 2·a_cov / (2 - a_cov)
 9ba1b02 a_hat std Sigma-based (Level 0, rho_a=4)
 be744be Level 1: rigorous rho_a (small improvement)
 6164dd4 Level 3: f_d coupling (no measurable effect)
+a0fb317 Level 5: a_true wall sensitivity (KEY breakthrough for frozen z h=2.5)
 ```
 
 Skipped: Level 2 (wrong direction), Level 4 (Pf already steady state).
@@ -172,9 +217,18 @@ Skipped: Level 2 (wrong direction), Level 4 (Pf already steady state).
 
 ## 結論
 
-**完整推導框架建立** (11-dim Lyapunov + rho_a + Sigma_na + Sigma_mult), **bug 修了**, **驗證 P6 12 runs 完成**。
+**完整推導框架建立** (11-dim Lyapunov + rho_a + Sigma_na + Sigma_mult + wall sensitivity), **bug 修了**, **驗證 P7+P5 共 24 runs 完成**。
 
 **Tracking std**: 工程級準確 (±4%) → **可信任公式**
-**a_hat std**: 部分場景準 (frozen z h=50 ±7%) → **可寫主場景, 其他列限制**
 
-剩 6× under-prediction 的根因 (empirical 全部, frozen x 全部) **未解**, 可能源於 per-axis sub-optimal Kalman 結構 (R designer ≠ actual)。需更深入 closed-loop sub-optimal 理論才能解。
+**a_hat z 軸 frozen** (paper 主場景): **±7% 對齊兩個高度** (Level 5 加入後完整) → **可寫完整 z 軸 frozen claim**
+
+剩餘限制:
+- empirical 模式: 4-6× under (active EKF + autocorrelated input 機制)
+- x 軸全部: 5-9× under (per-axis EKF coupling 結構)
+
+兩者需要更深入工作 (~3-5 days each):
+- empirical: 把 a_m 的 IIR 狀態加進 augmented state, 解 13-dim Lyapunov
+- x 軸: per-axis sub-optimal Kalman 嚴格分析
+
+**Level 5 是關鍵發現**: a_true 不是常數, 而是隨 p_m_z 漂移而變; 近壁時 wall sensitivity 高達 7.88 per h_bar unit, 這個項貢獻 4% relative std (近壁), 是漏掉的物理。
