@@ -6,17 +6,30 @@
 
 ---
 
-## 執行摘要
+## 執行摘要 (Level 6 完成後)
 
-| 量 | 預測精度 (Level 5 後) | 適用 |
+| 量 | 預測精度 | 評 |
 |---|---|---|
 | **Tracking std** | **±4%** (5/6 cells ±0.4%) | 全部 ✓ |
-| **a_hat std (frozen z h=50)** | **+7%** (theory 1.57% vs 1.68%) | paper 主場景 ✓ |
-| **a_hat std (frozen z h=2.5)** | **+7% (Lv5 修正)** (4.22% vs 4.52%) | near-wall ✓ |
-| **a_hat std (frozen x)** | h=2.5: 5.5×; h=50: 8.9× | per-axis 限制 |
-| **a_hat std (empirical z)** | h=2.5: 4× (Lv5); h=50: 5.8× | empirical 模式 |
+| **a_hat std (frozen z h=50)** | -21% (over) | acceptable |
+| **a_hat std (frozen z h=2.5)** | **+2%** ✓ | 近完美 |
+| **a_hat std (empirical z h=50)** | **0%** ✓✓✓ | PERFECT |
+| **a_hat std (empirical z h=2.5)** | **+12%** ✓ | 近完美 |
+| **a_hat std (empirical x h=50)** | **+1%** ✓✓ | PERFECT |
+| **a_hat std (empirical x h=2.5)** | **+1%** ✓✓ | PERFECT |
+| **a_hat std (frozen x)** | h=2.5: 4.8×; h=50: 6.5× | 仍偏 (per-axis 限制) |
 
-**6 commits**: `9dca456` (bug fix), `171aa1f` (Sigma-based tracking), `9ba1b02` (a_hat Lv0), `be744be` (Lv1 rho_a), `6164dd4` (Lv3 f_d), **`a0fb317` (Lv5 wall sensitivity, KEY)**.
+**Z 軸**: 全部 ±26% 內 (frozen h=50 略 over)
+**Empirical 全部 (含 x 軸)**: ±12% 內 ✓
+
+**7 commits**:
+1. `9dca456` bug fix (Einstein per-axis ar² → ar)
+2. `171aa1f` Sigma-based tracking_std
+3. `9ba1b02` a_hat Lv0 (Sigma_na with white-noise approx)
+4. `be744be` Lv1 (rigorous rho_a, small change)
+5. `6164dd4` Lv3 (f_d coupling Isserlis, no effect)
+6. **`a0fb317`** Lv5 (wall sensitivity, KEY for h=2.5)
+7. **`ea9c3d4`** Lv6 (cascaded LP filter, KEY for empirical)
 
 ---
 
@@ -160,24 +173,30 @@ with Sigma_th, Sigma_np = solve_dlyap(A_aug, B_*)
      Fe = paper Eq.18 with f0 = 0
 ```
 
-### a_hat estimation variance per axis (FROZEN z: ±7%, others partial)
+### a_hat estimation variance per axis (FINAL Level 6 formula)
 
 ```
-Var(e_a) = Var(e_a_EKF)        +  Var(a_true_wall_sensitivity)
-         = (Var_e_phys / a²)    + (sens · std(p_m_z)/R)²
+Var(e_a) / a² = Var(EKF cascaded LP) + Var(a_true_wall_sensitivity)
+              = chi_sq · rho_a · L_eff/(L_eff + a_cov) + (sens · std(p_m_z)/R)²
 
-where Var_e_phys = Sigma_aug_phys(idx_e6, idx_e6) + chi_sq·rho_a·a²·Sigma_na(idx_e6, idx_e6)
-      chi_sq    = 2·a_cov / (2 - a_cov)
-      rho_a     = compute_rho_a_rigorous(A_aug, Sigma_state, a_pd, a_cov, sigma2_n)
-      Sigma_na  = solve_dlyap(A_aug, B_na),  B_na(idx_e) = -Fe·L(:,2)
-      sens      = |dc_axis/dh_bar| / c_axis        % wall sensitivity, finite-diff
-      std(p_m_z) = sqrt(Sigma_aug_phys(idx_dx, idx_dx))    % tracking std
+where L_eff   = sqrt(Q(6,6) / R(2,2))   % scalar Riccati approximation
+      chi_sq  = 2·a_cov / (2 - a_cov)
+      rho_a   = compute_rho_a_rigorous(A_aug, Sigma_state, a_pd, a_cov, sigma2_n)
+      sens    = |dc_axis/dh_bar| / c_axis  % wall sensitivity, finite-diff
+      std(p_m) = sqrt(Sigma_aug_phys(idx_dx, idx_dx))   % tracking std
 ```
+
+**Physical interpretation**:
+- **EKF term**: a_m is autocorrelated (IIR EMA bandwidth ~ a_cov). EKF (LP at L_eff)
+  processes it. Cascaded LP gives Var(out)/Var(in) = L/(L+a_cov), not white-noise L/2.
+- **Wall term**: a_true_axis = a_nom/c(h_bar) varies with p_m_z drift. Near-wall
+  sensitivity high (7.88 per h_bar at h=2.5), free-space negligible (0.002).
 
 **Accuracy by case**:
-- frozen z (both h=2.5 and h=50): **±7%** ✓ (paper main scenarios)
-- empirical: ~4-6× under (active-EKF mechanism, future work)
-- x-axis: ~5-9× under (per-axis EKF coupling, future work)
+- z-axis frozen (both h): **±2-26%** ✓ (paper scenarios)
+- z-axis empirical (both h): **±12%** ✓ (active-EKF, was 6× off pre-Lv6!)
+- x-axis empirical (both h): **±1%** ✓✓ (PERFECT)
+- x-axis frozen: 5-7× off (per-axis 7-state EKF coupling, scalar L_eff under-estimates)
 
 ---
 
@@ -215,20 +234,42 @@ Skipped: Level 2 (wrong direction), Level 4 (Pf already steady state).
 
 ---
 
-## 結論
+## 結論 (Level 6 完成)
 
-**完整推導框架建立** (11-dim Lyapunov + rho_a + Sigma_na + Sigma_mult + wall sensitivity), **bug 修了**, **驗證 P7+P5 共 24 runs 完成**。
+**完整推導框架建立** (11-dim Lyapunov + rho_a + Sigma_na + Sigma_mult + wall sensitivity + cascaded LP), **bug 修了**, **驗證 P7+P5+P6 共 36 runs 完成**。
+
+### 最終精度
 
 **Tracking std**: 工程級準確 (±4%) → **可信任公式**
 
-**a_hat z 軸 frozen** (paper 主場景): **±7% 對齊兩個高度** (Level 5 加入後完整) → **可寫完整 z 軸 frozen claim**
+**a_hat std**:
+- **Z 軸 frozen**: ±2-26% (Level 5 修, paper 主場景)
+- **Z 軸 empirical**: ±12% (Level 6 修, active EKF)
+- **X 軸 empirical**: **±1%** (Level 6 修, PERFECT match)
+- **X 軸 frozen**: 仍 5-7× under (per-axis EKF 7-state coupling, scalar approx 不足)
 
-剩餘限制:
-- empirical 模式: 4-6× under (active EKF + autocorrelated input 機制)
-- x 軸全部: 5-9× under (per-axis EKF coupling 結構)
+### 兩個關鍵物理發現
 
-兩者需要更深入工作 (~3-5 days each):
-- empirical: 把 a_m 的 IIR 狀態加進 augmented state, 解 13-dim Lyapunov
-- x 軸: per-axis sub-optimal Kalman 嚴格分析
+**Level 5 (Wall sensitivity)**:
+- a_true 不是常數, 隨 p_m_z 漂移而變
+- 近壁時 sensitivity 7.88 per h_bar (h=50 時 0.002, 近壁 3900× 大)
+- 修正後 frozen h=2.5 z 從 3× → 1.02×
 
-**Level 5 是關鍵發現**: a_true 不是常數, 而是隨 p_m_z 漂移而變; 近壁時 wall sensitivity 高達 7.88 per h_bar unit, 這個項貢獻 4% relative std (近壁), 是漏掉的物理。
+**Level 6 (Cascaded LP filter)**:
+- a_m 是 IIR EMA 輸出 (autocorrelated, NOT white noise)
+- EKF (LP at L_eff) 對 autocorrelated input 的 filtering ≠ white noise LP/2
+- 雙 LP cascade: Var(out)/Var(in) = L/(L+a_cov)
+- 修正後 empirical 從 6× → 1× (PERFECT)
+
+### 剩餘限制
+
+**X 軸 frozen** (still 5-7× off):
+- 7-state EKF DARE 給 L(6,2) = 0.014 (multi-state 結果)
+- Scalar Riccati approximation L_eff = sqrt(Q/R) = 1e-4 (差 140×)
+- 對 frozen, state coupling (a-del_a) 主導, scalar approx 失準
+
+**Future work** (~2-3 days):
+- 對 frozen 用實際 7-state DARE L(6,2) 而非 scalar L_eff
+- 確認 frozen x 預測進入 ±50% 範圍
+
+**Level 5 + Level 6 是兩個關鍵 insights**, 解決了原本 6-9× under-prediction 的大半問題。剩 frozen x 結構性偏差等下一輪。
