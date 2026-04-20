@@ -294,8 +294,36 @@ function r = run_one(scenario, variant, seed, idx, n_total, T_sim, t_warmup)
             Var_dx_lv3 = S_phys_lv3(dgn.idx_dx, dgn.idx_dx);
             Var_e6_lv3 = S_phys_lv3(dgn.idx_e(6), dgn.idx_e(6));
 
+            % Level 5: a_true fluctuation via p_m drift × wall sensitivity.
+            % For positioning, a_true_axis = a_nom/c_axis(h_bar). p_m_z drift
+            % -> h_bar drift -> c changes -> a_true fluctuates. Measured
+            % e_a = (a_hat - a_true)/a_true includes this a_true fluctuation.
+            % For z axis (wall-normal): c = c_perp; sensitivity is large near wall.
+            % For x axis (tangential): c = c_para; sensitivity mild.
+            dh = 0.001;
+            [c_para_p, c_perp_p] = calc_correction_functions(h_init_bar + dh);
+            [c_para_m, c_perp_m] = calc_correction_functions(max(h_init_bar - dh, 1.001));
+            dcperp_dhbar = (c_perp_p - c_perp_m) / (2*dh);
+            dcpara_dhbar = (c_para_p - c_para_m) / (2*dh);
+            if strcmp(ax_label{1}, 'x')
+                sens = abs(dcpara_dhbar) / c_para_h;     % 1/c_para · |dc_para/dh_bar|
+            else
+                sens = abs(dcperp_dhbar) / c_perp_h;     % 1/c_perp · |dc_perp/dh_bar|
+            end
+            % Tracking std (p_m) in um from Var(delta_x) which equals Var(p_m-pd)
+            std_pm_um = sqrt(max(Var_dx_lv3, 0));
+            % Relative std of a_true: sensitivity · std(h_bar) = sensitivity · std(p_m_z)/R
+            % NOTE: only p_m_z affects h_bar; tangential axes use SAME p_m_z std (projected)
+            % but for simplicity use axis's own tracking std (valid for w_hat=[0;0;1])
+            R_p_local = params.Value.common.R;
+            rel_std_a_true_wall = sens * std_pm_um / R_p_local;
+
+            % Combine (assume independent): total Var(e_a) = Var(e_a_ekf) + Var(a_true_wall)
+            Var_a_rel_total = (sqrt(max(Var_e6_lv3, 0)) / max(a_phys_use, eps))^2 ...
+                            + rel_std_a_true_wall^2;
+            std_a_rel_pct = 100 * sqrt(Var_a_rel_total);
+
             std_dx_nm = sqrt(max(Var_dx_lv3, 0)) * 1000;
-            std_a_rel_pct = 100 * sqrt(max(Var_e6_lv3, 0)) / max(a_phys_use, eps);
             if strcmp(ax_label{1}, 'x')
                 r.tracking_std_theory_x_nm = std_dx_nm;
                 r.ahat_std_theory_x_pct = std_a_rel_pct;
