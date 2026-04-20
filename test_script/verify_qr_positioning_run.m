@@ -263,7 +263,9 @@ function r = run_one(scenario, variant, seed, idx, n_total, T_sim, t_warmup)
             rho_a_rig = compute_rho_a_rigorous(A_aug, dgn, config.a_pd, ...
                 a_cov_local, sigma2_n_use, 200);
 
-            % Pass 2: include Sigma_na (a_m noise) and Sigma_mult (f_d coupling, Level 3)
+            % Pass 2: include Sigma_na (a_m noise, Level 1 white-noise) and Sigma_mult (Lv3 f_d)
+            % Note: Sigma_na with white-noise variance under-predicts because a_m is
+            % AUTOCORRELATED (IIR EMA ~ 1/a_cov memory). Level 6 below uses cascaded LP.
             actual_a_m_var = chi_sq * rho_a_rig * a_phys_use^2;
             S_phys_lv1 = dgn.Sigma_aug_phys ...
                        + actual_a_m_var * dgn.Sigma_na;
@@ -318,9 +320,20 @@ function r = run_one(scenario, variant, seed, idx, n_total, T_sim, t_warmup)
             R_p_local = params.Value.common.R;
             rel_std_a_true_wall = sens * std_pm_um / R_p_local;
 
-            % Combine (assume independent): total Var(e_a) = Var(e_a_ekf) + Var(a_true_wall)
-            Var_a_rel_total = (sqrt(max(Var_e6_lv3, 0)) / max(a_phys_use, eps))^2 ...
-                            + rel_std_a_true_wall^2;
+            % Level 6: cascaded LP filter formula for a_m (autocorrelated input).
+            % a_m IS itself an IIR EMA output with bandwidth ~ a_cov.
+            % EKF (LP at L_eff = sqrt(Q/R)) processes this autocorrelated input.
+            % Cascaded LP: Var(out) = Var(in) * L_eff / (L_eff + a_cov).
+            % Using SCALAR Riccati L_eff = sqrt(Q66/R22) (not multi-dim L from DARE)
+            % because actual a_hat update behavior is dominated by direct a-gain channel.
+            Q66_scaling = Q_kf_scale(6);
+            R22_scaling = R_kf_scale(2);
+            L_eff_a = sqrt(Q66_scaling / R22_scaling);
+            cascade_factor = L_eff_a / (L_eff_a + a_cov_local);
+            % Var(a_hat - a_true) from a_m chi-sq propagation through cascaded LP:
+            Var_e_lv6_rel = chi_sq * rho_a_rig * cascade_factor;
+            % Combine with wall-sensitivity (independent term):
+            Var_a_rel_total = Var_e_lv6_rel + rel_std_a_true_wall^2;
             std_a_rel_pct = 100 * sqrt(Var_a_rel_total);
 
             std_dx_nm = sqrt(max(Var_dx_lv3, 0)) * 1000;
