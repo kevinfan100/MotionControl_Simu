@@ -239,12 +239,20 @@ function [C_dpmr_eff, C_np_eff, L, A_aug, diagnostics] = ...
 
     % ---------------------------------------------------------------
     % 8b. Optional physical-scaling combination
-    %     Sigma_aug_phys = (a_phys/a_nom)^2 * sigma2_dXT * Sigma_th
+    %     Sigma_aug_phys = (a_phys/a_nom) * sigma2_dXT * Sigma_th
     %                    + sigma2_n * Sigma_np
     %                    + Q66_abs * Sigma_q66
     %                    + Q77_abs * Sigma_q77
     %     Rationale: each Sigma_X is solved for unit-variance driver, so
     %     physical variance = (physical driver variance) * Sigma_X.
+    %     Per-axis thermal-step variance is sigma2_dXT * ar (LINEAR in ar)
+    %     because thermal force per axis follows Einstein per-axis
+    %     (Var(F_thermal_axis) ∝ gamma_axis = gamma_N * c_axis), giving
+    %     Var(a_axis * F_thermal_axis) = a_axis^2 * (constant * c_axis)
+    %                                  = a_nom^2 * constant / c_axis
+    %                                  = sigma2_dXT * (a_axis/a_nom)
+    %     This matches Cdpmr_eff lookup convention. (Bug fix 2026-04-20:
+    %     was a_ratio^2, inconsistent with lookup; see thermal_force.m.)
     % ---------------------------------------------------------------
     if ~isempty(opts.physical_scaling)
         ps = opts.physical_scaling;
@@ -256,7 +264,7 @@ function [C_dpmr_eff, C_np_eff, L, A_aug, diagnostics] = ...
                   'opts.physical_scaling requires sigma2_dXT, a_phys, a_nom');
         end
         a_ratio = ps.a_phys / ps.a_nom;
-        thermal_variance = (a_ratio^2) * ps.sigma2_dXT;
+        thermal_variance = a_ratio * ps.sigma2_dXT;
 
         Sigma_aug_phys =   thermal_variance * Sigma_th ...
                          + ps.sigma2_n      * Sigma_np ...
