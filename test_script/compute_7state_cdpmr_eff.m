@@ -191,6 +191,11 @@ function [C_dpmr_eff, C_np_eff, L, A_aug, diagnostics] = ...
     Sigma_q66 = solve_dlyap_robust(A_aug, B_q66);
     Sigma_q77 = solve_dlyap_robust(A_aug, B_q77);
 
+    % Gain measurement noise n_a unit solve (for a_hat std prediction).
+    % Actual a_m noise variance (chi-sq * rho_a * a_axis^2) is applied by
+    % physical_scaling caller; here we just solve unit Lyapunov.
+    Sigma_na = solve_dlyap_robust(A_aug, B_na);
+
     % ---------------------------------------------------------------
     % 7. Extract C_dpmr_eff and C_np_eff
     %    del_pmr[k] = (1-a_pd) * (dx_d2[k] - pmd_prev[k] + n_p[k])
@@ -221,6 +226,7 @@ function [C_dpmr_eff, C_np_eff, L, A_aug, diagnostics] = ...
     diagnostics.Sigma_np      = Sigma_np;
     diagnostics.Sigma_q66     = Sigma_q66;
     diagnostics.Sigma_q77     = Sigma_q77;
+    diagnostics.Sigma_na      = Sigma_na;
     diagnostics.A_e           = A_e;
     diagnostics.Fe            = Fe;
     diagnostics.H             = H;
@@ -259,6 +265,7 @@ function [C_dpmr_eff, C_np_eff, L, A_aug, diagnostics] = ...
         if ~isfield(ps, 'Q66_abs'), ps.Q66_abs = 0; end
         if ~isfield(ps, 'Q77_abs'), ps.Q77_abs = 0; end
         if ~isfield(ps, 'sigma2_n'), ps.sigma2_n = 0; end
+        if ~isfield(ps, 'actual_a_m_var'), ps.actual_a_m_var = 0; end
         if ~isfield(ps, 'a_nom') || ~isfield(ps, 'a_phys') || ~isfield(ps, 'sigma2_dXT')
             error('compute_7state_cdpmr_eff:physical_scaling_missing', ...
                   'opts.physical_scaling requires sigma2_dXT, a_phys, a_nom');
@@ -266,15 +273,28 @@ function [C_dpmr_eff, C_np_eff, L, A_aug, diagnostics] = ...
         a_ratio = ps.a_phys / ps.a_nom;
         thermal_variance = a_ratio * ps.sigma2_dXT;
 
-        Sigma_aug_phys =   thermal_variance * Sigma_th ...
-                         + ps.sigma2_n      * Sigma_np ...
-                         + ps.Q66_abs       * Sigma_q66 ...
-                         + ps.Q77_abs       * Sigma_q77;
+        % Sigma_aug_phys: use ACTUAL noise drivers only (matches simulation).
+        % Q66, Q77 are EKF designer's fictional process noise (a, del_a are
+        % constant in real simulation), NOT actual drivers. Including them
+        % over-predicts Var(a_hat - a_true) because Sigma_q77(e6,e6) has huge
+        % amplification from double-integrator structure (1/L^3) but Q77 is
+        % never actually injected into the plant. Same for Q66.
+        Sigma_aug_phys =   thermal_variance      * Sigma_th ...
+                         + ps.sigma2_n           * Sigma_np ...
+                         + ps.actual_a_m_var     * Sigma_na;
+        % Optional: include designer Q for "what EKF expects" prediction.
+        if isfield(ps, 'include_designer_Q') && ps.include_designer_Q
+            Sigma_aug_phys = Sigma_aug_phys ...
+                             + ps.Q66_abs * Sigma_q66 ...
+                             + ps.Q77_abs * Sigma_q77;
+        end
         Sigma_aug_phys = 0.5 * (Sigma_aug_phys + Sigma_aug_phys');
 
         diagnostics.Sigma_aug_phys = Sigma_aug_phys;
         diagnostics.Sigma_e_dx_phys     = Sigma_aug_phys(idx_dx,    idx_dx);     % Var(delta_x[k])
         diagnostics.Sigma_e_dx_d2_phys  = Sigma_aug_phys(idx_dx_d2, idx_dx_d2);  % Var(delta_x[k-2])
+        diagnostics.Sigma_e6_phys       = Sigma_aug_phys(idx_e(6), idx_e(6));    % Var(a_hat - a_true)
+        diagnostics.Sigma_e7_phys       = Sigma_aug_phys(idx_e(7), idx_e(7));    % Var(del_a_hat - del_a_true)
         diagnostics.physical_scaling_used = ps;
     end
 
