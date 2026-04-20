@@ -232,19 +232,16 @@ function r = run_one(scenario, variant, seed, idx, n_total, T_sim, t_warmup)
         r.theory_std_dpmr_z_nm = NaN;
     end
 
-    % --- Sigma-based theory tracking std + a_hat std (Stage 7+, after bug fix) ---
+    % --- Sigma-based theory tracking std + a_hat std (after bug fix + Level 1) ---
     % Direct extraction of Var(delta_x) and Var(a_hat - a_true) per axis from
-    % 11-dim Lyapunov. tracking std: more accurate than lookup. a_hat std:
-    % includes actual a_m noise (chi-sq based) instead of designer R.
-    % See reference/for_test/theory_correction_analysis.md.
+    % 11-dim Lyapunov. Level 1: rigorous rho_a via compute_rho_a_rigorous
+    % (was constant 4; now per-(lc,ar,Q) computed from autocorrelation).
     try
         sigma2_dXT_full = 4 * params.Value.ctrl.k_B * params.Value.ctrl.T * a_nom;
         Q_kf_scale = config.Qz_diag_scaling;
         R_kf_scale = config.Rz_diag_scaling;
-        % chi-sq factor for a_m noise (IIR EMA of del_pmr^2):
         a_cov_local = config.a_cov;
         chi_sq = 2 * a_cov_local / (2 - a_cov_local);
-        rho_a_approx = 4;   % autocorrelation amplification (approx; rigorous via compute_rho_a_rigorous)
         opts_sigma = struct('f0', 0, 'verbose', false);
         for ax_label = {'x', 'z'}
             if strcmp(ax_label{1}, 'x')
@@ -252,29 +249,36 @@ function r = run_one(scenario, variant, seed, idx, n_total, T_sim, t_warmup)
             else
                 a_phys_use = a_z_h; sigma2_n_use = sigma2_n_z_axis;
             end
-            actual_a_m_var = chi_sq * rho_a_approx * a_phys_use^2;
+            % Pass 1: compute Sigma without Sigma_na (so rho_a only uses state autocorrelation)
             opts_sigma.physical_scaling = struct( ...
                 'sigma2_dXT',     sigma2_dXT_full, ...
                 'a_phys',         a_phys_use, ...
                 'a_nom',          a_nom, ...
                 'sigma2_n',       sigma2_n_use, ...
-                'actual_a_m_var', actual_a_m_var, ...
-                'Q66_abs',        sigma2_dXT_full * Q_kf_scale(6), ...
-                'Q77_abs',        sigma2_dXT_full * Q_kf_scale(7));
-            [~, ~, ~, ~, dgn] = compute_7state_cdpmr_eff(config.lambda_c, 0, ...
+                'actual_a_m_var', 0);
+            [~, ~, ~, A_aug, dgn] = compute_7state_cdpmr_eff(config.lambda_c, 0, ...
                 config.a_pd, Q_kf_scale, R_kf_scale, opts_sigma);
-            if isfield(dgn, 'Sigma_aug_phys')
-                Var_dx = dgn.Sigma_aug_phys(dgn.idx_dx, dgn.idx_dx);
-                std_dx_nm = sqrt(max(Var_dx, 0)) * 1000;
-                Var_e6 = dgn.Sigma_e6_phys;
-                std_a_rel_pct = 100 * sqrt(max(Var_e6, 0)) / max(a_phys_use, eps);
-                if strcmp(ax_label{1}, 'x')
-                    r.tracking_std_theory_x_nm = std_dx_nm;
-                    r.ahat_std_theory_x_pct = std_a_rel_pct;
-                else
-                    r.tracking_std_theory_z_nm = std_dx_nm;
-                    r.ahat_std_theory_z_pct = std_a_rel_pct;
-                end
+
+            % Compute rigorous rho_a
+            rho_a_rig = compute_rho_a_rigorous(A_aug, dgn, config.a_pd, ...
+                a_cov_local, sigma2_n_use, 200);
+
+            % Pass 2: now include Sigma_na with proper rho_a
+            actual_a_m_var = chi_sq * rho_a_rig * a_phys_use^2;
+            Sigma_e6_total = dgn.Sigma_aug_phys(dgn.idx_e(6), dgn.idx_e(6)) ...
+                + actual_a_m_var * dgn.Sigma_na(dgn.idx_e(6), dgn.idx_e(6));
+            Var_dx = dgn.Sigma_aug_phys(dgn.idx_dx, dgn.idx_dx);
+
+            std_dx_nm = sqrt(max(Var_dx, 0)) * 1000;
+            std_a_rel_pct = 100 * sqrt(max(Sigma_e6_total, 0)) / max(a_phys_use, eps);
+            if strcmp(ax_label{1}, 'x')
+                r.tracking_std_theory_x_nm = std_dx_nm;
+                r.ahat_std_theory_x_pct = std_a_rel_pct;
+                r.rho_a_x = rho_a_rig;
+            else
+                r.tracking_std_theory_z_nm = std_dx_nm;
+                r.ahat_std_theory_z_pct = std_a_rel_pct;
+                r.rho_a_z = rho_a_rig;
             end
         end
     catch ME
