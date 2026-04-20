@@ -263,14 +263,39 @@ function r = run_one(scenario, variant, seed, idx, n_total, T_sim, t_warmup)
             rho_a_rig = compute_rho_a_rigorous(A_aug, dgn, config.a_pd, ...
                 a_cov_local, sigma2_n_use, 200);
 
-            % Pass 2: now include Sigma_na with proper rho_a
+            % Pass 2: include Sigma_na (a_m noise) and Sigma_mult (f_d coupling, Level 3)
             actual_a_m_var = chi_sq * rho_a_rig * a_phys_use^2;
-            Sigma_e6_total = dgn.Sigma_aug_phys(dgn.idx_e(6), dgn.idx_e(6)) ...
-                + actual_a_m_var * dgn.Sigma_na(dgn.idx_e(6), dgn.idx_e(6));
-            Var_dx = dgn.Sigma_aug_phys(dgn.idx_dx, dgn.idx_dx);
+            S_phys_lv1 = dgn.Sigma_aug_phys ...
+                       + actual_a_m_var * dgn.Sigma_na;
+            % Level 3: multiplicative f_d coupling (-e6 * f_d_nom enters delta_x).
+            % Compute Var(f_d_nom), Cov(e6, f_d_nom) from Sigma_phys_lv1.
+            % f_d_nom = ((1-lc)*del_p3_hat - d_hat) / a_phys
+            %   del_p3_hat = delta_x[k-2] + e3 = state(idx_dx_d2) + state(idx_e(3))
+            %   d_hat = e4 = state(idx_e(4))
+            i_dx2 = dgn.idx_dx_d2;  i_e3 = dgn.idx_e(3);
+            i_e4  = dgn.idx_e(4);   i_e6 = dgn.idx_e(6);
+            lc = config.lambda_c;
+            % Selector vector for f_d_nom: c_fd' * x_aug = ((1-lc)*(state(i_dx2)+state(i_e3)) - state(i_e4)) / a_phys
+            c_fd = zeros(size(S_phys_lv1, 1), 1);
+            c_fd(i_dx2) = (1-lc) / a_phys_use;
+            c_fd(i_e3)  = (1-lc) / a_phys_use;
+            c_fd(i_e4)  = -1 / a_phys_use;
+            Var_fd_nom = c_fd' * S_phys_lv1 * c_fd;
+            % Selector for e6
+            c_e6 = zeros(size(S_phys_lv1, 1), 1);
+            c_e6(i_e6) = 1;
+            Var_e6_phys = c_e6' * S_phys_lv1 * c_e6;
+            Cov_e6_fd   = c_e6' * S_phys_lv1 * c_fd;
+            % Isserlis: Var(-e6*f_d_nom) = Var(e6)*Var(f_d) + Cov^2
+            Var_input_extra = Var_e6_phys * Var_fd_nom + Cov_e6_fd^2;
+            % Add Sigma_mult contribution scaled by Var_input_extra
+            S_phys_lv3 = S_phys_lv1 + Var_input_extra * dgn.Sigma_mult;
 
-            std_dx_nm = sqrt(max(Var_dx, 0)) * 1000;
-            std_a_rel_pct = 100 * sqrt(max(Sigma_e6_total, 0)) / max(a_phys_use, eps);
+            Var_dx_lv3 = S_phys_lv3(dgn.idx_dx, dgn.idx_dx);
+            Var_e6_lv3 = S_phys_lv3(dgn.idx_e(6), dgn.idx_e(6));
+
+            std_dx_nm = sqrt(max(Var_dx_lv3, 0)) * 1000;
+            std_a_rel_pct = 100 * sqrt(max(Var_e6_lv3, 0)) / max(a_phys_use, eps);
             if strcmp(ax_label{1}, 'x')
                 r.tracking_std_theory_x_nm = std_dx_nm;
                 r.ahat_std_theory_x_pct = std_a_rel_pct;

@@ -196,6 +196,13 @@ function [C_dpmr_eff, C_np_eff, L, A_aug, diagnostics] = ...
     % physical_scaling caller; here we just solve unit Lyapunov.
     Sigma_na = solve_dlyap_robust(A_aug, B_na);
 
+    % Multiplicative f_d coupling driver (Level 3): -e6 * f_d_nom enters
+    % delta_x dynamics. Caller computes Var(input) = Var(e6)*Var(f_d) + Cov^2
+    % using existing Sigma_aug_phys, then applies as scalar weight on Sigma_mult.
+    B_mult = zeros(n_aug, 1);
+    B_mult(idx_dx) = -1;   % unit driver entering tracking-error dynamics
+    Sigma_mult = solve_dlyap_robust(A_aug, B_mult);
+
     % ---------------------------------------------------------------
     % 7. Extract C_dpmr_eff and C_np_eff
     %    del_pmr[k] = (1-a_pd) * (dx_d2[k] - pmd_prev[k] + n_p[k])
@@ -227,6 +234,7 @@ function [C_dpmr_eff, C_np_eff, L, A_aug, diagnostics] = ...
     diagnostics.Sigma_q66     = Sigma_q66;
     diagnostics.Sigma_q77     = Sigma_q77;
     diagnostics.Sigma_na      = Sigma_na;
+    diagnostics.Sigma_mult    = Sigma_mult;   % Level 3: f_d multiplicative coupling
     diagnostics.A_e           = A_e;
     diagnostics.Fe            = Fe;
     diagnostics.H             = H;
