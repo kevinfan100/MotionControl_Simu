@@ -217,10 +217,11 @@ function r = run_one(scenario, variant, seed, idx, n_total, T_sim, t_warmup)
         Cnp_x   = interp2(L.aratio_grid, L.lc_grid, L.Cnp_tab,   ar_x_q, lc_q, 'linear');
         Cnp_z   = interp2(L.aratio_grid, L.lc_grid, L.Cnp_tab,   ar_z_q, lc_q, 'linear');
         sigma2_dXT = 4 * params.Value.ctrl.k_B * params.Value.ctrl.T * a_nom;
-        sigma2_n = config.meas_noise_std(3)^2;
-        % del_pmr theory variance
-        var_dpmr_x = Cdpmr_x * sigma2_dXT * ar_x + Cnp_x * sigma2_n;
-        var_dpmr_z = Cdpmr_z * sigma2_dXT * ar_z + Cnp_z * sigma2_n;
+        sigma2_n_x_axis = config.meas_noise_std(1)^2;
+        sigma2_n_z_axis = config.meas_noise_std(3)^2;
+        % del_pmr theory variance (lookup-based, legacy)
+        var_dpmr_x = Cdpmr_x * sigma2_dXT * ar_x + Cnp_x * sigma2_n_x_axis;
+        var_dpmr_z = Cdpmr_z * sigma2_dXT * ar_z + Cnp_z * sigma2_n_z_axis;
         r.theory_std_dpmr_x_nm = sqrt(var_dpmr_x) * 1000;
         r.theory_std_dpmr_z_nm = sqrt(var_dpmr_z) * 1000;
         r.Cdpmr_x = Cdpmr_x; r.Cdpmr_z = Cdpmr_z;
@@ -229,6 +230,46 @@ function r = run_one(scenario, variant, seed, idx, n_total, T_sim, t_warmup)
         warning('Theory lookup failed: %s', ME.message);
         r.theory_std_dpmr_x_nm = NaN;
         r.theory_std_dpmr_z_nm = NaN;
+    end
+
+    % --- Sigma-based theory tracking std (Stage 7+, after compute_7state_cdpmr_eff bug fix) ---
+    % Direct extraction of Var(delta_x) per axis from 11-dim Lyapunov (more
+    % accurate than lookup + (1-a_pd) approximation; see
+    % reference/for_test/theory_correction_analysis.md).
+    try
+        sigma2_dXT_full = 4 * params.Value.ctrl.k_B * params.Value.ctrl.T * a_nom;
+        Q_kf_scale = config.Qz_diag_scaling;
+        R_kf_scale = config.Rz_diag_scaling;
+        opts_sigma = struct('f0', 0, 'verbose', false);
+        for ax_label = {'x', 'z'}
+            if strcmp(ax_label{1}, 'x')
+                a_phys_use = a_x_h; sigma2_n_use = sigma2_n_x_axis;
+            else
+                a_phys_use = a_z_h; sigma2_n_use = sigma2_n_z_axis;
+            end
+            opts_sigma.physical_scaling = struct( ...
+                'sigma2_dXT', sigma2_dXT_full, ...
+                'a_phys',     a_phys_use, ...
+                'a_nom',      a_nom, ...
+                'sigma2_n',   sigma2_n_use, ...
+                'Q66_abs',    sigma2_dXT_full * Q_kf_scale(6), ...
+                'Q77_abs',    sigma2_dXT_full * Q_kf_scale(7));
+            [~, ~, ~, ~, dgn] = compute_7state_cdpmr_eff(config.lambda_c, 0, ...
+                config.a_pd, Q_kf_scale, R_kf_scale, opts_sigma);
+            if isfield(dgn, 'Sigma_aug_phys')
+                Var_dx = dgn.Sigma_aug_phys(dgn.idx_dx, dgn.idx_dx);
+                std_dx_nm = sqrt(max(Var_dx, 0)) * 1000;
+                if strcmp(ax_label{1}, 'x')
+                    r.tracking_std_theory_x_nm = std_dx_nm;
+                else
+                    r.tracking_std_theory_z_nm = std_dx_nm;
+                end
+            end
+        end
+    catch ME
+        warning('Sigma-based theory failed: %s', ME.message);
+        r.tracking_std_theory_x_nm = NaN;
+        r.tracking_std_theory_z_nm = NaN;
     end
 
     % --- a_hat error stats (per-axis %) ---
