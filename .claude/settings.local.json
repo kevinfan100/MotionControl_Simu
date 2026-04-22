@@ -21,7 +21,16 @@
       "Bash(mv:*)",
       "Bash(python:*)",
       "mcp__perplexity__perplexity_ask",
-      "WebFetch(domain:pubs.acs.org)"
+      "WebFetch(domain:pubs.acs.org)",
+      "Bash(matlab -batch ' *)",
+      "Bash(matlab -batch \"addpath\\('test_script'\\); temp_run_paper_qr\")",
+      "Bash(tee /tmp/q66_sweep.log)",
+      "Bash(wc -l reference/for_test/qr_theoretical_values.md reference/for_test/task_qr_reference_report.md)",
+      "Bash(ls test_script/temp_*.m)",
+      "Bash(ls test_results/verify/paper_qr_*.mat)",
+      "Bash(taskkill //F //IM \"matlab.exe\")",
+      "Bash(taskkill //F //IM \"MATLAB.exe\")",
+      "Bash(matlab -batch \"addpath\\('test_script'\\); verify_qr_positioning_aggregate\")"
     ],
     "deny": [],
     "ask": []
