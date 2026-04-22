@@ -24,3 +24,13 @@ desktop.ini
 # MATLAB 生成檔案
 *.mex*
 codegen/
+
+# LaTeX 編譯產物（保留 .pdf）
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.toc
+*.synctex.gz
+texput.log
