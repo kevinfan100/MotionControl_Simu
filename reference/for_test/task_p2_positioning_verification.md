@@ -168,6 +168,16 @@ near-wall. Section 5's `C_dpmr = 3.9242` is accurate in free-space and
 at `h = 2.5 µm`. The `f_dx → 0` linearization simplification (Section 5
 scope note) has negligible numerical impact at this operating point.
 
+### 5.1 Direct R-ratio verification (follow-up)
+
+The §5 scope-note claim was originally supported only indirectly (via the
+±5% C_dpmr match above). A follow-up task directly measured the ratio
+`R = σ²_f · σ²_e / (4·k_B·T·a_x)` per axis and confirmed `R ≪ 1` in both
+free-space static and near-wall static (h = 2.5 μm) scenarios:
+all six measurements fall in 0.6% – 1.3%.
+
+See `task_p2_linearization_quantitative.md` for the full report.
+
 ## 6. Follow-up candidates (none required for positioning)
 
 Because positioning now passes all four criteria cleanly, no debug

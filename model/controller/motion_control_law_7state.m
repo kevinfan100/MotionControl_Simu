@@ -19,7 +19,7 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
 %
 %   Outputs:
 %       f_d     - Control force f_d[k] [3x1, pN]
-%       ekf_out - EKF diagnostic [4x1]: [a_hat_x/a_nom; a_hat_z/a_nom; 0; 0]
+%       ekf_out - EKF diagnostic [4x1]: [a_hat_x; a_hat_z; a_hat_y; 0]
 
     % Check if control is enabled
     if params.ctrl.enable < 0.5
@@ -151,7 +151,7 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
 
         % 0J. Return zeros on first call
         f_d = zeros(3, 1);
-        ekf_out = [a_nom; a_nom; 0; 0];
+        ekf_out = [a_nom; a_nom; a_nom; 0];
         return;
     end
 
@@ -204,7 +204,7 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
         end
 
         f_d = zeros(3, 1);
-        ekf_out = [a_hat(1); a_hat(3); 0; 0];
+        ekf_out = [a_hat(1); a_hat(3); a_hat(2); 0];
         return;
     end
 
@@ -339,7 +339,8 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
     %% Step [7]: Output
     ekf_out = [a_hat(1); ...            % x-axis gain [um/pN]
                a_hat(3); ...            % z-axis gain [um/pN]
-               0; 0];
+               a_hat(2); ...            % y-axis gain [um/pN]
+               0];
 
 end
 
