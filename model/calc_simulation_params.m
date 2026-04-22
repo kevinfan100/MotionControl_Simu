@@ -173,9 +173,9 @@ function params = calc_simulation_params(config)
     elems_ctrl(21) = Simulink.BusElement; elems_ctrl(21).Name = 'Pf_init_diag';
     elems_ctrl(21).Dimensions = [7 1]; elems_ctrl(21).DataType = 'double';
     elems_ctrl(22) = Simulink.BusElement; elems_ctrl(22).Name = 'Qz_diag_scaling';
-    elems_ctrl(22).Dimensions = [7 1]; elems_ctrl(22).DataType = 'double';
+    elems_ctrl(22).Dimensions = [9 1]; elems_ctrl(22).DataType = 'double';
     elems_ctrl(23) = Simulink.BusElement; elems_ctrl(23).Name = 'Rz_diag_scaling';
-    elems_ctrl(23).Dimensions = [2 1]; elems_ctrl(23).DataType = 'double';
+    elems_ctrl(23).Dimensions = [6 1]; elems_ctrl(23).DataType = 'double';
     elems_ctrl(24) = Simulink.BusElement; elems_ctrl(24).Name = 'kf_R';
     elems_ctrl(24).Dimensions = [1 1]; elems_ctrl(24).DataType = 'double';
     elems_ctrl(25) = Simulink.BusElement; elems_ctrl(25).Name = 'kf_L';

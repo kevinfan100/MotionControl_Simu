@@ -105,11 +105,15 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
         Pf_3 = diag(Pf_diag);
 
         % 0E. Q and R matrices (per axis)
-        Qz_scaling = params.ctrl.Qz_diag_scaling;  % 7x1
-        Rz_scaling = params.ctrl.Rz_diag_scaling;   % 2x1
+        % Qz_diag_scaling layout (9x1): [Q1;Q2;Q3;Q4;Q5;Q6; Q7_x;Q7_y;Q7_z]
+        Qz_scaling = params.ctrl.Qz_diag_scaling;
+        Rz_scaling = params.ctrl.Rz_diag_scaling;   % 6x1 [R_pos_x; R_pos_y; R_pos_z; R_gain_x; R_gain_y; R_gain_z]
 
-        Q_base = sigma2_deltaXT * diag(Qz_scaling);
-        Q_1 = Q_base;  Q_2 = Q_base;  Q_3 = Q_base;
+        % Build per-axis Q: Q(1..6) shared, Q(7,7) per-axis from Qz_scaling(6+axis)
+        Q_shared = sigma2_deltaXT * diag(Qz_scaling(1:6));   % 6x6 shared diagonal
+        Q_1 = zeros(7,7); Q_1(1:6,1:6) = Q_shared; Q_1(7,7) = sigma2_deltaXT * Qz_scaling(7);
+        Q_2 = zeros(7,7); Q_2(1:6,1:6) = Q_shared; Q_2(7,7) = sigma2_deltaXT * Qz_scaling(8);
+        Q_3 = zeros(7,7); Q_3(1:6,1:6) = Q_shared; Q_3(7,7) = sigma2_deltaXT * Qz_scaling(9);
 
         % 0E.1 C_dpmr_eff / C_np_eff from augmented Lyapunov lookup
         % (computed offline by build_cdpmr_eff_lookup.m)
@@ -256,16 +260,17 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
     % Changing R alone breaks the balance. Proper adaptive R requires
     % re-sweeping Q simultaneously (future work).
     var_threshold = sigma2_deltaXT * 0.001;
-    r_pos_base = sigma2_deltaXT * Rz_scaling(1);
-    r_gain_base = sigma2_deltaXT * Rz_scaling(2);
+    % Rz_scaling layout (6x1): [R_pos_x; R_pos_y; R_pos_z; R_gain_x; R_gain_y; R_gain_z]
     R_i = cell(3,1);
     for i = 1:3
+        r_pos_base_i = sigma2_deltaXT * Rz_scaling(i);
+        r_gain_base_i = sigma2_deltaXT * Rz_scaling(3+i);
         if del_pmr_var(i) < var_threshold
             r_gain_i = 1e6;     % effectively ignore gain measurement
         else
-            r_gain_i = r_gain_base;
+            r_gain_i = r_gain_base_i;
         end
-        R_i{i} = diag([r_pos_base, r_gain_i]);
+        R_i{i} = diag([r_pos_base_i, r_gain_i]);
     end
 
     % --- Fe_err matrices for covariance propagation ---

@@ -18,7 +18,7 @@ function [f_d, ekf_out] = motion_control_law_5state(del_pd, pd, p_m, params)
     persistent lambda_c a_nom a_min Ts_ctrl
     persistent sigma2_deltaXT
     persistent Q_kf                   % 5x5 process noise
-    persistent Rz_scaling             % 2x1 [r_pos; r_gain] scaling
+    persistent Rz_scaling             % 6x1 [R_pos_x; R_pos_y; R_pos_z; R_gain_x; R_gain_y; R_gain_z]
     persistent pd_k1 pd_k2           % delay buffers
     persistent del_p1_hat del_p2_hat del_p3_hat  % 3x1 each
     persistent a_hat del_a_hat        % 3x1 each
@@ -59,7 +59,7 @@ function [f_d, ekf_out] = motion_control_law_5state(del_pd, pd, p_m, params)
         Q_kf = sigma2_deltaXT * diag(params.ctrl.Qz_diag_scaling(1:5));
 
         % R scaling: [r_pos; r_gain]
-        Rz_scaling = params.ctrl.Rz_diag_scaling;  % 2x1
+        Rz_scaling = params.ctrl.Rz_diag_scaling;  % 4x1 [R_pos_x; R_pos_y; R_pos_z; R_gain]
 
         % Pf init (5x5): reuse first 5 of Pf_init_diag
         Pf_init = diag(params.ctrl.Pf_init_diag(1:5));
@@ -125,13 +125,12 @@ function [f_d, ekf_out] = motion_control_law_5state(del_pd, pd, p_m, params)
     f_d = (1 ./ a_hat) .* (del_pd + (1 - lambda_c) * del_p3_hat);
 
     %% Step [4]: Adaptive R (per axis)
+    % Rz_scaling layout (6x1): [R_pos_x; R_pos_y; R_pos_z; R_gain_x; R_gain_y; R_gain_z]
     var_threshold = sigma2_deltaXT * 0.001;
-    r_pos_base  = sigma2_deltaXT * Rz_scaling(1);
-    r_gain_base = sigma2_deltaXT * Rz_scaling(2);
 
-    R_1 = build_R(del_pmr_var(1), var_threshold, r_pos_base, r_gain_base);
-    R_2 = build_R(del_pmr_var(2), var_threshold, r_pos_base, r_gain_base);
-    R_3 = build_R(del_pmr_var(3), var_threshold, r_pos_base, r_gain_base);
+    R_1 = build_R(del_pmr_var(1), var_threshold, sigma2_deltaXT * Rz_scaling(1), sigma2_deltaXT * Rz_scaling(4));
+    R_2 = build_R(del_pmr_var(2), var_threshold, sigma2_deltaXT * Rz_scaling(2), sigma2_deltaXT * Rz_scaling(5));
+    R_3 = build_R(del_pmr_var(3), var_threshold, sigma2_deltaXT * Rz_scaling(3), sigma2_deltaXT * Rz_scaling(6));
 
     %% Step [5]: Per-axis EKF update (dual measurement)
     meas_1 = [del_pm(1); a_m_k1(1)];

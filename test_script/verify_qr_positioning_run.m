@@ -8,7 +8,8 @@ function verify_qr_positioning_run(start_idx, end_idx, output_file, T_sim, t_war
 %     T_sim          - simulation time [s], default 30
 %     t_warmup       - steady-state window start [s], default 10
 %     variant_filter - vector of variant indices to run, default [1 2 3 4]
-%                      (1=empirical, 2=emp_acov005, 3=frozen_correct, 4=frozen_smartPf)
+%                      (1=empirical, 2=emp_acov005, 3=frozen_correct,
+%                       4=frozen_smartPf, 5=frozen_peraxisR11)
 %
 %   Matrix iteration order (n_sc * n_var * n_seed total):
 %     for is = 1:n_sc, for iv = 1:n_var, for ie = 1:n_seed -> idx=1..total
@@ -42,13 +43,19 @@ function verify_qr_positioning_run(start_idx, end_idx, output_file, T_sim, t_war
     Pf_default = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];
     Pf_small   = [0; 0; 1e-4; 1e-4; 0; 1e-5; 0];
     Pf_smart   = [0; 0; 1e-4; 1e-4; 0; 1e-3; 0];
-    variants_all(1) = struct('name','empirical',       'Qz',[0;0;1e4;0.1;0;1e-4;0],   'Rz',[0.01;1.0],   'Pf', Pf_default, 'a_cov', 0.05);
-    variants_all(2) = struct('name','emp_acov005',     'Qz',[0;0;1e4;0.1;0;1e-4;0],   'Rz',[0.01;1.0],   'Pf', Pf_default, 'a_cov', 0.005);
-    variants_all(3) = struct('name','frozen_correct',  'Qz',[0;0;1;0;0;1e-8;1e-8],    'Rz',[0.397;1.0],  'Pf', Pf_small,   'a_cov', 0.005);
-    variants_all(4) = struct('name','frozen_smartPf',  'Qz',[0;0;1;0;0;1e-8;1e-8],    'Rz',[0.397;1.0],  'Pf', Pf_smart,   'a_cov', 0.005);
+    % Qz layout (2026-04-22): 9x1 = [Q1;Q2;Q3;Q4;Q5;Q6; Q7_x;Q7_y;Q7_z]
+    % Rz layout (2026-04-21): 6x1 = [R_pos_x; R_pos_y; R_pos_z; R_gain_x; R_gain_y; R_gain_z]
+    variants_all(1) = struct('name','empirical',        'Qz',[0;0;1e4;0.1;0;1e-4;0;0;0],       'Rz',[1e-2;1e-2;1e-2;1.0;1.0;1.0],                    'Pf', Pf_default, 'a_cov', 0.05);
+    variants_all(2) = struct('name','emp_acov005',      'Qz',[0;0;1e4;0.1;0;1e-4;0;0;0],       'Rz',[1e-2;1e-2;1e-2;1.0;1.0;1.0],                    'Pf', Pf_default, 'a_cov', 0.005);
+    variants_all(3) = struct('name','frozen_correct',   'Qz',[0;0;1;0;0;1e-8;1e-8;1e-8;1e-8],  'Rz',[0.397;0.397;0.397;1.0;1.0;1.0],                 'Pf', Pf_small,   'a_cov', 0.005);
+    variants_all(4) = struct('name','frozen_smartPf',   'Qz',[0;0;1;0;0;1e-8;1e-8;1e-8;1e-8],  'Rz',[0.397;0.397;0.397;1.0;1.0;1.0],                 'Pf', Pf_smart,   'a_cov', 0.005);
+    variants_all(5) = struct('name','frozen_peraxisR11','Qz',[0;0;1;0;0;1e-8;1e-8;1e-8;1e-8],  'Rz',[1.53e-3;1.29e-5;4.35e-2;1.0;1.0;1.0],           'Pf', Pf_small,   'a_cov', 0.005);
+    variants_all(6) = struct('name','frozen_peraxisR11_R22','Qz',[0;0;1;0;0;1e-8;1e-8;1e-8;1e-8], 'Rz',[1.53e-3;1.29e-5;4.35e-2;0.01881;0.01881;0.01784],'Pf', Pf_small,   'a_cov', 0.005);
+    variants_all(7) = struct('name','frozen_peraxisR11_R22_Q770','Qz',[0;0;1;0;0;1e-8;0;0;0],     'Rz',[1.53e-3;1.29e-5;4.35e-2;0.01881;0.01881;0.01784],'Pf', Pf_small,   'a_cov', 0.005);
+    variants_all(8) = struct('name','frozen_peraxisR11_R22_Q77mixed','Qz',[0;0;1;0;0;1e-8;0;0;1e-8],'Rz',[1.53e-3;1.29e-5;4.35e-2;0.01881;0.01881;0.01784],'Pf', Pf_small,   'a_cov', 0.005);
     variants = variants_all(variant_filter);
 
-    seeds = [12345, 67890, 11111];
+    seeds = [12345, 67890, 11111, 22222, 33333];
 
     n_sc = numel(scenarios); n_var = numel(variants); n_seed = numel(seeds);
     n_total = n_sc * n_var * n_seed;
@@ -238,16 +245,20 @@ function r = run_one(scenario, variant, seed, idx, n_total, T_sim, t_warmup)
     % (was constant 4; now per-(lc,ar,Q) computed from autocorrelation).
     try
         sigma2_dXT_full = 4 * params.Value.ctrl.k_B * params.Value.ctrl.T * a_nom;
-        Q_kf_scale = config.Qz_diag_scaling;
-        R_kf_scale = config.Rz_diag_scaling;
+        Q_kf_scale_full = config.Qz_diag_scaling;   % 9x1
+        R_kf_scale = config.Rz_diag_scaling;  % 6x1 [R_pos_x;R_pos_y;R_pos_z;R_gain_x;R_gain_y;R_gain_z]
         a_cov_local = config.a_cov;
         chi_sq = 2 * a_cov_local / (2 - a_cov_local);
         opts_sigma = struct('f0', 0, 'verbose', false);
         for ax_label = {'x', 'z'}
             if strcmp(ax_label{1}, 'x')
                 a_phys_use = a_x_h; sigma2_n_use = sigma2_n_x_axis;
+                R_kf_scale_axis = [R_kf_scale(1); R_kf_scale(4)];   % [R_pos_x; R_gain_x]
+                Q_kf_scale = [Q_kf_scale_full(1:6); Q_kf_scale_full(7)];  % 7x1 with Q7_x
             else
                 a_phys_use = a_z_h; sigma2_n_use = sigma2_n_z_axis;
+                R_kf_scale_axis = [R_kf_scale(3); R_kf_scale(6)];   % [R_pos_z; R_gain_z]
+                Q_kf_scale = [Q_kf_scale_full(1:6); Q_kf_scale_full(9)];  % 7x1 with Q7_z
             end
             % Pass 1: compute Sigma without Sigma_na (so rho_a only uses state autocorrelation)
             opts_sigma.physical_scaling = struct( ...
@@ -257,7 +268,7 @@ function r = run_one(scenario, variant, seed, idx, n_total, T_sim, t_warmup)
                 'sigma2_n',       sigma2_n_use, ...
                 'actual_a_m_var', 0);
             [~, ~, ~, A_aug, dgn] = compute_7state_cdpmr_eff(config.lambda_c, 0, ...
-                config.a_pd, Q_kf_scale, R_kf_scale, opts_sigma);
+                config.a_pd, Q_kf_scale, R_kf_scale_axis, opts_sigma);
 
             % Compute rigorous rho_a
             rho_a_rig = compute_rho_a_rigorous(A_aug, dgn, config.a_pd, ...
@@ -327,7 +338,7 @@ function r = run_one(scenario, variant, seed, idx, n_total, T_sim, t_warmup)
             % Using SCALAR Riccati L_eff = sqrt(Q66/R22) (not multi-dim L from DARE)
             % because actual a_hat update behavior is dominated by direct a-gain channel.
             Q66_scaling = Q_kf_scale(6);
-            R22_scaling = R_kf_scale(2);
+            R22_scaling = R_kf_scale_axis(2);    % per-axis R_gain in 6x1 layout
             L_eff_a = sqrt(Q66_scaling / R22_scaling);
             cascade_factor = L_eff_a / (L_eff_a + a_cov_local);
             % Var(a_hat - a_true) from a_m chi-sq propagation through cascaded LP:
