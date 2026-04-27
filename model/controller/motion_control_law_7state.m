@@ -115,27 +115,29 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
         Q_2 = zeros(7,7); Q_2(1:6,1:6) = Q_shared; Q_2(7,7) = sigma2_deltaXT * Qz_scaling(8);
         Q_3 = zeros(7,7); Q_3(1:6,1:6) = Q_shared; Q_3(7,7) = sigma2_deltaXT * Qz_scaling(9);
 
-        % 0E.1 C_dpmr_eff / C_np_eff from augmented Lyapunov lookup
-        % (computed offline by build_cdpmr_eff_lookup.m)
-        if isfield(params.ctrl, 'C_dpmr_eff') && params.ctrl.C_dpmr_eff > 0
-            C_dpmr_eff_const = params.ctrl.C_dpmr_eff;
-            C_np_eff_const   = params.ctrl.C_np_eff;
+        % 0E.1 C_dpmr_eff / C_np_eff per-axis from augmented Lyapunov
+        % (computed self-consistently in calc_ctrl_params from per-axis Q, R).
+        % All three are now 3x1 vectors (one element per axis).
+        if isfield(params.ctrl, 'C_dpmr_eff') && all(params.ctrl.C_dpmr_eff > 0)
+            C_dpmr_eff_const = params.ctrl.C_dpmr_eff(:);   % 3x1
+            C_np_eff_const   = params.ctrl.C_np_eff(:);     % 3x1
             use_lookup       = true;
         else
-            % Fallback: K=2 approximation (legacy formula)
-            C_dpmr_eff_const = (1-a_pd)^2 * (2*(1-a_pd)*(1-lambda_c) / (1-(1-a_pd)*lambda_c) ...
-                             + (2/(2-a_pd)) / ((1+lambda_c)*(1-(1-a_pd)*lambda_c)));
-            C_np_eff_const   = 2 / (1 + lambda_c);  % legacy noise_corr formula
+            % Fallback: K=2 approximation (legacy formula), broadcast to 3 axes
+            Cd_scalar = (1-a_pd)^2 * (2*(1-a_pd)*(1-lambda_c) / (1-(1-a_pd)*lambda_c) ...
+                      + (2/(2-a_pd)) / ((1+lambda_c)*(1-(1-a_pd)*lambda_c)));
+            Cn_scalar = 2 / (1 + lambda_c);   % legacy noise_corr formula
+            C_dpmr_eff_const = Cd_scalar * ones(3, 1);
+            C_np_eff_const   = Cn_scalar * ones(3, 1);
             use_lookup       = false;
         end
 
         % 0E.2 IIR_bias_factor (Task 1c): finite-sample + autocorrelation
-        % correction for the EMA variance estimator. Default 1.0 = no correction.
-        % See test_script/build_bias_factor_lookup.m and Task 1b report.
-        if isfield(params.ctrl, 'IIR_bias_factor') && params.ctrl.IIR_bias_factor > 0
-            IIR_bias_factor_const = params.ctrl.IIR_bias_factor;
+        % correction for the EMA variance estimator (per-axis). Default 1.0.
+        if isfield(params.ctrl, 'IIR_bias_factor') && all(params.ctrl.IIR_bias_factor > 0)
+            IIR_bias_factor_const = params.ctrl.IIR_bias_factor(:);   % 3x1
         else
-            IIR_bias_factor_const = 1.0;
+            IIR_bias_factor_const = ones(3, 1);
         end
 
         % 0F. Delay buffers
@@ -153,8 +155,8 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
         %                   + Cnp_eff  * sigma2_n(axis)
         % Per-axis using wall-aware a_hat from line 98.
         ar_init = a_hat / a_nom;   % 3x1
-        del_pmr2_avg = C_dpmr_eff_const * sigma2_deltaXT * ar_init ...
-                     + C_np_eff_const * sigma2_noise;
+        del_pmr2_avg = C_dpmr_eff_const .* sigma2_deltaXT .* ar_init ...
+                     + C_np_eff_const .* sigma2_noise;
         % Floor at 10x var_threshold to ensure gate stays open even if lookup
         % is unavailable / reports tiny value.
         del_pmr2_avg = max(del_pmr2_avg, 0.01 * sigma2_deltaXT);
@@ -201,12 +203,12 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
     %   test_script/compute_7state_cdpmr_eff.m  (derivation)
     %   test_script/build_cdpmr_eff_lookup.m    (offline construction)
     %   test_results/verify/cdpmr_eff_lookup.mat (the lookup table)
-    den        = C_dpmr_eff_const * 4 * k_B * T_temp;        % [pN*um]
-    noise_corr = C_np_eff_const * sigma2_noise;              % 3x1 [um^2]
+    den        = C_dpmr_eff_const * (4 * k_B * T_temp);      % 3x1 [pN*um]
+    noise_corr = C_np_eff_const .* sigma2_noise;             % 3x1 [um^2]
     % Task 1c: unbias del_pmr_var for IIR finite-sample + autocorrelation bias
-    % before subtracting noise term and dividing by den.
-    del_pmr_var_unbiased = del_pmr_var / IIR_bias_factor_const;
-    a_m        = max((del_pmr_var_unbiased - noise_corr) / den, 0);   % 3x1 [um/pN]
+    % before subtracting noise term and dividing by den (all per-axis).
+    del_pmr_var_unbiased = del_pmr_var ./ IIR_bias_factor_const;
+    a_m        = max((del_pmr_var_unbiased - noise_corr) ./ den, 0);  % 3x1 [um/pN]
 
     %% IIR Warm-up gate: only run measurement + IIR + Eq.13, skip control + EKF
     if warmup_count > 0
