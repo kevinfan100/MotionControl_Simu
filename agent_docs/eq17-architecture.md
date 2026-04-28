@@ -65,10 +65,10 @@ Plug-in 來源：
 
 ## 2. State Vector Definition
 
-### 5-state 最簡形式（random walk 起點）
+### 7-state（integrated random walk）— 鎖定架構
 
 ```
-x_e[k] = [ δx_1[k], δx_2[k], δx_3[k], x_D[k], a_x[k] ]ᵀ
+x_e[k] = [ δx_1[k], δx_2[k], δx_3[k], x_D[k], δx_D[k], a_x[k], δa_x[k] ]ᵀ
 ```
 
 | Index | State | 物理意義 | 隨機模型 |
@@ -76,33 +76,44 @@ x_e[k] = [ δx_1[k], δx_2[k], δx_3[k], x_D[k], a_x[k] ]ᵀ
 | 1 | `δx_1[k]` | δx[k−2]（最舊，量測對應） | (deterministic shift) |
 | 2 | `δx_2[k]` | δx[k−1] | (deterministic shift) |
 | 3 | `δx_3[k]` | δx[k]（當前） | closed-loop dynamic |
-| 4 | `x_D[k]` | lumped disturbance | random walk |
-| 5 | `a_x[k]` | motion gain | random walk |
+| 4 | `x_D[k]` | lumped disturbance（位置） | x_D[k+1] = x_D[k] + δx_D[k] |
+| 5 | `δx_D[k]` | x_D 增量速率 | random walk: δx_D[k+1] = δx_D[k] + w_xD |
+| 6 | `a_x[k]` | motion gain | a_x[k+1] = a_x[k] + δa_x[k] |
+| 7 | `δa_x[k]` | a_x 增量速率 | random walk: δa_x[k+1] = δa_x[k] + w_a |
 
-### 後續延伸（integrated random walk, 7-state）
+設計理由：a_x(t) 對動態軌跡（1Hz osc）是平滑訊號，「速度」δa_x 是有意義量。Integrated random walk 模型與訊號吻合，KF 跟蹤無相位 lag；對應 Q 矩陣只需在速度 state 設驅動，Q_aa = Q_xD,xD = 0。
 
-預留升級空間：
+### 歷史：5-state 1st-order random walk
+
+Task 01 baseline（已驗證可觀但對動態 a_x(t) 跟蹤有 lag），結構：
 ```
-x_e[k] = [ δx_1, δx_2, δx_3, x_D, δx_D, a_x, δa_x ]ᵀ
+x_e[k] = [ δx_1, δx_2, δx_3, x_D, a_x ]ᵀ      (5 維)
+x_D, a_x 直接 random walk
 ```
-其中 `δx_D, δa_x` 為對應 state 的「速度」項，主 state 改為 integration of velocity（paper 2025 風格）。**升級時機**：當 5-state random walk 在 1Hz osc 上跟蹤誤差過大時。
+作為歷史記錄保留於 `test_script/check_observability_eq17.m`。實作時不採用此版本。
 
 ---
 
-## 3. F_e 矩陣（5×5 時變）
+## 3. F_e 矩陣（7×7 時變）
 
 ```
-         δx_1   δx_2   δx_3   x_D    a_x
-        ┌                                      ┐
-δx_1   │  0     1      0      0      0          │
-δx_2   │  0     0      1      0      0          │
-δx_3   │  0     0     λ_c    −1     −f_d[k]     │  ← 唯一時變項
-x_D    │  0     0      0      1      0          │
-a_x    │  0     0      0      0      1          │
-        └                                      ┘
+            δx_1  δx_2  δx_3  x_D   δx_D  a_x   δa_x
+        ┌                                                ┐
+δx_1   │   0     1     0     0     0     0     0         │
+δx_2   │   0     0     1     0     0     0     0         │
+δx_3   │   0     0    λ_c   −1     0    −f_d   0         │   ← 時變
+x_D    │   0     0     0     1     1     0     0         │
+δx_D   │   0     0     0     0     1     0     0         │
+a_x    │   0     0     0     0     0     1     1         │
+δa_x   │   0     0     0     0     0     0     1         │
+        └                                                ┘
 ```
 
-**時變元素**：僅 `F_e(3,5) = −f_d[k]`。其餘元素皆為常數。
+**時變元素**：僅 `F_e(3,6) = −f_d[k]`。其餘 48 個元素皆為常數。
+
+**Cross-couplings**（速度進入位置的 1）：
+- F_e(4,5) = 1：x_D[k+1] = x_D[k] + δx_D[k]
+- F_e(6,7) = 1：a_x[k+1] = a_x[k] + δa_x[k]
 
 ### Row 3 推導摘要
 
@@ -113,38 +124,31 @@ a_x    │  0     0      0      0      1          │
         + zero-mean noise
 ```
 
-對 state 線性化：
+對 state 線性化（δx_D 與 δa_x 不直接進入 δx[k+1]，只透過下一步間接）：
 - ∂δx_3[k+1] / ∂δx_3[k] = λ_c
 - ∂δx_3[k+1] / ∂x_D[k]  = −1
 - ∂δx_3[k+1] / ∂a_x[k]  = −f_d[k]
+- ∂δx_3[k+1] / ∂δx_D[k] = 0
+- ∂δx_3[k+1] / ∂δa_x[k] = 0
 
 完整推導見 design.md §5。
 
 ---
 
-## 4. H 矩陣（兩個量測配置）
-
-### 配置 A — 單量測（無 IIR）
+## 4. H 矩陣（雙量測，鎖定）
 
 ```
-y[k] = δx_m[k]
-H_A  = [ 1  0  0  0  0 ]    (1 × 5)
+y[k] = [ δx_m[k] ]      ← raw 延遲量測 = δx[k−2] + n_x
+       [ a_xm[k]  ]      ← IIR 副產品 = a_x + n_a
+
+H = [ 1  0  0  0  0  0  0 ]    (2 × 7)
+    [ 0  0  0  0  0  1  0 ]
 ```
 
-**可觀性**：需要 PE — `f_d` 必須在窗口內變動。靜止 positioning 永遠不可觀。
+第 1 列觀測 δx_1（state index 1），第 2 列觀測 a_x（state index 6）。δx_D 與 δa_x 沒有直接量測通道，靠時序差分推算。
 
-### 配置 B — 雙量測（含 IIR-derived a_xm）
-
-```
-y[k] = [ δx_m[k] ]      ← raw 延遲量測
-       [ a_xm[k]  ]      ← IIR 副產品
-
-H_B = [ 1  0  0  0  0 ]    (2 × 5)
-      [ 0  0  0  0  1 ]
-```
-
-**可觀性**（數學層）：rank 永遠 = 5，無 PE 需求。
-**可觀性**（實務層）：受 R_2[k] 影響，IIR 崩塌時退回配置 A。
+**可觀性**（數學層）：rank 永遠 = 7，與 f_d 任何行為無關。
+**可觀性**（實務層）：受 R_2[k] 影響，IIR 崩塌時 R_2 → ∞，y_2 通道退化但結構性可觀仍由 y_1 鏈承擔（在 PE 滿足時）。
 
 ### IIR 推導 a_xm（paper 2025 Eq.9–13）
 
@@ -171,23 +175,26 @@ a_xm 視為 a_x 的「噪聲量測」，加入 KF。
 | n_x | n_x | n_xs | n_x |
 | δx_m | δx_m | δx_m | δx_m |
 | a_xm | (not defined) | a_xm | a_xm |
+| δx_D, δa_x | (not used) | δx_D, δa_x | δx_D, δa_x |
 | C_n, C_dpmr | (closed form Eq.22 內) | (not defined) | C_n, C_dpmr |
 
-注意：本主線**不**使用 qr writeup 的 `C_dpmr` / `C_n` 抽象（那是為了 7-state EKF 寫的）；本主線靠 5-state Lyapunov 直接算閉迴路 variance。
+注意：本主線**不**使用 qr writeup 的 `C_dpmr` / `C_n` 抽象（那是為了 paper 2025 控制律 + 7-state EKF 寫的）；本主線控制律不同，靠 7-state augmented Lyapunov 直接算閉迴路 variance。
 
 ---
 
-## 6. 與 7-state EKF 的關鍵差異
+## 6. 與 paper 2025 7-state EKF 的關鍵差異
 
-| 項 | 7-state (qr) | 5-state (本主線) |
+兩條路線都用 7-state integrated random walk，差別在控制律：
+
+| 項 | qr 路線 (paper 2025) | 本主線 (paper 2023 Eq.17) |
 |---|---|---|
-| State 數 | 7 | 5 |
-| Q 矩陣旋鈕 | 5+ 個獨立可調 | 3 個 |
-| 控制律延遲處理 | 透過 estimator 預測 δx̂_3 | Eq.17 自帶（用 δx_m 直接餵回） |
-| Closed-loop variance | 11-state augmented Lyapunov + C_dpmr/C_n 抽象 | 5-state Lyapunov 直接解 |
-| IIR 角色 | 提供 δx̄_m + a_xm（前者進控制 feedback） | 只提供 a_xm（不進控制 feedback） |
-| 時變處理 | F_e[k] 含 f_dx[k]（與本主線同） | F_e[k] 含 f_d[k] |
-| 已知 audit 問題 | R(1,1) per-axis、Q(3,3)、Q(7,7) 三個 | 由架構簡化避免 |
+| 控制律來源 | paper 2025 Eq.6 | paper 2023 Eq.17 |
+| 控制律延遲處理 | 用 estimator 預測 δx̂_3，控制律使用估計值 | Eq.17 自帶延遲補償，用 δx_m 直接餵回 |
+| δx̂ 是否進入控制律 | ✓ 是（feedback term 用 δx̂） | ✗ 不需要 |
+| IIR 角色 | δx̄_m 進控制 feedback + a_xm 進 KF | 只 a_xm 進 KF（不進控制 feedback） |
+| Closed-loop variance | 11-state augmented Lyapunov + C_dpmr/C_n 抽象 | 7-state augmented Lyapunov 直接解 |
+| 時變處理 | F_e[k] 含 f_dx[k] | F_e[k] 含 f_d[k]（位置略有不同：(3,6) vs (3,7)） |
+| 已知 audit 問題 | R(1,1) per-axis、Q(3,3) linear/quadratic、Q(7,7) frozen behavior | 預期繞過（不同控制律 → 不同 Q/R 推導路徑） |
 
 ---
 
@@ -195,10 +202,10 @@ a_xm 視為 a_x 的「噪聲量測」，加入 KF。
 
 | 模組 | 檔案路徑 |
 |---|---|
-| 控制律 + EKF 一體化 | `model/controller/motion_control_law_eq17_5state.m` |
+| 控制律 + EKF 一體化 | `model/controller/motion_control_law_eq17_7state.m` |
 | 參數計算 | `model/controller/calc_ctrl_params.m`（既存，需擴充） |
-| 觀測性檢查 | `test_script/check_observability_eq17.m` |
+| 觀測性檢查 | `test_script/check_observability_eq17.m` ✓（5+7-state 各驗證） |
 | Q/R 設計 | `test_script/compute_qr_eq17.m` |
-| 端到端驗證 | `test_script/verify_eq17_5state.m` |
+| 端到端驗證 | `test_script/verify_eq17_7state.m` |
 
-對應 simulation 設定變更：`config.controller_type = 'eq17_5state'`（命名待定）。
+對應 simulation 設定變更：`config.controller_type = 'eq17_7state'`（命名待定）。

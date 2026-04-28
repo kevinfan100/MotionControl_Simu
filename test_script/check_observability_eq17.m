@@ -1,75 +1,63 @@
 function check_observability_eq17()
-%CHECK_OBSERVABILITY_EQ17 Math-layer observability verification for Eq.17 + 5-state EKF.
+%CHECK_OBSERVABILITY_EQ17  Math-layer observability verification.
 %
 % Verifies the analytical conclusions in
-% reference/eq17_analysis/design.md Section 7:
+% reference/eq17_analysis/design.md Section 7 for both:
 %
-%   Config A (single measurement: H_A = [1 0 0 0 0]):
-%       rank(O) = 4 when f_d is constant in the PE window (incl. f_d = 0)
-%       rank(O) = 5 when f_d varies in the PE window
-%       PE window = f_d_seq(1..N-3); variations at indices >= N-2 do not
-%       help at window length N (see test cases A5..A7).
+%   * 5-state baseline (1st-order random walk for x_D and a_x)
+%       state = [delta_x_1, delta_x_2, delta_x_3, x_D, a_x]'
 %
-%   Config B (dual measurement: H_B = [1 0 0 0 0; 0 0 0 0 1]):
-%       rank(O) = 5 unconditionally (no PE required, mathematical layer)
+%   * 7-state architecture (2nd-order = integrated random walk)
+%       state = [delta_x_1, delta_x_2, delta_x_3, x_D, delta_xD, a_x, delta_a]'
 %
-% Notes:
-%   * Window length N = 6. The construction uses F_e built from
-%     f_d_seq(1)..f_d_seq(N-1); f_d_seq(N) is computed but does not
-%     affect the final O matrix.
-%   * Config B assumes nominal a_xm measurement. IIR-induced R_2 effects
-%     (warm-up, low SNR, fast a_x variation, near-wall) can degrade B
-%     toward A behaviour at the *practical* (Gramian) layer; that is the
-%     subject of Task 02, not this rank test.
+% Config B (dual measurement: H = [delta_x_m; a_xm]) is the design
+% target. Both should produce rank(O) = n_state for any f_d sequence.
 %
 % Outputs:
-%   * Console: per-case rank vs expectation, plus selected O matrices.
-%   * test_results/eq17_analysis/task01_observability_results.mat (gitignored)
+%   * Console: per-case pass/fail tables for both configurations
+%   * test_results/eq17_analysis/task01_observability_results.mat
 
 clear; close all; clc;
 
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
 project_root = fileparts(script_dir);
 
-%% System parameters
-lambda_c = 0.7;                          % closed-loop pole
-N        = 6;                            % observation window length
-n_state  = 5;
+%% Common parameters
+lambda_c = 0.7;
 
-H_A = [1 0 0 0 0];                       % Config A: y = delta_x_m
-H_B = [1 0 0 0 0; 0 0 0 0 1];            % Config B: y = [delta_x_m; a_xm]
+%% Part 1: 5-state (historical Task 01 baseline)
+fprintf('=== Part 1: 5-state (1st-order random walk) ===\n');
+fprintf('Window N = 6, lambda_c = %.2f, n_state = 5\n\n', lambda_c);
 
-%% Test cases
-cases = struct( ...
-    'id',      {}, ...
-    'name',    {}, ...
-    'f_d_seq', {}, ...
-    'H',       {}, ...
-    'expect',  {});
+H_A = [1 0 0 0 0];
+H_B5 = [1 0 0 0 0; 0 0 0 0 1];
 
-cases(end+1).id      = 'A1';
-cases(end).name      = 'Config A, f_d = 0 (positioning hold)';
-cases(end).f_d_seq   = zeros(1, N);
-cases(end).H         = H_A;
-cases(end).expect    = 4;
+cases_5 = struct( ...
+    'id', {}, 'name', {}, 'f_d_seq', {}, 'H', {}, 'expect', {});
 
-cases(end+1).id      = 'A2';
-cases(end).name      = 'Config A, f_d = 2 (constant non-zero)';
-cases(end).f_d_seq   = 2 * ones(1, N);
-cases(end).H         = H_A;
-cases(end).expect    = 4;
+cases_5(end+1).id      = 'A1';
+cases_5(end).name      = 'Config A, f_d = 0 (positioning hold)';
+cases_5(end).f_d_seq   = zeros(1, 6);
+cases_5(end).H         = H_A;
+cases_5(end).expect    = 4;
 
-cases(end+1).id      = 'A3';
-cases(end).name      = 'Config A, f_d = linear ramp 1..N';
-cases(end).f_d_seq   = 1:N;
-cases(end).H         = H_A;
-cases(end).expect    = 5;
+cases_5(end+1).id      = 'A2';
+cases_5(end).name      = 'Config A, f_d = 2 (constant non-zero)';
+cases_5(end).f_d_seq   = 2 * ones(1, 6);
+cases_5(end).H         = H_A;
+cases_5(end).expect    = 4;
 
-cases(end+1).id      = 'A4';
-cases(end).name      = 'Config A, f_d = sinusoidal sin(k*pi/3)';
-cases(end).f_d_seq   = sin((1:N) * pi / 3);
-cases(end).H         = H_A;
-cases(end).expect    = 5;
+cases_5(end+1).id      = 'A3';
+cases_5(end).name      = 'Config A, f_d = linear ramp 1..6';
+cases_5(end).f_d_seq   = 1:6;
+cases_5(end).H         = H_A;
+cases_5(end).expect    = 5;
+
+cases_5(end+1).id      = 'A4';
+cases_5(end).name      = 'Config A, f_d = sinusoidal sin(k*pi/3)';
+cases_5(end).f_d_seq   = sin((1:6) * pi / 3);
+cases_5(end).H         = H_A;
+cases_5(end).expect    = 5;
 
 % Window-vs-PE boundary cases. For N=6, only f_d_seq(1..N-3)=(1..3) affects
 % the (x_D, a_x) sub-block of O. So a *single* variation must fall within
@@ -77,97 +65,79 @@ cases(end).expect    = 5;
 % help at this window length. A5/A6/A7 form a controlled sweep of this
 % boundary.
 
-cases(end+1).id      = 'A5';
-cases(end).name      = 'Config A, early variation [1 2 1 1 1 1] (idx 2 in PE window)';
-cases(end).f_d_seq   = [1 2 1 1 1 1];
-cases(end).H         = H_A;
-cases(end).expect    = 5;
+cases_5(end+1).id      = 'A5';
+cases_5(end).name      = 'Config A, early variation [1 2 1 1 1 1] (idx 2 in PE window)';
+cases_5(end).f_d_seq   = [1 2 1 1 1 1];
+cases_5(end).H         = H_A;
+cases_5(end).expect    = 5;
 
-cases(end+1).id      = 'A6';
-cases(end).name      = 'Config A, mid variation [1 1 2 1 1 1] (idx 3 in PE window)';
-cases(end).f_d_seq   = [1 1 2 1 1 1];
-cases(end).H         = H_A;
-cases(end).expect    = 5;
+cases_5(end+1).id      = 'A6';
+cases_5(end).name      = 'Config A, mid variation [1 1 2 1 1 1] (idx 3 in PE window)';
+cases_5(end).f_d_seq   = [1 1 2 1 1 1];
+cases_5(end).H         = H_A;
+cases_5(end).expect    = 5;
 
-cases(end+1).id      = 'A7';
-cases(end).name      = 'Config A, late variation [1 1 1 2 1 1] (idx 4 outside PE window for N=6)';
-cases(end).f_d_seq   = [1 1 1 2 1 1];
-cases(end).H         = H_A;
-cases(end).expect    = 4;
+cases_5(end+1).id      = 'A7';
+cases_5(end).name      = 'Config A, late variation [1 1 1 2 1 1] (idx 4 outside PE window)';
+cases_5(end).f_d_seq   = [1 1 1 2 1 1];
+cases_5(end).H         = H_A;
+cases_5(end).expect    = 4;
 
-cases(end+1).id      = 'B1';
-cases(end).name      = 'Config B, f_d = 0 (positioning hold)';
-cases(end).f_d_seq   = zeros(1, N);
-cases(end).H         = H_B;
-cases(end).expect    = 5;
+cases_5(end+1).id      = 'B1';
+cases_5(end).name      = 'Config B, f_d = 0 (positioning hold)';
+cases_5(end).f_d_seq   = zeros(1, 6);
+cases_5(end).H         = H_B5;
+cases_5(end).expect    = 5;
 
-cases(end+1).id      = 'B2';
-cases(end).name      = 'Config B, f_d = 2 (constant non-zero)';
-cases(end).f_d_seq   = 2 * ones(1, N);
-cases(end).H         = H_B;
-cases(end).expect    = 5;
+cases_5(end+1).id      = 'B2';
+cases_5(end).name      = 'Config B, f_d = 2 (constant non-zero)';
+cases_5(end).f_d_seq   = 2 * ones(1, 6);
+cases_5(end).H         = H_B5;
+cases_5(end).expect    = 5;
 
-cases(end+1).id      = 'B3';
-cases(end).name      = 'Config B, f_d = linear ramp 1..N';
-cases(end).f_d_seq   = 1:N;
-cases(end).H         = H_B;
-cases(end).expect    = 5;
+cases_5(end+1).id      = 'B3';
+cases_5(end).name      = 'Config B, f_d = linear ramp 1..6';
+cases_5(end).f_d_seq   = 1:6;
+cases_5(end).H         = H_B5;
+cases_5(end).expect    = 5;
 
-%% Verification loop
-fprintf('=== Math-layer Observability Verification ===\n');
-fprintf('Window N = %d, lambda_c = %.2f, n_state = %d\n\n', N, lambda_c, n_state);
+[results_5state, all_pass_5] = run_cases(cases_5, @build_F_e_5state, 5, lambda_c);
 
-results = struct( ...
-    'id',      {}, ...
-    'name',    {}, ...
-    'f_d_seq', {}, ...
-    'rank_O',  {}, ...
-    'expect',  {}, ...
-    'pass',    {}, ...
-    'O',       {});
+%% Part 2: 7-state architecture (current design target, Config B only)
+fprintf('\n\n=== Part 2: 7-state (2nd-order = integrated random walk) ===\n');
+fprintf('Window N = 7, lambda_c = %.2f, n_state = 7, dual feedback only\n\n', lambda_c);
 
-all_pass = true;
+H_B7 = [1 0 0 0 0 0 0; 0 0 0 0 0 1 0];
 
-for i = 1:numel(cases)
-    c = cases(i);
-    O = build_obs_matrix(c.f_d_seq, c.H, lambda_c);
-    r = rank(O);
-    pass = (r == c.expect);
+cases_7 = struct( ...
+    'id', {}, 'name', {}, 'f_d_seq', {}, 'H', {}, 'expect', {});
 
-    results(end+1).id    = c.id;
-    results(end).name    = c.name;
-    results(end).f_d_seq = c.f_d_seq;
-    results(end).rank_O  = r;
-    results(end).expect  = c.expect;
-    results(end).pass    = pass;
-    results(end).O       = O;
+cases_7(end+1).id      = '7B1';
+cases_7(end).name      = '7-state Config B, f_d = 0 (most stringent: hold + no PE)';
+cases_7(end).f_d_seq   = zeros(1, 7);
+cases_7(end).H         = H_B7;
+cases_7(end).expect    = 7;
 
-    if pass
-        status = '   PASS';
-    else
-        status = '** FAIL';
-        all_pass = false;
-    end
+cases_7(end+1).id      = '7B2';
+cases_7(end).name      = '7-state Config B, f_d = 2 (constant non-zero)';
+cases_7(end).f_d_seq   = 2 * ones(1, 7);
+cases_7(end).H         = H_B7;
+cases_7(end).expect    = 7;
 
-    fprintf('[%s] %-3s  rank = %d (expect %d)  %s\n', ...
-        status, c.id, r, c.expect, c.name);
-end
+cases_7(end+1).id      = '7B3';
+cases_7(end).name      = '7-state Config B, f_d = ramp 1..7';
+cases_7(end).f_d_seq   = 1:7;
+cases_7(end).H         = H_B7;
+cases_7(end).expect    = 7;
 
-fprintf('\n');
-if all_pass
-    fprintf('=== ALL %d cases PASS ===\n', numel(cases));
-else
-    fprintf('=== SOME CASES FAILED ===\n');
-end
+[results_7state, all_pass_7] = run_cases(cases_7, @build_F_e_7state, 7, lambda_c);
 
-%% Inspection: print O matrix for representative cases
-inspect_ids = {'A1', 'A4', 'B1'};
-for i = 1:numel(inspect_ids)
-    idx = find(strcmp({results.id}, inspect_ids{i}), 1);
-    if isempty(idx); continue; end
-    r = results(idx);
-    fprintf('\n--- O matrix for %s (%s) -- rank = %d ---\n', r.id, r.name, r.rank_O);
-    disp_O(r.O);
+% Inspect the most stringent 7-state case
+idx = find(strcmp({results_7state.id}, '7B1'), 1);
+if ~isempty(idx)
+    fprintf('\n--- 7B1 O matrix (f_d=0, the hardest test) -- rank = %d ---\n', ...
+        results_7state(idx).rank_O);
+    disp_O(results_7state(idx).O);
 end
 
 %% Save results
@@ -176,51 +146,120 @@ if ~exist(output_dir, 'dir')
     mkdir(output_dir);
 end
 save_path = fullfile(output_dir, 'task01_observability_results.mat');
-save(save_path, 'results', 'lambda_c', 'N', 'cases', 'all_pass');
-fprintf('\nResults saved to: %s\n', save_path);
+save(save_path, 'results_5state', 'results_7state', ...
+                'all_pass_5', 'all_pass_7', 'lambda_c');
+
+%% Overall summary
+fprintf('\n=== Overall Summary ===\n');
+if all_pass_5
+    fprintf('  5-state: ALL %d cases PASS\n', numel(cases_5));
+else
+    fprintf('  5-state: SOME CASES FAILED\n');
+end
+if all_pass_7
+    fprintf('  7-state: ALL %d cases PASS\n', numel(cases_7));
+else
+    fprintf('  7-state: SOME CASES FAILED\n');
+end
+fprintf('  Results saved to: %s\n', save_path);
 
 end
 
-%% ========== Helper functions ==========
+%% ========== Helpers ==========
 
-function O = build_obs_matrix(f_d_seq, H, lambda_c)
-%BUILD_OBS_MATRIX  LTV observability matrix.
+function [results, all_pass] = run_cases(cases, build_F_e_fn, n_state, lambda_c)
+%RUN_CASES  Loop test cases, build O, check rank vs expectation.
+
+results = struct( ...
+    'id', {}, 'name', {}, 'f_d_seq', {}, 'rank_O', {}, ...
+    'expect', {}, 'pass', {}, 'O', {});
+
+all_pass = true;
+
+for i = 1:numel(cases)
+    c = cases(i);
+    O = build_obs_matrix(c.f_d_seq, c.H, build_F_e_fn, lambda_c, n_state);
+    r = rank(O);
+    pass = (r == c.expect);
+
+    results(end+1).id      = c.id;
+    results(end).name      = c.name;
+    results(end).f_d_seq   = c.f_d_seq;
+    results(end).rank_O    = r;
+    results(end).expect    = c.expect;
+    results(end).pass      = pass;
+    results(end).O         = O;
+
+    if pass
+        status = '   PASS';
+    else
+        status = '** FAIL';
+        all_pass = false;
+    end
+    fprintf('[%s] %-3s  rank = %d (expect %d)  %s\n', ...
+        status, c.id, r, c.expect, c.name);
+end
+
+end
+
+function O = build_obs_matrix(f_d_seq, H, build_F_e_fn, lambda_c, n_state)
+%BUILD_OBS_MATRIX  LTV observability matrix construction.
 %
 %   O = [ H * I              ;
 %         H * F_e[k_0]       ;
 %         H * F_e[k_0+1] * F_e[k_0] ;
 %         ...                                ]
 %
-%   F_e[k] depends on f_d_seq(m) for m = 1..N. Note that f_d_seq(N) is
-%   never used in the final O (because the last F_e is computed but the
-%   resulting Phi is not multiplied by H again). This is preserved to
-%   keep the loop simple; callers are expected to know that f_d_seq(N) is
-%   informational only.
+%   F_e[k] is constructed via build_F_e_fn(f_d_seq(m), lambda_c).
+%   Note that f_d_seq(N) is computed but the resulting Phi is not
+%   multiplied by H again, so it does not affect O.
 
-n_state = 5;
 N = length(f_d_seq);
 Phi = eye(n_state);
 O = zeros(0, n_state);
 
 for m = 1:N
     O = [O; H * Phi];                        %#ok<AGROW>
-    F_e = build_F_e(f_d_seq(m), lambda_c);
+    F_e = build_F_e_fn(f_d_seq(m), lambda_c);
     Phi = F_e * Phi;
 end
 
 end
 
-function F_e = build_F_e(f_d, lambda_c)
-%BUILD_F_E  5x5 augmented system transition matrix for Eq.17 + 5-state EKF.
+function F = build_F_e_5state(f_d, lambda_c)
+%BUILD_F_E_5STATE  5x5 augmented system matrix (1st-order random walk).
 %
 %   State: [delta_x_1, delta_x_2, delta_x_3, x_D, a_x]'
-%   Time-varying entry: F_e(3,5) = -f_d.
+%   Time-varying entry: F(3,5) = -f_d.
 
-F_e = [0 1 0        0  0;
-       0 0 1        0  0;
-       0 0 lambda_c -1 -f_d;
-       0 0 0        1  0;
-       0 0 0        0  1];
+F = [0 1 0        0  0;
+     0 0 1        0  0;
+     0 0 lambda_c -1 -f_d;
+     0 0 0        1  0;
+     0 0 0        0  1];
+
+end
+
+function F = build_F_e_7state(f_d, lambda_c)
+%BUILD_F_E_7STATE  7x7 augmented system matrix (2nd-order / integrated RW).
+%
+%   State: [delta_x_1, delta_x_2, delta_x_3, x_D, delta_xD, a_x, delta_a]'
+%   Time-varying entry: F(3,6) = -f_d.
+%
+%   Cross-couplings:
+%       F(4,5) = 1  (x_D[k+1] = x_D[k] + delta_xD[k])
+%       F(6,7) = 1  (a_x[k+1] = a_x[k] + delta_a[k])
+
+F = zeros(7);
+F(1, 2) = 1;
+F(2, 3) = 1;
+F(3, 3) = lambda_c;
+F(3, 4) = -1;
+F(3, 6) = -f_d;
+F(4, 4) = 1;  F(4, 5) = 1;
+F(5, 5) = 1;
+F(6, 6) = 1;  F(6, 7) = 1;
+F(7, 7) = 1;
 
 end
 
