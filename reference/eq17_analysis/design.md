@@ -281,21 +281,34 @@ State transition matrix（**新時間在左**）：
 |---|---|
 | f_d = 0（hold） | 4 ✗ |
 | f_d = 任意非零定值 | 4 ✗ |
-| f_d 持續變動 | 5 ✓ |
+| f_d 在窗口前 N−3 個樣本內變動 | 5 ✓ |
+| f_d 僅在窗口尾端 N−2..N−1 變動 | 4 ✗（PE 不有效） |
 
-→ **配置 A 需要 PE（persistent excitation）**。靜止 positioning 永遠不可觀。
+→ **配置 A 需要 PE（persistent excitation），且 PE 必須發生在窗口前段**。靜止 positioning 永遠不可觀。
 
 **配置 B**（雙量測）：
 - 數學 rank 永遠 = 5（無 PE 需求）
 - 直接量測 a_xm 把 a_x 從 (x_D, a_x) 耦合中拉出來
 - x_D 透過 F_e(3,4) = −1（與 f_d 無關）獨立識別
 
-### 不可觀條件的精確表述
+### 不可觀條件的精確表述（Task 01 驗證後加強版）
 
-配置 A 中：**f_d 在窗口內為定值**（包括 0 與任意常數）→ rank 4。
-配置 A 中：**f_d 必須隨時間變化**（Δf_d ≠ 0）→ rank 5。
+配置 A 中，O 矩陣的 (x_D, a_x) 子塊只受 f_d_seq(1..N−3) 影響：
+```
+Row 4: (x_D, a_x) coeff = ( −1,           −f_d_seq(1)                       )
+Row 5: (x_D, a_x) coeff = ( −(λ_c+1),     −(λ_c·f_d_seq(1) + f_d_seq(2))    )
+Row 6: (x_D, a_x) coeff = ( −(λ_c²+λ_c+1), −(λ_c²·f_d_seq(1) + λ_c·f_d_seq(2) + f_d_seq(3)) )
+```
 
-關鍵：rank deficiency 的根源是 (x_D, a_x) 平面上 (−1, −f_d) 與 (−(λc+1), −(λc+1)·f_d) 兩個向量永遠共線（除非 f_d 變動）。
+> **配置 A 可觀 ⇔ f_d_seq(1..N−3) 之中至少有兩個值不同**
+
+對應到實際軌跡：要在窗口 [k_0, k_0+N−1] 內可觀，**必須在 [k_0, k_0+N−4] 這個前段子窗口內 f_d 已有變動**，僅在窗口尾端變動是不夠的。
+
+機制：時變項 F_e(3,5) = −f_d 只在「row 3 chain」啟動時出現。在 H · Φ(k_0+m, k_0) 的累乘中，row 3 第一次被引用是在 m = 3 那一行 → 帶 f_d_seq(1)。因此 m = 3, 4, 5（對 N=6）分別帶 f_d_seq(1), (2), (3)。最後 N−1−2 = N−3 個 f_d 值才能進入 (x_D, a_x) 子塊。
+
+→ Task 02（Gramian σ_min(t)）的窗口設計需要**有意識地**讓 PE 子窗口涵蓋 trajectory 變動明顯處。
+
+數值佐證：見 [task01_math_observability_report.md](task01_math_observability_report.md) §5。
 
 ### 配置 B 的「永遠可觀」要分兩層
 

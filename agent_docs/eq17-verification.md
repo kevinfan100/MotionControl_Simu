@@ -13,13 +13,14 @@
 
 | # | Task | Date | Status | Report 連結 | 關鍵結論 |
 |---|---|---|---|---|---|
-| 01 | Observability Gramian σ_min(t) on osc trajectory | — | TODO | — | — |
-| 02 | Q matrix first-principles derivation | — | TODO | — | — |
-| 03 | R matrix design (incl. IIR-induced σ²_n_axm) | — | TODO | — | — |
-| 04 | 5-state EKF MATLAB implementation | — | TODO | — | — |
-| 05 | Closed-loop variance Lyapunov | — | TODO | — | — |
-| 06 | End-to-end vs 7-state EKF comparison | — | TODO | — | — |
-| 07 | Integrated random walk upgrade | — | TODO | — | — |
+| 01 | Math-layer observability rank test | 2026-04-28 | DONE | [task01_math_observability_report.md](../reference/eq17_analysis/task01_math_observability_report.md) | 10/10 PASS；發現 PE 條件精確邊界：N 窗口下只有 f_d_seq(1..N-3) 影響 (x_D,a_x) 子塊 rank。Config B (含 a_xm) 任意 f_d 下 rank=5 |
+| 02 | Observability Gramian σ_min(t) on osc trajectory | — | TODO | — | — |
+| 03 | Q matrix first-principles derivation | — | TODO | — | — |
+| 04 | R matrix design (incl. IIR-induced σ²_n_axm) | — | TODO | — | — |
+| 05 | 5-state EKF MATLAB implementation | — | TODO | — | — |
+| 06 | Closed-loop variance Lyapunov | — | TODO | — | — |
+| 07 | End-to-end vs 7-state EKF comparison | — | TODO | — | — |
+| 08 | Integrated random walk upgrade | — | TODO | — | — |
 
 `Status` 用：TODO / IN-PROGRESS / DONE / BLOCKED。
 
@@ -31,11 +32,12 @@
 
 ### 架構層級
 
-- _(待累積)_
+- **PE-window 精確條件 (Task 01)**：對窗口 N，Config A 的 (x_D, a_x) 子塊只受 f_d_seq(1..N−3) 影響。窗口尾端 N−2 之後的變動**不**改變 rank。Task 02 的 Gramian 窗口設計需要套用此條件。
+- **Config B 的 IIR 「保險」效果 (Task 01)**：a_xm 量測直接給 a_x 通道，rank=5 與 f_d 無關。在 hold 階段（f_d≈0）配置 A 嚴格不可觀，配置 B 仍 rank=5（受 IIR 收斂速度限制但結構可觀）。
 
 ### 數值結果
 
-- _(待累積)_
+- **Task 01**：所有 10 個 case rank 預測與 MATLAB 計算精確一致（含 A5/A6/A7 邊界 sweep）
 
 ### 與 paper 對照
 
@@ -110,3 +112,4 @@ qr 分支累積的相關發現，**部分可借用、部分不適用**：
 | Date | Commit | Update |
 |---|---|---|
 | 2026-04-28 | (init) | 建立 skeleton |
+| 2026-04-28 | (task01) | Task 01 DONE — math-layer observability ranks confirmed + PE-window finding |
