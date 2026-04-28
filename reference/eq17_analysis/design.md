@@ -226,21 +226,83 @@ a_x    │   0     0     0     0     0     1     1         │
 
 **唯一時變項**在 (3,6) = `−f_d[k]`。其他 48 個元素皆為常數。
 
+### F_e_state vs F_e_err（重要觀察）
+
+對 paper 2023 Eq.(17) 控制律（用 δx_m 直接 feedback），**state 系統 F_e 與 error 系統 F_e_err 完全相同**：
+
+從 plant + 控制律得：δx[k+1] = λ_c·δx[k] − ε[k]
+KF predict：δx̂[k+1|k] = λ_c·δx̂[k|k]
+誤差動態：e_δx[k+1] = λ_c·δx[k] − ε[k] − λ_c·δx̂[k|k] = λ_c·e_δx[k] − ε[k]
+
+→ F_e_err(3,3) = λ_c（與 F_e_state 相同）。
+
+對比 paper 2025 Eq.(6) 控制律（用 δx̂ feedback），其 F_e_err(3,3) = 1（兩個 λ_c 抵銷），需與 F_e_state 區分。
+
+**含義**：本主線 error 系統內含 λ_c<1 的衰減 → 不靠 KF 增益 L 都會收斂；paper 2025 error 系統完全靠 KF 收斂。
+
 ---
 
-## 6. 量測架構（雙回授）
+## 6. 量測架構（雙回授，含 a_xm 2-step 延遲）
 
 KF 使用兩條量測通道：raw 延遲量測 + IIR 推導的 motion gain 量測。
 
 ```
-y[k] = [ δx_m[k] ]      ← raw 延遲量測：δx[k−2] + n_x[k]
-       [ a_xm[k]  ]      ← IIR 副產品：由 σ²_δxr 反推的 motion gain 量測
-
-H = [ 1  0  0  0  0  0  0 ]
-    [ 0  0  0  0  0  1  0 ]
+y[k] = [ δx_m[k] ]      ← raw 延遲量測：δx_m[k] = δx[k−d] + n_x[k]
+       [ a_xm[k]  ]      ← IIR 推導：由 σ²_δxr 反解的 motion gain
 ```
 
-第一列觀測 δx_1 = δx[k−2]，第二列觀測 a_x（state 第 6 個元素）。δx_D 與 δa_x 沒有直接量測，靠隨時間從 x_D 與 a_x 的差分推算。
+### a_xm 內生延遲：a_xm[k] 對應 a_x[k−d]
+
+paper 2025 §II.F 末尾明示：a_xm[k] 實際對應 a_x[k−2]（不是 a_x[k]）。原因：
+- δx_m[k] 本身延遲 d=2 步（量測管線）
+- IIR 處理 δx_m 來算 σ²_δxr，繼承同樣延遲
+
+正確處理：把 a_x[k−d] 用當前 state 線性表達。從 integrated random walk model 反推：
+```
+a_x[k−1] = a_x[k] − δa_x[k] + w_a[k−1]
+a_x[k−2] = a_x[k] − 2·δa_x[k] + 2·w_a[k−1] + w_a[k−2]
+```
+
+對 d=2 推廣為一般式（d 步反推）：
+```
+a_x[k−d] = a_x[k] − d·δa_x[k] + Σ_{j=1}^{d} (d−j+1) · w_a[k−j]
+                                └────────┬─────────┘
+                                  過去 process noise，非當前 state
+```
+
+### 量測方程（含延遲）
+
+```
+y_2[k] = a_x[k−d] + n_a[k]
+       = a_x[k] − d·δa_x[k] + (Σ_{j=1}^{d} (d−j+1)·w_a[k−j]) + n_a[k]
+         └──────────┬──────────┘    └────────────┬────────────┘  └─┬─┘
+              current state                    past process noise   sensor
+```
+
+### H 矩陣（含延遲修正）
+
+```
+H = [ 1  0  0  0  0   0    0 ]    ← y_1: δx_m → δx_1 = δx[k−2]
+    [ 0  0  0  0  0   1   −d ]    ← y_2: a_xm → a_x − d·δa_x
+```
+
+對 d=2：H(2,7) = `−2`。
+
+### Effective R_2（包含延遲傳導項）
+
+過去 process noise 項 `Σ(d−j+1)·w_a[k−j]` 對 KF 是未追蹤的隨機輸入，要併入 effective measurement noise：
+
+```
+R_2_effective = R_2_intrinsic + Σ_{j=1}^{d} (d−j+1)² · Q77
+
+對 d=2:  R_2_effective = R_2_intrinsic + (4 + 1)·Q77 = R_2_intrinsic + 5·Q77
+```
+
+R_2_intrinsic 是 IIR 推導的 a_xm 內生雜訊（Task 03 推導）。
+
+### 對可觀性的影響
+
+H_2 = [0,...,1,−d]，繞 F_e 累乘時 δa_x 係數每步 +1：m=0 是 −d，m=1 是 −(d−1)，… 連續量測差直接給 δa_x。**rank=7 仍成立**，無 PE 需求。
 
 ### IIR 不在控制 feedback 路徑上
 
@@ -248,16 +310,23 @@ H = [ 1  0  0  0  0  0  0 ]
 - IIR 動態若進入 closed-loop，會破壞 paper Eq.18 的 λ_c·δx[k] 形式
 - IIR 純粹當 estimator 的 pre-processor，產出 a_xm 餵進 KF measurement update
 
-### a_xm 由 IIR 推導
+### a_xm 由 IIR 推導（paper 2025 Eq.9–13，**線性形式**）
 
-paper 2023/2025 的 IIR 機制：
 ```
-δx̄_m[k+1]   = (1−a_var) · δx_m[k+1] + a_var · δx̄_m[k]              (LP mean)
-σ²_δxr[k+1] = (1−a_var) · (δx_m[k+1] − δx̄_m[k+1])² + a_var · σ²_δxr[k]   (variance)
-a_xm[k]     = sqrt( (σ²_δxr[k] − C_n · σ²_n) / (C_dpmr · 4kBT γ(C(h))/Δt) )
+δx̄_m[k+1]   = (1−a_var)·δx̄_m[k] + a_var·δx_m[k+1]                         (Eq.9 LP mean)
+δx_r[k]     = δx_m[k] − δx̄_m[k]                                            (random component)
+σ̂²_δxr[k+1] = (1−a_cov)·σ̂²_δxr[k] + a_cov·(δx_r²[k+1] − δx̄_r²[k+1])         (Eq.10 variance)
+
+a_xm[k] = (σ̂²_δxr[k] − C_n·σ²_n_s) / (C_dpmr · 4kBT)                       (Eq.13)
+
+其中（粗糙版）：
+  C_dpmr = 2 + 1/(1−λ_c²)
+  C_n    = 2/(1+λ_c)
 ```
 
-a_xm 視為 a_x 的「噪聲量測」，加入 KF 後直接給 a_x 一個觀測通道。
+**注意**：a_xm 公式是**線性反解**（σ²_δxr 是 a_x 的線性函數，所以反解也線性）。**不是 sqrt**。
+
+a_xm 視為 a_x 的「噪聲量測」（含 d 步延遲傳導），加入 KF 後 a_x 與 δa_x 都可由量測差分識別。
 
 ---
 
@@ -279,12 +348,12 @@ State transition matrix（**新時間在左**）：
 Φ(k_0+m, k_0) = F_e[k_0+m−1] · F_e[k_0+m−2] · ⋯ · F_e[k_0]
 ```
 
-判斷準則：rank(O) = n_state = 5 ⇔ 在該窗口可觀。
+判斷準則：rank(O) = n_state = 7 ⇔ 在該窗口可觀。
 
 ### Window length
 
 - m_out = 2（雙量測），n_state = 7 → N ≥ ⌈7/2⌉ = 4，**保險取 N = 5–7**
-- 5-state 版本只需 N ≥ 4；7-state 多出兩個速度 state，需要多一步觀測（m=4 row）才能識別 δx_D
+- 多出兩個速度 state（δx_D, δa_x），需要多一步觀測才能識別 δx_D（m=4 row）
 
 ### 結論：rank(O) = 7 與 f_d 無關
 
@@ -330,11 +399,9 @@ State transition matrix（**新時間在左**）：
    - 報告：[`task01_math_observability_report.md`](task01_math_observability_report.md)
    - 後續 Gramian σ_min(t) 量化評估暫不做，需要時新開 task
 
-2. **Q 矩陣第一性推導**
-   - Q_thermal[k]: thermal force 方差直接代入 (a_x, h(t))
-   - Q_δa: δa_x 驅動白噪聲強度，從 trajectory 動態強度推（a_x 主方程 Q_aa = 0）
-   - Q_δxD: δx_D 驅動白噪聲強度，從預期殘磁/建模誤差幅度推（x_D 主方程 Q_xD,xD = 0）
-   - 對比 qr branch 既存的 Q33 / Q66 / Q77 設計，標出差異
+2. **Q 矩陣第一性推導** ✓ DONE (Task 02, 純代數開迴路)
+   - 結果：見 §8（Q 矩陣 open-loop 推導）
+   - Q33[k] from paper 2023 Eq.19；Q55 = 0；Q77 from trajectory 差分方差
 
 3. **R[k] 設計**
    - R_1: per-axis σ²_n（直接從 config.meas_noise_std）
@@ -355,18 +422,119 @@ State transition matrix（**新時間在左**）：
 
 ---
 
+## 8. Q 矩陣推導（純代數，純開迴路）— Task 02
+
+### 8.1 Q 矩陣的稀疏結構
+
+state vector `[δx_1, δx_2, δx_3, x_D, δx_D, a_x, δa_x]ᵀ` 中，shift state（δx_1, δx_2）與 integrator state（x_D, a_x）是**確定性映射**，沒有驅動噪聲，Q 對角項為 0。**只有三個非零 Q 項**：Q33（δx_3）、Q55（δx_D）、Q77（δa_x）。
+
+```
+       δx_1  δx_2  δx_3       x_D  δx_D    a_x  δa_x
+   ┌                                                          ┐
+   │  0     0     0           0    0       0    0             │
+   │  0     0     0           0    0       0    0             │
+   │  0     0    Q33,i[k]    0    0       0    0             │   ← thermal+sensor
+Q_i = │  0     0     0           0    0       0    0             │
+   │  0     0     0           0   Q55      0    0             │   ← disturbance velocity
+   │  0     0     0           0    0       0    0             │
+   │  0     0     0           0    0       0    Q77,i        │   ← gain velocity
+   └                                                          ┘
+```
+
+per-axis i ∈ {x, y, z}。
+
+### 8.2 Q33[k] — 從 paper 2023 Eq.(19) 推
+
+paper 2023 Eq.(19) 寫出 ε[k] 的完整形式（per-axis 略 i index）：
+```
+ε[k] = a_x[k]·f_T[k] + (1−λ_c)·a_x[k]·Σ_{j=1}^{d} f_T[k−j] + (1−λ_c)·n_x[k]
+```
+
+各項來源都是**開迴路物理量**：
+- `f_T[k]`：thermal force（白噪聲），`σ²_fT[k] = 4kBT·γ(h[k])/Δt`
+- `f_T[k−j]` for j=1..d：過去 d 個獨立 thermal samples
+- `n_x[k]`：sensor noise（白噪聲），`σ²_n_s`
+
+各項獨立加性方差：
+```
+σ²_ε[k] = a²_x[k]·σ²_fT[k]              ← 當前 thermal
+        + (1−λ_c)²·a²_x[k]·d·σ²_fT[k]    ← 過去 d 步 thermal 史（d 個獨立白噪和）
+        + (1−λ_c)²·σ²_n_s                ← sensor noise
+```
+
+化簡 `a²_x·σ²_fT = (Δt/γ)²·(4kBT·γ/Δt) = 4kBT·a_x`（線性 in a_x！）：
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Q33,i[k] = 4kBT · a_x,i[k] · [ 1 + d·(1−λ_c)² ]                    │
+│                + (1−λ_c)² · σ²_n_s,i                                │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+per-axis 變化來自 `a_x,i[k]`（透過 `γ_i(h[k])`）與 sensor 規格差。**時變來源只有 a_x[k]**，其他都是常數。
+
+### 8.3 Q55 — 物理設計參數
+
+x_D 是 lumped disturbance（殘磁、磁滯、modeling error）。我們的 simulation 環境**無這些干擾源**，故：
+```
+Q55 = 0    (simulation 場景)
+```
+
+實機部署若有殘磁，需從殘磁磁通變化率的物理模型補上。
+
+### 8.4 Q77,i — 從軌跡差分方差推
+
+`a_x_true,i(t) = Δt / { γ_N · C_i(h(t)/R) }` 對 prescribed trajectory 是 h(t) 的確定函數。Q77 反映「a_x 速度的不可預測度」：
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Q77,i = Var_{t ∈ trajectory}( δa_x_true,i(t) )           │
+│                                                          │
+│  其中  δa_x_true,i(t) := a_x_true,i(t+Δt) − a_x_true,i(t) │
+└──────────────────────────────────────────────────────────┘
+```
+
+**離線一次性計算**：用 `trajectory_generator.m` 產 a_x_true(t) 全段序列 → 算一階差分 → 取 sample variance。實作時填入 params。
+
+對 osc trajectory（h: 50 → 12.5±10 1Hz）：
+- z 軸（c_⊥(h/R) 主導）：過 wall 時 |δa_x| 最大，Q77,z 應顯著大於 Q77,x、Q77,y
+- x, y 軸（c_∥）：c_∥ 變化幅度小於 c_⊥，Q77 較小
+
+per-axis 數值留待 Task 04 實作時填入。
+
+### 8.5 時變性總結
+
+| 項 | 時變？ | 來源 |
+|---|---|---|
+| Q33,i[k] | ✓ 時變 | 透過 a_x,i[k] 的時變性 |
+| Q55 | ✗ 常數 (=0) | 設計選擇 |
+| Q77,i | ✗ 軌跡常數 | 離線從整段軌跡算 |
+
+→ 實作時 Q[k] 每步只需更新 Q33（一次乘法 + 一次加法），Q55 / Q77 預先固定。
+
+### 8.6 對比 paper 2025 / qr 分支的差異
+
+paper 2025 Eq.(21) 給的 Q(δx_3) 是 `4kBT·a_x[k]`（直接，**沒有 1+d(1−λ_c)² 修正**）。差異來源：
+- paper 2025 的控制律用 δx̂ feedback，ε[k] 不含 `(1−λ_c)·a_x·Σf_T` 項
+- 我們的 Eq.(17) 控制律有此項（過去 thermal 史經 (1−λ_c) 加權進入 ε）
+- 對 d=2, λ_c=0.7：修正因子 1 + 2·0.09 = **1.18**（18% 增量）
+
+→ 直接套 paper 2025 的 Q 會 18% under-estimate。我們的推導更精確。
+
+---
+
 ## 9. Notation 約定
 
-完整 notation 對照表見 [`agent_docs/eq17-architecture.md`](../../agent_docs/eq17-architecture.md) §5。MATLAB 變數名遵循 `.claude/rules/matlab-conventions.md` 的 snake_case 規範。
+完整 notation 對照表見 [`agent_docs/eq17-architecture.md`](../../agent_docs/eq17-architecture.md) §6。MATLAB 變數名遵循 `.claude/rules/matlab-conventions.md` 的 snake_case 規範。
 
 ---
 
 ## 10. 開放問題（暫保留，等驗證再決定）
 
-- Q_a 和 Q_xD 的物理單位推導（從第一性原理，不靠試誤）— **task 2 處理**
 - a_xm 在 IIR warm-up 期的 fallback 策略 — **task 3 處理**
 - 是否需要把 IIR 內部 state（δx̄_m、σ²_δxr）也納入 augmented state — **目前傾向不需要**，待 Gramian 數值結果驗證
 - 控制律中 x̂_D 補償項的縮放因子（`−x̂_D` vs `−(1−λ_c)·x̂_D`）— 已選前者全量補償，task 5 Lyapunov 驗證
+- C_dpmr/C_n 粗糙版（paper Eq.13 閉式）vs effective 版（augmented Lyapunov）— **起步用粗糙版**，端到端驗證若不準再升級
 
 ---
 

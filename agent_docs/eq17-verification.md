@@ -14,7 +14,7 @@
 | # | Task | Date | Status | Report 連結 | 關鍵結論 |
 |---|---|---|---|---|---|
 | 01 | Math-layer observability rank test | 2026-04-28 | DONE | [task01_math_observability_report.md](../reference/eq17_analysis/task01_math_observability_report.md) | 5-state 10/10 + 7-state 3/3 = 13/13 PASS。雙回授下 7-state rank=7 對任意 f_d 成立（含 f_d=0）。發現 Config A 5-state PE 條件精確邊界：N 窗口下只有 f_d_seq(1..N-3) 影響 (x_D,a_x) 子塊 rank。 |
-| 02 | Q matrix first-principles derivation | — | TODO | — | — |
+| 02 | Q matrix first-principles derivation | 2026-04-28 | DONE | design.md §8 | Q33,i[k] = 4kBT·a_x,i[k]·[1+d·(1−λ_c)²] + (1−λ_c)²·σ²_n_s,i（純開迴路，比 paper 2025 多 18% 修正）；Q55=0；Q77,i = Var(δa_x_true,i) over trajectory。同時更正 a_xm 公式為線性反解（不是 sqrt），並加入 a_xm 2-step 延遲到 H 矩陣 (col 7 = −d)。 |
 | 03 | R matrix design (incl. IIR-induced σ²_n_axm) | — | TODO | — | — |
 | 04 | 7-state EKF MATLAB implementation | — | TODO | — | — |
 | 05 | Closed-loop variance Lyapunov | — | TODO | — | — |
@@ -35,6 +35,24 @@
 
 - **Task 01 (5-state)**：10 個 case 全 PASS，含 A5/A6/A7 邊界 sweep
 - **Task 01 (7-state)**：3 個 case 全 PASS（f_d=0、f_d=2 const、f_d ramp），rank=7 確認
+
+### 推導結果
+
+- **Task 02 — Q 矩陣（純代數，純開迴路）**：
+  - **Q33,i[k]** = 4kBT · a_x,i[k] · [1 + d·(1−λ_c)²] + (1−λ_c)² · σ²_n_s,i
+    - 比 paper 2025 Eq.(21) 多一個 d·(1−λ_c)² 修正（18% @ d=2, λ_c=0.7）
+    - 來源差異：我們的 Eq.17 控制律含過去 d 步 thermal 史的 (1−λ_c) 加權項
+  - **Q55** = 0（simulation 場景無殘磁）
+  - **Q77,i** = Var_{t}( δa_x_true,i(t) ) — 離線從軌跡計算
+  - 時變項只有 Q33（透過 a_x[k]）
+
+- **a_xm 公式更正**：從錯誤的 sqrt 形式改為 paper 2025 Eq.(13) 線性形式
+  - `a_xm[k] = (σ²_δxr[k] − C_n·σ²_n_s) / (C_dpmr · 4kBT)`
+  - C_dpmr = 2 + 1/(1−λ_c²), C_n = 2/(1+λ_c)（粗糙版）
+
+- **a_xm 2-step 延遲處理**：H 矩陣 col 7 從 0 改為 −d
+  - H = [[1,0,0,0,0,0,0]; [0,0,0,0,0,1,−d]]
+  - Effective R_2 多 5·Q77（d=2）的延遲傳導項
 
 ### 與 paper 對照
 
@@ -111,3 +129,4 @@ qr 分支累積的相關發現，**部分可借用、部分不適用**：
 | 2026-04-28 | (init) | 建立 skeleton |
 | 2026-04-28 | (task01) | Task 01 DONE — math-layer observability ranks confirmed + PE-window finding |
 | 2026-04-28 | (lock-7state) | 7-state architecture locked in；agent_docs 同步更新 |
+| 2026-04-28 | (task02-Q) | Task 02 DONE — Q 矩陣三項代數推導（Q33[k], Q55=0, Q77）；a_xm 公式改線性；H 加入 d-step 延遲修正 (col 7 = −d) |

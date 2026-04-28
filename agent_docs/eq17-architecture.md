@@ -135,34 +135,111 @@ a_x    │   0     0     0     0     0     1     1         │
 
 ---
 
-## 4. H 矩陣（雙量測，鎖定）
+## 4. H 矩陣（雙量測，含 a_xm 內生 d=2 延遲）
+
+paper 2025 §II.F 末尾明示：a_xm[k] 對應 a_x[k−d]（d=2 步延遲，繼承自 δx_m）。正確處理是把 a_x[k−d] 用當前 state 線性表達：
 
 ```
-y[k] = [ δx_m[k] ]      ← raw 延遲量測 = δx[k−2] + n_x
-       [ a_xm[k]  ]      ← IIR 副產品 = a_x + n_a
-
-H = [ 1  0  0  0  0  0  0 ]    (2 × 7)
-    [ 0  0  0  0  0  1  0 ]
+a_x[k−d] = a_x[k] − d·δa_x[k] + Σ_{j=1}^{d} (d−j+1)·w_a[k−j]
+                                └────────┬─────────┘
+                                  past process noise → effective R_2
 ```
 
-第 1 列觀測 δx_1（state index 1），第 2 列觀測 a_x（state index 6）。δx_D 與 δa_x 沒有直接量測通道，靠時序差分推算。
+對應的 H 矩陣與 effective measurement noise：
 
-**可觀性**（數學層）：rank 永遠 = 7，與 f_d 任何行為無關。
+```
+y[k] = [ δx_m[k] ]      ← raw 延遲量測 = δx[k−d] + n_x
+       [ a_xm[k]  ]      ← IIR 推導（含 d 步延遲傳導）
+
+H = [ 1  0  0  0  0   0    0 ]    (2 × 7)
+    [ 0  0  0  0  0   1   −d ]    ← (2,7) = −d, 對 d=2 為 −2
+
+R_2_effective = R_2_intrinsic + (Σ_{j=1}^{d}(d−j+1)²) · Q77
+              = R_2_intrinsic + 5·Q77   (對 d=2)
+```
+
+第 1 列觀測 δx_1（state index 1），第 2 列觀測 a_x − d·δa_x（含 δa_x 耦合）。δx_D 與 δa_x 透過時序差分識別。
+
+**可觀性**（數學層）：rank 永遠 = 7，與 f_d 任何行為無關（Task 01 驗證）。
 **可觀性**（實務層）：受 R_2[k] 影響，IIR 崩塌時 R_2 → ∞，y_2 通道退化但結構性可觀仍由 y_1 鏈承擔（在 PE 滿足時）。
 
-### IIR 推導 a_xm（paper 2025 Eq.9–13）
+### IIR 推導 a_xm（paper 2025 Eq.9–13，**線性反解**）
 
 ```
-δx̄_m[k+1]   = (1−a_var) · δx_m[k+1] + a_var · δx̄_m[k]
-σ²_δxr[k+1] = (1−a_var) · (δx_m[k+1] − δx̄_m[k+1])² + a_var · σ²_δxr[k]
-a_xm[k]     = sqrt( (σ²_δxr[k] − C_n · σ²_n) / (C_dpmr · σ²_T,nominal[k]) )
+δx̄_m[k+1]   = (1−a_var) · δx̄_m[k] + a_var · δx_m[k+1]                       (Eq.9)
+δx_r[k]     = δx_m[k] − δx̄_m[k]                                              (random component)
+σ̂²_δxr[k+1] = (1−a_cov) · σ̂²_δxr[k] + a_cov · (δx_r²[k+1] − δx̄_r²[k+1])      (Eq.10)
+
+a_xm[k] = (σ̂²_δxr[k] − C_n · σ²_n_s) / (C_dpmr · 4kBT)                      (Eq.13)
+
+  C_dpmr = 2 + 1/(1−λ_c²)      (paper 2025 Eq.11/12 閉式，粗糙版)
+  C_n    = 2/(1+λ_c)
 ```
 
-a_xm 視為 a_x 的「噪聲量測」，加入 KF。
+**重要**：a_xm 是**線性反解**（σ²_δxr 是 a_x 的線性函數）。**不是 sqrt**。a_xm 視為 a_x 的「噪聲量測」（含 d 步延遲傳導），加入 KF。
 
 ---
 
-## 5. Notation 對照表
+## 5. Q 矩陣（純開迴路推導，Task 02）
+
+7×7 對角結構，三個非零項：
+
+```
+       δx_1  δx_2  δx_3       x_D  δx_D    a_x  δa_x
+   ┌                                                          ┐
+   │  0     0     0           0    0       0    0             │
+   │  0     0     0           0    0       0    0             │
+   │  0     0    Q33,i[k]    0    0       0    0             │
+Q_i = │  0     0     0           0    0       0    0             │
+   │  0     0     0           0   Q55      0    0             │
+   │  0     0     0           0    0       0    0             │
+   │  0     0     0           0    0       0    Q77,i        │
+   └                                                          ┘
+```
+
+### Q33,i[k]（thermal + sensor，per-axis 時變）
+
+從 paper 2023 Eq.(19) 完整推導 ε[k] 方差：
+```
+Q33,i[k] = 4kBT · a_x,i[k] · [ 1 + d·(1−λ_c)² ] + (1−λ_c)² · σ²_n_s,i
+```
+
+時變來自 `a_x,i[k] = Δt/{γ_N · C_i(h[k]/R)}`。
+
+對 d=2, λ_c=0.7：修正因子 1 + 2·0.09 = **1.18**（比 paper 2025 Eq.(21) 直接寫的 4kBT·a_x 多 18%，因為我們的 Eq.17 控制律含過去 d 步 thermal 史的 (1−λ_c) 加權項）。
+
+### Q55（disturbance velocity，simulation 場景）
+
+```
+Q55 = 0    (simulation 無殘磁)
+```
+
+實機部署若有殘磁，需從殘磁磁通變化率推。
+
+### Q77,i（gain velocity，per-axis 軌跡常數）
+
+從 prescribed trajectory 開迴路計算：
+```
+Q77,i = Var_{t ∈ trajectory}( δa_x_true,i(t) )
+其中  δa_x_true,i(t) = a_x_true,i(t+Δt) − a_x_true,i(t)
+       a_x_true,i(t)   = Δt / { γ_N · C_i(h(t)/R) }
+```
+
+離線一次性計算，填入 params。對 osc trajectory 過 wall 段，z 軸 Q77 顯著大於 x/y。
+
+### 時變性
+
+| 項 | 時變？ | 來源 |
+|---|---|---|
+| Q33,i[k] | ✓ | 透過 a_x,i[k] |
+| Q55 | ✗ (=0) | 設計選擇 |
+| Q77,i | ✗ (軌跡常數) | 離線算 |
+
+詳細推導見 design.md §8。
+
+---
+
+## 6. Notation 對照表
 
 | 符號（本架構） | Paper 2023 | Paper 2025 | qr writeup_architecture.tex |
 |---|---|---|---|
@@ -182,7 +259,7 @@ a_xm 視為 a_x 的「噪聲量測」，加入 KF。
 
 ---
 
-## 6. 與 paper 2025 7-state EKF 的關鍵差異
+## 7. 與 paper 2025 7-state EKF 的關鍵差異
 
 兩條路線都用 7-state integrated random walk，差別在控制律：
 
@@ -198,7 +275,7 @@ a_xm 視為 a_x 的「噪聲量測」，加入 KF。
 
 ---
 
-## 7. 實作對應檔案（規劃，尚未建立）
+## 8. 實作對應檔案（規劃，尚未建立）
 
 | 模組 | 檔案路徑 |
 |---|---|
