@@ -14,7 +14,7 @@
 | # | Task | Date | Status | Report 連結 | 關鍵結論 |
 |---|---|---|---|---|---|
 | 01 | Math-layer observability rank test | 2026-04-28 | DONE | [task01_math_observability_report.md](../reference/eq17_analysis/task01_math_observability_report.md) | 5-state 10/10 + 7-state 3/3 = 13/13 PASS。雙回授下 7-state rank=7 對任意 f_d 成立（含 f_d=0）。發現 Config A 5-state PE 條件精確邊界：N 窗口下只有 f_d_seq(1..N-3) 影響 (x_D,a_x) 子塊 rank。 |
-| 02 | Q matrix derivation (Path A′ + adaptive Q77) | 2026-04-28 | DONE | design.md §8 (unified) | Q33,i[k] = (3−2λ_c²)·4kBT·â_x,i[k] + (1−λ_c)²·σ²_n_s,i (Path A′ inflation 補償 ε 的 MA(d) 自相關)；Q55=0；Q77,i[k] = â_x²·K_h(h̄)²·(Δt/R)²·σ²_ḣ_max (adaptive, per-axis 時變)。Q 對角化前提 A1–A4 確認 single-time off-diagonal=0；時間 cross 由 Path A′ inflation 補償。 |
+| 02 | Q matrix derivation (Path C strict + adaptive Q77) | 2026-04-28 | DONE | design.md §8 (Path C) | Q33,i[k] = 4kBT·â_x,i[k] (嚴格 KF formalism：只當步 thermal，不含 (ii)(iii) 跨步相關 thermal 史與 (iv) n_x，後者三項由 paper Eq.22 與 R(1,1) 分別處理)；Q55=0；Q77,i[k] = â_x²·K_h(h̄)²·(Δt/R)²·σ²_ḣ_max (adaptive)。代價：KF 預測 P(3,3) ≈ 真實 σ²_δx 的 50%（standard KF 對 correlated noise 的 trade-off，要消除須升級 Path B 9-state）。 |
 | 03 | R matrix design (incl. IIR-induced σ²_n_axm) | — | TODO | — | — |
 | 04 | 7-state EKF MATLAB implementation | — | TODO | — | — |
 | 05 | Closed-loop variance Lyapunov | — | TODO | — | — |
@@ -38,18 +38,21 @@
 
 ### 推導結果
 
-- **Task 02 — Q 矩陣（unified version: Path A′ + adaptive Q77）**：
-  - **Q33,i[k]** = (3 − 2·λ_c²) · 4kBT · â_x,i[k] + (1−λ_c)² · σ²_n_s,i
-    - Path A′ inflation：對 λ_c=0.7 因子 = 2.02（vs marginal Var(ε) 的 1.18，inflation 1.71×）
-    - 補償 ε 的 MA(d=2) 自相關 (ρ(1)≈33%, ρ(2)≈25%) 對穩態 Var(δx) 的影響
-    - 殘餘 5–15% gap 在 KF gain 結構次優（無法靠單參數補償，可接受）
+- **Task 02 — Q 矩陣（Path C 嚴格 KF formalism + adaptive Q77）**：
+  - **Q33,i[k]** = 4 · k_B · T · â_x,i[k]
+    - **嚴格依 KF formalism**：只含當步白噪 thermal，不含其他項
+    - (ii)(iii) thermal 史 (cross-step correlated)：由 paper 2023 Eq.(22) closed-loop 公式分別處理
+    - (iv) n_x：在 R(1,1) 中，避免 Q-R cross
+    - 代價：KF 預測 P(3,3) ≈ 真實 σ²_δx 的 50%（standard KF 對 correlated noise 的 trade-off）
+    - 之前推過 Path A′ inflation 形式 (3−2λ_c²)·4kBT·â_x + (1−λ_c)²·σ²_n_s，**已退役**（理由：違反 KF Q-R 獨立與白噪 cross-step 假設，是 hack 不是推導）
   - **Q55** = 0（simulation 場景無殘磁；可加 floor=1e-12 防數值鎖死）
   - **Q77,i[k]** = (â_x,i[k])² · K_h,i(h̄[k])² · (Δt/R)² · σ²_ḣ_max
     - **adaptive 形式**，雙重依賴 â_x 與 h̄
     - K_h,i := (1/C_i)·(dC_i/dh̄) 是壁面敏感度，過 wall 時 K_h² 爆增 → Q77 自動 inflate ~600× 給 KF agility
     - 需要 calc_correction_functions 增加 dC/dh̄ 輸出（Task 04 處理）
+    - w_a 是 designed white driver，本來就是白噪，無 Q33 的 correlated-noise 問題
   - **Q 對角化確認**：4 個獨立性假設下 single-time Q off-diagonal 嚴格 0
-  - **時間 cross-correlation**：ε 的 MA(d) 由 Path A′ inflation 補償
+  - **完整 ε 結構處理**：(i) 進 Q33，(ii)(iii) 進 Eq.22 closed-loop，(iv) 進 R(1,1)
 
 - **a_xm 公式更正**：從錯誤的 sqrt 形式改為 paper 2025 Eq.(13) 線性形式
   - `a_xm[k] = (σ²_δxr[k] − C_n·σ²_n_s) / (C_dpmr · 4kBT)`
@@ -136,3 +139,4 @@ qr 分支累積的相關發現，**部分可借用、部分不適用**：
 | 2026-04-28 | (lock-7state) | 7-state architecture locked in；agent_docs 同步更新 |
 | 2026-04-28 | (task02-Q) | Task 02 DONE — Q 矩陣三項代數推導（Q33[k], Q55=0, Q77）；a_xm 公式改線性；H 加入 d-step 延遲修正 (col 7 = −d) |
 | 2026-04-28 | (task02-unified) | Q 升級到 unified version: Path A′ inflation Q33 (3−2λ_c²) + adaptive Q77 (含 K_h 壁面敏感度)；補上 Q 對角化的 A1–A4 假設 |
+| 2026-04-28 | (task02-strict) | Q33 退役 Path A′ inflation，改回 Path C 嚴格形式 4kBT·â_x。理由：Path A′ inflation 違反 KF Q-R 獨立與 Q 白噪 cross-step 假設，雖然能讓 KF 預測 σ²_δx 對齊 Eq.22 但是 hack 不是推導。Path C 數學嚴格但 KF P 預測偏小 ~50%（standard KF 對 correlated noise 的已知 trade-off），可接受。 |

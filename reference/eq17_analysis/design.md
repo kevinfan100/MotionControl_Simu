@@ -420,79 +420,88 @@ per-axis i ∈ {x, y, z}（三個獨立 KF）。
 
 **⚠️ 空間 vs 時間 cross 區分**：single-time Q 的 off-diagonal = 0，但 ε[k] 在**時間上** MA(d) 自相關 ρ(1)≈33%, ρ(2)≈25%（由 Eq.17 控制律的 Σf_T 結構造成）。後者由 Q33 的 Path A′ inflation 部分補償（見 §8.2）。
 
-### 8.2 Q33[k] — Path A′ inflation 推導
+### 8.2 Q33[k] — 嚴格 KF formalism 推導（Path C）
 
-#### Step 1：ε[k] 來源（paper 2023 Eq.19）
+#### Step 1：ε[k] 完整形式（paper 2023 Eq.19）
 
 Eq.(17) 控制律代入 plant 後：
 ```
 δx[k+1] = λ_c · δx[k] − ε[k]
-ε[k] = a_x · f_T[k] + (1−λ_c) · a_x · Σ_{j=1}^{d} f_T[k−j] + (1−λ_c) · n_x[k]
+ε[k] = a_x · f_T[k]                       ← (i) 當步 thermal
+     + (1−λ_c) · a_x · f_T[k−1]            ← (ii) 上一步 thermal 殘留
+     + (1−λ_c) · a_x · f_T[k−2]            ← (iii) 上上步 thermal 殘留
+     + (1−λ_c) · n_x[k]                    ← (iv) sensor noise 注入
 ```
 
-各項皆為開迴路物理量：
-- f_T 是 thermal white noise，σ²_fT = 4kBT·γ/Δt（per-axis 透過 γ_i(h)）
-- n_x 是 sensor white noise，σ²_n_s（per-axis from config）
+#### Step 2：KF 對 Q 的數學要求
 
-#### Step 2：邊際變異數
-
-各項獨立可加：
+KF formalism：
 ```
-Var(ε)_marginal = a_x²·σ²_fT·{1 + d·(1−λ_c)²}  +  (1−λ_c)²·σ²_n_s
+x[k+1] = F·x[k] + w[k],     E[w[k]·w[j]ᵀ] = Q · δ(k−j)     ← 白噪 cross-step uncorrelated
+y[k]   = H·x[k] + v[k],     E[w[k]·v[k]ᵀ]  = 0              ← Q 與 R 無 cross
 ```
 
-代換 a_x²·σ²_fT = (Δt/γ)²·(4kBT·γ/Δt) = **4kBT·a_x**（線性化）：
-```
-Var(ε)_marginal = 4kBT · a_x · {1 + d·(1−λ_c)²}  +  (1−λ_c)² · σ²_n_s
-```
+進 Q(3,3) 的「資格」必須**全數通過**五個條件：
+1. 進 δx 動態
+2. **當步**（不是過去步）
+3. **白噪**（cross-step 獨立）
+4. exogenous（不是其他 state propagation）
+5. **未在 R 中**（避免 Q-R cross）
 
-對 d=2, λ_c=0.7：因子 1 + 0.18 = **1.18**。
+#### Step 3：對 ε[k] 四個 component 逐項過濾
 
-#### Step 3：為什麼要 inflation（marginal 不夠）
+| 項 | 進 δx | 當步 | 白 cross-step | exog | 不在 R | 進 Q? |
+|---|---|---|---|---|---|---|
+| (i)   `a_x·f_T[k]` | ✓ | ✓ | ✓ | ✓ | ✓ | **✓** |
+| (ii)  `(1−λ_c)·a_x·f_T[k−1]` | ✓ | ✗ 上一步 | ✗ 跨步相關 | ✓ | ✓ | ✗ |
+| (iii) `(1−λ_c)·a_x·f_T[k−2]` | ✓ | ✗ 上上步 | ✗ 跨步相關 | ✓ | ✓ | ✗ |
+| (iv)  `(1−λ_c)·n_x[k]` | ✓ | ✓ | ✓ | ✓ | **✗ 已在 R** | ✗ |
 
-ε[k] 是 MA(d=2) 過程，**時間上自相關** ρ(1)≈33%, ρ(2)≈25%。KF 的 Riccati 方程在白噪假設下用 marginal Var 會 **underestimate 穩態 Var(δx)**。
+→ **只有 (i) 通過**。
 
-#### Step 4：求 inflation factor κ
+#### Step 4：(ii)(iii)(iv) 不消失，只是不在 Q
 
-paper 2023 Eq.(22)（含 MA 結構的真實穩態變異數）：
-```
-σ²_δx_真實 = (2 + 1/(1−λ_c²)) · σ²_δxT + ((1−λ_c)/(1+λ_c)) · σ²_n_s
-```
-
-KF 用「等效白噪 σ²_w」假設下對 1D 系統 δx[k+1] = λ_c·δx[k] − w[k]：
-```
-σ²_δx_KF = σ²_w / (1−λ_c²)
-```
-
-要兩者相等：
-```
-σ²_w = (1−λ_c²) · σ²_δx_真實
-     = (3 − 2·λ_c²) · σ²_δxT  +  (1−λ_c)² · σ²_n_s
-```
-
-對 λ_c=0.7：3 − 0.98 = **2.02**（vs marginal 1.18）→ inflation factor κ = 2.02/1.18 = 1.71×。
+| 項 | 在哪裡被處理 |
+|---|---|
+| (ii) f_T[k−1] 殘留 | paper 2023 Eq.(22) 閉迴路 σ²_δx 公式（透過 closed-loop 累積） |
+| (iii) f_T[k−2] 殘留 | 同上 |
+| (iv) n_x | R(1,1) = σ²_n_s（KF measurement update 自然納入） |
 
 #### 最終公式
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│  Q33,i[k] = (3 − 2·λ_c²) · 4kBT · â_x,i[k]  +  (1 − λ_c)² · σ²_n_s,i │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Q33,i[k] = Var( a_x,i[k] · f_T,i[k] )                       │
+│           = a_x,i²[k] · σ²_fT,i[k]                            │
+│           = 4·k_B·T · â_x,i[k]      (linear in â_x，per-axis) │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-per-axis 變化來自 `â_x,i[k]`（透過 KF 估的 a_x，間接含 γ_i(h)）與 sensor 規格差。**時變來源只有 â_x[k]**。
+**沒有 inflation factor，沒有 sensor noise 項，純粹當步 thermal 白噪變異數**。
+
+#### Step 5：KF 行為的含義
+
+```
+σ²_δx,KF_預測 = Q33 / (1−λ_c²)   = 4kBT·â_x / (1−λ_c²)         ≈ 1.96·4kBT·â_x  (λ_c=0.7)
+σ²_δx,真實    = (2 + 1/(1−λ_c²))·σ²_δxT + ...                    ≈ 3.96·4kBT·â_x  (paper Eq.22)
+
+→ KF 預測 ≈ 50% 的真實值（KF 認為自己估得比實際更準）
+```
+
+這是 standard KF 處理 correlated process noise 的**已知 trade-off**：
+- KF 預測 P(3,3) 偏小，但 KF 仍穩定收斂
+- 實際 estimation 誤差不會差 50%，因為 KF 透過 measurement update 仍會修正
+- 完全消除偏差**只能用 Path B**（augment state with f_T history → 9-state, Q non-diagonal）
 
 #### 屬性
 
 | 性質 | 值 |
 |---|---|
-| Per-axis | ✓ 透過 â_x,i 與 σ²_n_s,i |
+| Per-axis | ✓ 透過 â_x,i |
 | 時變 | ✓ 透過 â_x,i[k] |
 | 是否 â_x 函數？ | ✓ Adaptive EKF / SDRE 結構 |
-| 補償的對象 | ε 的 MA(d) 自相關對穩態 Var(δx) 的影響 |
-| 殘餘次優 | ~5–15%（KF gain 結構次優，無法靠單參數補償） |
-
-**Caveat**：若需 100% 嚴謹 minimum variance，需擴 9-state（Path B），不在本路線範圍。
+| KF formalism 嚴謹性 | ✓ 嚴格滿足白噪、Q-R 獨立 |
+| KF P 預測 vs 真實 σ²_δx | △ 約 50%（standard KF correlated-noise trade-off） |
 
 ### 8.3 Q55 — Disturbance velocity（simulation 場景）
 
@@ -564,14 +573,13 @@ K_h,i(h̄) := (1/C_i(h̄)) · (dC_i/dh̄)        per-axis 壁面敏感度
 
 ```
 每一步 KF update 計算量：
-  Q33[k] = (3 − 2λ_c²) · 4kBT · â_x[k] + 常數     (1 個 ×, 1 個 +)
+  Q33[k] = 4kBT · â_x[k]                          (1 個 ×)
   Q77[k] = â_x²[k] · K_h(h̄[k])² · 常數             (lookup K_h + 2 個 ×)
   Q55    = 0  (常數，不更新)
 
 離線一次性算（常數）：
   σ²_ḣ_max 從 trajectory 算
-  σ²_n_s,i 從 sensor 規格
-  常數因子 (3−2λ_c²), (1−λ_c)², (Δt/R)²
+  常數因子 4kBT, (Δt/R)²
 ```
 
 | 項 | 時變？ | 來源 |
@@ -583,10 +591,14 @@ K_h,i(h̄) := (1/C_i(h̄)) · (dC_i/dh̄)        per-axis 壁面敏感度
 ### 8.6 全部 caveats
 
 ```
-[Q33] MA(d) 結構：ε 自相關 ρ(1)≈33%, ρ(2)≈25%。
-       Path A′ inflation 補償穩態 Var(δx)，殘餘 5–15% gap 在
-       KF gain 結構次優（無法靠單參數補償）。可接受；極端情況
-       升級 Path B (9-state)。
+[Q33] 嚴格 KF formalism：Q33 只含當步白噪 thermal (i)，
+       不含 (ii)(iii) thermal 歷史 (cross-step correlated) 與
+       (iv) n_x (在 R 中)。後者三項影響由 paper 2023 Eq.(22)
+       的 closed-loop 公式分別處理。
+       
+       代價：KF 預測 P(3,3) ≈ 真實 σ²_δx 的 50% (1/(3-2λ_c²))。
+       這是 standard KF 處理 correlated process noise 的
+       已知 trade-off。要消除須用 Path B (9-state augmented)。
 
 [Q55] = 0 假設：simulation 無殘磁。實機需重新推導 from
        磁通變化率物理模型。建議加 floor=1e-12 避免數值鎖死。
@@ -604,13 +616,16 @@ K_h,i(h̄) := (1/C_i(h̄)) · (dC_i/dh̄)        per-axis 壁面敏感度
 
 ### 8.7 對比 paper 2025 / qr 分支
 
-| 項 | paper 2025 (qr 分支) | 本主線 (paper 2023 Eq.17 + Path A′) |
+| 項 | paper 2025 (qr 分支) | 本主線 (paper 2023 Eq.17 + Path C strict) |
 |---|---|---|
-| Q33 thermal 因子 | `4kBT·a_x`（無修正） | `(3−2λ_c²)·4kBT·a_x`（含 inflation 補 MA + closed-loop） |
+| Q33 thermal 公式 | `4kBT·a_x`（嚴格） | `4kBT·â_x`（嚴格，數學上一致） |
 | 對應控制律 | Eq.6（用 δx̂ feedback） | Eq.17（用 δx_m feedback） |
-| 為什麼差異 | Eq.6 ε 不含 Σf_T | Eq.17 含 Σf_T，需補 inflation |
+| ε 結構差異 | ε 不含 Σf_T | ε 含 Σf_T（不入 Q，由 Eq.22 處理） |
+| KF P 預測 vs 真實 | 接近 1.0× | ~0.5×（Eq.17 closed-loop dynamics 的 trade-off） |
 | Q77 | random walk 常數 | adaptive (â_x², K_h²) |
 | 對動態軌跡的反應 | 需手動調 Q | 自動跟著 trajectory 形狀走 |
+
+**重要**：兩個方案的 Q33 公式長得**一樣**（`4kBT·a_x`），但**KF 行為不同**。原因在控制律不同 → ε 結構不同 → 真實 σ²_δx 不同 → KF 對 P 的「正確值」認知不同。Q33 數值對齊只是表面，深層結構差異透過 closed-loop variance 體現。
 
 ---
 

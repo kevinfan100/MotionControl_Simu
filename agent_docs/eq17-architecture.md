@@ -208,19 +208,32 @@ per-axis i ∈ {x, y, z}。
 
 對 simulation 全部成立。**single-time Q off-diagonal 嚴格 0**，但 ε[k] 在時間上 MA(d) 自相關（由 Path A′ inflation 補償）。
 
-### Q33,i[k]（thermal + sensor，Path A′ inflation 形式）
+### Q33,i[k]（嚴格 KF formalism，Path C）
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│  Q33,i[k] = (3 − 2·λ_c²) · 4kBT · â_x,i[k]  +  (1 − λ_c)² · σ²_n_s,i │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Q33,i[k] = 4 · k_B · T · â_x,i[k]      (per-axis, 時變)      │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-對 λ_c=0.7：因子 (3−2λ_c²) = **2.02**（比 marginal Var(ε) 的 1.18 多 1.71×）。
+**只含當步 thermal 白噪變異數**：Var(a_x·f_T[k]) = a_x²·σ²_fT = 4kBT·a_x。
 
-**為什麼用 inflation factor**：marginal Var(ε) 是 ε 的「平均強度」，但 ε 是 MA(d=2) 過程，自相關 33% (lag1) / 25% (lag2)。直接用 marginal 餵 KF 會 underestimate 穩態 Var(δx)。Inflation 讓 KF 用「等效白噪」假設下的穩態預測匹配 paper 2023 Eq.(22) 真值。
+#### 為什麼不含其他項？
 
-殘餘 5–15% gap 在 KF gain 結構次優（無法靠單參數補償），可接受。詳細推導見 design.md §8.2。
+ε[k] 完整形式（paper 2023 Eq.19）含四項，但只有 (i) 通過 KF 對 Q 的數學要求（白噪 cross-step uncorrelated + Q-R 獨立）：
+
+| 項 | 進 Q? | 替代處理 |
+|---|---|---|
+| (i)   `a_x·f_T[k]`           | ✓ | Q33 |
+| (ii)  `(1−λ_c)·a_x·f_T[k−1]`  | ✗（過去步，跨步相關）| 由 Eq.22 closed-loop 公式處理 |
+| (iii) `(1−λ_c)·a_x·f_T[k−2]`  | ✗（過去步，跨步相關）| 由 Eq.22 closed-loop 公式處理 |
+| (iv)  `(1−λ_c)·n_x[k]`        | ✗（已在 R 中）        | R(1,1) = σ²_n_s |
+
+#### 含義
+
+KF 預測 σ²_δx 比真實值偏小約 50%（由 1/(3−2λ_c²) 比例）。這是 standard KF 處理 correlated process noise 的**已知 trade-off**，可接受。要消除偏差需 Path B（augmented 9-state）。
+
+詳細推導見 design.md §8.2。
 
 ### Q55（disturbance velocity，simulation 場景）
 
