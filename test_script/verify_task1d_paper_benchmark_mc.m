@@ -16,7 +16,7 @@
 %
 % Output files:
 %   test_results/verify/task1d_paper_benchmark_mc.mat
-%   reference/for_test/fig_task1d_paper_benchmark.png
+%   reference/qr_analysis/fig_task1d_paper_benchmark.png
 
 clear; clc;
 clear motion_control_law motion_control_law_7state ...
@@ -344,7 +344,7 @@ title(sprintf('Per-seed median err (mean x=%.1f%%, z=%.1f%%)', ...
     mean(mm_x), mean(mm_z)), 'FontSize', FS);
 set(gca, 'FontSize', FS, 'LineWidth', 1.8, 'Box', 'on');
 
-fig_dir  = fullfile(project_root, 'reference', 'for_test');
+fig_dir  = fullfile(project_root, 'reference', 'qr_analysis');
 fig_path = fullfile(fig_dir, 'fig_task1d_paper_benchmark.png');
 exportgraphics(fig, fig_path, 'Resolution', 150);
 close(fig);

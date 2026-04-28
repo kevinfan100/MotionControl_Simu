@@ -190,7 +190,7 @@ for ax = 1:3
     title(sprintf('%s distribution (mean=%.1f nm)', ax_names{ax}, results.err_mean(ax)*1e3));
     set(gca, 'FontSize', 11);
 end
-fig_dir = fullfile(project_root, 'reference', 'for_test');
+fig_dir = fullfile(project_root, 'reference', 'qr_analysis');
 saveas(fig, fullfile(fig_dir, 'fig_phase2_paper_benchmark.png'));
 fprintf('Figure saved: fig_phase2_paper_benchmark.png\n');
 

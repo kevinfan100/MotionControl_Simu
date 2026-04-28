@@ -11,7 +11,7 @@
 %
 % Output:
 %   - test_results/verify/sigma_mc_1d_results.mat
-%   - reference/for_test/fig_sigma_mc_1d_timeseries.png   (2 panels)
+%   - reference/qr_analysis/fig_sigma_mc_1d_timeseries.png   (2 panels)
 %
 % Runtime: ~1 sec for N=10000 (vectorized over MC), ~0.1 sec for N=500.
 
@@ -227,7 +227,7 @@ legend([h_b, h_r, h_y], ...
 xlim([t_warmup, T_sim]);
 set(ax2, 'FontSize', FONT, 'LineWidth', AXIS_LW);
 
-fig_dir = fullfile(project_root, 'reference', 'for_test');
+fig_dir = fullfile(project_root, 'reference', 'qr_analysis');
 if ~exist(fig_dir, 'dir'), mkdir(fig_dir); end
 saveas(fig1, fullfile(fig_dir, 'fig_sigma_mc_1d_timeseries.png'));
 fprintf('Saved: fig_sigma_mc_1d_timeseries.png\n');

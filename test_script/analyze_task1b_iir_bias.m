@@ -300,7 +300,7 @@ set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', 2.0, ...
 xlim([0.003, 0.2]);
 ylim([0.85, 1.02]);
 
-fig_path = fullfile(project_root, 'reference', 'for_test', 'fig_task1b_iir_bias.png');
+fig_path = fullfile(project_root, 'reference', 'qr_analysis', 'fig_task1b_iir_bias.png');
 exportgraphics(fig, fig_path, 'Resolution', 150);
 close(fig);
 fprintf('Figure saved: %s\n', fig_path);

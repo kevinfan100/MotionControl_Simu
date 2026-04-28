@@ -220,7 +220,7 @@ xlim([2.3, 55]);
 ylim([0.5, 2.5]);
 
 % ---- Save ----
-fig_path = 'reference/for_test/fig_p2_h_bin.png';
+fig_path = 'reference/qr_analysis/fig_p2_h_bin.png';
 exportgraphics(gcf, fig_path, 'Resolution', 150);
 fprintf('\nFigure saved: %s\n', fig_path);
 

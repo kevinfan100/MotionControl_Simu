@@ -300,7 +300,7 @@ title('Power spectral density', 'FontSize', FS);
 set(gca, 'FontSize', FS, 'LineWidth', 1.8, 'Box', 'on');
 grid off;
 
-fig_dir  = fullfile(project_root, 'reference', 'for_test');
+fig_dir  = fullfile(project_root, 'reference', 'qr_analysis');
 fig_path = fullfile(fig_dir, 'fig_task1d_ahat_vs_am_static.png');
 exportgraphics(fig, fig_path, 'Resolution', 150);
 close(fig);

@@ -242,7 +242,7 @@ text(2, ratio_c + 0.01, sprintf('%.4f', ratio_c), 'HorizontalAlignment', 'center
     'FontSize', FS, 'FontWeight', 'bold');
 set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', 2.0, 'Box', 'on');
 
-fig_dir  = fullfile(project_root, 'reference', 'for_test');
+fig_dir  = fullfile(project_root, 'reference', 'qr_analysis');
 fig_path = fullfile(fig_dir, 'fig_task1c_correction.png');
 exportgraphics(fig, fig_path, 'Resolution', 150);
 close(fig);

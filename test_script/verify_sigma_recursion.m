@@ -9,7 +9,7 @@
 % Phase 2: Time-varying (wall effect ON, oscillation trajectory)
 %          V_theory[k] vs cycle-averaged empirical variance
 %
-% Math reference: reference/for_test/temp_variance_recursion.tex
+% Math reference: reference/qr_analysis/temp_variance_recursion.tex
 
 clear; close all; clc;
 clear motion_control_law_4 trajectory_generator calc_thermal_force;
@@ -210,7 +210,7 @@ legend({'Sigma recursion', ...
 set(gca, 'FontSize', FONT_SIZE, 'LineWidth', AXIS_LW);
 xlim([0, T_sim_p1]);
 
-saveas(fig1, fullfile(project_root, 'reference', 'for_test', ...
+saveas(fig1, fullfile(project_root, 'reference', 'qr_analysis', ...
     'fig_sigma_recursion_phase1.png'));
 fprintf('  Phase 1 figure saved.\n');
 
@@ -367,7 +367,7 @@ legend({'\Sigma_{11} (recursion)', '\sigma^2_{\Delta}[k]'}, ...
 set(gca, 'FontSize', FONT_SIZE, 'LineWidth', AXIS_LW);
 xlim([0, T_sim_p2]);
 
-saveas(fig2, fullfile(project_root, 'reference', 'for_test', ...
+saveas(fig2, fullfile(project_root, 'reference', 'qr_analysis', ...
     'fig_sigma_recursion_timeseries.png'));
 
 % --- Figure 3: One cycle comparison ---
@@ -382,7 +382,7 @@ legend({'V_{theory} (recursion)', 'V_{empirical} (cycle avg, N=55)'}, ...
        'Location', 'northoutside', 'FontSize', LEGEND_FS);
 set(gca, 'FontSize', FONT_SIZE, 'LineWidth', AXIS_LW);
 
-saveas(fig3, fullfile(project_root, 'reference', 'for_test', ...
+saveas(fig3, fullfile(project_root, 'reference', 'qr_analysis', ...
     'fig_sigma_recursion_cycle.png'));
 
 % --- Figure 4: Scatter ---
@@ -403,7 +403,7 @@ SS_tot = sum((V_cycle_avg - mean(V_cycle_avg)).^2);
 R2 = 1 - SS_res / SS_tot;
 title(sprintf('R^2 = %.4f', R2), 'FontSize', LEGEND_FS);
 
-saveas(fig4, fullfile(project_root, 'reference', 'for_test', ...
+saveas(fig4, fullfile(project_root, 'reference', 'qr_analysis', ...
     'fig_sigma_recursion_scatter.png'));
 
 fprintf('  Phase 2 figures saved.\n');

@@ -219,7 +219,7 @@ ylabel('PDF');
 title('del_{pmr} distribution');
 set(gca, 'FontSize', 12);
 
-fig_dir = fullfile(project_root, 'reference', 'for_test');
+fig_dir = fullfile(project_root, 'reference', 'qr_analysis');
 saveas(fig, fullfile(fig_dir, 'fig_phase2_chisquared.png'));
 fprintf('Figure saved: fig_phase2_chisquared.png\n');
 

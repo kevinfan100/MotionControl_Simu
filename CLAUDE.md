@@ -70,7 +70,7 @@ IIR HP filter `H_HP(z) = (1-a_pd)*(1-z^-1)/(1-(1-a_pd)*z^-1)` 的 `(1-a_pd)` 前
 - Controller 2: 同結構但 `K_eff(av) = 2 + 2*(1-av)^2/(2-av)` 替代 K=2
 - Controller 3: 無解析公式（EKF 為非線性系統）
 
-詳見 `reference/for_test/verification_report.md`。
+詳見 `reference/qr_analysis/verification_report.md`。
 
 ## 專案結構
 
@@ -88,7 +88,7 @@ MotionControl_Simu/
 │   └── verify_variance.m               # 變異數驗證：C_dpm/C_dpmr vs 理論公式（3 種控制器）
 ├── agent_docs/                       # 詳細技術文件
 ├── reference/                        # 參考文件
-│   └── for_test/                      # 驗證用文件、報告、圖表（committed）
+│   └── qr_analysis/                      # 驗證用文件、報告、圖表（committed）
 ├── test_results/                     # 模擬結果（不納入 Git）
 │   └── verify/                        # 驗證數據 .mat（可用 verify_variance.m 重生）
 └── .claude/                          # Claude Code 配置

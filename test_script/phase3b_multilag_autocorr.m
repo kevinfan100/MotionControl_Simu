@@ -241,7 +241,7 @@ title(sprintf('Statistical precision (window %.2fs)', window_length*Ts));
 grid on;
 set(gca, 'FontSize', 12);
 
-fig_dir = fullfile(project_root, 'reference', 'for_test');
+fig_dir = fullfile(project_root, 'reference', 'qr_analysis');
 saveas(fig, fullfile(fig_dir, 'fig_phase3b_multilag.png'));
 fprintf('Figure saved: fig_phase3b_multilag.png\n');
 

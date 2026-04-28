@@ -13,7 +13,7 @@
 % to undo the finite-sample + autocorrelation bias of the EMA variance estimator.
 %
 % Output: test_results/verify/bias_factor_lookup.mat
-%         reference/for_test/fig_bias_factor_lookup.png
+%         reference/qr_analysis/fig_bias_factor_lookup.png
 
 clear; close all; clc;
 
@@ -153,7 +153,7 @@ legend('Location', 'northoutside', 'Orientation', 'horizontal', ...
 set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', 2.0, 'Box', 'on');
 xlim([0, 20]);
 
-fig_dir = fullfile(project_root, 'reference', 'for_test');
+fig_dir = fullfile(project_root, 'reference', 'qr_analysis');
 if ~exist(fig_dir, 'dir'), mkdir(fig_dir); end
 fig_path = fullfile(fig_dir, 'fig_bias_factor_lookup.png');
 exportgraphics(fig, fig_path, 'Resolution', 150);

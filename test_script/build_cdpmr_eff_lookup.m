@@ -9,7 +9,7 @@
 % addressing the ~8% persistent bias observed in Phase 2.
 %
 % Output: test_results/verify/cdpmr_eff_lookup.mat
-%         reference/for_test/fig_cdpmr_eff_lookup.png
+%         reference/qr_analysis/fig_cdpmr_eff_lookup.png
 
 clear; close all; clc;
 
@@ -151,7 +151,7 @@ save(fullfile(out_dir, 'cdpmr_eff_lookup.mat'), '-struct', 'lookup');
 fprintf('\nSaved: %s\n', fullfile(out_dir, 'cdpmr_eff_lookup.mat'));
 
 %% Figure: 2D heatmaps
-fig_dir = fullfile(project_root, 'reference', 'for_test');
+fig_dir = fullfile(project_root, 'reference', 'qr_analysis');
 if ~exist(fig_dir, 'dir'), mkdir(fig_dir); end
 
 fig = figure('Position', [100, 100, 1400, 600]);

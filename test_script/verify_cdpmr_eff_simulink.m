@@ -242,7 +242,7 @@ save(fullfile(out_dir, 'verify_cdpmr_eff_simulink_results.mat'), 'results');
 fprintf('\nSaved: verify_cdpmr_eff_simulink_results.mat\n');
 
 %% Scatter figure
-fig_dir = fullfile(project_root, 'reference', 'for_test');
+fig_dir = fullfile(project_root, 'reference', 'qr_analysis');
 fig = figure('Position', [100 100 900 700]);
 subplot(1,2,1);
 plot(results.Var_theory_new, [results.Var_empirical_x; results.Var_empirical_y; results.Var_empirical_z]', ...
