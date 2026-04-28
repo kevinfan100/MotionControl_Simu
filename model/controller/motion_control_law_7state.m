@@ -19,12 +19,12 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
 %
 %   Outputs:
 %       f_d     - Control force f_d[k] [3x1, pN]
-%       ekf_out - EKF diagnostic [4x1]: [a_hat_x; a_hat_z; a_hat_y; 0]
+%       ekf_out - EKF diagnostic [4x1]: [a_hat_x/a_nom; a_hat_z/a_nom; 0; 0]
 
     % Check if control is enabled
     if params.ctrl.enable < 0.5
         f_d = zeros(3, 1);
-        ekf_out = [1; 1; 0; 0];
+        ekf_out = [1; 1; 1; 1];
         return;
     end
 
@@ -105,33 +105,39 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
         Pf_3 = diag(Pf_diag);
 
         % 0E. Q and R matrices (per axis)
-        Qz_scaling = params.ctrl.Qz_diag_scaling;  % 7x1
-        Rz_scaling = params.ctrl.Rz_diag_scaling;   % 2x1
+        % Qz_diag_scaling layout (9x1): [Q1;Q2;Q3;Q4;Q5;Q6; Q7_x;Q7_y;Q7_z]
+        Qz_scaling = params.ctrl.Qz_diag_scaling;
+        Rz_scaling = params.ctrl.Rz_diag_scaling;   % 6x1 [R_pos_x; R_pos_y; R_pos_z; R_gain_x; R_gain_y; R_gain_z]
 
-        Q_base = sigma2_deltaXT * diag(Qz_scaling);
-        Q_1 = Q_base;  Q_2 = Q_base;  Q_3 = Q_base;
+        % Build per-axis Q: Q(1..6) shared, Q(7,7) per-axis from Qz_scaling(6+axis)
+        Q_shared = sigma2_deltaXT * diag(Qz_scaling(1:6));   % 6x6 shared diagonal
+        Q_1 = zeros(7,7); Q_1(1:6,1:6) = Q_shared; Q_1(7,7) = sigma2_deltaXT * Qz_scaling(7);
+        Q_2 = zeros(7,7); Q_2(1:6,1:6) = Q_shared; Q_2(7,7) = sigma2_deltaXT * Qz_scaling(8);
+        Q_3 = zeros(7,7); Q_3(1:6,1:6) = Q_shared; Q_3(7,7) = sigma2_deltaXT * Qz_scaling(9);
 
-        % 0E.1 C_dpmr_eff / C_np_eff from augmented Lyapunov lookup
-        % (computed offline by build_cdpmr_eff_lookup.m)
-        if isfield(params.ctrl, 'C_dpmr_eff') && params.ctrl.C_dpmr_eff > 0
-            C_dpmr_eff_const = params.ctrl.C_dpmr_eff;
-            C_np_eff_const   = params.ctrl.C_np_eff;
+        % 0E.1 C_dpmr_eff / C_np_eff per-axis from augmented Lyapunov
+        % (computed self-consistently in calc_ctrl_params from per-axis Q, R).
+        % All three are now 3x1 vectors (one element per axis).
+        if isfield(params.ctrl, 'C_dpmr_eff') && all(params.ctrl.C_dpmr_eff > 0)
+            C_dpmr_eff_const = params.ctrl.C_dpmr_eff(:);   % 3x1
+            C_np_eff_const   = params.ctrl.C_np_eff(:);     % 3x1
             use_lookup       = true;
         else
-            % Fallback: K=2 approximation (legacy formula)
-            C_dpmr_eff_const = (1-a_pd)^2 * (2*(1-a_pd)*(1-lambda_c) / (1-(1-a_pd)*lambda_c) ...
-                             + (2/(2-a_pd)) / ((1+lambda_c)*(1-(1-a_pd)*lambda_c)));
-            C_np_eff_const   = 2 / (1 + lambda_c);  % legacy noise_corr formula
+            % Fallback: K=2 approximation (legacy formula), broadcast to 3 axes
+            Cd_scalar = (1-a_pd)^2 * (2*(1-a_pd)*(1-lambda_c) / (1-(1-a_pd)*lambda_c) ...
+                      + (2/(2-a_pd)) / ((1+lambda_c)*(1-(1-a_pd)*lambda_c)));
+            Cn_scalar = 2 / (1 + lambda_c);   % legacy noise_corr formula
+            C_dpmr_eff_const = Cd_scalar * ones(3, 1);
+            C_np_eff_const   = Cn_scalar * ones(3, 1);
             use_lookup       = false;
         end
 
         % 0E.2 IIR_bias_factor (Task 1c): finite-sample + autocorrelation
-        % correction for the EMA variance estimator. Default 1.0 = no correction.
-        % See test_script/build_bias_factor_lookup.m and Task 1b report.
-        if isfield(params.ctrl, 'IIR_bias_factor') && params.ctrl.IIR_bias_factor > 0
-            IIR_bias_factor_const = params.ctrl.IIR_bias_factor;
+        % correction for the EMA variance estimator (per-axis). Default 1.0.
+        if isfield(params.ctrl, 'IIR_bias_factor') && all(params.ctrl.IIR_bias_factor > 0)
+            IIR_bias_factor_const = params.ctrl.IIR_bias_factor(:);   % 3x1
         else
-            IIR_bias_factor_const = 1.0;
+            IIR_bias_factor_const = ones(3, 1);
         end
 
         % 0F. Delay buffers
@@ -141,17 +147,36 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
         % 0G. IIR states
         del_pmd_k1  = zeros(3,1);
         del_pmrd_k1 = zeros(3,1);
-        del_pmr2_avg       = zeros(3,1);
+        % Pre-fill del_pmr2_avg at predicted steady-state Var(del_pmr) per axis
+        % (Option P5). This addresses both the gate transient (was Session 6
+        % finding) AND the IIR EMA growth phase that drives a_m toward 0 for
+        % ~1000 samples, biasing a_hat downward (Session 7 finding).
+        %   Var(del_pmr)_ss = Cdpmr_eff * sigma2_dXT * (a_axis/a_nom)
+        %                   + Cnp_eff  * sigma2_n(axis)
+        % Per-axis using wall-aware a_hat from line 98.
+        ar_init = a_hat / a_nom;   % 3x1
+        del_pmr2_avg = C_dpmr_eff_const .* sigma2_deltaXT .* ar_init ...
+                     + C_np_eff_const .* sigma2_noise;
+        % Floor at 10x var_threshold to ensure gate stays open even if lookup
+        % is unavailable / reports tiny value.
+        del_pmr2_avg = max(del_pmr2_avg, 0.01 * sigma2_deltaXT);
 
         % 0H. Previous values
         a_m_k1  = [a_nom; a_nom; a_nom];
 
-        % 0I. IIR warm-up counter (0.2s at Ts rate)
-        warmup_count = round(0.2 / Ts);
+        % 0I. IIR warm-up counter
+        % P6 (Session 7): shortened from 0.2s (320 steps) to 2 steps minimum
+        % required for delay buffer (pd_k2) validity. With P5 IIR pre-fill,
+        % the original 320-step warmup is unnecessary AND harmful: during
+        % no-control phase the IIR sees noise-only del_pmr, decaying its
+        % pre-filled value toward sensor-noise floor. Result: a_m at warmup
+        % end is biased low, which (with frozen Q) produces the residual
+        % +5-9% bias seen in Sessions 5 and 7 short-window measurements.
+        warmup_count = 2;
 
         % 0J. Return zeros on first call
         f_d = zeros(3, 1);
-        ekf_out = [a_nom; a_nom; a_nom; 0];
+        ekf_out = [a_nom; a_nom; a_nom; a_nom];
         return;
     end
 
@@ -178,12 +203,12 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
     %   test_script/compute_7state_cdpmr_eff.m  (derivation)
     %   test_script/build_cdpmr_eff_lookup.m    (offline construction)
     %   test_results/verify/cdpmr_eff_lookup.mat (the lookup table)
-    den        = C_dpmr_eff_const * 4 * k_B * T_temp;        % [pN*um]
-    noise_corr = C_np_eff_const * sigma2_noise;              % 3x1 [um^2]
+    den        = C_dpmr_eff_const * (4 * k_B * T_temp);      % 3x1 [pN*um]
+    noise_corr = C_np_eff_const .* sigma2_noise;             % 3x1 [um^2]
     % Task 1c: unbias del_pmr_var for IIR finite-sample + autocorrelation bias
-    % before subtracting noise term and dividing by den.
-    del_pmr_var_unbiased = del_pmr_var / IIR_bias_factor_const;
-    a_m        = max((del_pmr_var_unbiased - noise_corr) / den, 0);   % 3x1 [um/pN]
+    % before subtracting noise term and dividing by den (all per-axis).
+    del_pmr_var_unbiased = del_pmr_var ./ IIR_bias_factor_const;
+    a_m        = max((del_pmr_var_unbiased - noise_corr) ./ den, 0);  % 3x1 [um/pN]
 
     %% IIR Warm-up gate: only run measurement + IIR + Eq.13, skip control + EKF
     if warmup_count > 0
@@ -204,7 +229,7 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
         end
 
         f_d = zeros(3, 1);
-        ekf_out = [a_hat(1); a_hat(3); a_hat(2); 0];
+        ekf_out = [a_hat(1); a_hat(3); a_m(1); a_m(3)];
         return;
     end
 
@@ -237,16 +262,17 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
     % Changing R alone breaks the balance. Proper adaptive R requires
     % re-sweeping Q simultaneously (future work).
     var_threshold = sigma2_deltaXT * 0.001;
-    r_pos_base = sigma2_deltaXT * Rz_scaling(1);
-    r_gain_base = sigma2_deltaXT * Rz_scaling(2);
+    % Rz_scaling layout (6x1): [R_pos_x; R_pos_y; R_pos_z; R_gain_x; R_gain_y; R_gain_z]
     R_i = cell(3,1);
     for i = 1:3
+        r_pos_base_i = sigma2_deltaXT * Rz_scaling(i);
+        r_gain_base_i = sigma2_deltaXT * Rz_scaling(3+i);
         if del_pmr_var(i) < var_threshold
             r_gain_i = 1e6;     % effectively ignore gain measurement
         else
-            r_gain_i = r_gain_base;
+            r_gain_i = r_gain_base_i;
         end
-        R_i{i} = diag([r_pos_base, r_gain_i]);
+        R_i{i} = diag([r_pos_base_i, r_gain_i]);
     end
 
     % --- Fe_err matrices for covariance propagation ---
@@ -339,8 +365,8 @@ function [f_d, ekf_out] = motion_control_law_7state(del_pd, pd, p_m, params)
     %% Step [7]: Output
     ekf_out = [a_hat(1); ...            % x-axis gain [um/pN]
                a_hat(3); ...            % z-axis gain [um/pN]
-               a_hat(2); ...            % y-axis gain [um/pN]
-               0];
+               a_m(1);  ...            % x-axis IIR Eq.13 gain measurement [um/pN]
+               a_m(3)];                %  z-axis IIR Eq.13 gain measurement [um/pN]
 
 end
 

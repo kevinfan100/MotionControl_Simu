@@ -34,3 +34,6 @@ codegen/
 *.toc
 *.synctex.gz
 texput.log
+
+# Claude Code runtime locks
+.claude/scheduled_tasks.lock

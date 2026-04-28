@@ -4,10 +4,16 @@
 % ======================================================
 \documentclass[11pt]{article}
 \usepackage{amsmath, amssymb, bm}
+<<<<<<< HEAD
 \usepackage{graphicx}
 \usepackage[margin=2cm]{geometry}
 
 \newcommand{\T}{^{T}}
+=======
+\usepackage[margin=2cm]{geometry}
+
+\newcommand{\T}{^{\top}}
+>>>>>>> test/qr-paper-reference
 \newcommand{\lc}{\lambda_c}
 \newcommand{\Ts}{T_s}
 \newcommand{\kB}{k_B}
@@ -15,10 +21,17 @@
 
 \begin{document}
 
+<<<<<<< HEAD
+=======
+\noindent Positioning\_kf\_a
+\vspace{0.5em}
+
+>>>>>>> test/qr-paper-reference
 % =====================================================================
 \section{Plant and Control Law}
 % =====================================================================
 
+<<<<<<< HEAD
 \subsection*{1.1\quad Continuous-time plant}
 
 \begin{equation}
@@ -51,10 +64,22 @@ f_{dx}[k] \;=\; \hat{a}_x^{-1}[k]\Bigl[\bigl(x_d[k\!+\!1] - x_d[k]\bigr)
 
 \noindent In the augmented state of \S3, $\delta\hat{x}[k] = \delta\hat{x}_3[k]$ (due to the two-step measurement delay; see \S3).
 
+=======
+\begin{align}
+\gamma(x)\,\dot{x} &= f_{dx} + f_T \\[2pt]
+a_x[k] &\equiv \Ts \,/\, \gamma(x[k]) \\[2pt]
+x[k\!+\!1] &= x[k] + a_x[k]\bigl(f_{dx}[k] + f_T[k]\bigr),
+  \qquad \mathrm{Var}\bigl(a_x[k]\,f_T[k]\bigr) = 4\kB T\,a_x[k] \\[4pt]
+f_{dx}[k] &= \frac{1}{\hat{a}_x[k]}\Bigl[\bigl(x_d[k\!+\!1] - x_d[k]\bigr)
+  + (1-\lc)\,\delta\hat{x}_3[k] - \hat{x}_D[k]\Bigr]
+\end{align}
+
+>>>>>>> test/qr-paper-reference
 % =====================================================================
 \section{IIR Variance Estimator for $a_x[k]$}
 % =====================================================================
 
+<<<<<<< HEAD
 This section details the infinite impulse response (IIR) variance estimator that produces the auxiliary measurement $a_{xm}$ from the measured tracking error. The pipeline combines low-pass (LP) and high-pass (HP) stages.
 
 \subsection*{2.1\quad Tracking error and high-pass filter}
@@ -119,6 +144,37 @@ a_{xm}[k] \;=\; \frac{\sigma^{2}_{\delta x_{mr}}[k]/\beta \,-\, C_{n}\,\sigma^{2
 
 \[
 \bm{F}_{e} =
+=======
+\begin{align}
+\delta x_m[k] &= x_d[k\!-\!2] - x_m[k] \\[2pt]
+\delta x_{md}[k] &= (1-a_{pd})\,\delta x_{md}[k\!-\!1] + a_{pd}\,\delta x_m[k] \\[2pt]
+\delta x_{mr}[k] &= \delta x_m[k] - \delta x_{md}[k] \\[2pt]
+\delta x_{mrd}[k] &= (1-a_{prd})\,\delta x_{mrd}[k\!-\!1] + a_{prd}\,\delta x_{mr}[k] \\[2pt]
+\overline{(\delta x_{mr})^{2}}[k] &= (1-a_{cov})\,\overline{(\delta x_{mr})^{2}}[k\!-\!1]
+  + a_{cov}\,\bigl(\delta x_{mr}[k]\bigr)^{2} \\[2pt]
+\sigma^{2}_{\delta x_{mr}}[k] &= \overline{(\delta x_{mr})^{2}}[k]
+  - \bigl(\delta x_{mrd}[k]\bigr)^{2} \\[4pt]
+\sigma^{2}_{\delta x_{mr}}[k] &= C_{\mathrm{dpmr}}\cdot 4\kB T\,a_x[k]
+  \;+\; C_{n}\,\sigma^{2}_n \\[4pt]
+\boxed{\;\;
+a_{xm}[k] \;=\; \dfrac{\sigma^{2}_{\delta x_{mr}}[k] - C_{n}\,\sigma^{2}_n}
+                    {C_{\mathrm{dpmr}}\cdot 4\kB T}
+\;\;}
+\end{align}
+
+% =====================================================================
+\section{Kalman Filter}
+% =====================================================================
+
+\begin{align}
+\bm{x}[k] &= \bigl[\,\delta x_1,\;\delta x_2,\;\delta x_3,\;
+  x_D,\;\delta x_D,\;a_x,\;\delta a_x\,\bigr]\T[k] \\[4pt]
+\bm{x}[k\!+\!1] &= \bm{F}_{e}\,\bm{x}[k] + \bm{q}[k],
+  \qquad
+  \bm{y}[k] = \bm{H}\,\bm{x}[k] + \bm{v}[k]
+  = \begin{bmatrix}\delta x_m[k]\\[2pt] a_{xm}[k]\end{bmatrix} \\[6pt]
+\bm{F}_{e} &=
+>>>>>>> test/qr-paper-reference
 \begin{bmatrix}
   0 & 1 & 0 & 0 & 0 & 0 & 0 \\
   0 & 0 & 1 & 0 & 0 & 0 & 0 \\
@@ -127,6 +183,7 @@ a_{xm}[k] \;=\; \frac{\sigma^{2}_{\delta x_{mr}}[k]/\beta \,-\, C_{n}\,\sigma^{2
   0 & 0 & 0 & 0 & 1 & 0 & 0 \\
   0 & 0 & 0 & 0 & 0 & 1 & 1 \\
   0 & 0 & 0 & 0 & 0 & 0 & 1
+<<<<<<< HEAD
 \end{bmatrix}
 \]
 
@@ -138,10 +195,15 @@ a_{xm}[k] \;=\; \frac{\sigma^{2}_{\delta x_{mr}}[k]/\beta \,-\, C_{n}\,\sigma^{2
 \end{equation}
 
 \[
+=======
+\end{bmatrix},
+\qquad
+>>>>>>> test/qr-paper-reference
 \bm{H} =
 \begin{bmatrix}
   1 & 0 & 0 & 0 & 0 & 0 & 0 \\
   0 & 0 & 0 & 0 & 0 & 1 & 0
+<<<<<<< HEAD
 \end{bmatrix}
 \]
 
@@ -151,19 +213,82 @@ a_{xm}[k] \;=\; \frac{\sigma^{2}_{\delta x_{mr}}[k]/\beta \,-\, C_{n}\,\sigma^{2
 \bm{L}[k]                  &= \bm{P}_f[k]\,\bm{H}\T\bigl(\bm{H}\,\bm{P}_f[k]\,\bm{H}\T + \bm{R}\bigr)^{-1} \\[2pt]
 \bm{P}[k]                  &= (\bm{I} - \bm{L}[k]\,\bm{H})\,\bm{P}_f[k] \\[2pt]
 \bm{P}_f[k\!+\!1]          &= \bm{F}_{e}\,\bm{P}[k]\,\bm{F}_{e}\T + \bm{Q} \\[2pt]
+=======
+\end{bmatrix} \\[6pt]
+\bm{L}[k] &= \bm{P}'[k]\,\bm{H}\T\bigl(\bm{H}\,\bm{P}'[k]\,\bm{H}\T + \bm{R}\bigr)^{-1} \\[2pt]
+\bm{P}[k] &= (\bm{I} - \bm{L}[k]\,\bm{H})\,\bm{P}'[k] \\[2pt]
+\bm{P}'[k\!+\!1] &= \bm{F}_{e}\,\bm{P}[k]\,\bm{F}_{e}\T + \bm{Q} \\[4pt]
+>>>>>>> test/qr-paper-reference
 \hat{\bm{x}}[k\!+\!1\,|\,k] &= \bm{F}_{e}\,\hat{\bm{x}}[k\,|\,k\!-\!1]
   + \bm{F}_{e}\,\bm{L}_{ss}\bigl(\bm{y}[k] - \bm{H}\,\hat{\bm{x}}[k\,|\,k\!-\!1]\bigr)
 \end{align}
 
+<<<<<<< HEAD
 \setcounter{section}{4}
+=======
+All three axes use the same $\bm{F}_e$ above (random-walk Jordan blocks
+for the disturbance and motion-gain state pairs).
+
+% =====================================================================
+\section{Simulation Setup}
+% =====================================================================
+
+\begin{align}
+h_{\mathrm{init}} &\in \{50,\ 2.5\}\ \mu\mathrm{m},
+  \qquad \sigma^{2}_n = 0 \\[2pt]
+\lc &= 0.7,
+  \qquad a_{pd} = a_{prd} = a_{cov} = 0.05 \\[4pt]
+\hat{a}[0] &= \Bigl[\;
+  \tfrac{a_{\mathrm{nom}}}{c_{\parallel}(h_{\mathrm{init}}/R)},\;
+  \tfrac{a_{\mathrm{nom}}}{c_{\parallel}(h_{\mathrm{init}}/R)},\;
+  \tfrac{a_{\mathrm{nom}}}{c_{\perp}(h_{\mathrm{init}}/R)}
+\;\Bigr]\T,
+  \qquad a_{\mathrm{nom}} \equiv \Ts / \gamma_N \\[6pt]
+\bm{Q} &= \frac{4\kB T\,\Ts}{\gamma_N}\cdot
+\begin{bmatrix}
+  0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+  0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+  0 & 0 & 10^{4} & 0 & 0 & 0 & 0 \\
+  0 & 0 & 0 & 10^{-1} & 0 & 0 & 0 \\
+  0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+  0 & 0 & 0 & 0 & 0 & 10^{-4} & 0 \\
+  0 & 0 & 0 & 0 & 0 & 0 & 0
+\end{bmatrix} \\[6pt]
+\bm{R} &= \frac{4\kB T\,\Ts}{\gamma_N}\cdot
+\begin{bmatrix}
+  10^{-2} & 0 \\[2pt]
+  0 & 10^{0}
+\end{bmatrix}
+\end{align}
+
+\begin{align*}
+h = 50\ \mu\mathrm{m}:\ &\quad c_\perp \approx 1.05,
+  \quad a_{\mathrm{true}} \approx a_{\mathrm{nom}} \\
+h = 2.5\ \mu\mathrm{m}:\ &\quad c_\perp \approx 10.4,
+  \quad a_{\mathrm{true}} \approx 0.10\,a_{\mathrm{nom}}
+\end{align*}
+>>>>>>> test/qr-paper-reference
 
 % =====================================================================
 \section{Closed-Loop Steady-State Variance: $C_{\mathrm{dpmr}}$ and $C_{n}$}
 % =====================================================================
 
+<<<<<<< HEAD
 \emph{Scope note.} The derivation drops the time-varying entry $\bm{F}_e(3,6) = -f_{dx}[k]$ from the $\bm{A}$ matrix to obtain a time-invariant system so that Lyapunov analysis applies. Under zero-mean $f_{dx}$ operating conditions (static regulation with $\Delta p_d = 0$, or symmetric oscillatory reference), the dropped $f_{dx}\!\cdot\!e_a$ term has $\mathrm{E}[f_{dx}\!\cdot\!e_a] \approx 0$ and contributes variance of order $\sigma^{2}_{f}\sigma^{2}_{e}$, which is negligible relative to the dominant thermal term $4\kB T\,a_x$ (i.e.\ $\sigma^{2}_{f}\sigma^{2}_{e} / (4\kB T\,a_x) \ll 1$). Empirical variance matches the derived $C_{\mathrm{dpmr}}$ at all operating points tested (free-space, near-wall static, dynamic sweep).
 
 \subsection*{5.1\quad Augmented state and closed-loop dynamics}
+=======
+\emph{Scope note.} This section derives $C_{\mathrm{dpmr}}$ and $C_n$
+using one linearization simplification: the $f_{dx}[k]$ sensitivity
+entry $\bm{F}_e(3,6) = -f_{dx}[k]$ is treated as a small zero-mean
+contribution and dropped, equivalent to setting $f_{dx} \!\to\! 0$ in
+the Riccati solve. This is accurate at the free-space operating point
+($h \!\gg\! R$, $c_\perp \!\approx\! 1$), where empirical variance
+matches the derived $C_{\mathrm{dpmr}}$ within $\pm 2\%$ (Task P2 report).
+The behavior at extreme near-wall is quantified in the same report.
+
+\subsection*{5.1\quad Augmented state}
+>>>>>>> test/qr-paper-reference
 
 \[
 \bm{e}[k] \;=\; \bigl[\,
@@ -175,12 +300,35 @@ a_{xm}[k] \;=\; \frac{\sigma^{2}_{\delta x_{mr}}[k]/\beta \,-\, C_{n}\,\sigma^{2
 \;\in\; \mathbb{R}^{11}
 \]
 
+<<<<<<< HEAD
+=======
+
+
+\subsection*{5.2\quad Closed-loop recursion for $\delta x_3$}
+
+Plant $+$ Section 1 control law (fluctuation frame, $x_D\!=\!0$, $\hat{a}_x \!\approx\! a_x$; $f_{dx}$ sensitivity dropped per §5 scope note):
+
+\begin{equation}
+\delta x_3[k\!+\!1] \;=\; \lc\,\delta x_3[k]
+   \;+\; (1{-}\lc)\,e_{x3}[k]
+   \;-\; e_{xD}[k]
+   \;-\; a_x[k]\,f_T[k]
+\end{equation}
+
+\subsection*{5.3\quad Augmented dynamics}
+
+>>>>>>> test/qr-paper-reference
 \begin{equation}
 \bm{e}[k\!+\!1] \;=\; \bm{A}\,\bm{e}[k]
   \;+\; \bm{b}_T\bigl(a_x[k]\,f_T[k]\bigr)
   \;+\; \bm{b}_n\,n[k]
 \end{equation}
 
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> test/qr-paper-reference
 \[
 \bm{A} \;=\;
 \left[\begin{array}{ccc|ccccccc|c}
@@ -194,31 +342,56 @@ a_{pd} & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 1{-}a_{pd}
 \end{array}\right]
 \]
 
+<<<<<<< HEAD
 \noindent where $\bm{A}_e \equiv \bm{F}_e(\bm{I} - \bm{L}_{ss}\bm{H})$ is the steady-state KF estimation-error dynamics (\S3.3).
 
+=======
+\noindent Noise vectors:
+>>>>>>> test/qr-paper-reference
 \[
 \bm{b}_T \;=\; \bigl[\,0,\,0,\,{-}1,\;\;0,\,0,\,{-}1,\,0,\,0,\,0,\,0,\;\;0\,\bigr]\T,
 \qquad
 \bm{b}_n \;=\; \bigl[\,0,\,0,\,0,\;\;{-}\bm{F}_e\bm{L}_{ss}(:,1),\;\;{-}a_{pd}\,\bigr]\T
 \]
 
+<<<<<<< HEAD
 \subsection*{5.2\quad Lyapunov decomposition}
 
 Define $\bm{\Sigma}[k] \equiv \mathrm{E}\bigl[\bm{e}[k]\bm{e}[k]\T\bigr]$. Since $f_T[k]$ and $n[k]$ are independent zero-mean white processes, $\bm{\Sigma}$ decomposes linearly:
+=======
+\subsection*{5.4\quad Lyapunov decomposition and computation}
+
+Define $\bm{\Sigma}[k] \!\equiv\! \mathrm{E}\bigl[\bm{e}[k]\bm{e}[k]\T\bigr]$.
+Because $f_T[k]$ and $n[k]$ are independent zero-mean white processes,
+>>>>>>> test/qr-paper-reference
 \begin{align}
 \bm{\Sigma}[k] &\;=\; 4\kB T\,a_x[k]\;\bm{\Sigma}_T \;+\; \sigma^{2}_n\;\bm{\Sigma}_n \\[2pt]
 \bm{\Sigma}_T  &\;=\; \bm{A}\,\bm{\Sigma}_T\,\bm{A}\T \;+\; \bm{b}_T\,\bm{b}_T\T \\[2pt]
 \bm{\Sigma}_n  &\;=\; \bm{A}\,\bm{\Sigma}_n\,\bm{A}\T \;+\; \bm{b}_n\,\bm{b}_n\T
 \end{align}
 
+<<<<<<< HEAD
 \subsection*{5.3\quad Variance of $\delta x_{mr}$}
 
 Substituting the \S2.1 LP recursion into the HP residual definition, with $\delta x_m[k] = \delta x_1[k] - n[k]$:
+=======
+
+
+\subsection*{5.5\quad Variance of $\delta x_{mr}$}
+
+Inverting the Section 2 LP recursion, with $\delta x_m[k] = \delta x_1[k] - n[k]$:
+
+>>>>>>> test/qr-paper-reference
 \begin{equation}
 \delta x_{mr}[k] \;=\; (1-a_{pd})\bigl(\delta x_1[k] - \delta x_{md}[k\!-\!1] - n[k]\bigr)
 \end{equation}
 
+<<<<<<< HEAD
 Variance ($n[k]$ independent of $\bm{e}[k]$):
+=======
+\noindent Variance ($n[k]$ independent of $\bm{e}[k]$):
+
+>>>>>>> test/qr-paper-reference
 \begin{equation}
 \sigma^{2}_{\delta x_{mr}}[k]
   \;=\; (1-a_{pd})^{2}\Bigl[\,
@@ -227,6 +400,7 @@ Variance ($n[k]$ independent of $\bm{e}[k]$):
   \,\Bigr]
 \end{equation}
 
+<<<<<<< HEAD
 \subsection*{5.4\quad $C_{\mathrm{dpmr}}$ and $C_{n}$}
 
 \noindent Substituting $\bm{\Sigma}[k] = 4\kB T\,a_x[k]\,\bm{\Sigma}_T + \sigma^{2}_n\,\bm{\Sigma}_n$ into the \S5.3 variance formula and matching against the target $\sigma^{2}_{\delta x_{mr}} = C_{\mathrm{dpmr}}\cdot 4\kB T\,a_x + C_{n}\,\sigma^{2}_n$:
@@ -261,6 +435,24 @@ Therefore:
 \quad $C_{n}[\lambda_c, a_{pd}] \;\leftarrow\; (1-a_{pd})^2\,[(\bm{\Sigma}_n)_{1,1} - 2(\bm{\Sigma}_n)_{1,11} + (\bm{\Sigma}_n)_{11,11} + 1]$ \\
 \end{tabular}
 \end{center}
+=======
+\subsection*{5.6\quad $C_{\mathrm{dpmr}}$ and $C_{n}$}
+
+Substitute $\bm{\Sigma}[k] = 4\kB T\,a_x[k]\,\bm{\Sigma}_T + \sigma^{2}_n\,\bm{\Sigma}_n$ and match
+$\sigma^{2}_{\delta x_{mr}} = C_{\mathrm{dpmr}}\!\cdot\! 4\kB T\,a_x + C_{n}\!\cdot\! \sigma^{2}_n$:
+
+\begin{gather}
+\boxed{\;C_{\mathrm{dpmr}} \;=\; (1-a_{pd})^{2}\bigl[\,
+  (\bm{\Sigma}_T)_{1,1} \,-\, 2\,(\bm{\Sigma}_T)_{1,11} \,+\, (\bm{\Sigma}_T)_{11,11}
+  \,\bigr]\;} \\[6pt]
+\boxed{\;C_{n} \;=\; (1-a_{pd})^{2}\bigl[\,
+  (\bm{\Sigma}_n)_{1,1} \,-\, 2\,(\bm{\Sigma}_n)_{1,11} \,+\, (\bm{\Sigma}_n)_{11,11}
+  \,+\, 1
+  \,\bigr]\;}
+\end{gather}
+
+The $+1$ in $C_{n}$ is the direct contribution of $n[k]$ to $\delta x_{mr}[k]$ (does not pass through $\bm{e}[k]$).
+>>>>>>> test/qr-paper-reference
 
 % =====================================================================
 \section{IIR Finite-Sample Bias Factor $\beta$}
@@ -275,12 +467,17 @@ In stationary steady state ($\delta x_{mr}$ zero-mean):
 \mathrm{E}\bigl[\,\overline{(\delta x_{mr})^{2}}\,\bigr] &\;=\; \mathrm{Var}(\delta x_{mr}) \\[2pt]
 \mathrm{E}\bigl[\,(\delta x_{mrd})^{2}\,\bigr] &\;=\; \mathrm{Var}(\delta x_{mrd})
 \end{align}
+<<<<<<< HEAD
 so the IIR output systematically underestimates $\mathrm{Var}(\delta x_{mr})$ by the amount $\mathrm{Var}(\delta x_{mrd}) > 0$. Define the bias factor $\beta$ as the ratio of the IIR estimator's expected output $\mathrm{E}[\sigma^{2}_{\delta x_{mr}}]$ to the true variance $\mathrm{Var}(\delta x_{mr})$:
+=======
+so the IIR output is biased low by $\mathrm{Var}(\delta x_{mrd}) > 0$. Define
+>>>>>>> test/qr-paper-reference
 \begin{equation}
 \beta \;\equiv\; \frac{\mathrm{E}\!\bigl[\,\sigma^{2}_{\delta x_{mr}}\,\bigr]}{\mathrm{Var}(\delta x_{mr})}
        \;=\; 1 \;-\; \frac{\mathrm{Var}(\delta x_{mrd})}{\mathrm{Var}(\delta x_{mr})}
 \end{equation}
 
+<<<<<<< HEAD
 \subsection*{6.2\quad $\mathrm{Var}(\delta x_{mr})$ and autocorrelation $\rho(L)$}
 
 \noindent To evaluate $\beta$, we need the denominator $\mathrm{Var}(\delta x_{mr})$ and the temporal autocorrelation $\rho(L)$ used for the numerator.
@@ -299,11 +496,30 @@ Since $\bm{A}^{L}\bm{\Sigma}_T$ is the lag-$L$ cross-covariance of $\bm{e}[k]$, 
 \begin{equation}
 \rho(L) \;=\; \frac{(\bm{A}^{L}\bm{\Sigma}_T)_{1,1} - 2(\bm{A}^{L}\bm{\Sigma}_T)_{1,11} + (\bm{A}^{L}\bm{\Sigma}_T)_{11,11}}
                      {(\bm{\Sigma}_T)_{1,1} - 2(\bm{\Sigma}_T)_{1,11} + (\bm{\Sigma}_T)_{11,11}}.
+=======
+\subsection*{6.2\quad $\mathrm{Var}(\delta x_{mr})$ and $\rho(L)$ from Section 5}
+
+For the noise-free case ($\sigma^{2}_n = 0$), Section 5's selector form gives
+\begin{equation}
+\mathrm{Var}(\delta x_{mr}) \;=\; (1{-}a_{pd})^{2}\bigl[\,(\bm{\Sigma}_T)_{1,1} - 2(\bm{\Sigma}_T)_{1,11} + (\bm{\Sigma}_T)_{11,11}\,\bigr]\cdot 4\kB T\, a_x
+\end{equation}
+The lag-$L$ autocorrelation
+$\rho(L) \equiv \mathrm{Cov}(\delta x_{mr}[k], \delta x_{mr}[k\!-\!L]) / \mathrm{Var}(\delta x_{mr})$
+follows from $\bm{A}^{L}\bm{\Sigma}_T$ via the same selector
+(the $(1{-}a_{pd})^{2}$ and $4\kB T\, a_x$ prefactors cancel):
+\begin{equation}
+\rho(L) \;=\; \frac{(\bm{A}^{L}\bm{\Sigma}_T)_{1,1} - 2(\bm{A}^{L}\bm{\Sigma}_T)_{1,11} + (\bm{A}^{L}\bm{\Sigma}_T)_{11,11}}
+                     {(\bm{\Sigma}_T)_{1,1} - 2(\bm{\Sigma}_T)_{1,11} + (\bm{\Sigma}_T)_{11,11}}
+>>>>>>> test/qr-paper-reference
 \end{equation}
 
 \subsection*{6.3\quad $\mathrm{Var}(\delta x_{mrd})$ closed form}
 
+<<<<<<< HEAD
 Unrolling the \S2.2 LP recursion converts $\delta x_{mrd}[k]$ into an explicit weighted sum of past $\delta x_{mr}$, so that $\mathrm{Var}(\delta x_{mrd})$ can be expressed via $\rho(L)$:
+=======
+Unroll the Section 2 LP recursion:
+>>>>>>> test/qr-paper-reference
 \begin{equation}
 \delta x_{mrd}[k] \;=\; a_{prd}\sum_{j=0}^{\infty}(1{-}a_{prd})^{j}\,\delta x_{mr}[k\!-\!j]
 \end{equation}
@@ -313,6 +529,7 @@ $\sum_{j=0}^{\infty}(1{-}a_{prd})^{2j} = 1/\bigl[a_{prd}(2{-}a_{prd})\bigr]$:
 \mathrm{Var}(\delta x_{mrd}) \;=\; \frac{a_{prd}}{2 - a_{prd}}\,\mathrm{Var}(\delta x_{mr})\,\Bigl[\,1 + 2\sum_{m=1}^{\infty}\rho(m)(1{-}a_{prd})^{m}\,\Bigr]
 \end{equation}
 
+<<<<<<< HEAD
 \subsection*{6.4\quad Bias factor $\beta$}
 
 Substituting the $\mathrm{Var}(\delta x_{mrd})$ expression into the $\beta$ definition:
@@ -534,5 +751,46 @@ This replaces the standard $L_\mathrm{eff}/2$ result that would apply if $n_a$ w
 \includegraphics[width=0.92\textwidth]{fig_qr_h50_ahat_std.png}
 \caption{Motion-gain estimation ($h = 50\,\mu$m).}
 \end{figure}
+=======
+\subsection*{6.4\quad Bias factor (boxed)}
+
+Substitute 6.3 into 6.1:
+\begin{equation}
+\boxed{\;\beta(\lc, a_{prd}) \;=\; 1 \;-\; \frac{a_{prd}}{2 - a_{prd}}\,\Bigl[\,1 + 2\sum_{m=1}^{\infty}\rho(m)(1{-}a_{prd})^{m}\,\Bigr]\;}
+\end{equation}
+The bracket $\bigl[\,1 + 2\sum_{m\geq 1}\rho(m)(1{-}a_{prd})^{m}\,\bigr]$ is the
+\emph{autocorrelation amplification}: equals $1$ for white $\delta x_{mr}$,
+$>\!1$ for positively-correlated (the typical closed-loop case).
+
+In practice the sum is truncated at $m_{\max}\!=\!100$; with $a_{prd}\!=\!0.05$,
+the residual $(1{-}a_{prd})^{m_{\max}}\!\approx\!0.006$ lies below numerical noise.
+
+\subsection*{6.5\quad Numerical}
+
+At $\lc = 0.7$, $a_{prd} = 0.05$:
+\begin{align*}
+\beta_{\mathrm{white}} &\;\equiv\; \frac{2 - 2 a_{prd}}{2 - a_{prd}} \;=\; 0.9744
+  &&\text{(white reference; bracket}=1) \\[2pt]
+\beta &\;=\; 0.9069
+  &&\text{(closed-loop; bracket}\!\approx\!3.6) \\[2pt]
+\text{bias amplification} &\;=\; \frac{1 - \beta}{1 - \beta_{\mathrm{white}}} \;\approx\; 3.6\times
+\end{align*}
+
+\subsection*{6.6\quad Bias-corrected estimator}
+
+Section 2's estimator output satisfies
+\[
+\mathrm{E}\!\bigl[\,\sigma^{2}_{\delta x_{mr}}\,\bigr]
+  \;=\; \beta\cdot\mathrm{Var}(\delta x_{mr})
+  \;=\; \beta\,\bigl(C_{\mathrm{dpmr}}\cdot 4\kB T\,a_x + C_{n}\,\sigma^{2}_n\bigr).
+\]
+Inverting for $a_x$: first unbias $\sigma^{2}_{\delta x_{mr}}$ by $\beta$,
+then apply Section 2's boxed formula:
+\begin{equation}
+\boxed{\;a_{xm}[k] \;=\; \frac{\sigma^{2}_{\delta x_{mr}}[k]/\beta \,-\, C_{n}\,\sigma^{2}_n}
+                                   {C_{\mathrm{dpmr}}\cdot 4\kB T}\;}
+\end{equation}
+$\beta(\lc, a_{prd})$ is precomputed offline as a 2-D lookup table; runtime cost zero.
+>>>>>>> test/qr-paper-reference
 
 \end{document}

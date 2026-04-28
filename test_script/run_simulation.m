@@ -42,19 +42,19 @@ config.controller_type = 7;          % 23 or 7 (controller type selection)
 config.lambda_c = 0.7;              % Closed-loop pole (0 < lambda_c < 1)
 config.a_pd  = 0.05;                % EMA: LP smoothing
 config.a_prd = 0.05;                % EMA: HP residual mean
-config.a_cov = 0.05;                % EMA: HP residual mean-square
 config.epsilon = 0.01;              % Anisotropy threshold for theta_m
 
-% --- 7-State EKF Tuning ---
-%   Q: process noise scaling (7x1 diagonal)
-%       [del_p1, del_p2, del_p3, d, del_d, a, del_a]
-%       Only (3), (4), (6) are active; rest should be 0.
-%   R: measurement noise scaling (2x1 diagonal)
-%       [position, gain]
-%   Pf_init: initial forecast covariance (7x1 diagonal)
-config.Qz_diag_scaling = [0; 0; 1e4; 1e-1; 0; 1e-4; 0];
-config.Rz_diag_scaling = [1e-2; 1e0];
-config.Pf_init_diag    = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];
+% --- 7-State EKF Tuning via Q/R Preset ---
+% Choose 'frozen_correct' for static positioning (paper-level a_hat),
+% 'empirical' for dynamic / motion (frozen Q can't track changing a),
+% 'beta' for derived backward-diff (drifts, not recommended).
+% See model/config/apply_qr_preset.m for full preset values.
+if strcmp(config.trajectory_type, 'positioning')
+    config.qr_preset = 'frozen_correct';
+else
+    config.qr_preset = 'empirical';
+end
+config = apply_qr_preset(config);   % sets Qz/Rz/Pf_init_diag/a_cov
 config.beta   = 0;                  % z-axis chart extension (0 = canonical x/y-style; 0.5 = experimental)
 config.lamdaF = 1.0;                % Forgetting factor (1.0 = no forgetting)
 

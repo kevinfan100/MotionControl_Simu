@@ -81,84 +81,61 @@ function ctrl = calc_ctrl_params(config, constants)
     end
 
     % ---------------------------------------------------------------
-    % 7-state EKF: load C_dpmr_eff / C_np_eff lookup from augmented Lyapunov
+    % 7-state EKF: per-axis self-consistent C_dpmr_eff, C_np_eff, IIR_bias_factor
+    % via on-the-fly augmented Lyapunov (per writeup §5, §7).
+    %
+    % Each axis gets its own values computed from its actual (Q, R) since
+    % R(1,1) and R(2,2) are per-axis (and Q(7,7) per-axis since 2026-04-22).
+    % Replaces the legacy 2-D lookup which used a single Q/R for all axes
+    % and was built with beta-derivation values, not production frozen_correct.
     % See test_script/compute_7state_cdpmr_eff.m for derivation.
-    % Fallback to K=2 approximation if lookup file is missing.
     % ---------------------------------------------------------------
-    % Determine project root from this file's location
     here = fileparts(mfilename('fullpath'));              % .../model/controller
     project_root = fileparts(fileparts(here));            % .../
-    lut_path = fullfile(project_root, 'test_results', 'verify', 'cdpmr_eff_lookup.mat');
-    if exist(lut_path, 'file')
-        LUT = load(lut_path);
-        if isfield(LUT, 'Cdpmr_tab') && isfield(LUT, 'Cnp_tab') && isfield(LUT, 'lc_grid')
-            lc_clamped = max(min(ctrl.lambda_c, LUT.lc_grid(end)), LUT.lc_grid(1));
-            % Use first rho column (lookup is effectively 1-D over lc since
-            % Q_kf/R_kf are fixed design parameters; rho dimension is redundant)
-            ctrl.C_dpmr_eff = interp1(LUT.lc_grid, LUT.Cdpmr_tab(:, 1), lc_clamped, 'linear');
-            ctrl.C_np_eff   = interp1(LUT.lc_grid, LUT.Cnp_tab(:, 1),   lc_clamped, 'linear');
-            if abs(config.a_pd - LUT.a_pd) > 1e-6
-                warning('calc_ctrl_params:apd_mismatch', ...
-                    'config.a_pd=%.4f but lookup built at a_pd=%.4f', ...
-                    config.a_pd, LUT.a_pd);
-            end
-            if isfield(LUT, 'Q_kf_scale') && ...
-                    max(abs(config.Qz_diag_scaling(:) - LUT.Q_kf_scale(:))) > 1e-12
-                warning('calc_ctrl_params:cdpmr_Q_mismatch', ...
-                    'config.Qz_diag_scaling differs from cdpmr_eff_lookup Q_kf_scale; lookup may be invalid');
-            end
-            if isfield(LUT, 'R_kf_scale') && ...
-                    max(abs(config.Rz_diag_scaling(:) - LUT.R_kf_scale(:))) > 1e-12
-                warning('calc_ctrl_params:cdpmr_R_mismatch', ...
-                    'config.Rz_diag_scaling differs from cdpmr_eff_lookup R_kf_scale; lookup may be invalid');
-            end
-        else
-            ctrl.C_dpmr_eff = -1;   % sentinel -> use fallback in controller
-            ctrl.C_np_eff   = -1;
-        end
-    else
-        ctrl.C_dpmr_eff = -1;       % sentinel -> use fallback in controller
-        ctrl.C_np_eff   = -1;
-    end
+    addpath(fullfile(project_root, 'test_script'));
 
-    % ---------------------------------------------------------------
-    % 7-state EKF: load IIR_bias_factor lookup (Task 1c)
-    % Correction for finite-sample + autocorrelation bias of the EMA
-    % variance estimator. Default 1.0 (no correction) if lookup missing.
-    % See test_script/build_bias_factor_lookup.m for derivation.
-    % ---------------------------------------------------------------
-    bf_path = fullfile(project_root, 'test_results', 'verify', 'bias_factor_lookup.mat');
-    if exist(bf_path, 'file')
-        BF = load(bf_path);
-        if isfield(BF, 'bias_factor_tab') && isfield(BF, 'lc_grid')
-            lc_clamped_bf = max(min(ctrl.lambda_c, BF.lc_grid(end)), BF.lc_grid(1));
-            ctrl.IIR_bias_factor = interp1(BF.lc_grid, BF.bias_factor_tab, ...
-                                            lc_clamped_bf, 'linear');
-            if abs(config.a_prd - BF.a_prd) > 1e-6
-                warning('calc_ctrl_params:aprd_bf_mismatch', ...
-                    'config.a_prd=%.4f but bias_factor_lookup built at a_prd=%.4f', ...
-                    config.a_prd, BF.a_prd);
+    ctrl.C_dpmr_eff      = zeros(3, 1);
+    ctrl.C_np_eff        = zeros(3, 1);
+    ctrl.IIR_bias_factor = ones(3, 1);
+
+    opts_lyap = struct('f0', 0, 'verbose', false);
+    L_max = 100;
+
+    try
+        for ax = 1:3
+            % Q per-axis (Q1..Q6 shared, Q7 per-axis from slots 7,8,9 of 9x1 Qz)
+            Q_kf_scale = [config.Qz_diag_scaling(1:6); config.Qz_diag_scaling(6+ax)];
+            % R per-axis (R(1,1) from slots 1..3, R(2,2) from slots 4..6 of 6x1 Rz)
+            R_kf_scale = [config.Rz_diag_scaling(ax); config.Rz_diag_scaling(3+ax)];
+
+            [Cd, Cn, ~, A_aug, dout] = compute_7state_cdpmr_eff( ...
+                config.lambda_c, 0, config.a_pd, Q_kf_scale, R_kf_scale, opts_lyap);
+
+            ctrl.C_dpmr_eff(ax) = Cd;
+            ctrl.C_np_eff(ax)   = Cn;
+
+            % IIR bias factor (per axis) from same A_aug, Sigma_th
+            Sigma_th = dout.Sigma_th;
+            n_aug = 11;
+            c_s = zeros(n_aug, 1); c_s(3) = 1; c_s(11) = -1;
+            gamma_L = zeros(L_max+1, 1);
+            A_L = eye(n_aug);
+            for L = 0:L_max
+                gamma_L(L+1) = c_s' * A_L * Sigma_th * c_s;
+                A_L = A_L * A_aug;
             end
-            if abs(config.a_pd - BF.a_pd) > 1e-6
-                warning('calc_ctrl_params:apd_bf_mismatch', ...
-                    'config.a_pd=%.4f but bias_factor_lookup built at a_pd=%.4f', ...
-                    config.a_pd, BF.a_pd);
-            end
-            if isfield(BF, 'Q_kf_scale') && ...
-                    max(abs(config.Qz_diag_scaling(:) - BF.Q_kf_scale(:))) > 1e-12
-                warning('calc_ctrl_params:bf_Q_mismatch', ...
-                    'config.Qz_diag_scaling differs from bias_factor_lookup Q_kf_scale; lookup may be invalid');
-            end
-            if isfield(BF, 'R_kf_scale') && ...
-                    max(abs(config.Rz_diag_scaling(:) - BF.R_kf_scale(:))) > 1e-12
-                warning('calc_ctrl_params:bf_R_mismatch', ...
-                    'config.Rz_diag_scaling differs from bias_factor_lookup R_kf_scale; lookup may be invalid');
-            end
-        else
-            ctrl.IIR_bias_factor = 1.0;
+            rho = gamma_L / gamma_L(1);
+            powers = ((1 - config.a_prd).^(1:L_max)).';
+            S = sum(rho(2:L_max+1) .* powers);
+            ctrl.IIR_bias_factor(ax) = 1 - (config.a_prd/(2-config.a_prd)) * (1 + 2*S);
         end
-    else
-        ctrl.IIR_bias_factor = 1.0;
+    catch ME
+        warning('calc_ctrl_params:peraxis_failed', ...
+                'Per-axis C_dpmr/beta compute failed: %s. Falling back to sentinel.', ...
+                ME.message);
+        ctrl.C_dpmr_eff      = -1 * ones(3, 1);
+        ctrl.C_np_eff        = -1 * ones(3, 1);
+        ctrl.IIR_bias_factor = ones(3, 1);
     end
 
 end
