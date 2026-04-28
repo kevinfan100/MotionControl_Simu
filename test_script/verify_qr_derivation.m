@@ -70,10 +70,16 @@ t_warmup = 0.2;
 %% Q/R variants
 variants = struct();
 
+% Per-axis Bus: Qz is 9x1 [Q1..Q6; Q7_x; Q7_y; Q7_z], Rz is 6x1
+% [R_pos_x; R_pos_y; R_pos_z; R_gain_x; R_gain_y; R_gain_z].
+% Variants below use scalar single-axis values replicated across all 3 axes.
+expand_Q = @(q7_old) [q7_old(1:6); q7_old(7); q7_old(7); q7_old(7)];
+expand_R = @(r_old) [r_old(1); r_old(1); r_old(1); r_old(2); r_old(2); r_old(2)];
+
 variants(1).name = 'empirical';
 variants(1).label = 'Empirical (pre-derivation)';
-variants(1).Qz = [0; 0; 1e4; 1e-1; 0; 1e-4; 0];
-variants(1).Rz = [1e-2; 1.0];
+variants(1).Qz = expand_Q([0; 0; 1e4; 1e-1; 0; 1e-4; 0]);
+variants(1).Rz = expand_R([1e-2; 1.0]);
 
 % Load derived Q77 scaling and R22 scaling
 q77_path = fullfile(project_root, 'test_results', 'verify', 'q77_trajectory.mat');
@@ -87,8 +93,8 @@ R11_derived = sigma2_n / sigma2_dXT;
 
 variants(2).name = 'derived_beta';
 variants(2).label = 'Derived (backward-diff beta)';
-variants(2).Qz = [0; 0; 1; 0; 0; q77_data.Q77_scaling; q77_data.Q77_scaling];
-variants(2).Rz = [R11_derived; r22_data.R22_scaling];
+variants(2).Qz = expand_Q([0; 0; 1; 0; 0; q77_data.Q77_scaling; q77_data.Q77_scaling]);
+variants(2).Rz = expand_R([R11_derived; r22_data.R22_scaling]);
 
 % B'-2 white-noise equivalent (Q(6,6) larger, Q(7,7) smaller)
 bprime_path = fullfile(project_root, 'test_results', 'verify', 'q_bprime_deployed.mat');
@@ -96,21 +102,21 @@ if exist(bprime_path, 'file')
     bp = load(bprime_path);
     variants(3).name = 'derived_Bprime';
     variants(3).label = 'Derived (B''-2 white-noise equiv)';
-    variants(3).Qz = [0; 0; 1; 0; 0; bp.Q66_deployed_exp; bp.Q77_deployed_exp];
-    variants(3).Rz = [R11_derived; r22_data.R22_scaling];
+    variants(3).Qz = expand_Q([0; 0; 1; 0; 0; bp.Q66_deployed_exp; bp.Q77_deployed_exp]);
+    variants(3).Rz = expand_R([R11_derived; r22_data.R22_scaling]);
 
     % Ablation: B' Q + empirical R - isolates whether the remaining gap
     % is explained by R(2,2) = 1.72 (derived) vs 1.0 (empirical).
     variants(4).name = 'Bprime_Remp';
     variants(4).label = 'B'' Q + empirical R';
-    variants(4).Qz = [0; 0; 1; 0; 0; bp.Q66_deployed_exp; bp.Q77_deployed_exp];
-    variants(4).Rz = [1e-2; 1.0];
+    variants(4).Qz = expand_Q([0; 0; 1; 0; 0; bp.Q66_deployed_exp; bp.Q77_deployed_exp]);
+    variants(4).Rz = expand_R([1e-2; 1.0]);
 
     % Ablation: empirical Q + derived R - the inverse
     variants(5).name = 'Qemp_Rderived';
     variants(5).label = 'Empirical Q + derived R';
-    variants(5).Qz = [0; 0; 1e4; 1e-1; 0; 1e-4; 0];
-    variants(5).Rz = [R11_derived; r22_data.R22_scaling];
+    variants(5).Qz = expand_Q([0; 0; 1e4; 1e-1; 0; 1e-4; 0]);
+    variants(5).Rz = expand_R([R11_derived; r22_data.R22_scaling]);
 end
 
 fprintf('Variants prepared:\n');
