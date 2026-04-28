@@ -26,7 +26,7 @@
 重要發現必須同步更新到 git-tracked 位置（確保另一台電腦可見）：
 - 結論和公式 → agent_docs/verification-notes.md
 - 規則和偏好 → .claude/rules/
-- 完整報告 → reference/for_test/
+- 完整報告 → reference/qr_analysis/
 
 記憶（~/.claude/projects/.../memory/）只存在本機，作為 session 連續性用。
 關鍵內容必須同時存在 agent_docs/ 中。

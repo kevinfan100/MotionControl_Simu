@@ -52,7 +52,7 @@ matches Task 1b's known ~1 pt Σ_aug over-prediction.
 Caveat: bias_factor uses Σ_th only. For measurement noise case (non-free-space),
 a separate factor for C_np_eff term would be needed.
 
-Artifacts: `reference/for_test/task1b_report.md`, `task1c_report.md`,
+Artifacts: `reference/qr_analysis/task1b_report.md`, `task1c_report.md`,
 `test_script/analyze_task1b_iir_bias.m`, `build_bias_factor_lookup.m`,
 `verify_task1c_correction.m`.
 
@@ -79,7 +79,7 @@ addresses dynamic bias and lag only. Breaking the 26% floor requires a
 structural change outside Task 1e: cascaded IIR, batch variance, multi-axis
 averaging, or post-KF filter.
 
-Full derivation: `reference/for_test/task1d_diagnostic_report.md` Appendix A (A.1-A.11).
+Full derivation: `reference/qr_analysis/task1d_diagnostic_report.md` Appendix A (A.1-A.11).
 
 ## Task 1d Diagnostic (2026-04-13): a_hat gap to paper
 
@@ -128,5 +128,5 @@ Artifacts: `task1d_diagnostic_report.md`, `task1e_design.md`,
 
 - agent_docs/kf-observer-analysis.md — KF observer 完整推導
 - agent_docs/literature-review.md — 文獻調查
-- reference/for_test/verification_report.md — 驗證報告和數據
-- reference/for_test/temp_variance_recursion.tex — Σ_e recursion 數學推導
+- reference/qr_analysis/verification_report.md — 驗證報告和數據
+- reference/qr_analysis/temp_variance_recursion.tex — Σ_e recursion 數學推導

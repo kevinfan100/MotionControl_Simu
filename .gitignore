@@ -24,3 +24,6 @@ desktop.ini
 # MATLAB 生成檔案
 *.mex*
 codegen/
+
+# Claude Code runtime locks
+.claude/scheduled_tasks.lock
