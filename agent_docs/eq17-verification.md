@@ -14,7 +14,7 @@
 | # | Task | Date | Status | Report 連結 | 關鍵結論 |
 |---|---|---|---|---|---|
 | 01 | Math-layer observability rank test | 2026-04-28 | DONE | [task01_math_observability_report.md](../reference/eq17_analysis/task01_math_observability_report.md) | 5-state 10/10 + 7-state 3/3 = 13/13 PASS。雙回授下 7-state rank=7 對任意 f_d 成立（含 f_d=0）。發現 Config A 5-state PE 條件精確邊界：N 窗口下只有 f_d_seq(1..N-3) 影響 (x_D,a_x) 子塊 rank。 |
-| 02 | Q matrix first-principles derivation | 2026-04-28 | DONE | design.md §8 | Q33,i[k] = 4kBT·a_x,i[k]·[1+d·(1−λ_c)²] + (1−λ_c)²·σ²_n_s,i（純開迴路，比 paper 2025 多 18% 修正）；Q55=0；Q77,i = Var(δa_x_true,i) over trajectory。同時更正 a_xm 公式為線性反解（不是 sqrt），並加入 a_xm 2-step 延遲到 H 矩陣 (col 7 = −d)。 |
+| 02 | Q matrix derivation (Path A′ + adaptive Q77) | 2026-04-28 | DONE | design.md §8 (unified) | Q33,i[k] = (3−2λ_c²)·4kBT·â_x,i[k] + (1−λ_c)²·σ²_n_s,i (Path A′ inflation 補償 ε 的 MA(d) 自相關)；Q55=0；Q77,i[k] = â_x²·K_h(h̄)²·(Δt/R)²·σ²_ḣ_max (adaptive, per-axis 時變)。Q 對角化前提 A1–A4 確認 single-time off-diagonal=0；時間 cross 由 Path A′ inflation 補償。 |
 | 03 | R matrix design (incl. IIR-induced σ²_n_axm) | — | TODO | — | — |
 | 04 | 7-state EKF MATLAB implementation | — | TODO | — | — |
 | 05 | Closed-loop variance Lyapunov | — | TODO | — | — |
@@ -38,13 +38,18 @@
 
 ### 推導結果
 
-- **Task 02 — Q 矩陣（純代數，純開迴路）**：
-  - **Q33,i[k]** = 4kBT · a_x,i[k] · [1 + d·(1−λ_c)²] + (1−λ_c)² · σ²_n_s,i
-    - 比 paper 2025 Eq.(21) 多一個 d·(1−λ_c)² 修正（18% @ d=2, λ_c=0.7）
-    - 來源差異：我們的 Eq.17 控制律含過去 d 步 thermal 史的 (1−λ_c) 加權項
-  - **Q55** = 0（simulation 場景無殘磁）
-  - **Q77,i** = Var_{t}( δa_x_true,i(t) ) — 離線從軌跡計算
-  - 時變項只有 Q33（透過 a_x[k]）
+- **Task 02 — Q 矩陣（unified version: Path A′ + adaptive Q77）**：
+  - **Q33,i[k]** = (3 − 2·λ_c²) · 4kBT · â_x,i[k] + (1−λ_c)² · σ²_n_s,i
+    - Path A′ inflation：對 λ_c=0.7 因子 = 2.02（vs marginal Var(ε) 的 1.18，inflation 1.71×）
+    - 補償 ε 的 MA(d=2) 自相關 (ρ(1)≈33%, ρ(2)≈25%) 對穩態 Var(δx) 的影響
+    - 殘餘 5–15% gap 在 KF gain 結構次優（無法靠單參數補償，可接受）
+  - **Q55** = 0（simulation 場景無殘磁；可加 floor=1e-12 防數值鎖死）
+  - **Q77,i[k]** = (â_x,i[k])² · K_h,i(h̄[k])² · (Δt/R)² · σ²_ḣ_max
+    - **adaptive 形式**，雙重依賴 â_x 與 h̄
+    - K_h,i := (1/C_i)·(dC_i/dh̄) 是壁面敏感度，過 wall 時 K_h² 爆增 → Q77 自動 inflate ~600× 給 KF agility
+    - 需要 calc_correction_functions 增加 dC/dh̄ 輸出（Task 04 處理）
+  - **Q 對角化確認**：4 個獨立性假設下 single-time Q off-diagonal 嚴格 0
+  - **時間 cross-correlation**：ε 的 MA(d) 由 Path A′ inflation 補償
 
 - **a_xm 公式更正**：從錯誤的 sqrt 形式改為 paper 2025 Eq.(13) 線性形式
   - `a_xm[k] = (σ²_δxr[k] − C_n·σ²_n_s) / (C_dpmr · 4kBT)`
@@ -130,3 +135,4 @@ qr 分支累積的相關發現，**部分可借用、部分不適用**：
 | 2026-04-28 | (task01) | Task 01 DONE — math-layer observability ranks confirmed + PE-window finding |
 | 2026-04-28 | (lock-7state) | 7-state architecture locked in；agent_docs 同步更新 |
 | 2026-04-28 | (task02-Q) | Task 02 DONE — Q 矩陣三項代數推導（Q33[k], Q55=0, Q77）；a_xm 公式改線性；H 加入 d-step 延遲修正 (col 7 = −d) |
+| 2026-04-28 | (task02-unified) | Q 升級到 unified version: Path A′ inflation Q33 (3−2λ_c²) + adaptive Q77 (含 K_h 壁面敏感度)；補上 Q 對角化的 A1–A4 假設 |

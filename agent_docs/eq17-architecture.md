@@ -180,33 +180,47 @@ a_xm[k] = (σ̂²_δxr[k] − C_n · σ²_n_s) / (C_dpmr · 4kBT)               
 
 ---
 
-## 5. Q 矩陣（純開迴路推導，Task 02）
+## 5. Q 矩陣（unified version，Task 02）
 
-7×7 對角結構，三個非零項：
+7×7 對角結構，三個非零項，全部為 â_x（與 h̄）函數：
 
 ```
        δx_1  δx_2  δx_3       x_D  δx_D    a_x  δa_x
    ┌                                                          ┐
    │  0     0     0           0    0       0    0             │
    │  0     0     0           0    0       0    0             │
-   │  0     0    Q33,i[k]    0    0       0    0             │
+   │  0     0    Q33,i[k]    0    0       0    0             │   ← Path A′ inflation
 Q_i = │  0     0     0           0    0       0    0             │
-   │  0     0     0           0   Q55      0    0             │
+   │  0     0     0           0   Q55      0    0             │   ← simulation 設 0
    │  0     0     0           0    0       0    0             │
-   │  0     0     0           0    0       0    Q77,i        │
+   │  0     0     0           0    0       0    Q77,i[k]      │   ← adaptive
    └                                                          ┘
 ```
 
-### Q33,i[k]（thermal + sensor，per-axis 時變）
+per-axis i ∈ {x, y, z}。
 
-從 paper 2023 Eq.(19) 完整推導 ε[k] 方差：
+### Q 對角性的前提（A1–A4）
+
+1. f_T 與 n_x 獨立（thermal vs sensor，物理隔離）
+2. w_xD 與 (f_T, n_x) 獨立（modeling 選擇）
+3. w_a 與 (f_T, n_x, w_xD) 獨立（modeling 選擇）
+4. 三者皆白噪聲（時間上獨立）
+
+對 simulation 全部成立。**single-time Q off-diagonal 嚴格 0**，但 ε[k] 在時間上 MA(d) 自相關（由 Path A′ inflation 補償）。
+
+### Q33,i[k]（thermal + sensor，Path A′ inflation 形式）
+
 ```
-Q33,i[k] = 4kBT · a_x,i[k] · [ 1 + d·(1−λ_c)² ] + (1−λ_c)² · σ²_n_s,i
+┌─────────────────────────────────────────────────────────────────────┐
+│  Q33,i[k] = (3 − 2·λ_c²) · 4kBT · â_x,i[k]  +  (1 − λ_c)² · σ²_n_s,i │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-時變來自 `a_x,i[k] = Δt/{γ_N · C_i(h[k]/R)}`。
+對 λ_c=0.7：因子 (3−2λ_c²) = **2.02**（比 marginal Var(ε) 的 1.18 多 1.71×）。
 
-對 d=2, λ_c=0.7：修正因子 1 + 2·0.09 = **1.18**（比 paper 2025 Eq.(21) 直接寫的 4kBT·a_x 多 18%，因為我們的 Eq.17 控制律含過去 d 步 thermal 史的 (1−λ_c) 加權項）。
+**為什麼用 inflation factor**：marginal Var(ε) 是 ε 的「平均強度」，但 ε 是 MA(d=2) 過程，自相關 33% (lag1) / 25% (lag2)。直接用 marginal 餵 KF 會 underestimate 穩態 Var(δx)。Inflation 讓 KF 用「等效白噪」假設下的穩態預測匹配 paper 2023 Eq.(22) 真值。
+
+殘餘 5–15% gap 在 KF gain 結構次優（無法靠單參數補償），可接受。詳細推導見 design.md §8.2。
 
 ### Q55（disturbance velocity，simulation 場景）
 
@@ -214,28 +228,33 @@ Q33,i[k] = 4kBT · a_x,i[k] · [ 1 + d·(1−λ_c)² ] + (1−λ_c)² · σ²_n_
 Q55 = 0    (simulation 無殘磁)
 ```
 
-實機部署若有殘磁，需從殘磁磁通變化率推。
+實機部署若有殘磁，需從殘磁磁通變化率推。可加 floor=1e-12 避免數值鎖死。
 
-### Q77,i（gain velocity，per-axis 軌跡常數）
+### Q77,i[k]（gain velocity，adaptive per-axis 時變）
 
-從 prescribed trajectory 開迴路計算：
+從 a_x(h(t)) 對 prescribed trajectory 的二階導推：
 ```
-Q77,i = Var_{t ∈ trajectory}( δa_x_true,i(t) )
-其中  δa_x_true,i(t) = a_x_true,i(t+Δt) − a_x_true,i(t)
-       a_x_true,i(t)   = Δt / { γ_N · C_i(h(t)/R) }
+┌──────────────────────────────────────────────────────────────────┐
+│  Q77,i[k] = (â_x,i[k])² · K_h,i(h̄[k])² · (Δt/R)² · σ²_ḣ_max     │
+└──────────────────────────────────────────────────────────────────┘
+
+K_h,i(h̄) := (1/C_i(h̄)) · (dC_i/dh̄)        per-axis 壁面敏感度
+σ²_ḣ_max  := max_{t} ḣ²(t)                 trajectory 上界（離線算）
 ```
 
-離線一次性計算，填入 params。對 osc trajectory 過 wall 段，z 軸 Q77 顯著大於 x/y。
+對 osc trajectory（A=10μm, f=1Hz）：σ²_ḣ_max = (2π·10)² ≈ 3947 (μm/s)²。
 
-### 時變性
+**對動態軌跡的價值**：Q77 在過 wall (h̄~1.1) 時自動 inflate ~600× 給 KF agility；遠離 wall 時 Q77 縮回避免雜訊敏感。
 
-| 項 | 時變？ | 來源 |
+### 時變性與更新
+
+| 項 | 時變？ | 每步計算量 |
 |---|---|---|
-| Q33,i[k] | ✓ | 透過 a_x,i[k] |
-| Q55 | ✗ (=0) | 設計選擇 |
-| Q77,i | ✗ (軌跡常數) | 離線算 |
+| Q33,i[k] | ✓ | 1 次 × |
+| Q55 | ✗ (=0) | 不更新 |
+| Q77,i[k] | ✓ (â_x², h̄ 雙重) | lookup + 2 次 × |
 
-詳細推導見 design.md §8。
+詳細推導與 caveats 見 design.md §8。
 
 ---
 
