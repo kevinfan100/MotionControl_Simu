@@ -189,7 +189,7 @@ a_xm[k] = (σ̂²_δxr[k] − C_n · σ²_n_s) / (C_dpmr · 4kBT)               
    ┌                                                          ┐
    │  0     0     0           0    0       0    0             │
    │  0     0     0           0    0       0    0             │
-   │  0     0    Q33,i[k]    0    0       0    0             │   ← Path A′ inflation
+   │  0     0    Q33,i[k]    0    0       0    0             │   ← Path C strict (Eq.19 form)
 Q_i = │  0     0     0           0    0       0    0             │
    │  0     0     0           0   Q55      0    0             │   ← simulation 設 0
    │  0     0     0           0    0       0    0             │

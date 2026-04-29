@@ -15,7 +15,7 @@
 |---|---|---|---|---|---|
 | 01 | Math-layer observability rank test | 2026-04-28 | DONE | [task01_math_observability_report.md](../reference/eq17_analysis/task01_math_observability_report.md) | 5-state 10/10 + 7-state 3/3 = 13/13 PASS。雙回授下 7-state rank=7 對任意 f_d 成立（含 f_d=0）。發現 Config A 5-state PE 條件精確邊界：N 窗口下只有 f_d_seq(1..N-3) 影響 (x_D,a_x) 子塊 rank。 |
 | 02 | Q matrix derivation (Path C strict Q33 + Path B Var(w_a) Q77) | 2026-04-29 | DONE | design.md §8 | Q33,i[k] = 4kBT·â_x,i[k] (Path C 嚴格 KF formalism)；Q55=0；Q77,i[k] = Δt⁴·â_x²·{(K_h²−K_h')²·ḣ_max⁴/(8R⁴) + K_h²·ḧ_max²/(2R²)} (Path B 完整 Var(w_a) 含 Term A+B；過 wall Term A 主導 4×Term B)。Route III 簡化版 (Q ∝ (a_nom-â_x)⁴) 評估後駁回（=Term B only，過 wall under-estimate ~80%）。需要實作 K_h, K_h' lookup（Task 04 處理）。 |
-| 03 | R matrix design (incl. IIR-induced σ²_n_axm) | — | TODO | — | — |
+| 03 | R matrix design (incl. IIR-induced σ²_n_axm) | 2026-04-29 | IN-PROGRESS | design.md §9 | Step 3.1 ✓ DONE: σ²_δxr 嚴格從 Eq.19 form ARMA inflation 推得（C_dpmr=3.96, C_n=1.18 for λ_c=0.7，與 paper 2025 Eq.11/12 同形式，非粗糙近似）；ρ_δxr 選 Option A (MA(2) full, IF_var≈4.2)；三決定敲定：ρ_δx 用 Option A、σ²_δxr 用 â_x[k] adaptive、σ²_n_s 用常數 per-axis。下一步 Step 3.2 chi-squared 推 Var(σ̂²_δxr)。 |
 | 04 | 7-state EKF MATLAB implementation | — | TODO | — | — |
 | 05 | Closed-loop variance Lyapunov | — | TODO | — | — |
 | 06 | End-to-end vs qr 7-state EKF comparison | — | TODO | — | — |
@@ -73,6 +73,18 @@
 - **a_xm 2-step 延遲處理**：H 矩陣 col 7 從 0 改為 −d
   - H = [[1,0,0,0,0,0,0]; [0,0,0,0,0,1,−d]]
   - Effective R_2 多 5·Q77（d=2）的延遲傳導項
+
+- **Task 03 Step 3.1 — δx_r 閉迴路統計（Eq.19 form 嚴格推導）**：
+  - **σ²_δxr,i[k] = C_dpmr · 4kBT · â_x,i[k] + C_n · σ²_n_s,i**
+    - C_dpmr = 2 + 1/(1−λ_c²) ≈ 3.96 (λ_c=0.7)
+    - C_n = 2/(1+λ_c) ≈ 1.18 (λ_c=0.7)
+    - **嚴格從 ε MA(2) tail 結構算 ARMA inflation 得**（不是粗糙近似），結構上與 paper 2025 Eq.11/12 同形式（因兩控制律 ε 都有同 MA(2) tail）
+  - **ρ_δxr(τ)** 選 Option A (MA(2) full)：ρ_δx(1)≈0.85, ρ_δx(2)≈0.67, τ≥3 衰減 λ_c
+    - IF_var ≈ 4.2 (thermal-dominated, λ_c=0.7)
+    - 拒絕 Option B (AR(1) approx, IF_var≈2.92)：under-estimate IF_var ~30%，與 §8.2 Eq.19 form 不一致
+  - **三決定**敲定：ρ_δx 用 Option A、σ²_δxr 用 â_x[k] adaptive、σ²_n_s 用常數 per-axis
+  - **F_e Row 3 的 Eq.18 vs Eq.19 form 釐清**：之前 §5 derivation 看似直接 Jacobian，實際是 Eq.18→Eq.19 代數重排把 −(1−λ_c)·δx[k−d] 項用遞迴吸收進 ε。Eq.18 form: F_e(3,1)=−(1−λ_c), (3,3)=1, ε 白但 Q-R cross；**Eq.19 form (採用): F_e(3,1)=0, (3,3)=λ_c, ε MA(2)**；trade-off 同 §8.2 Step 5
+  - 下一步：**Step 3.2 chi-squared** — IIR EWMA 對 (δx_r² − δ̄x_r²) 的方差傳遞，目標 Var(σ̂²_δxr) ≈ a_cov·IF_var·(σ²_δxr)² 公式驗證
 
 ### 與 paper 對照
 
@@ -153,3 +165,4 @@ qr 分支累積的相關發現，**部分可借用、部分不適用**：
 | 2026-04-28 | (task02-unified) | Q 升級到 unified version: Path A′ inflation Q33 (3−2λ_c²) + adaptive Q77 (含 K_h 壁面敏感度)；補上 Q 對角化的 A1–A4 假設 |
 | 2026-04-28 | (task02-strict) | Q33 退役 Path A′ inflation，改回 Path C 嚴格形式 4kBT·â_x。理由：Path A′ inflation 違反 KF Q-R 獨立與 Q 白噪 cross-step 假設，雖然能讓 KF 預測 σ²_δx 對齊 Eq.22 但是 hack 不是推導。Path C 數學嚴格但 KF P 預測偏小 ~50%（standard KF 對 correlated noise 的已知 trade-off），可接受。 |
 | 2026-04-29 | (task02-q77-fix) | Q77 從 Var(δa_x) 形式 (â_x²·K_h²·(Δt/R)²·σ²_ḣ_max) 升級為 Var(w_a) 完整 Path B 形式 Δt⁴·â_x²·{(K_h²−K_h')²·ḣ_max⁴/(8R⁴)+K_h²·ḧ_max²/(2R²)}。理由：原式對應一階差分 Var(δa_x)，但 KF 模型要求二階差分 Var(w_a) = Δt⁴·Var(ä_x)，原式 over-estimate ~3300×。同時評估 Route III (â_x 多項式形式) 後駁回（過 wall under-estimate 80%, bias loop 風險）。 |
+| 2026-04-29 | (task03-step1) | Task 03 Step 3.1 ✓ DONE — 閉迴路 δx_r 統計嚴格推導（從 Eq.19 form ARMA inflation）：σ²_δxr = C_dpmr·4kBT·â_x + C_n·σ²_n_s（C_dpmr=3.96, C_n=1.18 for λ_c=0.7，與 paper 2025 Eq.11/12 同形式，非粗糙近似）；ρ_δxr(τ) 選 Option A (MA(2) full)，IF_var≈4.2；三決定敲定（ρ_δx Option A、σ²_δxr 用 â_x[k]、σ²_n_s 常數 per-axis）；Step 3.2 chi-squared 推 Var(σ̂²_δxr) 待續。同步補修 design.md §5 Row 3 註解明確 Eq.18 vs Eq.19 form 兩階段（之前只跳到 Eq.19 form 看似直接 Jacobian），fix §8.1 + agent_docs/eq17-architecture.md §5 caption "Path A′ inflation" → "Path C strict" 對齊 §8.2 嚴格形式；新增 design.md §9 R 矩陣推導章節（Step 3.1-3.5 進度與決定總覽），renumber §9-11 → §10-12。 |
