@@ -29,10 +29,12 @@ function config = user_config()
 %       lambda_c    = 0.7       % Closed-loop pole (0 < lambda_c < 1)
 %       meas_noise_enable = false    % Enable measurement noise injection
 %       meas_noise_std = [0.01; 0.01; 0.01]  % Noise std [um] per axis
-%       a_pd        = 0.1       % EMA smoothing for deterministic component
-%       a_prd       = 0.1       % EMA smoothing for random-deterministic component
-%       a_cov       = 0.1       % EMA smoothing for covariance estimation
+%       a_pd        = 0.05      % LP for δp_md mean (v2) / deterministic removal (v1)
+%       a_prd       = 0.05      % HP residual mean (v1 only)
+%       a_cov       = 0.05      % EWMA for σ²_δxr variance / covariance estimation
 %       epsilon     = 0.01      % Anisotropy threshold for theta measurement
+%       sigma2_w_fD = 0         % f_D random-walk innovation variance [pN^2/step]
+%                                 (Phase 5 §5.4, eq17_7state v2 only)
 %
 %       % Thermal
 %       thermal_enable = true   % Enable thermal force
@@ -64,10 +66,22 @@ function config = user_config()
     config.meas_noise_std = [0.01; 0.01; 0.01];
 
     % EKF estimation parameters (IIR single-layer HP + variance)
-    config.a_pd = 0.05;             % EMA smoothing for LP (deterministic removal)
-    config.a_prd = 0.05;            % EMA smoothing for HP residual mean
-    config.a_cov = 0.05;            % EMA smoothing for HP residual mean-square
+    %   v1 (legacy 7-state) HP-LP: a_pd  = LP coefficient (deterministic removal)
+    %                              a_prd = HP residual mean coefficient
+    %                              a_cov = HP residual mean-square coefficient
+    %   v2 (eq17_7state, design_v2 §6): a_pd  = LP for δp_md mean estimation
+    %                                   a_cov = EWMA for σ²_δxr variance estimation
+    %                                   (a_prd unused in v2)
+    %   Phase 0 §6 lock: v2 baseline a_pd = a_cov = 0.05.
+    config.a_pd = 0.05;             % LP for δp_md mean (v2) / deterministic removal (v1)
+    config.a_prd = 0.05;            % HP residual mean (v1 only; ignored by eq17_7state)
+    config.a_cov = 0.05;            % EWMA for σ²_δxr variance estimation (v1+v2)
     config.epsilon = 0.01;          % Anisotropy threshold for theta measurement
+
+    % Wave 2D: f_D random-walk innovation variance (Phase 5 §5.4)
+    %   Used in Q55,i = a_nom_axis^2 * sigma2_w_fD (eq17_7state v2 only).
+    %   Baseline 0 → Q55 = 0 (no f_D process noise injection).
+    config.sigma2_w_fD = 0;         % [pN^2/step], Phase 5 §5.4 baseline 0
 
     % 7-state EKF specific parameters
     config.beta = 0.5;                  % Disturbance/gain coupling parameter

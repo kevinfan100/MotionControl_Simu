@@ -6,14 +6,16 @@ function ctrl = calc_ctrl_params(config, constants)
 %   Inputs:
 %       config    - User config with fields: ctrl_enable, lambda_c,
 %                   meas_noise_enable, meas_noise_std,
-%                   a_pd, a_prd, a_cov, epsilon
+%                   a_pd, a_prd, a_cov, epsilon,
+%                   sigma2_w_fD (optional, default 0)
 %       constants - Physical constants with fields: gamma_N, Ts, k_B, T
 %
 %   Outputs:
 %       ctrl - Struct with fields:
 %           enable, lambda_c, gamma, Ts,
 %           meas_noise_enable, meas_noise_std, meas_noise_seed,
-%           a_pd, a_prd, a_cov, epsilon, g_cov, sigma2_deltaXT, k_B, T
+%           a_pd, a_prd, a_cov, epsilon, g_cov, sigma2_deltaXT, k_B, T,
+%           sigma2_w_fD
 
     Ts = constants.Ts;
 
@@ -52,5 +54,14 @@ function ctrl = calc_ctrl_params(config, constants)
     ctrl.Pf_init_diag = config.Pf_init_diag;
     ctrl.Qz_diag_scaling = config.Qz_diag_scaling;
     ctrl.Rz_diag_scaling = config.Rz_diag_scaling;
+
+    % eq17_7state v2 parameters (Wave 2D; Phase 5 §5.4)
+    %   sigma2_w_fD: f_D random-walk innovation variance [pN^2/step]
+    %                used in Q55,i = a_nom_axis^2 * sigma2_w_fD.
+    if isfield(config, 'sigma2_w_fD')
+        ctrl.sigma2_w_fD = config.sigma2_w_fD;
+    else
+        ctrl.sigma2_w_fD = 0;
+    end
 
 end

@@ -129,7 +129,7 @@ function params = calc_simulation_params(config)
     assignin('base', 'TrajBus', TrajBus);
 
     % --- CtrlBus ---
-    elems_ctrl = Simulink.BusElement.empty(0, 22);
+    elems_ctrl = Simulink.BusElement.empty(0, 23);
     elems_ctrl(1) = Simulink.BusElement; elems_ctrl(1).Name = 'enable';
     elems_ctrl(1).Dimensions = [1 1]; elems_ctrl(1).DataType = 'double';
     elems_ctrl(2) = Simulink.BusElement; elems_ctrl(2).Name = 'lambda_c';
@@ -174,6 +174,9 @@ function params = calc_simulation_params(config)
     elems_ctrl(21).Dimensions = [7 1]; elems_ctrl(21).DataType = 'double';
     elems_ctrl(22) = Simulink.BusElement; elems_ctrl(22).Name = 'Rz_diag_scaling';
     elems_ctrl(22).Dimensions = [2 1]; elems_ctrl(22).DataType = 'double';
+    % Wave 2D: eq17_7state v2 — f_D random-walk innovation variance [pN^2/step]
+    elems_ctrl(23) = Simulink.BusElement; elems_ctrl(23).Name = 'sigma2_w_fD';
+    elems_ctrl(23).Dimensions = [1 1]; elems_ctrl(23).DataType = 'double';
 
     CtrlBus = Simulink.Bus;
     CtrlBus.Elements = elems_ctrl;

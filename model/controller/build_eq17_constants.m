@@ -19,6 +19,9 @@ function ctrl_const = build_eq17_constants(opts)
 %       opts.h_bar_safe   - safe h_bar threshold               (default 1.5)
 %       opts.d            - measurement delay (steps)          (default 2)
 %       opts.a_cov        - IIR variance estimator weight      (default 0.05)
+%       opts.a_pd         - IIR LP weight for δp_md mean       (default = a_cov)
+%       opts.sigma2_w_fD  - f_D random-walk innovation var.    (default 0)
+%                           [pN^2/step], used in Q55,i = a_nom_axis^2 * sigma2_w_fD
 %
 %   --------- Outputs (struct ctrl_const) ---------
 %       lambda_c          - copied from opts
@@ -33,6 +36,8 @@ function ctrl_const = build_eq17_constants(opts)
 %       h_bar_safe        - copied
 %       d                 - copied
 %       a_cov             - copied
+%       a_pd              - copied (defaults to a_cov for backward compat)
+%       sigma2_w_fD       - copied (defaults to 0)
 %       meta              - struct with derivation reference and option tag
 %
 %   --------- IF_var formula ---------
@@ -75,6 +80,12 @@ function ctrl_const = build_eq17_constants(opts)
     end
     if ~isfield(opts, 'a_cov') || isempty(opts.a_cov)
         opts.a_cov = 0.05;
+    end
+    if ~isfield(opts, 'a_pd') || isempty(opts.a_pd)
+        opts.a_pd = opts.a_cov;          % default same as a_cov for backward compat
+    end
+    if ~isfield(opts, 'sigma2_w_fD') || isempty(opts.sigma2_w_fD)
+        opts.sigma2_w_fD = 0;            % Phase 5 §5.4 baseline 0
     end
 
     % ------------------------------------------------------------
@@ -200,6 +211,8 @@ function ctrl_const = build_eq17_constants(opts)
     ctrl_const.h_bar_safe      = opts.h_bar_safe;
     ctrl_const.d               = d;
     ctrl_const.a_cov           = opts.a_cov;
+    ctrl_const.a_pd            = opts.a_pd;
+    ctrl_const.sigma2_w_fD     = opts.sigma2_w_fD;
 
     ctrl_const.meta = struct( ...
         'derivation', 'design.md §9.1-9.2', ...

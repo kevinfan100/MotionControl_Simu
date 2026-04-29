@@ -1,5 +1,5 @@
 function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, params, ctrl_const)
-%MOTION_CONTROL_LAW_EQ17_7STATE Per-axis 7-state EKF controller (paper 2023 Eq.17)
+%MOTION_CONTROL_LAW_EQ17_7STATE Per-axis 7-state EKF controller (paper 2023 Eq.17, v2)
 %
 %   [f_d, ekf_out]       = motion_control_law_eq17_7state(del_pd, pd, p_m, params, ctrl_const)
 %   [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, params, ctrl_const)
@@ -16,17 +16,24 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
 %
 %   Implements 3 independent 7-state EKF controllers (one per axis x, y, z)
 %   following paper 2023 Eq.(17) with d-step delay-compensated control law,
-%   adaptive Q33/Q77, and 3-guard adaptive R_2.
+%   Σ f_d[k-i] term retained outside the (1/â_x) bracket (Strategy 1),
+%   x̂_D additive disturbance compensation, adaptive Q33/Q55/Q77, and
+%   3-guard adaptive R_2.
 %
-%   References (see reference/eq17_analysis/design.md):
-%       §3   Eq.17 control law
-%       §5   F_e (only entry (3,6) = -f_d is time-varying)
-%       §6   Measurement architecture (H matrix, d-step delay)
-%       §8.2 Q33 = 4 kBT * a_hat (Path C strict)
-%       §8.4 Q77 (Path B full Var(w_a) with K_h, K_h')
-%       §9.4 R_2_intrinsic = a_cov * IF_var * (a_hat + xi)^2
-%       §9.5 R_2_eff = R_2_intrinsic + 5 * Q77 (d=2)
-%       §9.9 3-guard adaptive R_2
+%   v2 differences from v1 (per Phase 1 §4.2 + Phase 5 + Phase 6):
+%       * Σ_{i=1..d} f_d[k-i] retained at paper position (outside 1/â_x bracket)
+%       * F_e(3,4) = -(1 + d·(1-λ_c))  (= -1.6 for d=2, λ_c=0.7), Eq.19 form
+%       * Q55 closed form (a_nom_axis² · σ²_w_fD), default 0
+%       * Wall-aware â_x[0] seeding via h_bar_init clamp
+%       * Per-axis Pf_init derived from â_x_init
+%       * Warmup: 2-step counter (NOT 320 steps); f_d=0 + IIR-only; seed δp_hat at end
+%
+%   References:
+%       reference/eq17_analysis/phase1_Fe_derivation.md  §4.2, §10 (control law + F_e)
+%       reference/eq17_analysis/phase2_C_dpmr_C_n_derivation.md  (C_dpmr/C_n/IF_var/ξ)
+%       reference/eq17_analysis/phase5_Q_matrix_derivation.md   (Q33/Q55/Q77)
+%       reference/eq17_analysis/phase6_R_matrix_derivation.md   (R(1,1)/R(2,2)/3-guard)
+%       reference/eq17_analysis/design_v2.md §4 (control law) + §6 (a_cov=0.05)
 %
 %   State vector per axis (paper convention):
 %       x_e[k] = [delta_x_1; delta_x_2; delta_x_3; x_D; delta_x_D; a_x; delta_a_x]
@@ -79,7 +86,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     % EKF state per axis: 7x3 matrix (column i = axis i)
     persistent x_e_per_axis
 
-    % Covariance per axis: stored as cell {3} of 7x7 (cleaner than 7x7x3)
+    % Covariance per axis: cell{3} of 7x7 (cleaner than 7x7x3)
     persistent P_per_axis
 
     % IIR states (per axis, 3x1 vectors)
@@ -89,13 +96,19 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     % Trajectory delay buffers — to access pd[k-1], pd[k-2]
     persistent pd_km1 pd_km2
 
+    % Past control buffers — for Σ_{i=1..d} f_d[k-i]  (Phase 1 §4.2)
+    persistent f_d_km1 f_d_km2
+
+    % Warmup step counter (Phase 8 §A: 2-step, f_d=0, IIR runs, EKF skip)
+    persistent warmup_count
+
     % Step counter (1-based, increments after first init call)
     persistent k_step
 
     % Cached scalars / vectors (extracted once at init)
     persistent initialized
     persistent lambda_c d_delay Ts kBT R_radius
-    persistent a_var a_cov
+    persistent a_pd a_var a_cov sigma2_w_fD
     persistent C_dpmr C_n IF_var xi_per_axis delay_R2_factor
     persistent t_warmup_kf h_bar_safe
     persistent sigma2_n_s          % 3x1 [um^2]
@@ -103,6 +116,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     persistent enable_wall          % logical, fall back to flat (h_bar=inf) if false
     persistent w_hat_n pz_wall      % wall geometry
     persistent R_OFF                % large-R fallback for guarded y_2
+    persistent a_x_init             % 3x1 wall-aware initial a_x [um/pN]
+    persistent a_nom_per_axis       % 3x1 nominal a_x per axis (used in Q55) [um/pN]
 
     % ------------------------------------------------------------------
     % [0] Initialization on first call
@@ -128,7 +143,20 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         t_warmup_kf     = ctrl_const.t_warmup_kf;
         h_bar_safe      = ctrl_const.h_bar_safe;
         a_cov           = ctrl_const.a_cov;
-        a_var           = a_cov;                           % §6: dx_bar_m EWMA uses same coefficient
+        % Wave 2D §5.6 fix: a_pd (LP for δp_md mean) is now separate from a_cov
+        % (EWMA for σ²_δxr). If ctrl_const.a_pd is missing (legacy callers),
+        % fall back to a_cov for backward compatibility.
+        if isfield(ctrl_const, 'a_pd') && ~isempty(ctrl_const.a_pd)
+            a_pd = ctrl_const.a_pd;
+        else
+            a_pd = a_cov;
+        end
+        a_var = a_pd;                                       % alias used in IIR LP update
+        if isfield(ctrl_const, 'sigma2_w_fD') && ~isempty(ctrl_const.sigma2_w_fD)
+            sigma2_w_fD = ctrl_const.sigma2_w_fD;          % Phase 5 §5.4 baseline 0
+        else
+            sigma2_w_fD = 0;
+        end
 
         % --- 0C. Wall geometry ---
         if isfield(params, 'wall')
@@ -150,39 +178,71 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         h_dot_max  = amp_um * omega;        % [um/s]
         h_ddot_max = amp_um * omega^2;      % [um/s^2]
 
-        % --- 0E. Initialize EKF state ---
-        a_nom = Ts / gamma_N;               % [um/pN] nominal motion gain
-        x_e_per_axis = zeros(7, 3);
-        x_e_per_axis(6, :) = a_nom;          % seed a_x ~ a_nom for all axes
+        % --- 0E. Wall-aware â_x[0] init (Phase 8 §G, sigma-ratio-filter pattern) ---
+        a_nom = Ts / gamma_N;               % [um/pN] free-space nominal motion gain
+        if enable_wall && isfield(params, 'common') && isfield(params.common, 'p0')
+            p0_init = params.common.p0(:);
+            h_init_um  = dot(p0_init, w_hat_n) - pz_wall;          % [um]
+            h_bar_init = max(h_init_um / R_radius, 1.001);          % clamp to avoid c blowup
+            [c_para_init, c_perp_init] = calc_correction_functions(h_bar_init);
+            % Per-axis: x,y use c_para; z uses c_perp (under standard w_hat = [0;0;1]).
+            % For arbitrary w_hat, this still maps tangential-tangential-normal axes.
+            a_x_init = [a_nom / c_para_init; ...
+                        a_nom / c_para_init; ...
+                        a_nom / c_perp_init];
+        else
+            a_x_init = [a_nom; a_nom; a_nom];
+        end
+        a_nom_per_axis = a_x_init;           % nominal Category-B a per axis (for Q55)
 
-        % Covariance init from existing config (3 independent 7x7)
+        % --- 0F. Initialize EKF state ---
+        x_e_per_axis = zeros(7, 3);
+        x_e_per_axis(6, :) = a_x_init.';    % seed a_x per axis (wall-aware)
+
+        % --- 0G. Pf_init per-axis (Phase 8 §7) ---
+        % Phase 8 §7 spec: per-axis Pf_init derived from a_x_init.
+        %   sigma2_dXT_axis_init = 4·k_B·T·a_x_init_axis
+        %
+        %   Pf_init = diag(0,                        slot 1 (δx[k-2] pre-drift)
+        %                  σ²_dXT_axis_init,         slot 2 (δx[k-1], 1-step drift)
+        %                  2·σ²_dXT_axis_init,       slot 3 (δx[k], 2-step drift)
+        %                  0,                        slot 4 (x_D baseline)
+        %                  0,                        slot 5 (δx_D baseline)
+        %                  1e-5,                     slot 6 (a_x init uncertainty)
+        %                  0)                        slot 7 (δa_x baseline)
+        %
         % NOTE: output var `diag` shadows MATLAB's diag() builtin in this
         % function, so we construct diagonal matrices via an explicit loop.
-        Pf_diag = params.ctrl.Pf_init_diag;  % 7x1
         P_per_axis = cell(3, 1);
-        Pf_init_mat = zeros(7);
-        for ii = 1:7
-            Pf_init_mat(ii, ii) = Pf_diag(ii);
-        end
         for ax = 1:3
-            P_per_axis{ax} = Pf_init_mat;
+            sigma2_dXT_ax = 4 * kBT * a_x_init(ax);
+            Pf_ax = zeros(7);
+            Pf_ax(2, 2) = sigma2_dXT_ax;
+            Pf_ax(3, 3) = 2 * sigma2_dXT_ax;
+            Pf_ax(6, 6) = 1e-5;
+            P_per_axis{ax} = Pf_ax;
         end
 
-        % --- 0F. IIR states ---
+        % --- 0H. IIR states ---
         dx_bar_m       = zeros(3, 1);
         sigma2_dxr_hat = zeros(3, 1);
 
-        % --- 0G. Trajectory delay buffers ---
-        pd_km1 = pd;
-        pd_km2 = pd;
+        % --- 0I. Trajectory + control delay buffers ---
+        pd_km1  = pd;
+        pd_km2  = pd;
+        f_d_km1 = zeros(3, 1);
+        f_d_km2 = zeros(3, 1);
 
-        % --- 0H. Misc ---
+        % --- 0J. Warmup counter (Phase 8 §A: 2-step) ---
+        warmup_count = 2;
+
+        % --- 0K. Misc ---
         k_step = 1;                          % first user call counts as k=1
-        R_OFF  = 1e10;                       % gate-off variance (design.md §9.9)
+        R_OFF  = 1e10;                       % gate-off variance (Phase 6 §5)
 
-        % --- 0I. First call returns zeros (no f_d yet) ---
+        % --- 0L. First call returns zeros (no f_d yet) ---
         f_d = zeros(3, 1);
-        ekf_out = [a_nom; a_nom; a_nom; 0];
+        ekf_out = [a_x_init(1); a_x_init(3); a_x_init(2); 0];
         if nargout >= 3
             diag = empty_diag();
             diag.f_d = f_d;
@@ -227,33 +287,18 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         h_bar = Inf;                          % flat / isotropic Stokes
     end
 
-    % ------------------------------------------------------------------
-    % [1] Eq.17 control law (per axis)  — see §3
-    %
-    %   f_d[k] = (1/a_hat) * { x_d[k+1] - lambda_c*x_d[k] - (1-lambda_c)*x_d[k-d]
-    %                        + (1-lambda_c)*delta_x_m[k] - x_D_hat }
-    %
-    % Note: a_hat carried over from previous step's posterior update (a_hat[k|k-1]
-    % from the integrated-random-walk forecast). On the very first non-init step
-    % (k_step == 1 here), a_hat == a_nom seeded above.
-    % ------------------------------------------------------------------
     one_minus_lc = 1 - lambda_c;
-    f_d = (1 ./ a_hat) .* ( ...
-            pd_kp1 ...
-          - lambda_c * pd ...
-          - one_minus_lc * pd_km_d ...
-          + one_minus_lc * delta_x_m ...
-          - xD_hat_for_ctrl );
 
     % ------------------------------------------------------------------
-    % [2] IIR a_xm  (paper 2025 Eq.9-13)  — per axis
+    % [1] IIR a_xm  (paper 2025 Eq.9-13)  — per axis
+    %   Always run during warmup (Phase 8 §A: IIR LP / EWMA stay alive)
     %
     %   dx_bar_m[k+1] = (1 - a_var) * dx_bar_m[k] + a_var * delta_x_m[k]
     %   dx_r[k]       = delta_x_m[k] - dx_bar_m[k]              (centered)
     %   sigma2_dxr_hat[k+1] = (1 - a_cov) * sigma2_dxr_hat[k]
     %                       + a_cov * (dx_r^2[k] - dx_bar_r_sq[k])
     %     (steady-state dx_bar_r ≈ 0; we keep dx_r^2 directly since
-    %      dx_r is already centered, matching design.md §9.3.)
+    %      dx_r is already centered, matching design_v2.md §3.1.)
     %
     %   a_xm[k] = (sigma2_dxr_hat[k] - C_n * sigma2_n_s) / (C_dpmr * 4 kBT)
     % ------------------------------------------------------------------
@@ -261,14 +306,104 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     dx_bar_m_new = (1 - a_var) * dx_bar_m + a_var * delta_x_m;
     dx_r = delta_x_m - dx_bar_m_new;                          % centered residual
 
-    % Variance EWMA — δ̄x_r ~ 0 in steady state (§9.3 caveat, ~2.5% bias OK)
+    % Variance EWMA — δ̄x_r ~ 0 in steady state (~2.5% bias OK)
     sigma2_dxr_hat_new = (1 - a_cov) * sigma2_dxr_hat + a_cov * dx_r.^2;
 
     den_axm = C_dpmr * 4 * kBT;                               % [pN*um] scaled
     a_xm = (sigma2_dxr_hat_new - C_n * sigma2_n_s) / den_axm; % 3x1 [um/pN]
 
     % ------------------------------------------------------------------
-    % [3] Adaptive Q and R (per axis)  — see §8 and §9
+    % [2] Warmup gate (Phase 8 §A: 2-step; f_d=0; EKF skipped; IIR active)
+    % ------------------------------------------------------------------
+    in_warmup = (warmup_count > 0);
+
+    if in_warmup
+        % --- During warmup: NO control output, NO EKF update ---
+        f_d = zeros(3, 1);
+
+        % If this is the LAST warmup step, seed EKF δp_hat states (slots 1,2,3)
+        % from current IIR LP mean estimate (dx_bar_m_new). At the moment of
+        % warmup-end, dx_bar_m_new already holds the converged LP mean.
+        if warmup_count == 1
+            for ax = 1:3
+                x_e_per_axis(1, ax) = dx_bar_m_new(ax);    % δp_1 = δx[k-2] seed
+                x_e_per_axis(2, ax) = dx_bar_m_new(ax);    % δp_2 = δx[k-1] seed
+                x_e_per_axis(3, ax) = dx_bar_m_new(ax);    % δp_3 = δx[k] seed
+            end
+        end
+
+        % Update IIR persistent state
+        dx_bar_m       = dx_bar_m_new;
+        sigma2_dxr_hat = sigma2_dxr_hat_new;
+
+        % Shift trajectory delay buffers (controller sees pd[k] this call)
+        pd_km2 = pd_km1;
+        pd_km1 = pd;
+
+        % Shift past-f_d buffers (f_d=0 during warmup, so just propagate zeros)
+        f_d_km2 = f_d_km1;
+        f_d_km1 = f_d;
+
+        % Decrement warmup
+        warmup_count = warmup_count - 1;
+        k_step = k_step + 1;
+
+        % Output
+        a_hat_post = x_e_per_axis(6, :)';
+        if enable_wall
+            h_bar_now = h_bar;
+        else
+            h_bar_now = 0;
+        end
+        ekf_out = [a_hat_post(1); a_hat_post(3); a_hat_post(2); h_bar_now];
+
+        if nargout >= 3
+            diag = empty_diag();
+            diag.f_d                  = f_d;
+            diag.sigma2_dxr_hat       = sigma2_dxr_hat_new;
+            diag.a_xm                 = a_xm;
+            diag.delta_x_m            = delta_x_m;
+            diag.h_bar                = h_bar;
+            diag.x_D_hat              = x_e_per_axis(4, :).';
+            diag.delta_a_hat          = x_e_per_axis(7, :).';
+            % gate flags / KF outputs left as default zeros (no EKF this step)
+        end
+        return;
+    end
+
+    % ------------------------------------------------------------------
+    % [3] Eq.17 control law (per axis)  — Phase 1 §4.2 paper form
+    %
+    %   f_d[k] = (1/â_x[k]) · { x_d[k+1] − λ_c·x_d[k] − (1−λ_c)·x_d[k−d]
+    %                          + (1−λ_c)·δx_m[k] }
+    %          − (1−λ_c) · Σ_{i=1..d} f_d[k−i]            ← OUTSIDE 1/â_x bracket
+    %          − x̂_D[k] / â_x[k]                          ← additive disturbance comp.
+    %
+    %   For d=2: Σ = f_d_km1 + f_d_km2.
+    %
+    %   x̂_D placement: as separate term −x̂_D/â_x outside the kinematic bracket
+    %   (Phase 0 §4.2 algebraic equivalence). â_x carries over from previous
+    %   posterior; on first post-warmup step uses warmup-end posterior.
+    % ------------------------------------------------------------------
+    if d_delay == 2
+        sum_fd_past = f_d_km1 + f_d_km2;
+    elseif d_delay == 1
+        sum_fd_past = f_d_km1;
+    else
+        sum_fd_past = zeros(3, 1);
+    end
+
+    inv_a_hat = 1 ./ a_hat;
+    f_d = inv_a_hat .* ( ...
+                pd_kp1 ...
+              - lambda_c * pd ...
+              - one_minus_lc * pd_km_d ...
+              + one_minus_lc * delta_x_m ) ...
+          - one_minus_lc * sum_fd_past ...
+          - xD_hat_for_ctrl .* inv_a_hat;
+
+    % ------------------------------------------------------------------
+    % [4] Adaptive Q and R (per axis)  — Phase 5 / Phase 6
     % ------------------------------------------------------------------
     % Per-axis K_h, K_h' from h_bar
     %   x, y axes  ->  K_h_para, K_h_prime_para
@@ -290,23 +425,26 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     % Build Q (7x7) and R (2x2) per axis
     Q_per_axis = cell(3, 1);
     R_per_axis = cell(3, 1);
+    Q77_per_axis = zeros(3, 1);     % cached for R(2,2) assembly
     for ax = 1:3
         a_hat_i = a_hat(ax);
         K_h_i   = K_h_axis(ax);
         K_h_p_i = K_h_pr_axis(ax);
 
-        % Q33,i = 4 kBT * a_hat,i  (Path C strict, §8.2)
+        % Q33,i = 4 kBT * a_hat,i  (Path C strict, Phase 5 §4.2)
         Q33_i = 4 * kBT * a_hat_i;
 
-        % Q55 = 0  (simulation, §8.3)
-        Q55_i = 0;
+        % Q55,i = a_nom_axis^2 * sigma2_w_fD  (Phase 5 §5.4 + §6.2 a_nom Cat. B)
+        % Baseline σ²_w_fD = 0 → Q55 = 0.
+        Q55_i = a_nom_per_axis(ax)^2 * sigma2_w_fD;
 
         % Q77,i = dt^4 * a_hat^2 * { (K_h^2 - K_h')^2 * h_dot_max^4 / (8 R^4)
         %                          + K_h^2          * h_ddot_max^2 / (2 R^2) }
-        % (§8.4)
+        % (Phase 5 §6.5 Term A + Term B)
         term_A = (K_h_i^2 - K_h_p_i)^2 * h_dot_max^4 / 8 * R4_inv;
         term_B = K_h_i^2               * h_ddot_max^2 / 2 * R2_inv;
         Q77_i = Ts4 * a_hat_i^2 * (term_A + term_B);
+        Q77_per_axis(ax) = Q77_i;
 
         Q_i = zeros(7);
         Q_i(3, 3) = Q33_i;
@@ -314,15 +452,15 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         Q_i(7, 7) = Q77_i;
         Q_per_axis{ax} = Q_i;
 
-        % R(1,1) = sigma2_n_s,i  (§9.6)
+        % R(1,1) = sigma2_n_s,i  (Phase 6 §3)
         R11_i = sigma2_n_s(ax);
 
-        % R(2,2) intrinsic = a_cov * IF_var * (a_hat + xi)^2  (§9.4)
+        % R(2,2) intrinsic = a_cov * IF_var * (a_hat + xi)^2  (Phase 6 §4.1)
         R2_intrinsic_i = a_cov * IF_var * (a_hat_i + xi_per_axis(ax))^2;
-        % R(2,2) eff = intrinsic + delay_R2_factor * Q77  (§9.5)
+        % R(2,2) eff = intrinsic + delay_R2_factor * Q77  (Phase 6 §4.3)
         R2_eff_i = R2_intrinsic_i + delay_R2_factor * Q77_i;
 
-        % --- 3-guard adaptive R_2 (§9.9) -------------------------------
+        % --- 3-guard adaptive R_2 (Phase 6 §5) ----------------------
         t_now = (k_step - 1) * Ts;                  % real time at step k
         G1 = (t_now < t_warmup_kf);                 % warm-up
         G2 = ((sigma2_dxr_hat_new(ax) - C_n * sigma2_n_s(ax)) <= 0);  % low SNR
@@ -342,10 +480,13 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     end
 
     % ------------------------------------------------------------------
-    % [4] EKF predict + update per axis  — see §5, §6
+    % [5] EKF predict + update per axis  — Phase 1 §10
     %
-    %   F_e (7x7), only (3,6) is time-varying:  F_e(3,6) = -f_d[k]
-    %   H   (2x7), (2,7) = -d_delay
+    %   F_e (7x7), Eq.19 form (Phase 1 §10.4):
+    %     Row 3: [0, 0, λ_c, -(1+d·(1-λ_c)), 0, -f_d[k], 0]
+    %     other rows: structural (shift / RW Jordan blocks)
+    %
+    %   H (2x7), (2,7) = -d_delay
     % ------------------------------------------------------------------
     H_full = [1 0 0 0 0 0       0; ...
               0 0 0 0 0 1 -d_delay];
@@ -368,13 +509,13 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     % consistent here). Sequential 1D updates avoid joint S-matrix
     % conditioning issues when R(2,2) = R_OFF.
     t_now = (k_step - 1) * Ts;
-    % Optional debug flag — F_e Row 3 form switch (default 'eq19' = backward compat)
-    %   'eq19' (default): F_e(3,1)=0, (3,3)=lambda_c (Eq.19 form, design.md §5)
-    %   'eq18'           : F_e(3,1)=-(1-lambda_c), (3,3)=1 (Eq.18 direct form)
+    % Optional debug flag — F_e Row 3 form switch (default 'eq19' = v2 spec)
+    %   'eq19' (default): F_e(3,1)=0, (3,3)=λ_c, (3,4)=-(1+d·(1-λ_c))
+    %   'eq18'           : F_e(3,1)=-(1-λ_c), (3,3)=1, (3,4)=-1
     use_eq18 = isfield(ctrl_const, 'F_e_form') && strcmpi(ctrl_const.F_e_form, 'eq18');
     for ax = 1:3
         % F_e takes the current f_d[k] computed above (only (3,6) varies)
-        F_e = build_F_e(lambda_c, f_d(ax), use_eq18);
+        F_e = build_F_e(lambda_c, d_delay, f_d(ax), use_eq18);
 
         x_curr = x_e_per_axis(:, ax);
         P_curr = P_per_axis{ax};
@@ -447,10 +588,14 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     end
 
     % ------------------------------------------------------------------
-    % [5] Bookkeeping: shift trajectory delay buffer, IIR states, k_step
+    % [6] Bookkeeping: shift delay buffers, IIR states, k_step
+    %     (Σf_d shift: f_d_km2 <- f_d_km1; f_d_km1 <- f_d_current)
     % ------------------------------------------------------------------
     pd_km2 = pd_km1;
     pd_km1 = pd;
+
+    f_d_km2 = f_d_km1;
+    f_d_km1 = f_d;
 
     dx_bar_m       = dx_bar_m_new;
     sigma2_dxr_hat = sigma2_dxr_hat_new;
@@ -458,7 +603,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     k_step = k_step + 1;
 
     % ------------------------------------------------------------------
-    % [6] Output
+    % [7] Output
     % ------------------------------------------------------------------
     a_hat_post = x_e_per_axis(6, :)';   % updated a_hat (for diagnostic)
     if enable_wall
@@ -472,7 +617,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
                h_bar_now];          % current h_bar (slot 4)
 
     % ------------------------------------------------------------------
-    % [7] Optional diagnostic struct (only computed if requested)
+    % [8] Optional diagnostic struct (only computed if requested)
     % ------------------------------------------------------------------
     if nargout >= 3
         % Per-axis posterior covariance entries
@@ -505,40 +650,48 @@ end
 
 %% =================== Local Helper ===================
 
-function F_e = build_F_e(lambda_c, f_d_i, use_eq18)
-%BUILD_F_E Build 7x7 augmented system matrix (per axis).
+function F_e = build_F_e(lambda_c, d_delay, f_d_i, use_eq18)
+%BUILD_F_E Build 7x7 augmented system matrix (per axis), v2.
 %
-%   See design.md §5 — only (3,6) is time-varying.
+%   See phase1_Fe_derivation.md §10 — only (3,6) is time-varying.
 %
 %   use_eq18 (optional, default false) selects Row 3 form:
-%       false (Eq.19): (3,1)=0, (3,3)=lambda_c
-%       true  (Eq.18): (3,1)=-(1-lambda_c), (3,3)=1
+%       false (Eq.19, v2 default):
+%           Row 3 = [0, 0, λ_c, -(1+d·(1-λ_c)), 0, -f_d_i, 0]
+%           For d=2, λ_c=0.7: F_e(3,4) = -1.6
+%       true  (Eq.18 direct):
+%           Row 3 = [-(1-λ_c), 0, 1, -1, 0, -f_d_i, 0]
 %
-%   The Eq.18 form matches the direct closed-loop dynamics for d=2 with
-%   correct sensor delay. Eq.19 form is an algebraic rewrite that absorbs
-%   the -(1-lambda_c)*delta_x[k-d] term into the noise (creating MA(2)).
-%   Eq.19 is used in design.md §5 as the analytical convention.
+%   Eq.19 form (default) is the v2 paper-aligned algebraic rearrangement
+%   (Phase 1 §6) — Σf_d substitution introduces past x_D contribution that
+%   scales F_e(3,4) by (1+d·(1-λ_c)) under Option I (slowly-varying x_D).
+%
+%   Eq.18 is preserved for testing/comparison; same dynamics, different
+%   partition.
 
-    if nargin < 3 || isempty(use_eq18)
+    if nargin < 4 || isempty(use_eq18)
         use_eq18 = false;
     end
 
     if use_eq18
-        F_e = [0 1 0        0  0   0       0; ...
-               0 0 1        0  0   0       0; ...
-              -(1-lambda_c) 0 1   -1 0  -f_d_i 0; ...
-               0 0 0        1  1   0       0; ...
-               0 0 0        0  1   0       0; ...
-               0 0 0        0  0   1       1; ...
-               0 0 0        0  0   0       1];
+        F_e = [0           1 0        0  0   0       0; ...
+               0           0 1        0  0   0       0; ...
+              -(1-lambda_c) 0 1       -1  0  -f_d_i  0; ...
+               0           0 0        1  1   0       0; ...
+               0           0 0        0  1   0       0; ...
+               0           0 0        0  0   1       1; ...
+               0           0 0        0  0   0       1];
     else
-        F_e = [0 1 0        0  0   0       0; ...
-               0 0 1        0  0   0       0; ...
-               0 0 lambda_c -1 0  -f_d_i   0; ...
-               0 0 0        1  1   0       0; ...
-               0 0 0        0  1   0       0; ...
-               0 0 0        0  0   1       1; ...
-               0 0 0        0  0   0       1];
+        % Eq.19 form (v2 default): F_e(3,4) = -(1 + d·(1-λ_c))
+        % For d=2, λ_c=0.7  -> -(1 + 2·0.3) = -1.6
+        Fe34 = -(1 + d_delay * (1 - lambda_c));
+        F_e = [0 1 0        0     0   0       0; ...
+               0 0 1        0     0   0       0; ...
+               0 0 lambda_c Fe34  0  -f_d_i   0; ...
+               0 0 0        1     1   0       0; ...
+               0 0 0        0     1   0       0; ...
+               0 0 0        0     0   1       1; ...
+               0 0 0        0     0   0       1];
     end
 end
 

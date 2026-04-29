@@ -82,6 +82,14 @@ function simOut = run_pure_simulation(config, opts)
     eq17_opts.h_bar_safe  = 1.5;
     eq17_opts.d           = 2;
     eq17_opts.a_cov       = config.a_cov;
+    % Wave 2D: separate a_pd (LP for δp_md mean) from a_cov (EWMA for σ²_δxr).
+    eq17_opts.a_pd        = config.a_pd;
+    % Wave 2D: f_D random-walk innovation variance (Phase 5 §5.4 Q55, baseline 0)
+    if isfield(config, 'sigma2_w_fD')
+        eq17_opts.sigma2_w_fD = config.sigma2_w_fD;
+    else
+        eq17_opts.sigma2_w_fD = 0;
+    end
     ctrl_const = build_eq17_constants(eq17_opts);
 
     % ------------------------------------------------------------------
@@ -98,14 +106,22 @@ function simOut = run_pure_simulation(config, opts)
     p0 = P.common.p0;                     % 3x1 [um]
     p_curr = p0;                          % continuous state at sample boundary
 
-    % Sensor-delay buffer of length d (=2). Newest at end, oldest at index 1.
-    % Initial condition matches Simulink Delay(2, Ts) IC=p0.
-    % NOTE: investigation 2026-04-29 found that buffer length d effectively
-    % implements d-1 delay; tentative fix was buffer length d+1 but caused
-    % full-driver crash (need to also check controller's internal pd_km1/pd_km2
-    % alignment). Restored to original; further analysis required.
+    % Sensor-delay buffer of length d+1. Newest at end, oldest at index 1.
+    % Initial condition matches Simulink Delay(d, Ts) IC=p0.
+    %
+    % Phase 8 Wave 2D fix (2026-04-29): a buffer of length d implements only
+    % a (d-1)-step delay because the per-step ordering is
+    %   (i)  read p_m_delayed = buffer(:,1)            <-- read BEFORE shift
+    %   (ii) shift: buffer = [buffer(:,2:end), p_m_raw]
+    % so on step k, buffer(:,1) = p_m at step (k - (d-1)).
+    %
+    % To realize a true d-step delay (matches design spec + Simulink Delay(d)),
+    % buffer must hold (d+1) entries: the read at (i) returns p_m at step
+    % (k - d). Agent B's controller has pd_km1/pd_km2 aligned to d=2 (Eq.17 v2).
+    %
+    % References: phase8_eq17_state_audit.md §K item 2; phase8_wave2D_driver.md
     d_delay = ctrl_const.d;
-    p_m_buffer = repmat(p0, 1, d_delay);  % [3 x d]
+    p_m_buffer = repmat(p0, 1, d_delay + 1);  % [3 x (d+1)]
 
     % Trajectory unit-delay buffer:
     %   trajectory_generator returns p_d[k+1]; controller wants pd[k] and
