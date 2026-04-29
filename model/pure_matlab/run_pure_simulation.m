@@ -100,6 +100,10 @@ function simOut = run_pure_simulation(config, opts)
 
     % Sensor-delay buffer of length d (=2). Newest at end, oldest at index 1.
     % Initial condition matches Simulink Delay(2, Ts) IC=p0.
+    % NOTE: investigation 2026-04-29 found that buffer length d effectively
+    % implements d-1 delay; tentative fix was buffer length d+1 but caused
+    % full-driver crash (need to also check controller's internal pd_km1/pd_km2
+    % alignment). Restored to original; further analysis required.
     d_delay = ctrl_const.d;
     p_m_buffer = repmat(p0, 1, d_delay);  % [3 x d]
 
