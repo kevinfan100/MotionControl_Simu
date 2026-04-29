@@ -15,7 +15,7 @@
 |---|---|---|---|---|---|
 | 01 | Math-layer observability rank test | 2026-04-28 | DONE | [task01_math_observability_report.md](../reference/eq17_analysis/task01_math_observability_report.md) | 5-state 10/10 + 7-state 3/3 = 13/13 PASS。雙回授下 7-state rank=7 對任意 f_d 成立（含 f_d=0）。發現 Config A 5-state PE 條件精確邊界：N 窗口下只有 f_d_seq(1..N-3) 影響 (x_D,a_x) 子塊 rank。 |
 | 02 | Q matrix derivation (Path C strict Q33 + Path B Var(w_a) Q77) | 2026-04-29 | DONE | design.md §8 | Q33,i[k] = 4kBT·â_x,i[k] (Path C 嚴格 KF formalism)；Q55=0；Q77,i[k] = Δt⁴·â_x²·{(K_h²−K_h')²·ḣ_max⁴/(8R⁴) + K_h²·ḧ_max²/(2R²)} (Path B 完整 Var(w_a) 含 Term A+B；過 wall Term A 主導 4×Term B)。Route III 簡化版 (Q ∝ (a_nom-â_x)⁴) 評估後駁回（=Term B only，過 wall under-estimate ~80%）。需要實作 K_h, K_h' lookup（Task 04 處理）。 |
-| 03 | R matrix design (incl. IIR-induced σ²_n_axm) | 2026-04-29 | IN-PROGRESS | design.md §9 | Step 3.1 ✓ DONE: σ²_δxr 嚴格從 Eq.19 form ARMA inflation 推得（C_dpmr=3.96, C_n=1.18 for λ_c=0.7，與 paper 2025 Eq.11/12 同形式，非粗糙近似）；ρ_δxr 選 Option A (MA(2) full, IF_var≈4.2)；三決定敲定：ρ_δx 用 Option A、σ²_δxr 用 â_x[k] adaptive、σ²_n_s 用常數 per-axis。下一步 Step 3.2 chi-squared 推 Var(σ̂²_δxr)。 |
+| 03 | R matrix design (incl. IIR-induced σ²_n_axm) | 2026-04-29 | IN-PROGRESS | design.md §9 | Step 3.1-3.4 ✓ DONE: R_2_eff,i[k] = a_cov·IF_var·(â_x,i+ξ_i)² + 5·Q77,i[k]，純二次多項式 in â_x（含 per-axis sensor floor ξ_i=(C_n/C_dpmr)·σ²_n_s/(4kBT)）+ 延遲傳導 5·Q77 (含 wall 動態)。常數：C_dpmr=3.96, C_n=1.18, IF_var≈4.24 (Option A, λ_c=0.7)。Var(σ̂²_δxr) 從 Wick + EWMA 推得 a_cov·IF_var·(σ²_δxr)²。下一步 Step 3.5 自適應 R_2 gate 設計（warm-up / SNR / wall / a_x rate 四條件）。 |
 | 04 | 7-state EKF MATLAB implementation | — | TODO | — | — |
 | 05 | Closed-loop variance Lyapunov | — | TODO | — | — |
 | 06 | End-to-end vs qr 7-state EKF comparison | — | TODO | — | — |
@@ -85,6 +85,21 @@
   - **三決定**敲定：ρ_δx 用 Option A、σ²_δxr 用 â_x[k] adaptive、σ²_n_s 用常數 per-axis
   - **F_e Row 3 的 Eq.18 vs Eq.19 form 釐清**：之前 §5 derivation 看似直接 Jacobian，實際是 Eq.18→Eq.19 代數重排把 −(1−λ_c)·δx[k−d] 項用遞迴吸收進 ε。Eq.18 form: F_e(3,1)=−(1−λ_c), (3,3)=1, ε 白但 Q-R cross；**Eq.19 form (採用): F_e(3,1)=0, (3,3)=λ_c, ε MA(2)**；trade-off 同 §8.2 Step 5
   - 下一步：**Step 3.2 chi-squared** — IIR EWMA 對 (δx_r² − δ̄x_r²) 的方差傳遞，目標 Var(σ̂²_δxr) ≈ a_cov·IF_var·(σ²_δxr)² 公式驗證
+
+- **Task 03 Step 3.2-3.4 — Var(σ̂²_δxr) + R_2 閉式（DONE）**：
+  - **Step 3.2** Var(σ̂²_δxr) = a_cov · IF_var · (σ²_δxr)²
+    - IIR EWMA 線性方差傳遞 + Wick 定理（δx_r ~ N(0,σ²) 嚴格高斯，平方訊號自相關 = 原訊號自相關平方）
+    - 假設：δ̄x_r ≈ 0 穩態（bias ~2.5%）+ small a_cov（IF_eff vs IF_var ~9% over-estimate）
+    - 數值：σ(σ̂²_δxr)/σ²_δxr ≈ 46% (Option A, λ_c=0.7, a_cov=0.05)
+  - **Step 3.3** R_2_intrinsic,i[k] = a_cov · IF_var · {â_x,i + ξ_i}²
+    - 線性反解 a_xm 後得二次多項式
+    - ξ_i := (C_n/C_dpmr)·σ²_n_s,i/(4kBT) 是 per-axis sensor-induced offset
+    - 兩極限：sensor-dominated → 常數 noise floor；thermal-dominated → â_x² 主導
+  - **Step 3.4** R_2_eff,i[k] = R_2_intrinsic,i[k] + 5·Q77,i[k]（d=2 延遲傳導）
+  - **R 矩陣作為 scalar 函數**：R_i(â_x,i[k], h̄[k])，每 step per-axis 算 2×2 matrix（off-diag=0）
+  - **與 Q 並列**：Q33 一次 in â_x，R(2,2) 二次 in â_x，都是 EKF/SDRE adaptive 矩陣
+  - **合計精度限制**：~10–15% 各方向偏差（Eq.19 form 50% P undershoot + δ̄x_r 2.5% bias + IF_eff 9% + thermal/sensor regime crossover），合在 design.md §9.8 表
+  - 下一步：**Step 3.5 自適應 R_2 gate** — warm-up / 低 SNR / 過 wall / a_x 變化太快 四條件偵測
 
 ### 與 paper 對照
 
@@ -166,3 +181,4 @@ qr 分支累積的相關發現，**部分可借用、部分不適用**：
 | 2026-04-28 | (task02-strict) | Q33 退役 Path A′ inflation，改回 Path C 嚴格形式 4kBT·â_x。理由：Path A′ inflation 違反 KF Q-R 獨立與 Q 白噪 cross-step 假設，雖然能讓 KF 預測 σ²_δx 對齊 Eq.22 但是 hack 不是推導。Path C 數學嚴格但 KF P 預測偏小 ~50%（standard KF 對 correlated noise 的已知 trade-off），可接受。 |
 | 2026-04-29 | (task02-q77-fix) | Q77 從 Var(δa_x) 形式 (â_x²·K_h²·(Δt/R)²·σ²_ḣ_max) 升級為 Var(w_a) 完整 Path B 形式 Δt⁴·â_x²·{(K_h²−K_h')²·ḣ_max⁴/(8R⁴)+K_h²·ḧ_max²/(2R²)}。理由：原式對應一階差分 Var(δa_x)，但 KF 模型要求二階差分 Var(w_a) = Δt⁴·Var(ä_x)，原式 over-estimate ~3300×。同時評估 Route III (â_x 多項式形式) 後駁回（過 wall under-estimate 80%, bias loop 風險）。 |
 | 2026-04-29 | (task03-step1) | Task 03 Step 3.1 ✓ DONE — 閉迴路 δx_r 統計嚴格推導（從 Eq.19 form ARMA inflation）：σ²_δxr = C_dpmr·4kBT·â_x + C_n·σ²_n_s（C_dpmr=3.96, C_n=1.18 for λ_c=0.7，與 paper 2025 Eq.11/12 同形式，非粗糙近似）；ρ_δxr(τ) 選 Option A (MA(2) full)，IF_var≈4.2；三決定敲定（ρ_δx Option A、σ²_δxr 用 â_x[k]、σ²_n_s 常數 per-axis）；Step 3.2 chi-squared 推 Var(σ̂²_δxr) 待續。同步補修 design.md §5 Row 3 註解明確 Eq.18 vs Eq.19 form 兩階段（之前只跳到 Eq.19 form 看似直接 Jacobian），fix §8.1 + agent_docs/eq17-architecture.md §5 caption "Path A′ inflation" → "Path C strict" 對齊 §8.2 嚴格形式；新增 design.md §9 R 矩陣推導章節（Step 3.1-3.5 進度與決定總覽），renumber §9-11 → §10-12。 |
+| 2026-04-29 | (task03-step234) | Task 03 Step 3.2-3.4 ✓ DONE — Var(σ̂²_δxr) 從 IIR EWMA + Wick 推得 a_cov·IF_var·(σ²_δxr)²（用 δx_r ~ N(0,σ²) 高斯特例 ρ_{δx_r²}=ρ_δxr²；穩態 δ̄x_r≈0 簡化；small a_cov 極限 IF_eff≈IF_var 誤差 ~9%）。R_2_intrinsic,i[k] = a_cov·IF_var·{â_x,i+ξ_i}² 純二次多項式 (per-axis ξ_i = (C_n/C_dpmr)·σ²_n_s,i/(4kBT) sensor floor)。R_2_eff,i[k] = R_2_intrinsic + 5·Q77,i[k] 含延遲傳導。R 矩陣作為 scalar 函數 R(â_x,i[k], h̄[k])，每 step per-axis 算 2×2 matrix (off-diag=0)。design.md §9.3-9.8 全部 expand 完整推導 + 函數性質總表 + 合計精度 ~10-15%。下一步 Step 3.5 自適應 R_2 gate 設計。 |

@@ -814,20 +814,97 @@ IF_var = 1 + 2·Σ_{τ=1}^∞ [ρ_δxr(τ)]²
 | σ²_δxr 用 a_x 哪個 | â_x[k] (per-step 時變) | 與 Q33/Q77 同樣 adaptive |
 | σ²_n_s 處理 | 常數 per-axis (config.meas_noise_std) | sensor noise 與位置無物理耦合 |
 
-### 9.3 Step 3.2-3.3 — IIR variance estimator chi-squared 與 R_2_intrinsic（待推）
+### 9.3 Step 3.2 — IIR variance estimator chi-squared 分析（DONE）
 
-從 Var(σ̂²_δxr) 推 R_2_intrinsic 的傳導：
+#### 設定 + 穩態簡化
 
+paper 2025 Eq.10 的 IIR：
 ```
-Var(σ̂²_δxr) = a_cov · IF_var · (σ²_δxr)²       [Step 3.2 主結論，待推]
-
-R_2_intrinsic = Var(σ̂²_δxr) / (C_dpmr·4kBT)²
-              = a_cov · IF_var · {â_x + (C_n/C_dpmr)·σ²_n_s/(4kBT)}²    [Step 3.3]
-              └────────┬────────┘
-                  per-axis 二次多項式 in â_x
+σ̂²_δxr[k+1] = (1−a_cov)·σ̂²_δxr[k] + a_cov·(δx_r²[k+1] − δ̄x_r²[k+1])
+                                       └────────┬────────┘
+                                          input Z[k+1]
 ```
 
-### 9.4 Step 3.4 — R_2_eff 加 5·Q77（已推）
+δx_r 已中心化 → E[δx_r] = 0 → 穩態 δ̄x_r → 0 → **Z[k] ≈ δx_r²[k]**。
+
+**Caveat**：嚴格上 δ̄x_r 自身有 Var(δ̄x_r) ≈ a_var/(2−a_var)·σ²_δxr，σ̂²_δxr 因此有 small bias ~ −Var(δ̄x_r)。對 a_var=0.05 是 ~2.5%，可接受，本推導忽略。
+
+#### δx_r 高斯性 + Wick 處理
+
+δx_r = Σ Gaussian noises（thermal + sensor）線性組合 → δx_r ~ N(0, σ²_δxr) 嚴格高斯。可用 Isserlis (Wick) 算高階矩：
+
+```
+Var(δx_r²)                 = 2·(σ²_δxr)²                            (E[X⁴]=3σ⁴)
+Cov(δx_r²[k], δx_r²[k+τ])  = 2·(σ²_δxr)² · ρ_δxr²(τ)                 (Wick)
+ρ_{δx_r²}(τ)               = ρ_δxr²(τ)                               ← 高斯特例
+```
+
+**關鍵**：高斯下平方訊號自相關 = 原訊號自相關平方。配合 Step 3.1 的 ρ_δxr(τ) 立即得 ρ_{δx_r²}(τ)。
+
+#### EWMA 線性方差傳遞
+
+把 EWMA 寫成 weight sum (s := 1−a_cov)：
+```
+σ̂²_δxr[k+1] = a_cov · Σ_{i=0}^∞ s^i · Z[k+1−i]
+
+Var(σ̂²_δxr) = a_cov² · Var(Z) · S(s)
+S(s) = (1/(1−s²)) · IF_eff(s)
+IF_eff(s) := 1 + 2·Σ_{m=1}^∞ ρ_δxr²(m) · s^m         ← effective inflation
+```
+
+小 a_cov 極限：
+- 1/(1−s²) ≈ 1/(2·a_cov)
+- IF_eff(s→1) → IF_var = 1 + 2·Σ ρ_δxr²(τ)（與 Step 3.1 同 IF_var）
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  Var(σ̂²_δxr,i[k]) ≈ a_cov · IF_var · (σ²_δxr,i[k])²              │
+│                                                                  │
+│  IF_var ≈ 4.24  (Option A, λ_c=0.7, thermal-dominated)            │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+#### 精度檢核：IF_eff vs IF_var
+
+對 a_cov=0.05, λ_c=0.7, Option A：
+- IF_eff(s=0.95) ≈ 3.90
+- IF_var (s→1)  ≈ 4.24
+- **小 a_cov 近似 over-estimate ~9%**，可接受
+
+對更大 a_cov（如 0.1）誤差會升到 ~17%，到時切回 IF_eff(s) 完整公式。
+
+#### 數值（thermal-dominated, λ_c=0.7, a_cov=0.05）
+
+| Option | Var(σ̂²_δxr) / (σ²_δxr)² | σ(σ̂²_δxr) / σ²_δxr |
+|---|---|---|
+| **A: MA(2) full** | a_cov·4.24 ≈ 0.212 | √0.212 ≈ **46%** |
+| B: AR(1) approx | a_cov·2.92 ≈ 0.146 | √0.146 ≈ **38%** |
+
+→ Option A 預測 σ̂²_δxr 標準差 ~46% 真實值，B 約 38%。A 比 B 高 ~21%。
+
+### 9.4 Step 3.3 — R_2_intrinsic 閉式（DONE）
+
+線性反解 a_xm = (σ̂²_δxr − C_n·σ²_n_s)/(C_dpmr·4kBT)：
+```
+σ²_δxr,i / (C_dpmr·4kBT) = â_x,i + ξ_i
+ξ_i := (C_n/C_dpmr) · σ²_n_s,i / (4kBT)        per-axis sensor-induced offset
+```
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  R_2_intrinsic,i[k] = a_cov · IF_var · {â_x,i[k] + ξ_i}²          │
+│                                                                  │
+│  ξ_i = (C_n/C_dpmr) · σ²_n_s,i / (4kBT)        per-axis const     │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**結構**：純二次多項式 in â_x，per-axis 常數 ξ_i 平移（sensor-noise floor）。
+
+**兩極限**：
+- **sensor-dominated** (â_x << ξ)：R_2_intrinsic ≈ a_cov·IF_var·ξ_i²，常數 floor
+- **thermal-dominated** (â_x >> ξ)：R_2_intrinsic ≈ a_cov·IF_var·â_x²，與 Q33 同 â_x 級數
+
+### 9.5 Step 3.4 — R_2_eff 完整公式（DONE）
 
 從 §6 量測架構推導，d=2 步延遲傳導：
 ```
@@ -835,7 +912,66 @@ R_2_eff,i[k] = R_2_intrinsic,i[k] + Σ_{j=1}^{d}(d−j+1)² · Q77,i[k]
              = R_2_intrinsic,i[k] + 5 · Q77,i[k]    (d=2)
 ```
 
-### 9.5 Step 3.5 — 自適應 R_2[k] gate（後置至 Task 04 端到端後）
+完整公式：
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│  R_2_eff,i[k] = a_cov · IF_var · {â_x,i[k] + ξ_i}²                │
+│              + 5 · Δt⁴ · â_x,i²[k] · {                            │
+│                  (K_h,i² − K_h,i')² · ḣ_max⁴/(8R⁴)                │
+│                + K_h,i²            · ḧ_max²/(2R²)                 │
+│                }                                                  │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+依賴：â_x,i[k] (EKF state), h̄[k] (measurement), per-axis 常數 ξ_i, K_h, K_h' lookup。
+
+### 9.6 R 矩陣完整函數性質總表
+
+```
+        y_1: δx_m       y_2: a_xm
+      ┌                              ┐
+y_1   │  R(1,1) = σ²_n_s,i           │   per-axis 常數
+R_i = │                              │
+y_2   │              R(2,2) = R_2_eff │   per-axis 時變
+      └                              ┘
+```
+
+| Element | 公式 | 變數 | 類型 | 時變？ |
+|---|---|---|---|---|
+| R(1,1),i | `σ²_n_s,i` | sensor config | scalar 常數 | ✗ |
+| R(2,2),i intrinsic | `a_cov·IF_var·(â_x,i+ξ_i)²` | â_x,i[k] | scalar (二次 in â_x) | ✓ |
+| R(2,2),i delay | `5·Q77,i[k]` | â_x,i[k], h̄[k] | scalar (â_x² × wall fcn) | ✓ |
+
+**離線常數**：C_dpmr, C_n, IF_var, ξ_i, 5, ḣ_max, ḧ_max, R, Δt, kBT。  
+**線上每步 i ∈ {x,y,z}**：以 (â_x,i[k], h̄[k]) 算 R_i[k]（off-diagonal=0）。
+
+### 9.7 Q vs R 對照（與 Task 02 並列）
+
+| Matrix element | 公式 | 變數 | 物理 |
+|---|---|---|---|
+| Q33,i[k] | `4kBT·â_x` | â_x,i[k] | 當步 thermal 白噪變異 |
+| Q55 | 0 | — | simulation 假設 |
+| Q77,i[k] | `Δt⁴·â_x²·{...K_h, K_h'...}` | â_x,i[k], h̄[k] | 軌跡誘發 a_x 二階變化 |
+| R(1,1) | `σ²_n_s,i` | const | sensor noise |
+| **R(2,2),i[k]** | **`a_cov·IF_var·(â_x+ξ_i)² + 5·Q77`** | â_x,i[k], h̄[k] | IIR 統計噪聲 + 延遲傳導 |
+
+→ Q33 與 R(2,2) 都是 â_x 的多項式（Q33 一次、R(2,2) 二次），都是 EKF / SDRE 結構的 adaptive 矩陣。
+
+### 9.8 各 Step 精度限制總表
+
+| Source | 偏差 | 處理 |
+|---|---|---|
+| Eq.19 form ε MA(2) trade-off (Q33) | KF P 預測 ~50% 真實 σ²_δx | 接受（§8.2 Step 5） |
+| 穩態 δ̄x_r ≈ 0 假設 | σ̂²_δxr bias ~2.5% | 忽略 |
+| Small a_cov (IF_eff ≈ IF_var) | IF_var over-estimate ~9% | 忽略 (a_cov=0.05) |
+| Option A vs B (ρ_δx 模型) | IF_var Option B under ~30% | 已選 A |
+| Thermal-dominated ρ_δxr ≈ ρ_δx | sensor-dominated 時 ρ_δxr 偏小 | 後續精化 |
+| **合計** | **~10–15% 各方向偏差** | 端到端驗證再回頭精化 |
+
+### 9.9 Step 3.5 — 自適應 R_2[k] gate（待推導）
 
 四個 IIR 崩塌條件，發生時 R_2 → ∞ 把 y_2 通道暫時關閉：
 
@@ -848,7 +984,7 @@ R_2_eff,i[k] = R_2_intrinsic,i[k] + Σ_{j=1}^{d}(d−j+1)² · Q77,i[k]
 
 實作可用單一 boolean gate：滿足任一 → R_2 = 1e10。
 
-### 9.6 實作對應（規劃）
+### 9.10 實作對應（規劃）
 
 | 檔案 / 函數 | 用途 | 性質 |
 |---|---|---|
@@ -859,9 +995,9 @@ R_2_eff,i[k] = R_2_intrinsic,i[k] + Σ_{j=1}^{d}(d−j+1)² · Q77,i[k]
 
 **Q77 與 R_2 都不需要 lookup table**，唯一的 table 是 C_∥(h̄), C_⊥(h̄) 與其導數（已在既有 `calc_correction_functions`，待擴充導數輸出）。
 
-### 9.7 下一步
+### 9.11 下一步
 
-進 **Step 3.2**：IIR EWMA 對 (δx_r² − δ̄x_r²) 的方差傳遞，得 Var(σ̂²_δxr) 公式；含 Gaussian Wick 處理四階矩，與 Step 3.1 的 IF_var 結合。
+進 **Step 3.5**：自適應 R_2[k] gate 設計（warm-up / 低 SNR / 過 wall / a_x 變化太快 四條件偵測 + 觸發策略 + hysteresis），詳細討論點見 §9.9 outline。
 
 ---
 
@@ -896,8 +1032,12 @@ R_2_eff,i[k] = R_2_intrinsic,i[k] + Σ_{j=1}^{d}(d−j+1)² · Q77,i[k]
 3. **R 矩陣設計** IN-PROGRESS（§9 詳推）
    - R_1: per-axis σ²_n_s（直接從 config.meas_noise_std）
    - R_2[k]: a_xm 噪聲方差（閉迴路推導：IIR variance estimator + chi-squared + autocorrelation 修正 + 5·Q77 延遲傳導項）
-   - **Step 3.1 ✓ DONE** (§9.1)：σ²_δxr = C_dpmr·4kBT·â_x + C_n·σ²_n_s（C_dpmr=3.96, C_n=1.18 for λ_c=0.7）；ρ_δxr 用 Option A (MA(2) full)，IF_var≈4.2
-   - **Step 3.2-3.5 待續**：chi-squared Var(σ̂²_δxr) → R_2_intrinsic → R_2_eff → adaptive gate
+   - **Step 3.1-3.4 ✓ DONE** (§9.1-9.5)：
+     - σ²_δxr = C_dpmr·4kBT·â_x + C_n·σ²_n_s（C_dpmr=3.96, C_n=1.18, IF_var≈4.24 for λ_c=0.7, Option A）
+     - Var(σ̂²_δxr) = a_cov·IF_var·(σ²_δxr)²（從 Wick + EWMA 線性傳遞）
+     - **R_2_eff,i[k] = a_cov·IF_var·(â_x,i+ξ_i)² + 5·Q77,i[k]**（純二次多項式 in â_x + Q77 wall 動態）
+     - ξ_i = (C_n/C_dpmr)·σ²_n_s,i/(4kBT) 是 per-axis sensor floor
+   - **Step 3.5 待續**：自適應 R_2 gate 設計（warm-up / 低 SNR / 過 wall / a_x 變化太快 四條件偵測 + 觸發 + hysteresis）
 
 4. **7-state EKF 實作**
    - `model/controller/motion_control_law_eq17_7state.m`
