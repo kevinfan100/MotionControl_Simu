@@ -368,9 +368,13 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     % consistent here). Sequential 1D updates avoid joint S-matrix
     % conditioning issues when R(2,2) = R_OFF.
     t_now = (k_step - 1) * Ts;
+    % Optional debug flag — F_e Row 3 form switch (default 'eq19' = backward compat)
+    %   'eq19' (default): F_e(3,1)=0, (3,3)=lambda_c (Eq.19 form, design.md §5)
+    %   'eq18'           : F_e(3,1)=-(1-lambda_c), (3,3)=1 (Eq.18 direct form)
+    use_eq18 = isfield(ctrl_const, 'F_e_form') && strcmpi(ctrl_const.F_e_form, 'eq18');
     for ax = 1:3
         % F_e takes the current f_d[k] computed above (only (3,6) varies)
-        F_e = build_F_e(lambda_c, f_d(ax));
+        F_e = build_F_e(lambda_c, f_d(ax), use_eq18);
 
         x_curr = x_e_per_axis(:, ax);
         P_curr = P_per_axis{ax};
@@ -501,18 +505,41 @@ end
 
 %% =================== Local Helper ===================
 
-function F_e = build_F_e(lambda_c, f_d_i)
+function F_e = build_F_e(lambda_c, f_d_i, use_eq18)
 %BUILD_F_E Build 7x7 augmented system matrix (per axis).
 %
 %   See design.md §5 — only (3,6) is time-varying.
+%
+%   use_eq18 (optional, default false) selects Row 3 form:
+%       false (Eq.19): (3,1)=0, (3,3)=lambda_c
+%       true  (Eq.18): (3,1)=-(1-lambda_c), (3,3)=1
+%
+%   The Eq.18 form matches the direct closed-loop dynamics for d=2 with
+%   correct sensor delay. Eq.19 form is an algebraic rewrite that absorbs
+%   the -(1-lambda_c)*delta_x[k-d] term into the noise (creating MA(2)).
+%   Eq.19 is used in design.md §5 as the analytical convention.
 
-    F_e = [0 1 0        0  0   0       0; ...
-           0 0 1        0  0   0       0; ...
-           0 0 lambda_c -1 0  -f_d_i   0; ...
-           0 0 0        1  1   0       0; ...
-           0 0 0        0  1   0       0; ...
-           0 0 0        0  0   1       1; ...
-           0 0 0        0  0   0       1];
+    if nargin < 3 || isempty(use_eq18)
+        use_eq18 = false;
+    end
+
+    if use_eq18
+        F_e = [0 1 0        0  0   0       0; ...
+               0 0 1        0  0   0       0; ...
+              -(1-lambda_c) 0 1   -1 0  -f_d_i 0; ...
+               0 0 0        1  1   0       0; ...
+               0 0 0        0  1   0       0; ...
+               0 0 0        0  0   1       1; ...
+               0 0 0        0  0   0       1];
+    else
+        F_e = [0 1 0        0  0   0       0; ...
+               0 0 1        0  0   0       0; ...
+               0 0 lambda_c -1 0  -f_d_i   0; ...
+               0 0 0        1  1   0       0; ...
+               0 0 0        0  1   0       0; ...
+               0 0 0        0  0   1       1; ...
+               0 0 0        0  0   0       1];
+    end
 end
 
 
