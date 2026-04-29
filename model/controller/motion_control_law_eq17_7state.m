@@ -1,7 +1,18 @@
-function [f_d, ekf_out] = motion_control_law_eq17_7state(del_pd, pd, p_m, params, ctrl_const)
+function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, params, ctrl_const)
 %MOTION_CONTROL_LAW_EQ17_7STATE Per-axis 7-state EKF controller (paper 2023 Eq.17)
 %
-%   [f_d, ekf_out] = motion_control_law_eq17_7state(del_pd, pd, p_m, params, ctrl_const)
+%   [f_d, ekf_out]       = motion_control_law_eq17_7state(del_pd, pd, p_m, params, ctrl_const)
+%   [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, params, ctrl_const)
+%
+%   The optional 3rd output `diag` returns a struct of per-step diagnostics
+%   (IIR variance, KF gains, gate flags, posteriors, ...). Computation is
+%   skipped entirely when nargout < 3 (zero perf cost on existing 2-output
+%   call sites).
+%
+%   ctrl_const.a_hat_freeze (optional, 3x1) — if present and non-empty, the
+%   posterior a_x state (slot 6) is overridden with this value after both the
+%   predict and update steps, and P(6,:)/P(:,6) are zeroed before update so
+%   the filter cannot move it. Used for testing / breakthrough sweeps.
 %
 %   Implements 3 independent 7-state EKF controllers (one per axis x, y, z)
 %   following paper 2023 Eq.(17) with d-step delay-compensated control law,
@@ -54,6 +65,10 @@ function [f_d, ekf_out] = motion_control_law_eq17_7state(del_pd, pd, p_m, params
     if params.ctrl.enable < 0.5
         f_d = zeros(3, 1);
         ekf_out = [1; 1; 1; 0];
+        if nargout >= 3
+            diag = empty_diag();
+            diag.f_d = f_d;
+        end
         return;
     end
 
@@ -141,10 +156,16 @@ function [f_d, ekf_out] = motion_control_law_eq17_7state(del_pd, pd, p_m, params
         x_e_per_axis(6, :) = a_nom;          % seed a_x ~ a_nom for all axes
 
         % Covariance init from existing config (3 independent 7x7)
+        % NOTE: output var `diag` shadows MATLAB's diag() builtin in this
+        % function, so we construct diagonal matrices via an explicit loop.
         Pf_diag = params.ctrl.Pf_init_diag;  % 7x1
         P_per_axis = cell(3, 1);
+        Pf_init_mat = zeros(7);
+        for ii = 1:7
+            Pf_init_mat(ii, ii) = Pf_diag(ii);
+        end
         for ax = 1:3
-            P_per_axis{ax} = diag(Pf_diag);
+            P_per_axis{ax} = Pf_init_mat;
         end
 
         % --- 0F. IIR states ---
@@ -162,6 +183,10 @@ function [f_d, ekf_out] = motion_control_law_eq17_7state(del_pd, pd, p_m, params
         % --- 0I. First call returns zeros (no f_d yet) ---
         f_d = zeros(3, 1);
         ekf_out = [a_nom; a_nom; a_nom; 0];
+        if nargout >= 3
+            diag = empty_diag();
+            diag.f_d = f_d;
+        end
         return;
     end
 
@@ -170,6 +195,13 @@ function [f_d, ekf_out] = motion_control_law_eq17_7state(del_pd, pd, p_m, params
     % ------------------------------------------------------------------
     a_hat = x_e_per_axis(6, :)';   % 3x1 [um/pN]
     xD_hat = x_e_per_axis(4, :)';  % 3x1 [um]
+    % Optional: suppress x_D_hat in Eq.17 control law (testing — diagnose
+    % whether x_D state is acting as thermal compensator)
+    if isfield(ctrl_const, 'suppress_xD') && ctrl_const.suppress_xD
+        xD_hat_for_ctrl = zeros(3, 1);
+    else
+        xD_hat_for_ctrl = xD_hat;
+    end
 
     % delta_x_m[k] = p_d[k-d] - p_m[k]   (per axis)
     %   For d=2: pd_km2 already holds p_d[k-2] from previous step's buffer shift.
@@ -211,7 +243,7 @@ function [f_d, ekf_out] = motion_control_law_eq17_7state(del_pd, pd, p_m, params
           - lambda_c * pd ...
           - one_minus_lc * pd_km_d ...
           + one_minus_lc * delta_x_m ...
-          - xD_hat );
+          - xD_hat_for_ctrl );
 
     % ------------------------------------------------------------------
     % [2] IIR a_xm  (paper 2025 Eq.9-13)  — per axis
@@ -302,7 +334,11 @@ function [f_d, ekf_out] = motion_control_law_eq17_7state(del_pd, pd, p_m, params
             R22_i = R2_eff_i;
         end
 
-        R_per_axis{ax} = diag([R11_i, R22_i]);
+        % NOTE: avoid MATLAB diag() builtin (shadowed by output var `diag`)
+        R_axis_mat = zeros(2);
+        R_axis_mat(1, 1) = R11_i;
+        R_axis_mat(2, 2) = R22_i;
+        R_per_axis{ax} = R_axis_mat;
     end
 
     % ------------------------------------------------------------------
@@ -314,6 +350,19 @@ function [f_d, ekf_out] = motion_control_law_eq17_7state(del_pd, pd, p_m, params
     H_full = [1 0 0 0 0 0       0; ...
               0 0 0 0 0 1 -d_delay];
     H_y1   = H_full(1, :);   % y_1 only
+
+    % a_hat freeze override config
+    has_freeze = isfield(ctrl_const, 'a_hat_freeze') && ~isempty(ctrl_const.a_hat_freeze);
+    if has_freeze
+        a_hat_frz = ctrl_const.a_hat_freeze(:);   % 3x1
+    end
+
+    % Diag storage for the EKF loop (used only if nargout >= 3, but cheap)
+    K_a_y2_per_axis  = zeros(3, 1);    % K_kf(6, 2) per axis (0 if y_2 gated)
+    K_dx_y1_per_axis = zeros(3, 1);    % K_kf(3, 1) per axis
+    innov_y2_per_axis = zeros(3, 1);   % y_2 innovation (0 if y_2 gated)
+    gate_y2_off_per_axis = false(3, 1);
+    G_per_axis = false(3, 3);          % rows: G1/G2/G3, cols: axes
 
     % Re-compute gate flags per axis (also computed in Q/R loop above; kept
     % consistent here). Sequential 1D updates avoid joint S-matrix
@@ -331,11 +380,22 @@ function [f_d, ekf_out] = motion_control_law_eq17_7state(del_pd, pd, p_m, params
         P_pred = F_e * P_curr * F_e' + Q_per_axis{ax};
         P_pred = 0.5 * (P_pred + P_pred');
 
+        % --- Optional a_hat freeze: lock state(6) and zero P row/col 6 ---
+        if has_freeze
+            x_pred(6)    = a_hat_frz(ax);
+            P_pred(6, :) = 0;
+            P_pred(:, 6) = 0;
+        end
+
         % --- Determine if y_2 channel is gated off ---
         G1 = (t_now < t_warmup_kf);
         G2 = ((sigma2_dxr_hat_new(ax) - C_n * sigma2_n_s(ax)) <= 0);
         G3 = (h_bar < h_bar_safe);
         gate_y2_off = G1 || G2 || G3;
+
+        % Save gate flags and y_2-off flag for diag
+        G_per_axis(:, ax) = [G1; G2; G3];
+        gate_y2_off_per_axis(ax) = gate_y2_off;
 
         if gate_y2_off
             % Skip y_2 entirely (1D update with y_1 only)
@@ -360,6 +420,23 @@ function [f_d, ekf_out] = motion_control_law_eq17_7state(del_pd, pd, p_m, params
         x_post = x_pred + K_kf * innov;
         P_post = (eye(7) - K_kf * H_use) * P_pred;
         P_post = 0.5 * (P_post + P_post');
+
+        % --- Re-force a_hat freeze post-update (defense in depth) ---
+        if has_freeze
+            x_post(6)    = a_hat_frz(ax);
+            P_post(6, :) = 0;
+            P_post(:, 6) = 0;
+        end
+
+        % Save K_kf entries needed by diag (always — cheap; 7x1 or 7x2 col)
+        K_dx_y1_per_axis(ax) = K_kf(3, 1);    % gain on δx_3 from y_1 (col 1)
+        if gate_y2_off
+            K_a_y2_per_axis(ax)   = 0;        % y_2 channel skipped
+            innov_y2_per_axis(ax) = 0;
+        else
+            K_a_y2_per_axis(ax)   = K_kf(6, 2);
+            innov_y2_per_axis(ax) = innov(2);
+        end
 
         x_e_per_axis(:, ax) = x_post;
         P_per_axis{ax} = P_post;
@@ -390,6 +467,35 @@ function [f_d, ekf_out] = motion_control_law_eq17_7state(del_pd, pd, p_m, params
                a_hat_post(2); ...   % a_hat_y  (slot 3)
                h_bar_now];          % current h_bar (slot 4)
 
+    % ------------------------------------------------------------------
+    % [7] Optional diagnostic struct (only computed if requested)
+    % ------------------------------------------------------------------
+    if nargout >= 3
+        % Per-axis posterior covariance entries
+        P_a_per_axis  = zeros(3, 1);
+        P_dx_per_axis = zeros(3, 1);
+        for ax = 1:3
+            P_a_per_axis(ax)  = P_per_axis{ax}(6, 6);
+            P_dx_per_axis(ax) = P_per_axis{ax}(3, 3);
+        end
+
+        diag = struct();
+        diag.sigma2_dxr_hat       = sigma2_dxr_hat_new;            % 3x1
+        diag.a_xm                 = a_xm;                          % 3x1
+        diag.delta_x_m            = delta_x_m;                     % 3x1
+        diag.innovation_y2        = innov_y2_per_axis;             % 3x1
+        diag.K_kf_a_y2            = K_a_y2_per_axis;               % 3x1
+        diag.K_kf_dx_y1           = K_dx_y1_per_axis;              % 3x1
+        diag.P_a                  = P_a_per_axis;                  % 3x1
+        diag.P_dx                 = P_dx_per_axis;                 % 3x1
+        diag.x_D_hat              = x_e_per_axis(4, :).';          % 3x1
+        diag.delta_a_hat          = x_e_per_axis(7, :).';          % 3x1
+        diag.gate_active_per_axis = gate_y2_off_per_axis;          % 3x1 logical
+        diag.guards_individual    = G_per_axis;                    % 3x3 logical
+        diag.h_bar                = h_bar;                         % scalar
+        diag.f_d                  = f_d;                           % 3x1
+    end
+
 end
 
 
@@ -407,4 +513,24 @@ function F_e = build_F_e(lambda_c, f_d_i)
            0 0 0        0  1   0       0; ...
            0 0 0        0  0   1       1; ...
            0 0 0        0  0   0       1];
+end
+
+
+function d = empty_diag()
+%EMPTY_DIAG Zeroed diagnostic struct (used for bypass / init returns).
+    d = struct();
+    d.sigma2_dxr_hat       = zeros(3, 1);
+    d.a_xm                 = zeros(3, 1);
+    d.delta_x_m            = zeros(3, 1);
+    d.innovation_y2        = zeros(3, 1);
+    d.K_kf_a_y2            = zeros(3, 1);
+    d.K_kf_dx_y1           = zeros(3, 1);
+    d.P_a                  = zeros(3, 1);
+    d.P_dx                 = zeros(3, 1);
+    d.x_D_hat              = zeros(3, 1);
+    d.delta_a_hat          = zeros(3, 1);
+    d.gate_active_per_axis = false(3, 1);
+    d.guards_individual    = false(3, 3);
+    d.h_bar                = 0;
+    d.f_d                  = zeros(3, 1);
 end
