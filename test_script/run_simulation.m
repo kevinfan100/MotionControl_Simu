@@ -24,13 +24,13 @@ config = user_config();
 config.theta = 0;                    % Wall azimuth angle [deg]
 config.phi   = 0;                    % Wall elevation angle [deg]
 config.pz    = 0;                    % Wall displacement along w_hat [um]
-config.h_min = 1.1 * 2.25;           % Minimum safe distance [um]
+config.h_min = 1.5 * 2.25;           % Minimum safe distance [um] (h_bar_safe=1.5 = eq17 R_2 gate threshold)
 config.enable_wall_effect = true;    % Wall effect (false = no wall)
 
 % --- Trajectory ---
 config.t_hold    = 0.5;              % Initial hold at h_init [sec]
 config.h_init    = 50;               % Starting height from wall [um]
-config.h_bottom  = 2.5;              % Lowest point / oscillation trough [um]
+config.h_bottom  = 4.5;              % Lowest point / oscillation trough [um] (h_bar_bottom=2.0 > h_bar_safe=1.5, avoids R_2 gate triggering)
 config.amplitude = 10;               % Oscillation amplitude [um]
 config.frequency = 1;                % Oscillation frequency [Hz]
 config.n_cycles  = 3;                % Number of cycles
