@@ -311,9 +311,14 @@ function [f_d, ekf_out] = motion_control_law_eq17_7state(del_pd, pd, p_m, params
     %   F_e (7x7), only (3,6) is time-varying:  F_e(3,6) = -f_d[k]
     %   H   (2x7), (2,7) = -d_delay
     % ------------------------------------------------------------------
-    H = [1 0 0 0 0 0       0; ...
-         0 0 0 0 0 1 -d_delay];
+    H_full = [1 0 0 0 0 0       0; ...
+              0 0 0 0 0 1 -d_delay];
+    H_y1   = H_full(1, :);   % y_1 only
 
+    % Re-compute gate flags per axis (also computed in Q/R loop above; kept
+    % consistent here). Sequential 1D updates avoid joint S-matrix
+    % conditioning issues when R(2,2) = R_OFF.
+    t_now = (k_step - 1) * Ts;
     for ax = 1:3
         % F_e takes the current f_d[k] computed above (only (3,6) varies)
         F_e = build_F_e(lambda_c, f_d(ax));
@@ -326,17 +331,34 @@ function [f_d, ekf_out] = motion_control_law_eq17_7state(del_pd, pd, p_m, params
         P_pred = F_e * P_curr * F_e' + Q_per_axis{ax};
         P_pred = 0.5 * (P_pred + P_pred');
 
-        % --- Update with [delta_x_m; a_xm] ---
-        y_meas = [delta_x_m(ax); a_xm(ax)];
-        y_pred = H * x_pred;
-        innov  = y_meas - y_pred;
+        % --- Determine if y_2 channel is gated off ---
+        G1 = (t_now < t_warmup_kf);
+        G2 = ((sigma2_dxr_hat_new(ax) - C_n * sigma2_n_s(ax)) <= 0);
+        G3 = (h_bar < h_bar_safe);
+        gate_y2_off = G1 || G2 || G3;
 
-        S = H * P_pred * H' + R_per_axis{ax};
-        S = 0.5 * (S + S') + 1e-20 * eye(2);   % numerical regularization
-        K_kf = (P_pred * H') / S;               % 7x2 (avoid shadowing 'K')
+        if gate_y2_off
+            % Skip y_2 entirely (1D update with y_1 only)
+            H_use = H_y1;
+            y_use = delta_x_m(ax);
+            R_use = sigma2_n_s(ax);
+        else
+            % Full 2D update
+            H_use = H_full;
+            y_use = [delta_x_m(ax); a_xm(ax)];
+            R_use = R_per_axis{ax};
+        end
+
+        % --- Update (sequential / conditional) ---
+        y_pred = H_use * x_pred;
+        innov  = y_use - y_pred;
+
+        S = H_use * P_pred * H_use' + R_use;
+        S = 0.5 * (S + S');                     % symmetrize
+        K_kf = (P_pred * H_use') / S;           % 7x{1,2}
 
         x_post = x_pred + K_kf * innov;
-        P_post = (eye(7) - K_kf * H) * P_pred;
+        P_post = (eye(7) - K_kf * H_use) * P_pred;
         P_post = 0.5 * (P_post + P_post');
 
         x_e_per_axis(:, ax) = x_post;

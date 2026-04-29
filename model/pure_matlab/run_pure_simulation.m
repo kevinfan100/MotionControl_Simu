@@ -142,7 +142,13 @@ function simOut = run_pure_simulation(config, opts)
                             del_pd_k, pd_k, p_m_delayed, P, ctrl_const);
 
         % --- (e) Thermal force at current continuous-state position
-        f_th_k = calc_thermal_force(p_curr, P);
+        %   NOTE: calc_thermal_force does NOT check P.thermal.enable internally;
+        %   gate is at driver level (matches Simulink block-level enable).
+        if P.thermal.enable > 0.5
+            f_th_k = calc_thermal_force(p_curr, P);
+        else
+            f_th_k = zeros(3, 1);
+        end
 
         % --- (f) Total force (ZOH constant over [t_k, t_k + Ts])
         F_total = f_d_k + f_th_k;

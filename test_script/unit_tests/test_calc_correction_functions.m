@@ -72,27 +72,29 @@ function test_calc_correction_functions()
     %                  K_h_para, K_h_perp,
     %                  K_h_prime_para, K_h_prime_perp)
     % NaN means "do not check this entry" (some entries not provided in spec)
+    % Reference values computed via MATLAB analytical evaluation at 10-digit
+    % precision; rel_tol_ref = 1e-3 below, so 4-5 significant digits suffice.
     ref = struct();
     ref(1).h_bar = 1.10;
-    ref(1).c_para = 2.3604;       ref(1).c_perp = 11.452;
-    ref(1).dc_para_dh = -4.5777;  ref(1).dc_perp_dh = -101.36;
-    ref(1).K_h_para = -1.9395;    ref(1).K_h_perp = -8.8506;
-    ref(1).K_h_prime_para = 10.513;
-    ref(1).K_h_prime_perp = 96.954;
+    ref(1).c_para = 2.36026;            ref(1).c_perp = 11.45229;
+    ref(1).dc_para_dh = -4.57771;       ref(1).dc_perp_dh = -101.3598;
+    ref(1).K_h_para = -1.93949;         ref(1).K_h_perp = -8.85061;
+    ref(1).K_h_prime_para = 10.51316;
+    ref(1).K_h_prime_perp = 96.95386;
 
     ref(2).h_bar = 1.50;
-    ref(2).c_para = 1.6147;       ref(2).c_perp = 3.2049;
-    ref(2).dc_para_dh = NaN;      ref(2).dc_perp_dh = NaN;
-    ref(2).K_h_para = -0.4781;    ref(2).K_h_perp = -1.3323;
-    ref(2).K_h_prime_para = 1.1237;
-    ref(2).K_h_prime_perp = 3.4540;
+    ref(2).c_para = 1.61529;            ref(2).c_perp = 3.20524;
+    ref(2).dc_para_dh = -0.77219;       ref(2).dc_perp_dh = -4.27028;
+    ref(2).K_h_para = -0.47805;         ref(2).K_h_perp = -1.33228;
+    ref(2).K_h_prime_para = 1.12370;
+    ref(2).K_h_prime_perp = 3.45400;
 
     ref(3).h_bar = 22.0;
-    ref(3).c_para = 1.0258;       ref(3).c_perp = 1.0540;
-    ref(3).dc_para_dh = NaN;      ref(3).dc_perp_dh = NaN;
-    ref(3).K_h_para = -1.18e-3;   ref(3).K_h_perp = -2.43e-3;
-    ref(3).K_h_prime_para = 1.07e-4;
-    ref(3).K_h_prime_perp = 2.24e-4;
+    ref(3).c_para = 1.02623;            ref(3).c_perp = 1.05384;
+    ref(3).dc_para_dh = -1.22241e-3;    ref(3).dc_perp_dh = -2.57479e-3;
+    ref(3).K_h_para = -1.19117e-3;      ref(3).K_h_perp = -2.44324e-3;
+    ref(3).K_h_prime_para = 1.09577e-4;
+    ref(3).K_h_prime_perp = 2.27531e-4;
 
     for k = 1:numel(ref)
         h = ref(k).h_bar;
