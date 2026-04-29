@@ -971,18 +971,81 @@ y_2   │              R(2,2) = R_2_eff │   per-axis 時變
 | Thermal-dominated ρ_δxr ≈ ρ_δx | sensor-dominated 時 ρ_δxr 偏小 | 後續精化 |
 | **合計** | **~10–15% 各方向偏差** | 端到端驗證再回頭精化 |
 
-### 9.9 Step 3.5 — 自適應 R_2[k] gate（待推導）
+### 9.9 Step 3.5 — 自適應 R_2[k] gate（DONE，3-guard 簡化版）
 
-四個 IIR 崩塌條件，發生時 R_2 → ∞ 把 y_2 通道暫時關閉：
+利用既有軌跡結構處理大部分情境，EKF 內只加 **3 個獨立 guard**。
 
-| 條件 | 物理 | 偵測 |
+#### 軌跡結構提供的天然保護
+
+`run_simulation.m` 軌跡分三段：
+```
+t = 0 ─────── 0.5 ──────── 1.5 ──────────────────── 4.5
+       hold       descend          oscillation
+   h̄ = 22.2     h̄: 22.2→1.11    h̄: 1.11 ↔ 5.56
+```
+
+前 0.5 sec hold at h_init=50 μm（far field, h̄≈22）：
+- f_d ≈ 0（regulation）
+- a_x ≈ a_nom（C_∥≈C_⊥≈1）
+- σ²_δxr 由 thermal+sensor 主導，數字穩定
+- IIR 收斂時間（5/a_cov · Ts ≈ 62 ms）≪ 0.5 sec
+
+→ **軌跡天然提供乾淨 warm-up 期**，不需要設計複雜 warm-up 條件偵測。
+
+#### 4 條件 → 3 guards 整併
+
+| 原條件 | 處理 |
+|---|---|
+| Warm-up | Guard 1: t < t_warmup_kf |
+| 低 SNR | Guard 2: σ̂²_δxr − C_n·σ²_n_s ≤ 0 (NaN guard) |
+| a_x 動太快 | 併入 Guard 3（過 wall 時 a_x 變化最快，主要 trigger 與 wall 同步） |
+| 過 wall | Guard 3: h̄ < h̄_safe |
+
+#### 3-guard 邏輯
+
+```
+R_2_use[k] = R_2_eff[k]                                  ← 預設用閉式
+if (k · Δt) < t_warmup_kf:        R_2_use[k] = R_2_off    ← Guard 1: warm-up
+if (σ̂²_δxr − C_n·σ²_n_s) ≤ 0:    R_2_use[k] = R_2_off    ← Guard 2: low SNR
+if h̄[k] < h̄_safe:                R_2_use[k] = R_2_off    ← Guard 3: wall
+
+R_2_off := 1e10  (大到 KF 自動忽略 y_2 通道)
+```
+
+純 OR 邏輯，**無 hysteresis**（軌跡單調過 wall，h̄ 不在 threshold 抖動），**無 ramp-down**（先別預期跳階問題，端到端跑出來再加）。
+
+#### 預設參數值
+
+| 參數 | 值 | 物理 |
 |---|---|---|
-| Warm-up | IIR 還沒收斂 | k < N_warm（從 a_var 算） |
-| 低 SNR | thermal 不足 | σ̂²_δxr − C_n·σ²_n < 0 |
-| a_x 動 太快 | IIR 跟不上 | \|dâ_x/dt\| > threshold |
-| 過 wall | C_⊥ lookup 誤差大 | h̄ < 1.2 |
+| t_warmup_kf | 0.2 sec | 16·τ_IIR (τ_IIR = 1/a_cov · Ts ≈ 12.5 ms)，過保守安全 |
+| h̄_safe | 1.5 | C_⊥ 多項式適用範圍；但 oscillation 軌跡 h_bottom=2.5 μm → h̄_bottom=1.11 < 1.5，y_2 在 oscillation 過 wall 時段被關 |
+| R_2_off | 1e10（單位等效大值） | 比 R_2_intrinsic 高 ~10⁸ 倍，KF 自然忽略 y_2 |
 
-實作可用單一 boolean gate：滿足任一 → R_2 = 1e10。
+#### 退化行為（gate 觸發時）
+
+當任一 guard 觸發 → y_2 通道實質關閉，KF 退化成單回授：
+- rank(O) 仍 = 7（Task 01 觀測性結論：單回授 + PE 滿足下也 rank=7）
+- â_x 改由 y_1 鏈間接識別（透過 f_d × a_x 耦合），收斂較慢但結構性可觀
+- oscillation 軌跡每週期 h̄ > 1.5 時段 y_2 重啟，刷新 a_xm 量測
+
+#### Trade-off 與優點
+
+**優點**：
+- 實作極簡（3 行 if-elseif）
+- 軌跡-aware（不靠複雜偵測，物理直觀）
+- Unit-testable（每 guard 可獨立 mock 觸發）
+
+**代價**：
+- Oscillation 過 wall 時段（h̄ < 1.5）y_2 退化單回授；oscillation 週期性，每週期 y_2 重啟，可接受
+- t_warmup_kf 對任意軌跡 1 sec 內收斂可能太保守；之後可從 0.2→0.1 sec 加速
+
+#### 驗證項目（Task 04 端到端）
+
+- Guard 1：t < 0.2 sec 期間 R_2 = 1e10，0.2 sec 後 R_2 = R_2_eff
+- Guard 2：人工降低 thermal / 提升 sensor noise 強制 σ²_δxr ≤ 0 → R_2 = 1e10
+- Guard 3：oscillation 階段每週期 R_2 在 h̄=1.5 處切換
+- â_x 連續性：gate 切換瞬間是否有跳階（若有再加 ramp）
 
 ### 9.10 實作對應（規劃）
 
@@ -1009,10 +1072,12 @@ y_2   │              R(2,2) = R_2_eff │   per-axis 時變
 
 ## 11. 開放問題（暫保留，等驗證再決定）
 
-- a_xm 在 IIR warm-up 期的 fallback 策略 — **task 3 處理**
+- ~~a_xm 在 IIR warm-up 期的 fallback 策略~~ — ✓ **resolved**（§9.9 Guard 1: t < t_warmup_kf → R_2 = 1e10）
 - 是否需要把 IIR 內部 state（δx̄_m、σ²_δxr）也納入 augmented state — **目前傾向不需要**，待 Gramian 數值結果驗證
 - 控制律中 x̂_D 補償項的縮放因子（`−x̂_D` vs `−(1−λ_c)·x̂_D`）— 已選前者全量補償，task 5 Lyapunov 驗證
-- C_dpmr/C_n 粗糙版（paper Eq.13 閉式）vs effective 版（augmented Lyapunov）— **起步用粗糙版**，端到端驗證若不準再升級
+- ~~C_dpmr/C_n 粗糙版 vs effective 版~~ — ✓ **resolved**（§9.1 嚴格從 ε MA(2) 推得，與 paper 2025 Eq.11/12 同形式，非粗糙近似）
+- **新**：t_warmup_kf 與 h̄_safe 兩參數的最佳值需端到端 sweep 驗證（Task 06）
+- **新**：gate 切換時 â_x 是否有跳階？若有，要在 Step 3.5 後加 ramp-down（後置）
 
 ---
 
@@ -1029,19 +1094,29 @@ y_2   │              R(2,2) = R_2_eff │   per-axis 時變
    - Q33: Path C strict `4kBT·â_x` (Eq.19 form，accept ~50% P undershoot trade-off)
    - Q55: 0 (simulation)；Q77: Path B `Δt⁴·â_x²·{(K_h²−K_h')²·ḣ_max⁴/(8R⁴) + K_h²·ḧ_max²/(2R²)}`
 
-3. **R 矩陣設計** IN-PROGRESS（§9 詳推）
-   - R_1: per-axis σ²_n_s（直接從 config.meas_noise_std）
-   - R_2[k]: a_xm 噪聲方差（閉迴路推導：IIR variance estimator + chi-squared + autocorrelation 修正 + 5·Q77 延遲傳導項）
-   - **Step 3.1-3.4 ✓ DONE** (§9.1-9.5)：
-     - σ²_δxr = C_dpmr·4kBT·â_x + C_n·σ²_n_s（C_dpmr=3.96, C_n=1.18, IF_var≈4.24 for λ_c=0.7, Option A）
-     - Var(σ̂²_δxr) = a_cov·IF_var·(σ²_δxr)²（從 Wick + EWMA 線性傳遞）
-     - **R_2_eff,i[k] = a_cov·IF_var·(â_x,i+ξ_i)² + 5·Q77,i[k]**（純二次多項式 in â_x + Q77 wall 動態）
-     - ξ_i = (C_n/C_dpmr)·σ²_n_s,i/(4kBT) 是 per-axis sensor floor
-   - **Step 3.5 待續**：自適應 R_2 gate 設計（warm-up / 低 SNR / 過 wall / a_x 變化太快 四條件偵測 + 觸發 + hysteresis）
+3. **R 矩陣設計（Path B 嚴格 + 3-guard adaptive）** ✓ DONE (Task 03)
+   - 結果：見 §9 unified version
+   - σ²_δxr = C_dpmr·4kBT·â_x + C_n·σ²_n_s（C_dpmr=3.96, C_n=1.18, IF_var≈4.24 for λ_c=0.7, Option A）
+   - Var(σ̂²_δxr) = a_cov·IF_var·(σ²_δxr)²（從 Wick + EWMA 線性傳遞）
+   - **R_2_eff,i[k] = a_cov·IF_var·(â_x,i+ξ_i)² + 5·Q77,i[k]**（純二次多項式 in â_x + Q77 wall 動態）
+   - ξ_i = (C_n/C_dpmr)·σ²_n_s,i/(4kBT) 是 per-axis sensor floor
+   - **3-guard adaptive (§9.9)**：t < t_warmup_kf / σ²_δxr ≤ C_n·σ²_n_s / h̄ < h̄_safe → R_2 = 1e10
 
-4. **7-state EKF 實作**
-   - `model/controller/motion_control_law_eq17_7state.m`
-   - 含 K_h 函數擴充（calc_correction_functions 加 dC/dh̄）
+4. **7-state EKF MATLAB 實作（Task 04）**（下一步，大型）
+   - 與既有 dual-track simulation design 整合（[`agent_docs/dual-track-simulation-design.md`](../../agent_docs/dual-track-simulation-design.md)）
+   - 前置：
+     - Phase 4a — `model/wall_effect/calc_correction_functions.m` 擴充輸出 K_h, K_h'（Q77 + R 共用，兩個 task 並用）
+   - 主檔：
+     - Phase 4b — `model/controller/build_eq17_constants.m`（離線常數 C_dpmr, C_n, IF_var, ξ_i, delay_R2_factor）
+     - Phase 4c — `model/controller/motion_control_law_eq17_7state.m`（Eq.17 控制律 + 7-state EKF predict/update + paper 2025 Eq.9-13 IIR + 3-guard R_2）
+   - Dual-track 整合：
+     - Phase 4d — pure-MATLAB driver dispatch (`model/pure_matlab/run_pure_simulation.m`) 加 `controller_type='eq17_7state'`
+     - Phase 4e — Simulink 路徑 (`model/system_model.slx`) 加同 dispatch
+     - Phase 4f — `test_script/verify_equivalence_eq17.m` (B 標準：deterministic RMS < 0.1%, stochastic stat < 1%)
+   - 測試：
+     - Phase 4g — `test_script/unit_tests/test_eq17_ekf.m`（每 guard 獨立觸發測試 + Q/R 數值正確性）
+   - **依賴鏈**：4a → 4b → 4c → (4d, 4e, 4g 並行) → 4f
+   - **建議**：dual-track 基礎設施若未建（pure-MATLAB driver 不存在）→ 先用 type=7 跑通 dual-track equivalence 再 implement eq17_7state；MVP 路徑可先 Simulink-only，但會有 future port 成本
 
 5. **Closed-loop variance Lyapunov**
    - 7-state augmented Lyapunov 解 closed-loop 穩態方差

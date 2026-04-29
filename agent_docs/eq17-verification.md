@@ -15,7 +15,7 @@
 |---|---|---|---|---|---|
 | 01 | Math-layer observability rank test | 2026-04-28 | DONE | [task01_math_observability_report.md](../reference/eq17_analysis/task01_math_observability_report.md) | 5-state 10/10 + 7-state 3/3 = 13/13 PASS。雙回授下 7-state rank=7 對任意 f_d 成立（含 f_d=0）。發現 Config A 5-state PE 條件精確邊界：N 窗口下只有 f_d_seq(1..N-3) 影響 (x_D,a_x) 子塊 rank。 |
 | 02 | Q matrix derivation (Path C strict Q33 + Path B Var(w_a) Q77) | 2026-04-29 | DONE | design.md §8 | Q33,i[k] = 4kBT·â_x,i[k] (Path C 嚴格 KF formalism)；Q55=0；Q77,i[k] = Δt⁴·â_x²·{(K_h²−K_h')²·ḣ_max⁴/(8R⁴) + K_h²·ḧ_max²/(2R²)} (Path B 完整 Var(w_a) 含 Term A+B；過 wall Term A 主導 4×Term B)。Route III 簡化版 (Q ∝ (a_nom-â_x)⁴) 評估後駁回（=Term B only，過 wall under-estimate ~80%）。需要實作 K_h, K_h' lookup（Task 04 處理）。 |
-| 03 | R matrix design (incl. IIR-induced σ²_n_axm) | 2026-04-29 | IN-PROGRESS | design.md §9 | Step 3.1-3.4 ✓ DONE: R_2_eff,i[k] = a_cov·IF_var·(â_x,i+ξ_i)² + 5·Q77,i[k]，純二次多項式 in â_x（含 per-axis sensor floor ξ_i=(C_n/C_dpmr)·σ²_n_s/(4kBT)）+ 延遲傳導 5·Q77 (含 wall 動態)。常數：C_dpmr=3.96, C_n=1.18, IF_var≈4.24 (Option A, λ_c=0.7)。Var(σ̂²_δxr) 從 Wick + EWMA 推得 a_cov·IF_var·(σ²_δxr)²。下一步 Step 3.5 自適應 R_2 gate 設計（warm-up / SNR / wall / a_x rate 四條件）。 |
+| 03 | R matrix design (incl. IIR-induced σ²_n_axm + 3-guard adaptive) | 2026-04-29 | DONE | design.md §9 | R_2_eff,i[k] = a_cov·IF_var·(â_x,i+ξ_i)² + 5·Q77,i[k]，純二次多項式 in â_x + Q77 wall 動態（per-axis sensor floor ξ_i=(C_n/C_dpmr)·σ²_n_s/(4kBT)）。常數 C_dpmr=3.96, C_n=1.18, IF_var≈4.24 (Option A, λ_c=0.7)。Step 3.5 採 3-guard 簡化版（trajectory-aware）：t < t_warmup_kf (0.2 sec) / σ²_δxr ≤ C_n·σ²_n_s (NaN guard) / h̄ < h̄_safe (1.5) → R_2 = 1e10；無 hysteresis、無 ramp-down（先別預期問題）。 |
 | 04 | 7-state EKF MATLAB implementation | — | TODO | — | — |
 | 05 | Closed-loop variance Lyapunov | — | TODO | — | — |
 | 06 | End-to-end vs qr 7-state EKF comparison | — | TODO | — | — |
@@ -101,6 +101,18 @@
   - **合計精度限制**：~10–15% 各方向偏差（Eq.19 form 50% P undershoot + δ̄x_r 2.5% bias + IF_eff 9% + thermal/sensor regime crossover），合在 design.md §9.8 表
   - 下一步：**Step 3.5 自適應 R_2 gate** — warm-up / 低 SNR / 過 wall / a_x 變化太快 四條件偵測
 
+- **Task 03 Step 3.5 — 自適應 R_2 gate（DONE，3-guard 簡化版）**：
+  - **核心策略**：利用既有軌跡結構（hold→descend→oscillation）天然提供乾淨 warm-up 期；EKF 內只加 3 個獨立 guard，純 OR 邏輯
+  - **4 條件 → 3 guards 整併**：
+    - Guard 1: `t < t_warmup_kf` (0.2 sec)，covers warm-up
+    - Guard 2: `σ²_δxr ≤ C_n·σ²_n_s` (NaN guard, prevents a_xm divergence)
+    - Guard 3: `h̄ < h̄_safe` (1.5)，covers wall + a_x rate（兩者過 wall 同步觸發）
+  - **觸發時 R_2 = 1e10**（KF 自然忽略 y_2，退化單回授）
+  - **退化保護**：rank(O) 仍=7（Task 01 單回授 + PE 滿足下成立），â_x 改由 y_1 鏈間接識別
+  - **不加 hysteresis / ramp-down**：MVP 簡化，端到端驗證有問題再加
+  - **驗證項目**（轉到 Task 04 端到端）：每 guard 獨立觸發測試 + â_x 連續性檢查
+  - **Task 03 Step 3.1-3.5 全部 DONE，Task 03 完整收斂**
+
 ### 與 paper 對照
 
 - _(待累積)_
@@ -182,3 +194,4 @@ qr 分支累積的相關發現，**部分可借用、部分不適用**：
 | 2026-04-29 | (task02-q77-fix) | Q77 從 Var(δa_x) 形式 (â_x²·K_h²·(Δt/R)²·σ²_ḣ_max) 升級為 Var(w_a) 完整 Path B 形式 Δt⁴·â_x²·{(K_h²−K_h')²·ḣ_max⁴/(8R⁴)+K_h²·ḧ_max²/(2R²)}。理由：原式對應一階差分 Var(δa_x)，但 KF 模型要求二階差分 Var(w_a) = Δt⁴·Var(ä_x)，原式 over-estimate ~3300×。同時評估 Route III (â_x 多項式形式) 後駁回（過 wall under-estimate 80%, bias loop 風險）。 |
 | 2026-04-29 | (task03-step1) | Task 03 Step 3.1 ✓ DONE — 閉迴路 δx_r 統計嚴格推導（從 Eq.19 form ARMA inflation）：σ²_δxr = C_dpmr·4kBT·â_x + C_n·σ²_n_s（C_dpmr=3.96, C_n=1.18 for λ_c=0.7，與 paper 2025 Eq.11/12 同形式，非粗糙近似）；ρ_δxr(τ) 選 Option A (MA(2) full)，IF_var≈4.2；三決定敲定（ρ_δx Option A、σ²_δxr 用 â_x[k]、σ²_n_s 常數 per-axis）；Step 3.2 chi-squared 推 Var(σ̂²_δxr) 待續。同步補修 design.md §5 Row 3 註解明確 Eq.18 vs Eq.19 form 兩階段（之前只跳到 Eq.19 form 看似直接 Jacobian），fix §8.1 + agent_docs/eq17-architecture.md §5 caption "Path A′ inflation" → "Path C strict" 對齊 §8.2 嚴格形式；新增 design.md §9 R 矩陣推導章節（Step 3.1-3.5 進度與決定總覽），renumber §9-11 → §10-12。 |
 | 2026-04-29 | (task03-step234) | Task 03 Step 3.2-3.4 ✓ DONE — Var(σ̂²_δxr) 從 IIR EWMA + Wick 推得 a_cov·IF_var·(σ²_δxr)²（用 δx_r ~ N(0,σ²) 高斯特例 ρ_{δx_r²}=ρ_δxr²；穩態 δ̄x_r≈0 簡化；small a_cov 極限 IF_eff≈IF_var 誤差 ~9%）。R_2_intrinsic,i[k] = a_cov·IF_var·{â_x,i+ξ_i}² 純二次多項式 (per-axis ξ_i = (C_n/C_dpmr)·σ²_n_s,i/(4kBT) sensor floor)。R_2_eff,i[k] = R_2_intrinsic + 5·Q77,i[k] 含延遲傳導。R 矩陣作為 scalar 函數 R(â_x,i[k], h̄[k])，每 step per-axis 算 2×2 matrix (off-diag=0)。design.md §9.3-9.8 全部 expand 完整推導 + 函數性質總表 + 合計精度 ~10-15%。下一步 Step 3.5 自適應 R_2 gate 設計。 |
+| 2026-04-29 | (task03-step5) | Task 03 Step 3.5 ✓ DONE — 自適應 R_2 gate 採 trajectory-aware 3-guard 簡化版（拒絕原 §9.5 outline 的 4-gate + hysteresis + ramp 複雜設計）：軌跡的 hold(0.5s) → descend → oscillation 結構天然提供 IIR 收斂期；EKF 內只加 (1) `t < t_warmup_kf=0.2s` warm-up gate (2) `σ²_δxr ≤ C_n·σ²_n_s` NaN guard (3) `h̄ < h̄_safe=1.5` wall gate，純 OR 觸發 R_2=1e10，無 hysteresis、無 ramp-down。Guard 3 同時 cover 過 wall 與 a_x 動太快兩條件（兩者物理上同步）。觸發時 KF 退化單回授，由 y_1 鏈 + PE 結構維持 rank(O)=7（Task 01 結論支持）。Task 03 全部完成（Step 3.1-3.5 五階段）。同時整合既有 dual-track simulation design（agent_docs/dual-track-simulation-design.md，從 Downloads/ 移入），規劃 Task 04 走 dual-track（pure-MATLAB driver + Simulink SSOT + verify_equivalence gate），詳見 design.md §12 task 04。 |
