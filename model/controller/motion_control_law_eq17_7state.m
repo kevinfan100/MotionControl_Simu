@@ -562,6 +562,18 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         S = 0.5 * (S + S');                     % symmetrize
         K_kf = (P_pred * H_use') / S;           % 7x{1,2}
 
+        % --- Stage 10 Option A: gate slot 6 + 7 update during G1 (warm-up) ---
+        % Wave 4 root cause: F_e(3,6) = -f_d accumulates P_pred(3,6) cross-cov
+        % during warm-up, leaking through K_kf(6,1)·y_1 to drive â_x runaway
+        % (â_x can be pushed past 0 → control law blowup at step ~122).
+        % Gate row 6 + 7 of K_kf during G1 only — slot 6/7 evolve via Jordan
+        % integration only (a_x = const, δa_x ≈ 0). G2/G3 do not gate slot 6/7
+        % (R(2,2)=R_OFF / 1D y_1-only update already disables y_2 contribution).
+        if G1
+            K_kf(6, :) = 0;     % gate slot 6 (a_x) measurement update
+            K_kf(7, :) = 0;     % gate slot 7 (δa_x) — Jordan-pair consistency
+        end
+
         x_post = x_pred + K_kf * innov;
         P_post = (eye(7) - K_kf * H_use) * P_pred;
         P_post = 0.5 * (P_post + P_post');

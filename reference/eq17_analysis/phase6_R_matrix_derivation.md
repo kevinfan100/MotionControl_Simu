@@ -285,6 +285,40 @@ At t=0, IIR LP/HP filters not yet at steady state. σ̂²_δxr is highly biased.
 
 **v1 inheritance**: Phase 4a/4b/4c implementation has this guard.
 
+#### 5.2.1 G1 design intent completion (Wave 4 + Stage 10 Option A)
+
+Original Phase 6 §5.2 G1 spec only gated the y_2 channel via R(2,2) = 1e10. Wave 4
+e2e testing revealed this is **insufficient**: even with y_2 fully gated, the y_1
+channel (δx_m measurement) can still drive slot 6 (a_x) updates through the
+accumulated cross-covariance P_pred(3,6). During warmup, this cross-covariance
+itself is unstable (transient buildup before IIR convergence), so any y_1-driven
+slot 6 update is unreliable — causing â_x runaway during the warmup window.
+
+**Option A scope expansion**: G1 must gate slot 6/7 update from any measurement
+channel, not just y_2:
+
+```
+G1 (warm-up) gate, Option A spec:
+  R(2,2) = 1e10                ← existing (gates y_2 channel)
+  L(6, :) = 0                  ← new (gates slot 6 (a_x) update from any channel)
+  L(7, :) = 0                  ← new (gates slot 7 (δa_x) update from any channel)
+```
+
+**Physical motivation**: G1 is the warmup period. Any measurement-driven update
+to slot 6 (a_x) is untrustworthy during this window:
+
+- y_2 (a_xm) is unreliable because the IIR has not converged (original G1 reason).
+- y_1 (δx_m) drives slot 6 only via cross-covariance P_pred(3,6), but the
+  cross-covariance itself accumulates unstably during the transient.
+- → Layer 2 G1 complete intent: "during warmup, KF accepts no measurement update
+  to slot 6 (a_x), regardless of which measurement channel it would arrive via",
+  not just gating y_2 alone.
+
+**G1 release behavior unchanged**: After t ≥ t_warmup_kf = 0.2 s, R(2,2) reverts
+to its closed-form value, and L(6, :) / L(7, :) are no longer forced to zero.
+KF operates normally. By this time the IIR has converged so y_2 directly measures
+slot 6, balancing any residual cross-covariance leakage from y_1.
+
 ### 5.3 G2 (NaN guard) rationale
 
 a_xm formula:
@@ -448,6 +482,20 @@ Alternative (if needed): use cross-cov form Joseph update. Phase 8 only if obser
 
 In Phase 5 §5.4, Q55 = a_x²·σ²_w_fD. To avoid self-loop, Implementation should use **a_nom²·σ²_w_fD** (Category B const), not â_x²·σ²_w_fD. Phase 5 doc to be amended; baseline σ²_w_fD = 0 makes this a cosmetic fix.
 
+### 8.6 G1 scope (Wave 4 + Stage 10 finding)
+
+Original Phase 6 §5.2 G1 spec only gated y_2 channel (R(2,2)=1e10).
+Wave 4 e2e revealed this is insufficient: y_1 sensor noise leaks
+into slot 6 (a_x) via accumulated P_pred(3,6) cross-covariance,
+causing â_x runaway during warmup.
+
+Stage 10 Option A: extend G1 scope to also force L(6,:) = L(7,:) = 0.
+This aligns G1 design intent (transient → no measurement updates to
+a_x estimate, regardless of channel).
+
+Not a derivation error — Phase 1-7 derivations correct. Only Phase 6
+§5.2 G1 implementation spec needed completion.
+
 ---
 
 ## 9. Phase 6 Summary
@@ -457,7 +505,7 @@ In Phase 5 §5.4, Q55 = a_x²·σ²_w_fD. To avoid self-loop, Implementation sho
 | R(1,1)_i | σ²_n_s,i (per-axis const) |
 | **R(2,2)_i[k]** | a_cov·IF_var·(â_x,i[k]+ξ_i)² + 5·Q77,i[k] |
 | ξ per-axis | x: 6.93e-6, y: 5.86e-8, z: 1.98e-4 µm/pN |
-| 3-guard | OR triggered → R(2,2) = 1e10 |
+| 3-guard | OR triggered → R(2,2) = 1e10; G1 also forces L(6,:)=L(7,:)=0 (Option A) |
 | Per-step time-varying | Only R(2,2) (via â_x[k] and h̄[k] through Q77) |
 | v2 vs v1 | All R formulas / values unchanged |
 
