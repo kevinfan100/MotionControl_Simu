@@ -1107,6 +1107,18 @@ R_2_off := 1e10  (大到 KF 自動忽略 y_2 通道)
   - **Task 04 初期決策**：用 h_bottom=4.5 μm (h̄_bottom=2.0 > h̄_safe=1.5)，**避開 gate 觸發**，KF 全程 dual-feedback，Q77 不需 cap，gate-off 跳階問題不存在
   - **Task 06 對比階段**：可改回 h_bottom=2.5 (h̄_bottom=1.11) 測試 gate 邏輯與激進軌跡下的 robustness
 
+- **新（重大）**：a_hat 系統性偏低 29-44%（self-consistent equilibrium）
+  - **觀察**：S2 positioning bias 43%；F3 osc bias 29-41%（動態軌跡 bias 較小因有 excitation）
+  - **驗證**：design.md C_dpmr=3.96 公式 Lyapunov 直接驗證正確（Eq.18 form 給 3.89，差 2%）；Pf_init 改 250× 對 bias 無影響
+  - **機制**：a_hat → IIR a_xm → KF tracks → a_hat 形成 self-consistent 平衡點，平衡點不在 a_hat=a_true。observed σ²_δx ≈ 63% × design 預測
+  - **不是 bug**：tracking error 與既有 7-state 同等級（24 nm），但 a_hat 不能直接當 motion gain 真值
+  - **後續解法選項**（待決定）：
+    (a) 接受 documented trade-off；
+    (b) 改 IIR 暖機策略（open-loop f_d=0 + 暖機完 init a_hat from converged σ²_δxr）；
+    (c) Q33 Path A' inflation 重新評估；
+    (d) IIR a_xm 公式加 self-consistent correction（最大改動）
+  - 2026-04-29 端到端驗證資料：見 verification.md (task04-end2end) 條目
+
 ---
 
 ## 12. 待辦項目（後續 task）
