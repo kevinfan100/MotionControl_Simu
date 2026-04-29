@@ -516,54 +516,87 @@ x_D 是 lumped disturbance（殘磁、磁滯、modeling error）。我們的 sim
 **實機部署 補丁**：若有殘磁，需從磁通變化率物理模型推。
 **工程 safety**：實作可設 floor `Q55 = 1e-12` 避免數值鎖死，**不影響理論**。
 
-### 8.4 Q77,i[k] — Adaptive，per-axis 時變
+### 8.4 Q77,i[k] — Adaptive，per-axis 時變（Path B 嚴格）
 
-#### 物理推導鏈
+#### 物理推導鏈：從 Var(w_a) = Δt⁴·Var(ä_x)
 
-a_x(t) = Δt / { γ_N · C_i(h(t)/R) }，對時間求一階導：
+KF integrated random walk 模型 `δa_x[k+1] = δa_x[k] + w_a[k]` 要求 `Q77 = Var(w_a)`。對 trajectory 真實訊號：
 ```
-ȧ_x = ∂a_x/∂h · ḣ = − a_x · K_h(h̄) · (1/R) · ḣ
-其中  K_h(h̄) := (1/C) · dC/dh̄,  h̄ := h/R
-```
+w_a_true[k] = δa_x_true[k+1] − δa_x_true[k]
+            = a_x_true[k+2] − 2·a_x_true[k+1] + a_x_true[k]    (二階差分)
+            ≈ Δt² · ä_x_true                                    (二階導)
 
-w_a 是 δa_x 的差分（對 random walk model）：
-```
-w_a[k] = δa_x[k+1] − δa_x[k] ≈ Δt² · ä_x ≈ Δt² · ∂²a_x/∂h² · ḣ²  (主導項)
+Q77 = Var(w_a_true) = Δt⁴ · Var(ä_x_true)
 ```
 
-取 trajectory 上 ḣ² 的上界（保守選擇）：
+**注意**：Q77 是 **Var(w_a) = Var(Δt²·ä_x)**，不是 Var(δa_x) = Var(Δt·ȧ_x)。差一階導 + 一個 Δt 因子。
+
+#### Step 1：a_x 對 h̄ 的偏導
+```
+∂a_x/∂h̄  = − a_x · K_h(h̄)              K_h := (1/C)·(dC/dh̄)
+∂²a_x/∂h̄² = a_x · ( K_h² − K_h' )       K_h' := dK_h/dh̄ = C''/C − K_h²
+```
+
+#### Step 2：時間二階導（鏈式 + product rule）
+```
+ȧ_x = − a_x · K_h · (ḣ/R)
+ä_x = a_x · ( K_h² − K_h' )·(ḣ/R)²  −  a_x · K_h ·(ḧ/R)
+      └────────────┬────────────┘     └─────────┬─────────┘
+            Term A: ḣ² 主導                 Term B: ḧ 貢獻
+```
+
+#### Step 3：對 trajectory 算 Var(ä_x)（一週期平均）
+
+對 sinusoidal `h(t) = h_0 + A·cos(ωt)`：
+```
+Var(ḣ²) = ḣ_max⁴/8        (cos²(ωt) 的 var)
+Var(ḧ)  = ḧ_max²/2        (cos(ωt) 的 var)
+Cov(ḣ², ḧ) = 0            (Fourier 正交：ḣ² 含 2ω 諧波，ḧ 含 ω 基頻)
+
+Var(ä_x) = a_x² · (K_h² − K_h')² · ḣ_max⁴/(8·R⁴)
+         + a_x² · K_h²            · ḧ_max² /(2·R²)
+```
 
 #### 最終公式
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  Q77,i[k] = (â_x,i[k])² · K_h,i(h̄[k])² · (Δt/R)² · σ²_ḣ_max     │
-└──────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Q77,i[k] = Δt⁴ · â_x,i²[k] · {                                          │
+│              ( K_h,i²(h̄[k]) − K_h,i'(h̄[k]) )² · ḣ_max⁴ / (8·R⁴)         │
+│            +   K_h,i²(h̄[k])                  · ḧ_max² / (2·R²)           │
+│           }                                                              │
+└─────────────────────────────────────────────────────────────────────────┘
 
-K_h,i(h̄) := (1/C_i(h̄)) · (dC_i/dh̄)        per-axis 壁面敏感度
-σ²_ḣ_max  := max_{t} ḣ²(t)                 trajectory 上界（離線算）
+K_h,i(h̄)  := (1/C_i(h̄)) · (dC_i/dh̄)              一階壁面敏感度
+K_h,i'(h̄) := dK_h,i/dh̄ = C_i''/C_i − K_h,i²       二階敏感度修正
+
+ḣ_max := A·ω = 2π·f·A             trajectory ḣ 上界（對 1Hz/A=10: 62.8 μm/s）
+ḧ_max := A·ω² = (2π·f)²·A         trajectory ḧ 上界（對 1Hz/A=10: 395 μm/s²）
 ```
 
-對 1Hz osc with A=10μm: |ḣ|_max = 2π·1·10 = 62.8 μm/s, σ²_ḣ_max ≈ 3947 (μm/s)²。
+per-axis：x, y 用 C_∥；z 用 C_⊥。
 
-#### 數值示意（osc trajectory, z 軸）
+#### Term A vs Term B 的相對量級（osc trajectory, z 軸）
 
-| 階段 | h̄ | C_⊥ | K_h,z | (â_x,z)² | Q77,z 相對量級 |
-|---|---|---|---|---|---|
-| Hold (h=50) | ~22 | 1.05 | ~0.005 | (a_nom·0.95)² | 1× (baseline) |
-| Descent (h=12.5) | ~5.6 | 1.4 | ~0.05 | (a_nom·0.7)² | ~50× |
-| 過 wall (h=2.5) | ~1.11 | 10.4 | ~3.5 | (a_nom·0.1)² | **~600×** |
+對 c_⊥(h̄) ≈ 1+9/(8h̄)（near-wall leading order）：
 
-→ KF 在過 wall 時自動 inflate Q77 兩個 order，給予追蹤動態 a_x(t) 的足夠 agility；遠離 wall 時 Q77 縮回，避免雜訊敏感。**這就是 adaptive Q 對動態軌跡的價值**。
+| 位置 h̄ | K_h² | K_h' | Term A / Term B |
+|---|---|---|---|
+| 22 (hold) | 4.9e−6 | 2.0e−4 | 0.04 (Term B 主導) |
+| 5.6 (descent) | 0.013 | 0.008 | 0.6 (各半) |
+| **1.11 (wall)** | **0.205** | **0.612** | **4.0** |
+
+→ **過 wall 時 Term A 是 Term B 的 4 倍**。完整公式必須含兩項，不能只取 Term B（這是為什麼 Route III 簡化會 under-estimate ~80% — 見 §8.8）。
 
 #### 屬性
 
 | 性質 | 值 |
 |---|---|
-| Per-axis | ✓ K_h,i 是 per-axis（C_∥ vs C_⊥） |
-| 時變 | ✓ 雙重依賴：直接 (â_x²) 與間接 (K_h 透過 h̄) |
-| 是否 â_x 函數？ | ✓ |
+| Per-axis | ✓ K_h,i, K_h,i' 是 per-axis（C_∥ vs C_⊥） |
+| 時變 | ✓ 雙重依賴：直接 (â_x²) 與間接 (K_h, K_h' 透過 h̄[k]) |
+| 是否 â_x 函數？ | ✓ Adaptive EKF / SDRE |
 | 是否需 inflation? | ✗ w_a 是 designed white driver，無 MA 問題 |
+| 函數變數 | h̄[k]（直接從量測算，非 KF 估），無 bias amplification loop |
 
 #### 實作前置：K_h 函數
 
@@ -573,20 +606,21 @@ K_h,i(h̄) := (1/C_i(h̄)) · (dC_i/dh̄)        per-axis 壁面敏感度
 
 ```
 每一步 KF update 計算量：
-  Q33[k] = 4kBT · â_x[k]                          (1 個 ×)
-  Q77[k] = â_x²[k] · K_h(h̄[k])² · 常數             (lookup K_h + 2 個 ×)
+  Q33[k] = 4kBT · â_x[k]                                              (1 個 ×)
+  Q77[k] = Δt⁴·â_x²·{(K_h²−K_h')²·ḣ_max⁴/(8R⁴) + K_h²·ḧ_max²/(2R²)}
+                                                       (lookup K_h, K_h' + 多次 ×)
   Q55    = 0  (常數，不更新)
 
 離線一次性算（常數）：
-  σ²_ḣ_max 從 trajectory 算
-  常數因子 4kBT, (Δt/R)²
+  ḣ_max, ḧ_max 從 trajectory 算 (A·ω, A·ω²)
+  常數因子 4kBT, Δt⁴, 1/(8R⁴), 1/(2R²)
 ```
 
 | 項 | 時變？ | 來源 |
 |---|---|---|
 | Q33,i[k] | ✓ 時變 | 透過 â_x,i[k] |
 | Q55 | ✗ 常數 (=0) | 設計選擇 |
-| Q77,i[k] | ✓ 時變 | 雙重依賴 â_x,i[k] 與 h̄[k] |
+| Q77,i[k] | ✓ 時變 | 雙重依賴 â_x,i[k] 與 h̄[k]（K_h, K_h'） |
 
 ### 8.6 全部 caveats
 
@@ -603,14 +637,18 @@ K_h,i(h̄) := (1/C_i(h̄)) · (dC_i/dh̄)        per-axis 壁面敏感度
 [Q55] = 0 假設：simulation 無殘磁。實機需重新推導 from
        磁通變化率物理模型。建議加 floor=1e-12 避免數值鎖死。
 
-[Q77] σ²_ḣ_max 用 trajectory 上界，是保守選擇。實際 trajectory
-       不同段的 ḣ 不同，但用上界讓 KF 在 worst case 仍夠 agile。
-       未來可改 σ²_ḣ_local[k] 進一步 adapt。
+[Q77] 公式 Var(w_a) = Δt⁴·Var(ä_x_true)，含 Term A (ḣ²) 與
+      Term B (ḧ) 兩項。Term A 過 wall 時主導 (4×Term B at h̄=1.11)，
+      因此完整公式必須含兩項。早期 Var(δa_x) 形式（少一個 Δt
+      因子加上一階導 vs 二階導）已退役。
 
-[Q77] K_h 函數需要 calc_correction_functions 加 dC/dh̄ 輸出。
-       Task 04 實作時處理。
+[Q77] σ²_ḣ_max, σ²_ḧ_max 用 trajectory 上界（一週期統計），
+      是保守選擇。對非常急的 transient 軌跡可能略偏。
 
-[Q] 對角化前提：A1-A4 四個獨立性假設。對 simulation 全部成立；
+[Q77] K_h, K_h' 函數需要 calc_correction_functions 加 dC/dh̄ 與
+      d²C/dh̄² (或 K_h') 輸出。Task 04 實作時處理。
+
+[Q]  對角化前提：A1-A4 四個獨立性假設。對 simulation 全部成立；
      實機若 thermal/sensor 有相關性需重評估。
 ```
 
@@ -626,6 +664,39 @@ K_h,i(h̄) := (1/C_i(h̄)) · (dC_i/dh̄)        per-axis 壁面敏感度
 | 對動態軌跡的反應 | 需手動調 Q | 自動跟著 trajectory 形狀走 |
 
 **重要**：兩個方案的 Q33 公式長得**一樣**（`4kBT·a_x`），但**KF 行為不同**。原因在控制律不同 → ε 結構不同 → 真實 σ²_δx 不同 → KF 對 P 的「正確值」認知不同。Q33 數值對齊只是表面，深層結構差異透過 closed-loop variance 體現。
+
+### 8.8 Route III 評估（已駁回，記錄理由）
+
+曾考慮把 Q77 寫成 â_x 的多項式（用 c_⊥ ≈ 1+9/(8h̄) 近壁近似反代 K_h → â_x）：
+```
+Route III: Q(7,7)(â_x) = (32/81) · (a_nom − â_x)⁴ · A_h² · ω⁴ · Δt⁴ / (a_nom²·R²)
+```
+
+**評估結論：駁回，採 Path B (§8.4)**。
+
+#### Route III 的本質
+
+數學上，Route III ≡ Path B 的 **Term B 單獨**（即 ḧ 主導項）+ K_h 用近壁近似反代成 â_x 多項式。**不是新方法，是 Path B 的真子集**。
+
+#### 駁回理由
+
+| 維度 | Path B (§8.4) | Route III |
+|---|---|---|
+| 包含項 | Term A + Term B（完整） | **Term B only** |
+| 過 wall 精度 | ✓ Term A 主導 4× | ✗ **under-estimate ~80%** |
+| 函數變數 | h̄[k]（直接量測） | â_x[k]（KF 估，含 bias） |
+| Bias amplification | ✗ 無 | ✓ **隱式遞迴需 1-step lag mitigate** |
+| h_init 依賴 | ✗ 不依賴 | ✗ 不依賴（兩者一樣） |
+| Adaptive | ✓ 透過 K_h(h̄[k]) | ✓ 透過 (a_nom − â_x)⁴ |
+| 高階 c 修正擴展性 | ✓ 換 K_h, K_h' lookup | ✗ 需重推解析多項式 |
+
+#### Route III 唯一實質優勢
+
+「閉式多項式，不需 K_h' lookup」。但這個優勢的代價是過 wall 80% 精度損失與 bias loop，**不划算**。
+
+#### Route III 的價值（保留作 sanity check）
+
+Task 04 實作後，可在「遠離 wall + Term B 主導區」用 Route III 多項式跟 Path B 完整公式對算 Q77，驗證 Path B 在該區域實作正確。**不採作主要設計**。
 
 ---
 

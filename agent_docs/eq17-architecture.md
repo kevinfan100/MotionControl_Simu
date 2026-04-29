@@ -243,21 +243,32 @@ Q55 = 0    (simulation 無殘磁)
 
 實機部署若有殘磁，需從殘磁磁通變化率推。可加 floor=1e-12 避免數值鎖死。
 
-### Q77,i[k]（gain velocity，adaptive per-axis 時變）
+### Q77,i[k]（gain velocity，adaptive per-axis 時變，Path B 嚴格）
 
-從 a_x(h(t)) 對 prescribed trajectory 的二階導推：
+從 `Var(w_a) = Δt⁴·Var(ä_x_true)` 出發（注意：是 ä_x 二階導，**不是** ȧ_x 一階導），鏈式推得：
+
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  Q77,i[k] = (â_x,i[k])² · K_h,i(h̄[k])² · (Δt/R)² · σ²_ḣ_max     │
-└──────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Q77,i[k] = Δt⁴ · â_x,i²[k] · {                                          │
+│              ( K_h,i²(h̄[k]) − K_h,i'(h̄[k]) )² · ḣ_max⁴ / (8·R⁴)         │
+│            +   K_h,i²(h̄[k])                  · ḧ_max² / (2·R²)           │
+│           }                                                              │
+└─────────────────────────────────────────────────────────────────────────┘
 
-K_h,i(h̄) := (1/C_i(h̄)) · (dC_i/dh̄)        per-axis 壁面敏感度
-σ²_ḣ_max  := max_{t} ḣ²(t)                 trajectory 上界（離線算）
+K_h,i(h̄)  := (1/C_i)·(dC_i/dh̄)           一階壁面敏感度
+K_h,i'(h̄) := dK_h,i/dh̄ = C_i''/C_i − K_h,i²    二階敏感度修正
+ḣ_max    := A·ω,    ḧ_max := A·ω²        trajectory bandwidth 上界
 ```
 
-對 osc trajectory（A=10μm, f=1Hz）：σ²_ḣ_max = (2π·10)² ≈ 3947 (μm/s)²。
+**Term A vs Term B 角色**：
+- Term A (ḣ²項，2ω 諧波)：過 wall 主導（h̄=1.11 時為 Term B 的 4×）
+- Term B (ḧ 項，ω 基頻)：遠離 wall 主導
 
-**對動態軌跡的價值**：Q77 在過 wall (h̄~1.1) 時自動 inflate ~600× 給 KF agility；遠離 wall 時 Q77 縮回避免雜訊敏感。
+完整公式必須含兩項，**不能只取 Term B**（這是為什麼簡化版 Route III ≡ Path B Term B-only 過 wall 會 under-estimate ~80%）。
+
+**對動態軌跡的價值**：Q77 在過 wall 時自動 inflate（K_h² 與 (K_h²−K_h')² 都爆增），遠離 wall 時 Q77 縮回。完全 adaptive，per-axis（C_∥ vs C_⊥），用 measured h̄[k] 避開 bias loop。
+
+詳細推導見 design.md §8.4，Route III 簡化評估見 §8.8。
 
 ### 時變性與更新
 

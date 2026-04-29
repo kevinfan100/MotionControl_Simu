@@ -14,7 +14,7 @@
 | # | Task | Date | Status | Report 連結 | 關鍵結論 |
 |---|---|---|---|---|---|
 | 01 | Math-layer observability rank test | 2026-04-28 | DONE | [task01_math_observability_report.md](../reference/eq17_analysis/task01_math_observability_report.md) | 5-state 10/10 + 7-state 3/3 = 13/13 PASS。雙回授下 7-state rank=7 對任意 f_d 成立（含 f_d=0）。發現 Config A 5-state PE 條件精確邊界：N 窗口下只有 f_d_seq(1..N-3) 影響 (x_D,a_x) 子塊 rank。 |
-| 02 | Q matrix derivation (Path C strict + adaptive Q77) | 2026-04-28 | DONE | design.md §8 (Path C) | Q33,i[k] = 4kBT·â_x,i[k] (嚴格 KF formalism：只當步 thermal，不含 (ii)(iii) 跨步相關 thermal 史與 (iv) n_x，後者三項由 paper Eq.22 與 R(1,1) 分別處理)；Q55=0；Q77,i[k] = â_x²·K_h(h̄)²·(Δt/R)²·σ²_ḣ_max (adaptive)。代價：KF 預測 P(3,3) ≈ 真實 σ²_δx 的 50%（standard KF 對 correlated noise 的 trade-off，要消除須升級 Path B 9-state）。 |
+| 02 | Q matrix derivation (Path C strict Q33 + Path B Var(w_a) Q77) | 2026-04-29 | DONE | design.md §8 | Q33,i[k] = 4kBT·â_x,i[k] (Path C 嚴格 KF formalism)；Q55=0；Q77,i[k] = Δt⁴·â_x²·{(K_h²−K_h')²·ḣ_max⁴/(8R⁴) + K_h²·ḧ_max²/(2R²)} (Path B 完整 Var(w_a) 含 Term A+B；過 wall Term A 主導 4×Term B)。Route III 簡化版 (Q ∝ (a_nom-â_x)⁴) 評估後駁回（=Term B only，過 wall under-estimate ~80%）。需要實作 K_h, K_h' lookup（Task 04 處理）。 |
 | 03 | R matrix design (incl. IIR-induced σ²_n_axm) | — | TODO | — | — |
 | 04 | 7-state EKF MATLAB implementation | — | TODO | — | — |
 | 05 | Closed-loop variance Lyapunov | — | TODO | — | — |
@@ -46,11 +46,23 @@
     - 代價：KF 預測 P(3,3) ≈ 真實 σ²_δx 的 50%（standard KF 對 correlated noise 的 trade-off）
     - 之前推過 Path A′ inflation 形式 (3−2λ_c²)·4kBT·â_x + (1−λ_c)²·σ²_n_s，**已退役**（理由：違反 KF Q-R 獨立與白噪 cross-step 假設，是 hack 不是推導）
   - **Q55** = 0（simulation 場景無殘磁；可加 floor=1e-12 防數值鎖死）
-  - **Q77,i[k]** = (â_x,i[k])² · K_h,i(h̄[k])² · (Δt/R)² · σ²_ḣ_max
-    - **adaptive 形式**，雙重依賴 â_x 與 h̄
-    - K_h,i := (1/C_i)·(dC_i/dh̄) 是壁面敏感度，過 wall 時 K_h² 爆增 → Q77 自動 inflate ~600× 給 KF agility
-    - 需要 calc_correction_functions 增加 dC/dh̄ 輸出（Task 04 處理）
+  - **Q77,i[k]** = Δt⁴·â_x²·{(K_h²−K_h')²·ḣ_max⁴/(8R⁴) + K_h²·ḧ_max²/(2R²)}
+    - **Path B 完整 Var(w_a) 公式**，從 Var(ä_x_true) 的鏈式推導
+    - Term A (ḣ² 項，2ω 諧波)：過 wall (h̄=1.11) 主導，4× Term B
+    - Term B (ḧ 項，ω 基頻)：遠離 wall 主導
+    - 早期 (â_x²·K_h²·(Δt/R)²·σ²_ḣ_max) 形式對應 Var(δa_x) 不是 Var(w_a)，over-estimate ~3300×，已退役
+    - K_h,i, K_h,i' 函數需要 calc_correction_functions 增加 dC/dh̄ 與 d²C/dh̄² 輸出（Task 04 處理）
+    - 用 measured h̄[k]（不用 KF 估的 â_x），避開 bias amplification loop
     - w_a 是 designed white driver，本來就是白噪，無 Q33 的 correlated-noise 問題
+
+- **Route III 評估（已駁回）**：
+  - 提案：Q77 = (32/81)·(a_nom−â_x)⁴·A_h²·ω⁴·Δt⁴/(a_nom²·R²)
+  - 本質：Path B 的 Term B 單獨 + K_h 用近壁 c_⊥≈1+9/(8h̄) 反代成 â_x 多項式
+  - 駁回理由：
+    (1) 過 wall under-estimate ~80%（缺 Term A，那裡 Term A 是主導項）
+    (2) bias amplification loop（Q 用 KF 估的 â_x 而非 measured h̄）
+    (3) 高階 c 修正擴展性差（換 c 公式要重推多項式）
+  - 保留價值：可作 sanity check（Term B 主導區，遠離 wall），對驗 Path B 數值正確性
   - **Q 對角化確認**：4 個獨立性假設下 single-time Q off-diagonal 嚴格 0
   - **完整 ε 結構處理**：(i) 進 Q33，(ii)(iii) 進 Eq.22 closed-loop，(iv) 進 R(1,1)
 
@@ -140,3 +152,4 @@ qr 分支累積的相關發現，**部分可借用、部分不適用**：
 | 2026-04-28 | (task02-Q) | Task 02 DONE — Q 矩陣三項代數推導（Q33[k], Q55=0, Q77）；a_xm 公式改線性；H 加入 d-step 延遲修正 (col 7 = −d) |
 | 2026-04-28 | (task02-unified) | Q 升級到 unified version: Path A′ inflation Q33 (3−2λ_c²) + adaptive Q77 (含 K_h 壁面敏感度)；補上 Q 對角化的 A1–A4 假設 |
 | 2026-04-28 | (task02-strict) | Q33 退役 Path A′ inflation，改回 Path C 嚴格形式 4kBT·â_x。理由：Path A′ inflation 違反 KF Q-R 獨立與 Q 白噪 cross-step 假設，雖然能讓 KF 預測 σ²_δx 對齊 Eq.22 但是 hack 不是推導。Path C 數學嚴格但 KF P 預測偏小 ~50%（standard KF 對 correlated noise 的已知 trade-off），可接受。 |
+| 2026-04-29 | (task02-q77-fix) | Q77 從 Var(δa_x) 形式 (â_x²·K_h²·(Δt/R)²·σ²_ḣ_max) 升級為 Var(w_a) 完整 Path B 形式 Δt⁴·â_x²·{(K_h²−K_h')²·ḣ_max⁴/(8R⁴)+K_h²·ḧ_max²/(2R²)}。理由：原式對應一階差分 Var(δa_x)，但 KF 模型要求二階差分 Var(w_a) = Δt⁴·Var(ä_x)，原式 over-estimate ~3300×。同時評估 Route III (â_x 多項式形式) 後駁回（過 wall under-estimate 80%, bias loop 風險）。 |
