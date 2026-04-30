@@ -108,7 +108,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     % Cached scalars / vectors (extracted once at init)
     persistent initialized
     persistent lambda_c d_delay Ts kBT R_radius
-    persistent a_pd a_var a_cov sigma2_w_fD
+    persistent a_pd a_var a_cov sigma2_w_fD sigma2_w_fA
     persistent C_dpmr C_n IF_var xi_per_axis delay_R2_factor
     persistent C_dpmr_eff_per_axis C_np_eff_per_axis  % Stage 11 Option I: per-axis
     persistent t_warmup_kf h_bar_safe
@@ -170,6 +170,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
             sigma2_w_fD = ctrl_const.sigma2_w_fD;          % Phase 5 §5.4 baseline 0
         else
             sigma2_w_fD = 0;
+        end
+        if isfield(ctrl_const, 'sigma2_w_fA') && ~isempty(ctrl_const.sigma2_w_fA)
+            sigma2_w_fA = ctrl_const.sigma2_w_fA;          % Phase 5 §5.5 baseline 0
+        else
+            sigma2_w_fA = 0;
         end
 
         % --- 0C. Wall geometry ---
@@ -460,6 +465,30 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         term_A = (K_h_i^2 - K_h_p_i)^2 * h_dot_max^4 / 8 * R4_inv;
         term_B = K_h_i^2               * h_ddot_max^2 / 2 * R2_inv;
         Q77_i = Ts4 * a_hat_i^2 * (term_A + term_B);
+
+        % Phase 5 §5.5 — σ²_w_fA random walk regularization (analogous to §5.4 σ²_w_fD on Q55)
+        % Q77 floor from a_nom² · σ²_w_fA, ensures KF P77 doesn't degenerate
+        Q77_phase5_floor = a_nom_per_axis(ax)^2 * sigma2_w_fA;
+        Q77_i = max(Q77_i, Q77_phase5_floor);
+
+        % Diagnostic: optional Q77_floor / Q77_floor_schedule injection.
+        % Schedule form: Q77(t) = init * exp(-t/tau) + steady (struct fields).
+        % If both present, schedule wins.
+        Q77_floor_eff = 0;
+        if isfield(ctrl_const, 'Q77_floor_schedule') && ~isempty(ctrl_const.Q77_floor_schedule)
+            sched = ctrl_const.Q77_floor_schedule;
+            t_now_local = (k_step - 1) * Ts;
+            Q77_floor_eff = sched.init * exp(-t_now_local / sched.tau) + sched.steady;
+        elseif isfield(ctrl_const, 'Q77_floor') && ~isempty(ctrl_const.Q77_floor)
+            if numel(ctrl_const.Q77_floor) == 3
+                Q77_floor_eff = ctrl_const.Q77_floor(ax);
+            else
+                Q77_floor_eff = ctrl_const.Q77_floor;
+            end
+        end
+        if Q77_floor_eff > 0
+            Q77_i = max(Q77_i, Q77_floor_eff);
+        end
         Q77_per_axis(ax) = Q77_i;
 
         Q_i = zeros(7);

@@ -35,6 +35,8 @@ function config = user_config()
 %       epsilon     = 0.01      % Anisotropy threshold for theta measurement
 %       sigma2_w_fD = 0         % f_D random-walk innovation variance [pN^2/step]
 %                                 (Phase 5 §5.4, eq17_7state v2 only)
+%       sigma2_w_fA = 0         % a_x random-walk innovation variance [(um/pN)^2/step]
+%                                 (Phase 5 §5.5, eq17_7state v2 only)
 %
 %       % Thermal
 %       thermal_enable = true   % Enable thermal force
@@ -82,6 +84,12 @@ function config = user_config()
     %   Used in Q55,i = a_nom_axis^2 * sigma2_w_fD (eq17_7state v2 only).
     %   Baseline 0 → Q55 = 0 (no f_D process noise injection).
     config.sigma2_w_fD = 0;         % [pN^2/step], Phase 5 §5.4 baseline 0
+
+    % Phase 5 §5.5: a_x random-walk innovation variance (analogue of §5.4 σ²_w_fD)
+    %   Used in Q77_phase5_floor,i = a_nom_axis^2 * sigma2_w_fA (eq17_7state v2 only).
+    %   Provides Q77 floor so KF P77 doesn't degenerate when wall-coupling Q77 ≈ 0
+    %   (e.g. far-from-wall positioning at h=50). Baseline 0 → no floor injection.
+    config.sigma2_w_fA = 0;         % [(um/pN)^2/step], Phase 5 §5.5 baseline 0
 
     % 7-state EKF specific parameters
     config.beta = 0.5;                  % Disturbance/gain coupling parameter

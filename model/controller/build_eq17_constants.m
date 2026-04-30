@@ -22,6 +22,9 @@ function ctrl_const = build_eq17_constants(opts)
 %       opts.a_pd         - IIR LP weight for δp_md mean       (default = a_cov)
 %       opts.sigma2_w_fD  - f_D random-walk innovation var.    (default 0)
 %                           [pN^2/step], used in Q55,i = a_nom_axis^2 * sigma2_w_fD
+%       opts.sigma2_w_fA  - a_x random-walk innovation var.    (default 0)
+%                           [(um/pN)^2/step], used in Q77_phase5_floor,i =
+%                           a_nom_axis^2 * sigma2_w_fA (Phase 5 §5.5)
 %
 %   --------- Outputs (struct ctrl_const) ---------
 %       lambda_c          - copied from opts
@@ -38,6 +41,7 @@ function ctrl_const = build_eq17_constants(opts)
 %       a_cov             - copied
 %       a_pd              - copied (defaults to a_cov for backward compat)
 %       sigma2_w_fD       - copied (defaults to 0)
+%       sigma2_w_fA       - copied (defaults to 0)
 %       meta              - struct with derivation reference and option tag
 %
 %   --------- IF_var formula ---------
@@ -86,6 +90,9 @@ function ctrl_const = build_eq17_constants(opts)
     end
     if ~isfield(opts, 'sigma2_w_fD') || isempty(opts.sigma2_w_fD)
         opts.sigma2_w_fD = 0;            % Phase 5 §5.4 baseline 0
+    end
+    if ~isfield(opts, 'sigma2_w_fA') || isempty(opts.sigma2_w_fA)
+        opts.sigma2_w_fA = 0;            % Phase 5 §5.5 baseline 0
     end
 
     % Stage 11 Option I: per-axis effective C_dpmr_eff / C_np_eff
@@ -222,6 +229,7 @@ function ctrl_const = build_eq17_constants(opts)
     ctrl_const.a_cov           = opts.a_cov;
     ctrl_const.a_pd            = opts.a_pd;
     ctrl_const.sigma2_w_fD     = opts.sigma2_w_fD;
+    ctrl_const.sigma2_w_fA     = opts.sigma2_w_fA;
 
     % Stage 11 Option I: per-axis effective C_dpmr_eff / C_np_eff
     ctrl_const.C_dpmr_eff      = opts.C_dpmr_eff_per_axis(:);    % 3x1

@@ -90,6 +90,12 @@ function simOut = run_pure_simulation(config, opts)
     else
         eq17_opts.sigma2_w_fD = 0;
     end
+    % Phase 5 §5.5: a_x random-walk innovation variance (Q77 floor, baseline 0)
+    if isfield(config, 'sigma2_w_fA')
+        eq17_opts.sigma2_w_fA = config.sigma2_w_fA;
+    else
+        eq17_opts.sigma2_w_fA = 0;
+    end
     % Stage 11 Option I: per-axis effective C_dpmr_eff / C_np_eff from calc_ctrl_params
     if isfield(P.ctrl, 'C_dpmr_eff_per_axis')
         eq17_opts.C_dpmr_eff_per_axis = P.ctrl.C_dpmr_eff_per_axis;
