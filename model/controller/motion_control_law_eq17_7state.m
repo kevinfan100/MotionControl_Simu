@@ -110,6 +110,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     persistent lambda_c d_delay Ts kBT R_radius
     persistent a_pd a_var a_cov sigma2_w_fD
     persistent C_dpmr C_n IF_var xi_per_axis delay_R2_factor
+    persistent C_dpmr_eff_per_axis C_np_eff_per_axis  % Stage 11 Option I: per-axis
     persistent t_warmup_kf h_bar_safe
     persistent sigma2_n_s          % 3x1 [um^2]
     persistent h_dot_max h_ddot_max
@@ -138,6 +139,19 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         C_dpmr          = ctrl_const.C_dpmr;
         C_n             = ctrl_const.C_n;
         IF_var          = ctrl_const.IF_var;
+        % Stage 11 Option I: per-axis effective C_dpmr / C_n (3x1 each).
+        % Used in a_xm formula instead of paper closed-form scalars.
+        % Falls back to scalar C_dpmr/C_n replicated if not present.
+        if isfield(ctrl_const, 'C_dpmr_eff') && ~isempty(ctrl_const.C_dpmr_eff)
+            C_dpmr_eff_per_axis = ctrl_const.C_dpmr_eff(:);
+        else
+            C_dpmr_eff_per_axis = C_dpmr * ones(3, 1);
+        end
+        if isfield(ctrl_const, 'C_np_eff') && ~isempty(ctrl_const.C_np_eff)
+            C_np_eff_per_axis = ctrl_const.C_np_eff(:);
+        else
+            C_np_eff_per_axis = C_n * ones(3, 1);
+        end
         xi_per_axis     = ctrl_const.xi_per_axis;         % 3x1 [um/pN]
         delay_R2_factor = ctrl_const.delay_R2_factor;     % = 5 for d=2
         t_warmup_kf     = ctrl_const.t_warmup_kf;
@@ -309,8 +323,10 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     % Variance EWMA — δ̄x_r ~ 0 in steady state (~2.5% bias OK)
     sigma2_dxr_hat_new = (1 - a_cov) * sigma2_dxr_hat + a_cov * dx_r.^2;
 
-    den_axm = C_dpmr * 4 * kBT;                               % [pN*um] scaled
-    a_xm = (sigma2_dxr_hat_new - C_n * sigma2_n_s) / den_axm; % 3x1 [um/pN]
+    % Stage 11 Option I: per-axis effective C_dpmr_eff / C_np_eff
+    % (replaces paper closed-form scalars 3.96 / 1.18 with v2-actual values)
+    den_axm_per_axis = C_dpmr_eff_per_axis * 4 * kBT;          % 3x1 [pN*um]
+    a_xm = (sigma2_dxr_hat_new - C_np_eff_per_axis .* sigma2_n_s) ./ den_axm_per_axis;  % 3x1 [um/pN]
 
     % ------------------------------------------------------------------
     % [2] Warmup gate (Phase 8 §A: 2-step; f_d=0; EKF skipped; IIR active)
@@ -463,7 +479,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         % --- 3-guard adaptive R_2 (Phase 6 §5) ----------------------
         t_now = (k_step - 1) * Ts;                  % real time at step k
         G1 = (t_now < t_warmup_kf);                 % warm-up
-        G2 = ((sigma2_dxr_hat_new(ax) - C_n * sigma2_n_s(ax)) <= 0);  % low SNR
+        G2 = ((sigma2_dxr_hat_new(ax) - C_np_eff_per_axis(ax) * sigma2_n_s(ax)) <= 0);  % low SNR
         G3 = (h_bar < h_bar_safe);                  % near-wall
 
         if G1 || G2 || G3
@@ -534,7 +550,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
 
         % --- Determine if y_2 channel is gated off ---
         G1 = (t_now < t_warmup_kf);
-        G2 = ((sigma2_dxr_hat_new(ax) - C_n * sigma2_n_s(ax)) <= 0);
+        G2 = ((sigma2_dxr_hat_new(ax) - C_np_eff_per_axis(ax) * sigma2_n_s(ax)) <= 0);
         G3 = (h_bar < h_bar_safe);
         gate_y2_off = G1 || G2 || G3;
 

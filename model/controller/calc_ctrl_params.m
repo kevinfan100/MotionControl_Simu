@@ -64,4 +64,54 @@ function ctrl = calc_ctrl_params(config, constants)
         ctrl.sigma2_w_fD = 0;
     end
 
+    % ---------------------------------------------------------------
+    % Stage 11 Option I: Per-axis on-the-fly C_dpmr_eff / C_np_eff
+    % Replaces paper Eq.22 closed-form (3.96, 1.18) with v2-effective
+    % values via augmented Lyapunov. Same mechanism as qr branch.
+    % Resolves Wave 4 v2 a_hat bias -31% → ~-1% target.
+    % ---------------------------------------------------------------
+    here = fileparts(mfilename('fullpath'));
+    project_root = fileparts(fileparts(here));
+    addpath(fullfile(project_root, 'test_script'));
+
+    ctrl.C_dpmr_eff_per_axis = zeros(3, 1);
+    ctrl.C_np_eff_per_axis   = zeros(3, 1);
+
+    % Free-space design-time scaling (h_bar -> infinity, c=1)
+    a_design = Ts / constants.gamma_N;
+    sigma2_dXT_design = 4 * constants.k_B * constants.T * a_design;
+
+    C_dpmr_paper = 2 + 1 / (1 - config.lambda_c^2);
+    C_n_paper    = 2 / (1 + config.lambda_c);
+
+    opts_lyap = struct('f0', 0, 'verbose', false, 'Fe_form', 'eq19');
+
+    try
+        for ax = 1:3
+            Q_kf_scale = [0; 0; 1; 0; 0; 0; 1e-15];
+
+            sigma2_n_s_ax = config.meas_noise_std(ax)^2;
+            xi_ax = (C_n_paper / C_dpmr_paper) * sigma2_n_s_ax ...
+                    / (4 * constants.k_B * constants.T);
+            IF_var_design = (1 + config.lambda_c^2) / (1 - config.lambda_c^2);
+            R_22_design = config.a_cov * IF_var_design ...
+                          * (a_design + xi_ax)^2;
+            R_kf_scale = [sigma2_n_s_ax / sigma2_dXT_design; ...
+                          R_22_design / sigma2_dXT_design];
+
+            [Cd, Cn, ~, ~, ~] = compute_7state_cdpmr_eff_v2( ...
+                config.lambda_c, 2, config.a_pd, ...
+                Q_kf_scale, R_kf_scale, opts_lyap);
+
+            ctrl.C_dpmr_eff_per_axis(ax) = Cd;
+            ctrl.C_np_eff_per_axis(ax)   = Cn;
+        end
+    catch ME
+        warning('calc_ctrl_params:peraxis_lyap_failed', ...
+                'Per-axis Lyapunov failed: %s. Falling back to paper closed form.', ...
+                ME.message);
+        ctrl.C_dpmr_eff_per_axis = C_dpmr_paper * ones(3, 1);
+        ctrl.C_np_eff_per_axis   = C_n_paper   * ones(3, 1);
+    end
+
 end

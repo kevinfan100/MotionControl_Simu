@@ -88,6 +88,15 @@ function ctrl_const = build_eq17_constants(opts)
         opts.sigma2_w_fD = 0;            % Phase 5 §5.4 baseline 0
     end
 
+    % Stage 11 Option I: per-axis effective C_dpmr_eff / C_np_eff
+    % If not provided, defaults to paper closed-form replicated per-axis.
+    if ~isfield(opts, 'C_dpmr_eff_per_axis') || isempty(opts.C_dpmr_eff_per_axis)
+        opts.C_dpmr_eff_per_axis = (2 + 1/(1 - opts.lambda_c^2)) * ones(3, 1);
+    end
+    if ~isfield(opts, 'C_np_eff_per_axis') || isempty(opts.C_np_eff_per_axis)
+        opts.C_np_eff_per_axis = (2 / (1 + opts.lambda_c)) * ones(3, 1);
+    end
+
     % ------------------------------------------------------------
     % Required-field presence checks
     % ------------------------------------------------------------
@@ -213,6 +222,10 @@ function ctrl_const = build_eq17_constants(opts)
     ctrl_const.a_cov           = opts.a_cov;
     ctrl_const.a_pd            = opts.a_pd;
     ctrl_const.sigma2_w_fD     = opts.sigma2_w_fD;
+
+    % Stage 11 Option I: per-axis effective C_dpmr_eff / C_np_eff
+    ctrl_const.C_dpmr_eff      = opts.C_dpmr_eff_per_axis(:);    % 3x1
+    ctrl_const.C_np_eff        = opts.C_np_eff_per_axis(:);      % 3x1
 
     ctrl_const.meta = struct( ...
         'derivation', 'design.md §9.1-9.2', ...
