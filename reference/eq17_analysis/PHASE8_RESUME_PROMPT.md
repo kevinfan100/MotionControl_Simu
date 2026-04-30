@@ -7,20 +7,25 @@ Tag: `eq17-pre-redesign-2026-04-29` @ `527b89e` (v1 baseline, before redesign)
 
 ## Where we are
 
-Phase 8 v2 redesign, ~98% done. Wave 4 v3 (Stage 11 Option I applied):
-- ✓ Stability + tracking PASS (30 nm, similar to v2's 29 nm)
-- △ a_hat bias **-11%** (improved 3× from v2's -31%, but still > 5% target)
-- ✗ σ²_δx ratio 0.54 (worse than v2's 0.76 — see below)
+Phase 8 v2 redesign — **Wave 1 COMPLETE, h=50 positioning PASS**.
 
-**Status: PARTIAL PASS.** Stage 11 fix is correct in direction; magnitude
-under-corrects because the Lyapunov helper `compute_7state_cdpmr_eff_v2.m`
-Row 1 (lines 130-136) inherits v1 coefficients that don't match v2's
-F_e(3,4) = -1.6 closed-loop coupling. See `phase8_e2e_h50_results_v3.md`.
+Wave 1 (commit 417241e) integrated:
+- P1 per-axis a_design in Stage 11 Lyapunov
+- P3 σ²_w_fA mechanism (Phase 5 §5.5)
+- P2 IF_var(δp_r) derivation (doc-only, 9% impact)
 
-**3 paths forward** (user decision):
-- **Path A (rigorous)**: Re-derive A_aug Row 1 for v2 → expected bias < 2%
-- **Path B (pragmatic)**: Empirical lookup calibration (qr-style)
-- **Path C (accept)**: Document -11% as known limitation
+Wave 3 verification at h=50 (T_sim=20s, plateau 10-20s, 25 seeds):
+- a_x RMSE 4.4±2%, a_z RMSE 3.0±2%, tracking 30.5±0.5 nm
+- Best dual-good seed (10): a_x 2.53%, a_z 0.81%
+- **Tracking variance matches paper Eq.22 within 2%** (validation passed)
+
+See `phase8_e2e_h50_results_v4.md` for full Wave 1 + 25-seed results.
+
+## Pending (Wave 4/5)
+
+- **Wave 4** cross-scenario: motion 1Hz, h=2.5 near-wall, long T_sim>30s
+- **Wave 5** docs/commit/push (in progress as of this update)
+- Open issues list: `phase8_v2_outstanding_issues.md` (Downloads) + memory
 
 ## v2 implementation done (committed)
 
