@@ -7,18 +7,27 @@ Tag: `eq17-pre-redesign-2026-04-29` @ `527b89e` (v1 baseline, before redesign)
 
 ## Where we are
 
-Phase 8 v2 redesign, ~95% done. Wave 4 v2 e2e showed:
-- ✓ Stability + tracking PASS (29 nm, better than v1's 35 nm)
-- ✗ a_hat bias -31% systematic (FAIL, target <5%)
-- ✗ σ²_δx ratio 0.63 (FAIL low)
+Phase 8 v2 redesign, ~98% done. Wave 4 v3 (Stage 11 Option I applied):
+- ✓ Stability + tracking PASS (30 nm, similar to v2's 29 nm)
+- △ a_hat bias **-11%** (improved 3× from v2's -31%, but still > 5% target)
+- ✗ σ²_δx ratio 0.54 (worse than v2's 0.76 — see below)
 
-Both metrics same root cause: v2 actual closed-loop is more stable than
-paper Eq.22 predicts (good for tracking, bad for a_xm formula calibration).
+**Status: PARTIAL PASS.** Stage 11 fix is correct in direction; magnitude
+under-corrects because the Lyapunov helper `compute_7state_cdpmr_eff_v2.m`
+Row 1 (lines 130-136) inherits v1 coefficients that don't match v2's
+F_e(3,4) = -1.6 closed-loop coupling. See `phase8_e2e_h50_results_v3.md`.
+
+**3 paths forward** (user decision):
+- **Path A (rigorous)**: Re-derive A_aug Row 1 for v2 → expected bias < 2%
+- **Path B (pragmatic)**: Empirical lookup calibration (qr-style)
+- **Path C (accept)**: Document -11% as known limitation
 
 ## v2 implementation done (committed)
 
 ```
-eef59f9  Stage 11 partial — helper ported, integration NOT done
+6add6da  Stage 11 Option I — per-axis C_dpmr_eff/C_np_eff (4 files +90 lines)
+a6128d3  Phase 8 resume prompt for /compact continuation
+eef59f9  Stage 11 partial — helper ported (untested at commit time)
 8d6bbcb  Wave 4 v2 e2e results (WARN, bias 31% diagnostic)
 990e157  Stage 10 Option A — G1 cross-coupling fix (PASS)
 af7b055  Wave 1 audit + Wave 3 smoke
@@ -27,6 +36,12 @@ af7b055  Wave 1 audit + Wave 3 smoke
 4a5bbfe  Wave 2 (B+D) — controller + driver implementation
 4843e6f-8804e14  Phase 0-7 paper derivation (8 commits)
 ```
+
+**Smoke + Wave 4 v3 verified** (this session, 2026-04-30):
+- Smoke seed=1 T_sim=1s: bias [-3.06, -7.71, -10.09]% (PASS, no NaN)
+- Wave 4 v3 5-seed T_sim=5s: bias [-11.10, -10.50, -11.89]% (PARTIAL PASS)
+- Saved: `test_results/wave4_v3_5seed_tsim5_h50.mat`
+- Doc:   `reference/eq17_analysis/phase8_e2e_h50_results_v3.md`
 
 ## Stage 11 Option I — a_hat bias fix path (this is what we're working on)
 
