@@ -197,6 +197,17 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         h_dot_max  = amp_um * omega;        % [um/s]
         h_ddot_max = amp_um * omega^2;      % [um/s^2]
 
+        % Optional overrides (Wave 4 motion ramp): when amplitude=0 but the
+        % trajectory still has nonzero h_dot (e.g. ramp_descent), the
+        % sinusoidal-derived h_dot_max / h_ddot_max are wrong. Allow caller
+        % to inject scenario-specific bounds via build_eq17_constants.
+        if isfield(ctrl_const, 'h_dot_max_override') && ~isempty(ctrl_const.h_dot_max_override)
+            h_dot_max = ctrl_const.h_dot_max_override;
+        end
+        if isfield(ctrl_const, 'h_ddot_max_override') && ~isempty(ctrl_const.h_ddot_max_override)
+            h_ddot_max = ctrl_const.h_ddot_max_override;
+        end
+
         % --- 0E. Wall-aware â_x[0] init (Phase 8 §G, sigma-ratio-filter pattern) ---
         a_nom = Ts / gamma_N;               % [um/pN] free-space nominal motion gain
         if enable_wall && isfield(params, 'common') && isfield(params.common, 'p0')
@@ -232,6 +243,15 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         %
         % NOTE: output var `diag` shadows MATLAB's diag() builtin in this
         % function, so we construct diagonal matrices via an explicit loop.
+        % Optional override for slot 7 (delta a_x) initial uncertainty.
+        % Default 0 (matches Phase 8 baseline). Set > 0 to give the random-walk
+        % rate state initial permission to drift even without sigma2_w_fA Q77 floor.
+        if isfield(ctrl_const, 'Pf_init_slot7') && ~isempty(ctrl_const.Pf_init_slot7)
+            Pf_init_slot7 = ctrl_const.Pf_init_slot7;
+        else
+            Pf_init_slot7 = 0;
+        end
+
         P_per_axis = cell(3, 1);
         for ax = 1:3
             sigma2_dXT_ax = 4 * kBT * a_x_init(ax);
@@ -239,6 +259,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
             Pf_ax(2, 2) = sigma2_dXT_ax;
             Pf_ax(3, 3) = 2 * sigma2_dXT_ax;
             Pf_ax(6, 6) = 1e-5;
+            Pf_ax(7, 7) = Pf_init_slot7;
             P_per_axis{ax} = Pf_ax;
         end
 
@@ -387,6 +408,15 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
             diag.h_bar                = h_bar;
             diag.x_D_hat              = x_e_per_axis(4, :).';
             diag.delta_a_hat          = x_e_per_axis(7, :).';
+            diag.dx_r                 = dx_r;                          % Phase 9
+            diag.a_hat                = a_hat_post;                    % Phase 9 (slot 6)
+            % P77 from current persistent P_per_axis (no EKF update this step)
+            P77_warm = zeros(3, 1);
+            for ax_w = 1:3
+                P77_warm(ax_w) = P_per_axis{ax_w}(7, 7);
+            end
+            diag.P77                  = P77_warm;                      % Phase 9
+            % Q77 not yet computed (EKF skipped during warmup) — leave zeros
             % gate flags / KF outputs left as default zeros (no EKF this step)
         end
         return;
@@ -488,6 +518,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         end
         if Q77_floor_eff > 0
             Q77_i = max(Q77_i, Q77_floor_eff);
+        end
+
+        % Optional hard-zero override for testing (Wave 4 motion ramp)
+        if isfield(ctrl_const, 'force_Q77_zero') && ctrl_const.force_Q77_zero
+            Q77_i = 0;
         end
         Q77_per_axis(ax) = Q77_i;
 
@@ -680,9 +715,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         % Per-axis posterior covariance entries
         P_a_per_axis  = zeros(3, 1);
         P_dx_per_axis = zeros(3, 1);
+        P77_per_axis  = zeros(3, 1);   % Phase 9 R(2,2) validation
         for ax = 1:3
             P_a_per_axis(ax)  = P_per_axis{ax}(6, 6);
             P_dx_per_axis(ax) = P_per_axis{ax}(3, 3);
+            P77_per_axis(ax)  = P_per_axis{ax}(7, 7);
         end
 
         diag = struct();
@@ -700,6 +737,10 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         diag.guards_individual    = G_per_axis;                    % 3x3 logical
         diag.h_bar                = h_bar;                         % scalar
         diag.f_d                  = f_d;                           % 3x1
+        diag.dx_r                 = dx_r;                          % 3x1 (Phase 9)
+        diag.a_hat                = a_hat_post;                    % 3x1 (Phase 9, slot 6)
+        diag.P77                  = P77_per_axis;                  % 3x1 (Phase 9)
+        diag.Q77                  = Q77_per_axis;                  % 3x1 (Phase 9)
     end
 
 end
@@ -770,4 +811,8 @@ function d = empty_diag()
     d.guards_individual    = false(3, 3);
     d.h_bar                = 0;
     d.f_d                  = zeros(3, 1);
+    d.dx_r                 = zeros(3, 1);   % Phase 9 R(2,2) validation: IIR HP residual
+    d.a_hat                = zeros(3, 1);   % Phase 9: per-axis slot-6 estimate
+    d.P77                  = zeros(3, 1);   % Phase 9: per-axis slot-7 covariance
+    d.Q77                  = zeros(3, 1);   % Phase 9: per-axis Q77
 end

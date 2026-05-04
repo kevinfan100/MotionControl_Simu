@@ -48,9 +48,14 @@ function simOut = run_pure_simulation(config, opts)
     % 0. Defaults for opts
     % ------------------------------------------------------------------
     if nargin < 2 || isempty(opts); opts = struct(); end
-    if ~isfield(opts, 'seed');    opts.seed    = 42;                 end
-    if ~isfield(opts, 'verbose'); opts.verbose = false;              end
-    if ~isfield(opts, 'scheme');  opts.scheme  = 'ode4_step10us';    end
+    if ~isfield(opts, 'seed');         opts.seed         = 42;                 end
+    if ~isfield(opts, 'verbose');      opts.verbose      = false;              end
+    if ~isfield(opts, 'scheme');       opts.scheme       = 'ode4_step10us';    end
+    % Phase 9 R(2,2) validation extensions:
+    %   opts.a_hat_freeze  - 3x1 [um/pN] to lock state(6) per axis (default empty)
+    %   opts.collect_diag  - bool, accumulate per-step diag time series
+    if ~isfield(opts, 'a_hat_freeze'); opts.a_hat_freeze = [];                 end
+    if ~isfield(opts, 'collect_diag'); opts.collect_diag = false;              end
 
     % ------------------------------------------------------------------
     % 1. Resolve params via existing builder (Simulink.Parameter wrapper)
@@ -103,7 +108,25 @@ function simOut = run_pure_simulation(config, opts)
     if isfield(P.ctrl, 'C_np_eff_per_axis')
         eq17_opts.C_np_eff_per_axis = P.ctrl.C_np_eff_per_axis;
     end
+    % Wave 4 motion-ramp test pass-throughs
+    if isfield(config, 'force_Q77_zero')
+        eq17_opts.force_Q77_zero = config.force_Q77_zero;
+    end
+    if isfield(config, 'h_dot_max_override')
+        eq17_opts.h_dot_max_override = config.h_dot_max_override;
+    end
+    if isfield(config, 'h_ddot_max_override')
+        eq17_opts.h_ddot_max_override = config.h_ddot_max_override;
+    end
+    if isfield(config, 'Pf_init_slot7')
+        eq17_opts.Pf_init_slot7 = config.Pf_init_slot7;
+    end
     ctrl_const = build_eq17_constants(eq17_opts);
+
+    % Phase 9 R(2,2) validation: optional a_hat freeze (locks state(6) per axis)
+    if ~isempty(opts.a_hat_freeze)
+        ctrl_const.a_hat_freeze = opts.a_hat_freeze(:);   % 3x1 [um/pN]
+    end
 
     % ------------------------------------------------------------------
     % 5. Time grid (matches Simulink: discrete samples 0, Ts, 2Ts, ...)
@@ -150,6 +173,27 @@ function simOut = run_pure_simulation(config, opts)
     p_m_out  = zeros(N, 3);
     ekf_out  = zeros(N, 4);
 
+    % Phase 9 R(2,2) validation: optional diag time-series accumulators
+    if opts.collect_diag
+        diag_log.dx_r              = zeros(N, 3);
+        diag_log.sigma2_dxr_hat    = zeros(N, 3);
+        diag_log.a_xm              = zeros(N, 3);
+        diag_log.delta_x_m         = zeros(N, 3);
+        diag_log.innovation_y2     = zeros(N, 3);
+        diag_log.K_kf_a_y2         = zeros(N, 3);
+        diag_log.K_kf_dx_y1        = zeros(N, 3);
+        diag_log.P_a               = zeros(N, 3);
+        diag_log.P_dx              = zeros(N, 3);
+        diag_log.P77               = zeros(N, 3);
+        diag_log.Q77               = zeros(N, 3);
+        diag_log.a_hat             = zeros(N, 3);
+        diag_log.x_D_hat           = zeros(N, 3);
+        diag_log.delta_a_hat       = zeros(N, 3);
+        diag_log.gate_active       = false(N, 3);
+        diag_log.guards_individual = false(N, 3, 3);   % [N x guard x axis]
+        diag_log.h_bar             = zeros(N, 1);
+    end
+
     % ------------------------------------------------------------------
     % 8. Time-stepping loop  (matches Simulink ordering)
     % ------------------------------------------------------------------
@@ -171,8 +215,13 @@ function simOut = run_pure_simulation(config, opts)
         p_m_delayed = p_m_buffer(:, 1);
 
         % --- (d) Controller + EKF
-        [f_d_k, ekf_k] = motion_control_law_eq17_7state( ...
-                            del_pd_k, pd_k, p_m_delayed, P, ctrl_const);
+        if opts.collect_diag
+            [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_7state( ...
+                                del_pd_k, pd_k, p_m_delayed, P, ctrl_const);
+        else
+            [f_d_k, ekf_k] = motion_control_law_eq17_7state( ...
+                                del_pd_k, pd_k, p_m_delayed, P, ctrl_const);
+        end
 
         % --- (e) Thermal force at current continuous-state position
         %   NOTE: calc_thermal_force does NOT check P.thermal.enable internally;
@@ -207,6 +256,27 @@ function simOut = run_pure_simulation(config, opts)
         p_m_out(k, :)  = p_m_raw.';
         ekf_out(k, :)  = ekf_k.';
 
+        % Phase 9 R(2,2) validation: log diag time-series
+        if opts.collect_diag
+            diag_log.dx_r(k, :)              = diag_k.dx_r.';
+            diag_log.sigma2_dxr_hat(k, :)    = diag_k.sigma2_dxr_hat.';
+            diag_log.a_xm(k, :)              = diag_k.a_xm.';
+            diag_log.delta_x_m(k, :)         = diag_k.delta_x_m.';
+            diag_log.innovation_y2(k, :)     = diag_k.innovation_y2.';
+            diag_log.K_kf_a_y2(k, :)         = diag_k.K_kf_a_y2.';
+            diag_log.K_kf_dx_y1(k, :)        = diag_k.K_kf_dx_y1.';
+            diag_log.P_a(k, :)               = diag_k.P_a.';
+            diag_log.P_dx(k, :)              = diag_k.P_dx.';
+            diag_log.P77(k, :)               = diag_k.P77.';
+            diag_log.Q77(k, :)               = diag_k.Q77.';
+            diag_log.a_hat(k, :)             = diag_k.a_hat.';
+            diag_log.x_D_hat(k, :)           = diag_k.x_D_hat.';
+            diag_log.delta_a_hat(k, :)       = diag_k.delta_a_hat.';
+            diag_log.gate_active(k, :)       = diag_k.gate_active_per_axis(:).';
+            diag_log.guards_individual(k, :, :) = diag_k.guards_individual;
+            diag_log.h_bar(k)                = diag_k.h_bar;
+        end
+
         % --- (k) Update unit-delay for next step's controller input
         pd_for_ctrl = pd_kp1;
 
@@ -231,5 +301,11 @@ function simOut = run_pure_simulation(config, opts)
         'scheme',         opts.scheme, ...
         'seed',           opts.seed, ...
         'driver',         'run_pure_simulation', ...
-        'driver_version', '1.0');
+        'driver_version', '1.1');
+
+    % Phase 9 R(2,2) validation: optional diag time-series + ctrl_const
+    if opts.collect_diag
+        simOut.diag = diag_log;
+    end
+    simOut.ctrl_const = ctrl_const;
 end
