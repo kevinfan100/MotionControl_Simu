@@ -76,10 +76,34 @@ function ctrl = calc_ctrl_params(config, constants)
     end
 
     % ---------------------------------------------------------------
+    % cdpmr_method: choose between Stage 11 Lyapunov (current production)
+    % and the closed-form analytical formula for finite-alpha IIR LP
+    % (Wave 4 verification test). C_np_eff_per_axis is ALWAYS taken from
+    % the Lyapunov path (closed-form covers C_dpmr_eff only).
+    %
+    % Closed-form analytical formula (no per-axis dependence):
+    %   alpha = a_pd, lambda = lambda_c
+    %   one_minus_alpha = 1 - alpha
+    %   denom_common    = 1 - one_minus_alpha * lambda
+    %   term1 = 2 * one_minus_alpha * (1 - lambda) / denom_common
+    %   term2 = 2 / ((2 - alpha) * (1 + lambda) * denom_common)
+    %   C_dpmr_closed = one_minus_alpha^2 * (term1 + term2)
+    % Sanity at alpha=0.05, lambda=0.7 -> C_dpmr_closed approx 3.161.
+    % ---------------------------------------------------------------
+    if isfield(config, 'cdpmr_method') && ~isempty(config.cdpmr_method)
+        ctrl.cdpmr_method = config.cdpmr_method;
+    else
+        ctrl.cdpmr_method = 'closed_form';
+    end
+
+    % ---------------------------------------------------------------
     % Stage 11 Option I: Per-axis on-the-fly C_dpmr_eff / C_np_eff
     % Replaces paper Eq.22 closed-form (3.96, 1.18) with v2-effective
     % values via augmented Lyapunov. Same mechanism as qr branch.
     % Resolves Wave 4 v2 a_hat bias -31% → ~-1% target.
+    %
+    % Always run to populate C_np_eff_per_axis. C_dpmr_eff_per_axis
+    % may be overwritten below by closed-form formula.
     % ---------------------------------------------------------------
     here = fileparts(mfilename('fullpath'));
     project_root = fileparts(fileparts(here));
@@ -135,6 +159,63 @@ function ctrl = calc_ctrl_params(config, constants)
                 ME.message);
         ctrl.C_dpmr_eff_per_axis = C_dpmr_paper * ones(3, 1);
         ctrl.C_np_eff_per_axis   = C_n_paper   * ones(3, 1);
+    end
+
+    % ---------------------------------------------------------------
+    % Closed-form override for C_dpmr_eff (Wave 4 verification).
+    % Leaves C_np_eff_per_axis (Lyapunov) untouched.
+    % ---------------------------------------------------------------
+    if strcmp(ctrl.cdpmr_method, 'closed_form')
+        alpha           = config.a_pd;
+        lambda          = config.lambda_c;
+        one_minus_alpha = 1 - alpha;
+        denom_common    = 1 - one_minus_alpha * lambda;
+        term1 = 2 * one_minus_alpha * (1 - lambda) / denom_common;
+        term2 = 2 / ((2 - alpha) * (1 + lambda) * denom_common);
+        C_dpmr_closed = one_minus_alpha^2 * (term1 + term2);
+
+        ctrl.C_dpmr_eff_per_axis = C_dpmr_closed * ones(3, 1);
+    end
+
+    % ---------------------------------------------------------------
+    % X2a: Per-axis empirical IF_eff calibration (Phase 9 Stage I)
+    %
+    % The Phase 1 §10 closed-form ρ_δx assumes MA(2) ε with geometric
+    % tail λ_c^τ for τ ≥ 3. Empirical ρ_δx in production conditions
+    % oscillates negative around lag 7-10; closed-form IF_eff(s) over-
+    % predicts variance by ~9% at a_cov=0.05, contributing to a V1
+    % ratio = 0.87 vs target 1.00. Using empirical IF_eff_emp(s) from
+    % stored ACF makes V1 ratio collapse to 1.00 ± 0.05 across all
+    % α and σ²_n conditions.
+    %
+    % Same architectural pattern as Stage 11 Lyapunov C_dpmr_eff
+    % calibration above: compute once at init, store in ctrl, plumb
+    % into ctrl_const via run_pure_simulation -> build_eq17_constants.
+    %
+    % If the calibration file is absent, leave the field empty so
+    % build_eq17_constants falls back to the closed-form scalar IF_eff.
+    % ---------------------------------------------------------------
+    ctrl.IF_eff_calibrated_per_axis = [];
+
+    if isfield(config, 'IF_eff_calibration_file') && ...
+            ~isempty(config.IF_eff_calibration_file)
+        calibration_file = config.IF_eff_calibration_file;
+    else
+        calibration_file = fullfile(project_root, 'reference', ...
+                                    'eq17_analysis', ...
+                                    'phase9_stageI_acf_diagnosis.mat');
+    end
+
+    if isfile(calibration_file)
+        try
+            ctrl.IF_eff_calibrated_per_axis = calibrate_IF_eff( ...
+                config.a_cov, config.lambda_c, calibration_file);
+        catch ME
+            warning('calc_ctrl_params:IF_eff_calibration_failed', ...
+                    ['IF_eff calibration failed (%s); falling back ' ...
+                     'to closed-form scalar.'], ME.message);
+            ctrl.IF_eff_calibrated_per_axis = [];
+        end
     end
 
 end

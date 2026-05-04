@@ -118,6 +118,22 @@ function ctrl_const = build_eq17_constants(opts)
         opts.C_np_eff_per_axis = (2 / (1 + opts.lambda_c)) * ones(3, 1);
     end
 
+    % X2a: per-axis empirical IF_eff calibration (Phase 9 Stage I).
+    % If absent or empty, the closed-form scalar IF_eff (computed below)
+    % is replicated to a 3x1 vector for downstream consumers.
+    if ~isfield(opts, 'IF_eff_calibrated') || isempty(opts.IF_eff_calibrated)
+        opts.IF_eff_calibrated = [];
+    else
+        opts.IF_eff_calibrated = opts.IF_eff_calibrated(:);
+        if numel(opts.IF_eff_calibrated) ~= 3 || ...
+                any(~isfinite(opts.IF_eff_calibrated)) || ...
+                any(opts.IF_eff_calibrated <= 0)
+            error('build_eq17_constants:invalidIFeffCal', ...
+                  ['opts.IF_eff_calibrated must be a 3-element positive ' ...
+                   'finite vector; got %s.'], mat2str(opts.IF_eff_calibrated));
+        end
+    end
+
     % ------------------------------------------------------------
     % Required-field presence checks
     % ------------------------------------------------------------
@@ -256,13 +272,24 @@ function ctrl_const = build_eq17_constants(opts)
     % ------------------------------------------------------------
     % Pack outputs
     % ------------------------------------------------------------
-    ctrl_const.lambda_c        = lambda_c;
-    ctrl_const.C_dpmr          = C_dpmr;
-    ctrl_const.C_n             = C_n;
-    ctrl_const.option          = option_str;
-    ctrl_const.IF_var          = IF_var;
-    ctrl_const.IF_eff          = IF_eff;          % Phase 9 fix: s-weighted IF
-    ctrl_const.R22_prefactor   = R22_prefactor;   % Phase 9 fix: 2*a_cov/(2-a_cov)
+    % X2a: per-axis IF_eff. If a calibration vector is provided by
+    % calc_ctrl_params, use it; else replicate the closed-form scalar
+    % to all 3 axes for downstream consumption.
+    if ~isempty(opts.IF_eff_calibrated)
+        IF_eff_per_axis = opts.IF_eff_calibrated;            % 3x1
+    else
+        IF_eff_per_axis = IF_eff * ones(3, 1);               % 3x1 fallback
+    end
+
+    ctrl_const.lambda_c          = lambda_c;
+    ctrl_const.C_dpmr            = C_dpmr;
+    ctrl_const.C_n               = C_n;
+    ctrl_const.option            = option_str;
+    ctrl_const.IF_var            = IF_var;
+    ctrl_const.IF_eff            = IF_eff;        % Phase 9 fix: s-weighted (closed form)
+    ctrl_const.IF_eff_per_axis   = IF_eff_per_axis; % X2a: 3x1 (calibrated if available)
+    ctrl_const.IF_eff_calibrated = opts.IF_eff_calibrated; % 3x1 or [] when absent
+    ctrl_const.R22_prefactor     = R22_prefactor; % Phase 9 fix: 2*a_cov/(2-a_cov)
     ctrl_const.xi_per_axis     = xi_per_axis;
     ctrl_const.delay_R2_factor = delay_R2_factor;
     ctrl_const.t_warmup_kf     = opts.t_warmup_kf;

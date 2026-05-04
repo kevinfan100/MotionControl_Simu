@@ -1,6 +1,6 @@
 # Phase 9 Stage 0: R(2,2) Validation Report
 
-Generated: 2026-05-04 18:16:34
+Generated: 2026-05-04 19:59:39
 
 ## Sanity Gates (V1 seed 1)
 
@@ -33,17 +33,17 @@ When V6 is INDISTINGUISHABLE and V1-V5 all pass, Path A still applies. The Wave 
 
 | Axis | emp_var mean | ratio_paper mean +/- SE | pass paper | ratio_eff mean +/- SE | pass eff |
 |---|---|---|---|---|---|
-| x | 3.5868e-05 | 0.872 +/- 0.020 | FAIL | 0.872 +/- 0.020 | FAIL |
-| y | 3.5534e-05 | 0.864 +/- 0.013 | FAIL | 0.864 +/- 0.013 | FAIL |
-| z | 3.3283e-05 | 0.831 +/- 0.016 | FAIL | 0.830 +/- 0.016 | FAIL |
+| x | 3.5868e-05 | 0.989 +/- 0.023 | PASS | 0.989 +/- 0.023 | PASS |
+| y | 3.5534e-05 | 0.984 +/- 0.015 | PASS | 0.984 +/- 0.015 | PASS |
+| z | 3.3283e-05 | 0.972 +/- 0.018 | PASS | 0.971 +/- 0.018 | PASS |
 
 ## V2 — a_cov linearity
 
 | Axis | slope | pred slope (paper) | slope/pred (paper) | pred slope (eff) | slope/pred (eff) | R^2 | pass paper | pass eff |
 |---|---|---|---|---|---|---|---|---|
-| x | 5.393e-04 | 8.047e-04 | 0.670 | 8.047e-04 | 0.670 | 0.9810 | FAIL | FAIL |
-| y | 5.574e-04 | 8.040e-04 | 0.693 | 8.040e-04 | 0.693 | 0.9859 | FAIL | FAIL |
-| z | 5.415e-04 | 7.837e-04 | 0.691 | 7.838e-04 | 0.691 | 0.9882 | FAIL | FAIL |
+| x | 5.393e-04 | 7.155e-04 | 0.754 | 7.155e-04 | 0.754 | 0.9810 | FAIL | FAIL |
+| y | 5.574e-04 | 7.123e-04 | 0.783 | 7.123e-04 | 0.783 | 0.9859 | FAIL | FAIL |
+| z | 5.415e-04 | 6.761e-04 | 0.801 | 6.761e-04 | 0.801 | 0.9882 | FAIL | FAIL |
 
 ## V3 — sigma2_n factor sweep
 
@@ -51,9 +51,9 @@ Factors: 0.5, 1, 2, 4. Note: y axis xi_y ~ 0 -> V3 weakly informative on y.
 
 | Axis | informative | max\|ratio_paper-1\| | max\|ratio_eff-1\| | pass paper | pass eff |
 |---|---|---|---|---|---|
-| x | PASS | 0.098 | 0.098 | PASS | PASS |
-| y | FAIL | 0.110 | 0.110 | FAIL | FAIL |
-| z | PASS | 0.171 | 0.172 | FAIL | FAIL |
+| x | PASS | 0.026 | 0.026 | PASS | PASS |
+| y | FAIL | 0.014 | 0.014 | PASS | PASS |
+| z | PASS | 0.030 | 0.031 | PASS | PASS |
 
 ## V4 — ACF (lags 0-50, dx_r, V1 seed 1)
 
@@ -75,9 +75,9 @@ Factors: 0.5, 1, 2, 4. Note: y axis xi_y ~ 0 -> V3 weakly informative on y.
 
 | Axis | informative | dist_paper | dist_eff | |dist_paper-dist_eff| | verdict |
 |---|---|---|---|---|---|
-| x | PASS | 0.128 | 0.128 | 0.000 | indistinguishable |
-| y | PASS | 0.136 | 0.136 | 0.000 | indistinguishable |
-| z | PASS | 0.169 | 0.170 | 0.000 | indistinguishable |
+| x | PASS | 0.011 | 0.011 | 0.000 | indistinguishable |
+| y | PASS | 0.016 | 0.016 | 0.000 | indistinguishable |
+| z | PASS | 0.028 | 0.029 | 0.000 | indistinguishable |
 
 Aggregate verdict: INDISTINGUISHABLE — paper/eff difference below noise floor (|dist_paper - dist_eff| <= 0.010) on all informative axes; formula choice has no measurable impact at this operating point.
 
@@ -87,15 +87,11 @@ Reference: Agent X predictions audit at `reference/eq17_analysis/phase9_predicti
 
 ## Path Verdict: C
 
-  - V1 fails on axis x (paper ratio=0.872+/-0.020, eff ratio=0.872+/-0.020). Inspect R22 formula in motion_control_law_eq17_7state.m R(2,2) assembly and Phase 6 derivation.
-  - V2 fails on axis x (slope ratio paper=0.670, eff=0.670, R^2=0.981). Linearity in a_cov broken; suspect IF_var or (a_true+xi)^2.
+  - V2 fails on axis x (slope ratio paper=0.754, eff=0.754, R^2=0.981). Linearity in a_cov broken; suspect IF_var or (a_true+xi)^2.
   - V4 fails on axis x (max ACF dev=0.114, IF_var ratio=0.929). Inspect MA(2) closed-form coeffs vs lambda_c=0.
-  - V1 fails on axis y (paper ratio=0.864+/-0.013, eff ratio=0.864+/-0.013). Inspect R22 formula in motion_control_law_eq17_7state.m R(2,2) assembly and Phase 6 derivation.
-  - V2 fails on axis y (slope ratio paper=0.693, eff=0.693, R^2=0.986). Linearity in a_cov broken; suspect IF_var or (a_true+xi)^2.
+  - V2 fails on axis y (slope ratio paper=0.783, eff=0.783, R^2=0.986). Linearity in a_cov broken; suspect IF_var or (a_true+xi)^2.
   - V4 fails on axis y (max ACF dev=0.133, IF_var ratio=0.912). Inspect MA(2) closed-form coeffs vs lambda_c=0.
-  - V1 fails on axis z (paper ratio=0.831+/-0.016, eff ratio=0.830+/-0.016). Inspect R22 formula in motion_control_law_eq17_7state.m R(2,2) assembly and Phase 6 derivation.
-  - V2 fails on axis z (slope ratio paper=0.691, eff=0.691, R^2=0.988). Linearity in a_cov broken; suspect IF_var or (a_true+xi)^2.
-  - V3 fails on axis z. Suspect xi(sigma2_n) scaling — check linearity of xi in sigma2_n (Phase 6 derivation).
+  - V2 fails on axis z (slope ratio paper=0.801, eff=0.801, R^2=0.988). Linearity in a_cov broken; suspect IF_var or (a_true+xi)^2.
   - V4 fails on axis z (max ACF dev=0.133, IF_var ratio=0.898). Inspect MA(2) closed-form coeffs vs lambda_c=0.
 
 ### Diagnostic notes (Path C)

@@ -109,7 +109,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     persistent initialized
     persistent lambda_c d_delay Ts kBT R_radius
     persistent a_pd a_var a_cov sigma2_w_fD sigma2_w_fA
-    persistent C_dpmr C_n IF_var IF_eff R22_prefactor xi_per_axis delay_R2_factor
+    persistent C_dpmr C_n IF_var IF_eff IF_eff_per_axis R22_prefactor xi_per_axis delay_R2_factor
     persistent C_dpmr_eff_per_axis C_np_eff_per_axis  % Stage 11 Option I: per-axis
     persistent t_warmup_kf h_bar_safe
     persistent sigma2_n_s          % 3x1 [um^2]
@@ -145,6 +145,15 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
             IF_eff = ctrl_const.IF_eff;
         else
             IF_eff = IF_var;        % legacy: equivalent to s→1 limit
+        end
+        % X2a: per-axis empirical IF_eff calibration (Phase 9 Stage I).
+        % If ctrl_const.IF_eff_per_axis is present (3x1), use it; else
+        % fall back to the scalar IF_eff replicated 3x for backward compat.
+        if isfield(ctrl_const, 'IF_eff_per_axis') && ...
+                ~isempty(ctrl_const.IF_eff_per_axis)
+            IF_eff_per_axis = ctrl_const.IF_eff_per_axis(:);
+        else
+            IF_eff_per_axis = IF_eff * ones(3, 1);
         end
         if isfield(ctrl_const, 'R22_prefactor') && ~isempty(ctrl_const.R22_prefactor)
             R22_prefactor = ctrl_const.R22_prefactor;
@@ -547,11 +556,15 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         % R(1,1) = sigma2_n_s,i  (Phase 6 §3)
         R11_i = sigma2_n_s(ax);
 
-        % R(2,2) intrinsic = R22_prefactor * IF_eff * (a_hat + xi)^2
+        % R(2,2) intrinsic = R22_prefactor * IF_eff_per_axis(ax) * (a_hat + xi)^2
         % Phase 9 fix: corrected from small-α approximation `a_cov · IF_var`
         % to finite-α exact form `(2·a_cov/(2-a_cov)) · IF_eff(1-a_cov)`.
         % See design.md:880-897 and Phase 9 Wave 1 (commit f618f37) Path C.
-        R2_intrinsic_i = R22_prefactor * IF_eff * (a_hat_i + xi_per_axis(ax))^2;
+        % X2a: IF_eff is per-axis (calibrated from empirical ρ_δx if present)
+        % to absorb the ~9% deviation between Phase 1 closed form and
+        % production-conditions ρ_δx (Phase 9 Stage I diagnosis).
+        R2_intrinsic_i = R22_prefactor * IF_eff_per_axis(ax) ...
+                         * (a_hat_i + xi_per_axis(ax))^2;
         % R(2,2) eff = intrinsic + delay_R2_factor * Q77  (Phase 6 §4.3)
         R2_eff_i = R2_intrinsic_i + delay_R2_factor * Q77_i;
 

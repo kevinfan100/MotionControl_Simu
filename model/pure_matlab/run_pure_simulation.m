@@ -108,6 +108,11 @@ function simOut = run_pure_simulation(config, opts)
     if isfield(P.ctrl, 'C_np_eff_per_axis')
         eq17_opts.C_np_eff_per_axis = P.ctrl.C_np_eff_per_axis;
     end
+    % X2a: per-axis empirical IF_eff calibration (Phase 9 Stage I).
+    if isfield(P.ctrl, 'IF_eff_calibrated_per_axis') && ...
+            ~isempty(P.ctrl.IF_eff_calibrated_per_axis)
+        eq17_opts.IF_eff_calibrated = P.ctrl.IF_eff_calibrated_per_axis;
+    end
     % Wave 4 motion-ramp test pass-throughs
     if isfield(config, 'force_Q77_zero')
         eq17_opts.force_Q77_zero = config.force_Q77_zero;
