@@ -94,6 +94,20 @@ function ctrl_const = build_eq17_constants(opts)
     if ~isfield(opts, 'sigma2_w_fA') || isempty(opts.sigma2_w_fA)
         opts.sigma2_w_fA = 0;            % Phase 5 §5.5 baseline 0
     end
+    % Optional test-only overrides (Wave 4 motion ramp). Defaults are empty
+    % so the controller falls back to the existing amp*omega calculation.
+    if ~isfield(opts, 'force_Q77_zero')
+        opts.force_Q77_zero = false;
+    end
+    if ~isfield(opts, 'h_dot_max_override')
+        opts.h_dot_max_override = [];
+    end
+    if ~isfield(opts, 'h_ddot_max_override')
+        opts.h_ddot_max_override = [];
+    end
+    if ~isfield(opts, 'Pf_init_slot7')
+        opts.Pf_init_slot7 = [];
+    end
 
     % Stage 11 Option I: per-axis effective C_dpmr_eff / C_np_eff
     % If not provided, defaults to paper closed-form replicated per-axis.
@@ -196,7 +210,33 @@ function ctrl_const = build_eq17_constants(opts)
         case 'B_AR1_approx'
             % AR(1) approximation: IF = (1 + λ²)/(1 - λ²)
             IF_var = (1 + lambda_c^2) / (1 - lambda_c^2);
+            % For Option B IF_eff(s) below: rho_dx_k = lambda_c^k → ρ²_k = λ_c^(2k)
+            rho_dx_1 = lambda_c;
+            rho_dx_2 = lambda_c^2;
     end
+
+    % ------------------------------------------------------------
+    % Phase 9 fix: s-weighted IF_eff(s) for finite-α R(2,2) intrinsic
+    %   Var(σ̂²) = (2·a_cov / (2-a_cov)) · IF_eff(s) · (σ²_δxr)²
+    %   IF_eff(s) = 1 + 2·Σ_{τ≥1} ρ²_δx(τ)·s^τ      (s = 1-a_cov)
+    %
+    % Replaces the small-α approximation `a_cov · IF_var` (design.md:880-897
+    % flagged ~9% over-prediction at a_cov=0.05, ~17% at a_cov=0.10).
+    % The factor of 2 arises from Var(δx_r²) = 2·σ_dxr⁴ (Gaussian Isserlis).
+    % Phase 9 Wave 1 (commit f618f37) Path C empirically confirmed.
+    % ------------------------------------------------------------
+    s_ewma = 1 - opts.a_cov;
+    switch option_str
+        case 'A_MA2_full'
+            % Closed form: ρ²(1)·s + ρ²(2)·s²·Σ_{j≥0}(λ²·s)^j
+            %            = ρ²(1)·s + ρ²(2)·s² / (1 - λ²·s)
+            IF_eff = 1 + 2 * (rho_dx_1^2 * s_ewma ...
+                            + rho_dx_2^2 * s_ewma^2 / (1 - lambda_c^2 * s_ewma));
+        case 'B_AR1_approx'
+            % Geometric ρ²(τ) = λ²·^τ → IF_eff(s) = 1 + 2·(λ²·s)/(1-λ²·s)
+            IF_eff = 1 + 2 * (lambda_c^2 * s_ewma) / (1 - lambda_c^2 * s_ewma);
+    end
+    R22_prefactor = 2 * opts.a_cov / (2 - opts.a_cov);
 
     % ------------------------------------------------------------
     % Per-axis ξ scaling (sensor-noise → effective process-noise, §9.2)
@@ -221,6 +261,8 @@ function ctrl_const = build_eq17_constants(opts)
     ctrl_const.C_n             = C_n;
     ctrl_const.option          = option_str;
     ctrl_const.IF_var          = IF_var;
+    ctrl_const.IF_eff          = IF_eff;          % Phase 9 fix: s-weighted IF
+    ctrl_const.R22_prefactor   = R22_prefactor;   % Phase 9 fix: 2*a_cov/(2-a_cov)
     ctrl_const.xi_per_axis     = xi_per_axis;
     ctrl_const.delay_R2_factor = delay_R2_factor;
     ctrl_const.t_warmup_kf     = opts.t_warmup_kf;
@@ -230,6 +272,12 @@ function ctrl_const = build_eq17_constants(opts)
     ctrl_const.a_pd            = opts.a_pd;
     ctrl_const.sigma2_w_fD     = opts.sigma2_w_fD;
     ctrl_const.sigma2_w_fA     = opts.sigma2_w_fA;
+
+    % Wave 4 motion-ramp test overrides
+    ctrl_const.force_Q77_zero      = opts.force_Q77_zero;
+    ctrl_const.h_dot_max_override  = opts.h_dot_max_override;
+    ctrl_const.h_ddot_max_override = opts.h_ddot_max_override;
+    ctrl_const.Pf_init_slot7       = opts.Pf_init_slot7;
 
     % Stage 11 Option I: per-axis effective C_dpmr_eff / C_np_eff
     ctrl_const.C_dpmr_eff      = opts.C_dpmr_eff_per_axis(:);    % 3x1

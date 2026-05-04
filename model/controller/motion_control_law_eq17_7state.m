@@ -109,7 +109,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     persistent initialized
     persistent lambda_c d_delay Ts kBT R_radius
     persistent a_pd a_var a_cov sigma2_w_fD sigma2_w_fA
-    persistent C_dpmr C_n IF_var xi_per_axis delay_R2_factor
+    persistent C_dpmr C_n IF_var IF_eff R22_prefactor xi_per_axis delay_R2_factor
     persistent C_dpmr_eff_per_axis C_np_eff_per_axis  % Stage 11 Option I: per-axis
     persistent t_warmup_kf h_bar_safe
     persistent sigma2_n_s          % 3x1 [um^2]
@@ -139,6 +139,18 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         C_dpmr          = ctrl_const.C_dpmr;
         C_n             = ctrl_const.C_n;
         IF_var          = ctrl_const.IF_var;
+        % Phase 9 fix: s-weighted IF_eff(s) and R22_prefactor=2·a_cov/(2-a_cov)
+        % replace small-α approximation `a_cov · IF_var`. Fall back if missing.
+        if isfield(ctrl_const, 'IF_eff') && ~isempty(ctrl_const.IF_eff)
+            IF_eff = ctrl_const.IF_eff;
+        else
+            IF_eff = IF_var;        % legacy: equivalent to s→1 limit
+        end
+        if isfield(ctrl_const, 'R22_prefactor') && ~isempty(ctrl_const.R22_prefactor)
+            R22_prefactor = ctrl_const.R22_prefactor;
+        else
+            R22_prefactor = ctrl_const.a_cov;  % legacy: small-α limit
+        end
         % Stage 11 Option I: per-axis effective C_dpmr / C_n (3x1 each).
         % Used in a_xm formula instead of paper closed-form scalars.
         % Falls back to scalar C_dpmr/C_n replicated if not present.
@@ -535,8 +547,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         % R(1,1) = sigma2_n_s,i  (Phase 6 §3)
         R11_i = sigma2_n_s(ax);
 
-        % R(2,2) intrinsic = a_cov * IF_var * (a_hat + xi)^2  (Phase 6 §4.1)
-        R2_intrinsic_i = a_cov * IF_var * (a_hat_i + xi_per_axis(ax))^2;
+        % R(2,2) intrinsic = R22_prefactor * IF_eff * (a_hat + xi)^2
+        % Phase 9 fix: corrected from small-α approximation `a_cov · IF_var`
+        % to finite-α exact form `(2·a_cov/(2-a_cov)) · IF_eff(1-a_cov)`.
+        % See design.md:880-897 and Phase 9 Wave 1 (commit f618f37) Path C.
+        R2_intrinsic_i = R22_prefactor * IF_eff * (a_hat_i + xi_per_axis(ax))^2;
         % R(2,2) eff = intrinsic + delay_R2_factor * Q77  (Phase 6 §4.3)
         R2_eff_i = R2_intrinsic_i + delay_R2_factor * Q77_i;
 
