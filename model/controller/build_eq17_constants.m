@@ -108,6 +108,9 @@ function ctrl_const = build_eq17_constants(opts)
     if ~isfield(opts, 'Pf_init_slot7')
         opts.Pf_init_slot7 = [];
     end
+    if ~isfield(opts, 'iir_warmup_mode') || isempty(opts.iir_warmup_mode)
+        opts.iir_warmup_mode = 'legacy';   % safe default
+    end
 
     % Stage 11 Option I: per-axis effective C_dpmr_eff / C_np_eff
     % If not provided, defaults to paper closed-form replicated per-axis.
@@ -305,6 +308,7 @@ function ctrl_const = build_eq17_constants(opts)
     ctrl_const.h_dot_max_override  = opts.h_dot_max_override;
     ctrl_const.h_ddot_max_override = opts.h_ddot_max_override;
     ctrl_const.Pf_init_slot7       = opts.Pf_init_slot7;
+    ctrl_const.iir_warmup_mode     = opts.iir_warmup_mode;
 
     % Stage 11 Option I: per-axis effective C_dpmr_eff / C_np_eff
     ctrl_const.C_dpmr_eff      = opts.C_dpmr_eff_per_axis(:);    % 3x1

@@ -284,9 +284,27 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
             P_per_axis{ax} = Pf_ax;
         end
 
-        % --- 0H. IIR states ---
-        dx_bar_m       = zeros(3, 1);
-        sigma2_dxr_hat = zeros(3, 1);
+        % --- 0H. IIR states (mode-dependent) ---
+        % iir_warmup_mode (default 'legacy' for backward compat):
+        %   'legacy' : dx_bar_m=0, sigma2_dxr_hat=0 (Phase 8 §A original)
+        %   'prefill': sigma2_dxr_hat seeded to per-axis steady-state at known
+        %              h_init using inverse a_xm formula (design.md §9.4):
+        %                sigma2_dxr_ss = 4*kBT*a_x_init.*C_dpmr_eff
+        %                              + C_np_eff.*sigma2_n_s
+        %              Requires fixed initial h; valid for positioning and
+        %              motion (motion lag is <= 1 IIR time constant ≈ 1/a_cov).
+        iir_warmup_mode = 'legacy';
+        if isfield(ctrl_const, 'iir_warmup_mode') && ~isempty(ctrl_const.iir_warmup_mode)
+            iir_warmup_mode = ctrl_const.iir_warmup_mode;
+        end
+
+        dx_bar_m = zeros(3, 1);
+        if strcmpi(iir_warmup_mode, 'prefill')
+            sigma2_dxr_hat = 4 * kBT * a_x_init .* C_dpmr_eff_per_axis ...
+                           + C_np_eff_per_axis .* sigma2_n_s;
+        else
+            sigma2_dxr_hat = zeros(3, 1);
+        end
 
         % --- 0I. Trajectory + control delay buffers ---
         pd_km1  = pd;
@@ -294,8 +312,17 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         f_d_km1 = zeros(3, 1);
         f_d_km2 = zeros(3, 1);
 
-        % --- 0J. Warmup counter (Phase 8 §A: 2-step) ---
-        warmup_count = 2;
+        % --- 0J. Warmup counter ---
+        % legacy:  warmup_count = 2 (Phase 8 §A — controller emits f_d=0 for
+        %          first 3 calls total, IIR accumulates real measurements)
+        % prefill: warmup_count = 0 (sigma2_dxr_hat already at steady state;
+        %          first call still returns 0 for structural delay-buffer
+        %          reasons, but call 2 onward emits real control)
+        if strcmpi(iir_warmup_mode, 'prefill')
+            warmup_count = 0;
+        else
+            warmup_count = 2;
+        end
 
         % --- 0K. Misc ---
         k_step = 1;                          % first user call counts as k=1

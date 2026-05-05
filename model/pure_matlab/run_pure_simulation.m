@@ -84,6 +84,9 @@ function simOut = run_pure_simulation(config, opts)
     eq17_opts.sigma2_n_s = (config.meas_noise_std(:)).^2;     % 3x1 [um^2]
     eq17_opts.kBT        = P.ctrl.k_B * P.ctrl.T;              % [pN*um]
     eq17_opts.t_warmup_kf = 0.2;
+    if isfield(config, 't_warmup_kf') && ~isempty(config.t_warmup_kf)
+        eq17_opts.t_warmup_kf = config.t_warmup_kf;   % Phase 3 sweep override
+    end
     eq17_opts.h_bar_safe  = 1.5;
     eq17_opts.d           = 2;
     eq17_opts.a_cov       = config.a_cov;
@@ -125,6 +128,9 @@ function simOut = run_pure_simulation(config, opts)
     end
     if isfield(config, 'Pf_init_slot7')
         eq17_opts.Pf_init_slot7 = config.Pf_init_slot7;
+    end
+    if isfield(config, 'iir_warmup_mode') && ~isempty(config.iir_warmup_mode)
+        eq17_opts.iir_warmup_mode = config.iir_warmup_mode;
     end
     ctrl_const = build_eq17_constants(eq17_opts);
 

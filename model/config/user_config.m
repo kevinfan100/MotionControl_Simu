@@ -91,6 +91,15 @@ function config = user_config()
     %   (e.g. far-from-wall positioning at h=50). Baseline 0 → no floor injection.
     config.sigma2_w_fA = 0;         % [(um/pN)^2/step], Phase 5 §5.5 baseline 0
 
+    % iir_warmup_mode: how to initialize IIR LP / EWMA states.
+    %   'legacy'  - dx_bar_m=0, sigma2_dxr_hat=0, warmup_count=2
+    %               (controller emits f_d=0 for first 3 calls; IIR accumulates from 0)
+    %   'prefill' - dx_bar_m=0, sigma2_dxr_hat = 4*kBT*a_x_init.*C_dpmr_eff
+    %               + C_np_eff.*sigma2_n_s (per-axis steady-state at h_init);
+    %               warmup_count=0 (controller emits real f_d from call 2 onward).
+    %               Requires fixed h_init at start; ramp/motion lag <= 1 IIR tau.
+    config.iir_warmup_mode = 'prefill';
+
     % 7-state EKF specific parameters
     config.beta = 0.5;                  % Disturbance/gain coupling parameter
     config.lamdaF = 1.0;                % EKF forgetting factor
