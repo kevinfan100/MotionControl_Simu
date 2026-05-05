@@ -334,6 +334,25 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         if nargout >= 3
             diag = empty_diag();
             diag.f_d = f_d;
+            % Populate diag with init persistent state so log step 1 matches
+            % what the EKF actually starts with (avoids spurious zero-spike at
+            % t=0 in plots, especially under iir_warmup_mode='prefill').
+            diag.sigma2_dxr_hat = sigma2_dxr_hat;
+            den_axm_init = C_dpmr_eff_per_axis * 4 * kBT;
+            diag.a_xm  = (sigma2_dxr_hat - C_np_eff_per_axis .* sigma2_n_s) ...
+                         ./ den_axm_init;
+            diag.a_hat = a_x_init;
+            P77_init_v = zeros(3, 1);
+            P_a_v      = zeros(3, 1);
+            P_dx_v     = zeros(3, 1);
+            for ax_init = 1:3
+                P77_init_v(ax_init) = P_per_axis{ax_init}(7, 7);
+                P_a_v(ax_init)      = P_per_axis{ax_init}(6, 6);
+                P_dx_v(ax_init)     = P_per_axis{ax_init}(3, 3);
+            end
+            diag.P77 = P77_init_v;
+            diag.P_a = P_a_v;
+            diag.P_dx = P_dx_v;
         end
         return;
     end
