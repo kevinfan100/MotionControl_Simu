@@ -130,8 +130,13 @@ function results = run_R22_validation(scenario, seed)
     % --- 5. Build run_pure_simulation opts (a_hat freeze + diag) ---
     run_opts.seed         = seed;
     run_opts.verbose      = false;
-    run_opts.a_hat_freeze = a_true_per_axis;             % lock state(6) per axis
     run_opts.collect_diag = true;
+    % freeze_a_hat default true; pass false in scenario to disable freeze
+    if isfield(scenario, 'freeze_a_hat') && ~scenario.freeze_a_hat
+        % no freeze: KF updates a_hat normally (production-like)
+    else
+        run_opts.a_hat_freeze = a_true_per_axis;         % lock state(6) per axis
+    end
 
     % --- 6. Run sim ---
     simOut = run_pure_simulation(config, run_opts);
