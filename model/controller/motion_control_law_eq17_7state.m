@@ -250,38 +250,47 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         x_e_per_axis = zeros(7, 3);
         x_e_per_axis(6, :) = a_x_init.';    % seed a_x per axis (wall-aware)
 
-        % --- 0G. Pf_init per-axis (Phase 8 §7) ---
-        % Phase 8 §7 spec: per-axis Pf_init derived from a_x_init.
-        %   sigma2_dXT_axis_init = 4·k_B·T·a_x_init_axis
+        % --- 0G. Pf_init per-axis (Riccati P_inf at h_init positioning) ---
+        % Replaces Phase 8 §7 ad-hoc diag init with the steady-state DARE
+        % solution at the known operating point (h_init, a_x_init,
+        % positioning conditions f_d=0, h_dot=0, h_ddot=0).
         %
-        %   Pf_init = diag(0,                        slot 1 (δx[k-2] pre-drift)
-        %                  σ²_dXT_axis_init,         slot 2 (δx[k-1], 1-step drift)
-        %                  2·σ²_dXT_axis_init,       slot 3 (δx[k], 2-step drift)
-        %                  0,                        slot 4 (x_D baseline)
-        %                  0,                        slot 5 (δx_D baseline)
-        %                  1e-5,                     slot 6 (a_x init uncertainty)
-        %                  0)                        slot 7 (δa_x baseline)
+        % Symmetric counterpart to iir_warmup_mode='prefill': IIR state seeded
+        % to its steady-state value, and Pf seeded to the KF's own steady-state
+        % posterior covariance. Together: estimator starts at its equilibrium,
+        % no transient.
         %
-        % NOTE: output var `diag` shadows MATLAB's diag() builtin in this
-        % function, so we construct diagonal matrices via an explicit loop.
-        % Optional override for slot 7 (delta a_x) initial uncertainty.
-        % Default 0 (matches Phase 8 baseline). Set > 0 to give the random-walk
-        % rate state initial permission to drift even without sigma2_w_fA Q77 floor.
-        if isfield(ctrl_const, 'Pf_init_slot7') && ~isempty(ctrl_const.Pf_init_slot7)
-            Pf_init_slot7 = ctrl_const.Pf_init_slot7;
-        else
-            Pf_init_slot7 = 0;
-        end
+        % Per axis, solve P_post_inf such that:
+        %   P_pred = F_e_ss * P_post * F_e_ss' + Q_ss
+        %   K      = P_pred * H' * (H*P_pred*H' + R_ss)^{-1}
+        %   P_post = (I - K*H) * P_pred
+        % with F_e_ss = build_F_e(lambda_c, d, f_d=0) (Eq.19 form, positioning).
+        % Q_ss / R_ss reflect h_init steady-state values:
+        %   Q33_ss = 4*kBT*a_x_init(ax)
+        %   Q55_ss = a_nom^2 * sigma2_w_fD               (default 0)
+        %   Q66_ss = a_nom^2 * sigma2_w_a_direct         (Q66 floor if enabled)
+        %   Q77_ss = a_nom^2 * sigma2_w_fA               (positioning floor)
+        %   R11_ss = sigma2_n_s(ax)
+        %   R22_ss = R22_prefactor * IF_eff_per_axis(ax) * (a_x_init + xi)^2
+        %
+        % NOTE: output var `diag` shadows MATLAB's diag() builtin, so we
+        % construct diagonal matrices via assignment.
+        F_e_ss = build_F_e(lambda_c, d_delay, 0, false);
+        H_ss   = [1 0 0 0 0 0 0; 0 0 0 0 0 1 -d_delay];
 
         P_per_axis = cell(3, 1);
         for ax = 1:3
-            sigma2_dXT_ax = 4 * kBT * a_x_init(ax);
-            Pf_ax = zeros(7);
-            Pf_ax(2, 2) = sigma2_dXT_ax;
-            Pf_ax(3, 3) = 2 * sigma2_dXT_ax;
-            Pf_ax(6, 6) = 1e-5;
-            Pf_ax(7, 7) = Pf_init_slot7;
-            P_per_axis{ax} = Pf_ax;
+            a_init_ax = a_x_init(ax);
+            Q_ss_ax = zeros(7);
+            Q_ss_ax(3, 3) = 4 * kBT * a_init_ax;
+            Q_ss_ax(5, 5) = a_nom_per_axis(ax)^2 * sigma2_w_fD;
+            Q_ss_ax(6, 6) = 0;                              % Q66 default 0 at positioning
+            Q_ss_ax(7, 7) = a_nom_per_axis(ax)^2 * sigma2_w_fA;
+            R22_ss_ax = R22_prefactor * IF_eff_per_axis(ax) ...
+                        * (a_init_ax + xi_per_axis(ax))^2;
+            R_ss_ax = [sigma2_n_s(ax), 0; 0, R22_ss_ax];
+            P_per_axis{ax} = solve_dare_kf_local(F_e_ss, H_ss, ...
+                                                  Q_ss_ax, R_ss_ax);
         end
 
         % --- 0H. IIR states (mode-dependent) ---
@@ -864,6 +873,40 @@ function F_e = build_F_e(lambda_c, d_delay, f_d_i, use_eq18)
                0 0 0        0     1   0       0; ...
                0 0 0        0     0   1       1; ...
                0 0 0        0     0   0       1];
+    end
+end
+
+
+function P_post = solve_dare_kf_local(F, H, Q, R)
+%SOLVE_DARE_KF_LOCAL  Discrete-time KF Riccati steady-state solver.
+%
+%   P_post = solve_dare_kf_local(F, H, Q, R)
+%
+%   Fixed-point iteration on the KF Riccati recursion:
+%     P_pred[k+1] = F * P_post[k] * F' + Q
+%     K           = P_pred * H' / (H * P_pred * H' + R)
+%     P_post[k+1] = (I - K*H) * P_pred[k+1]
+%   until ||P_post[k+1] - P_post[k]||_inf < tol or max_iter reached.
+%
+%   Used for Pf_init at known h_init operating point (positioning, f_d=0).
+%   Self-contained — no Control System Toolbox dependency. ~10000 iter at
+%   tol=1e-13 takes ~50 ms; called once per axis at controller init.
+    n = size(F, 1);
+    P_post = eye(n);
+    max_iter = 10000;
+    tol = 1e-13;
+    for k = 1:max_iter
+        P_pred = F * P_post * F' + Q;
+        P_pred = 0.5 * (P_pred + P_pred');
+        S = H * P_pred * H' + R;
+        K = (P_pred * H') / S;
+        P_new = (eye(n) - K * H) * P_pred;
+        P_new = 0.5 * (P_new + P_new');
+        if max(abs(P_new(:) - P_post(:))) < tol
+            P_post = P_new;
+            return;
+        end
+        P_post = P_new;
     end
 end
 
