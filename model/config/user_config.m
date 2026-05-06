@@ -91,6 +91,17 @@ function config = user_config()
     %   (e.g. far-from-wall positioning at h=50). Baseline 0 → no floor injection.
     config.sigma2_w_fA = 0;         % [(um/pN)^2/step], Phase 5 §5.5 baseline 0
 
+    % t_warmup_kf: G1 (KF warm-up gate) duration in seconds.
+    %   t_warmup_kf > 0: during t < t_warmup_kf, R(2,2) = R_OFF (y_2 gated)
+    %                    AND K_kf(6,:)=K_kf(7,:)=0 (Stage 10 Option A: a_hat
+    %                    locked at init, slot 6/7 measurement update blocked).
+    %   t_warmup_kf = 0: G1 disabled, EKF runs normally from t=0.
+    %   Default 0 since 477bb0a/c5f3dcc validation: with iir_warmup_mode='prefill'
+    %   + Pf_init=Riccati, Wave 4 mode never triggers under h=50 positioning,
+    %   ramp 50->5, or 5-seed sweep. Set > 0 if running a scenario where you
+    %   want G1 protection (e.g., reproducing pre-2026-05-05 baseline).
+    config.t_warmup_kf = 0;
+
     % iir_warmup_mode: how to initialize IIR LP / EWMA states.
     %   'legacy'  - dx_bar_m=0, sigma2_dxr_hat=0, warmup_count=2
     %               (controller emits f_d=0 for first 3 calls; IIR accumulates from 0)
