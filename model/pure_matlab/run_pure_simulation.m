@@ -58,15 +58,22 @@ function simOut = run_pure_simulation(config, opts)
     if ~isfield(opts, 'collect_diag'); opts.collect_diag = false;              end
 
     % ------------------------------------------------------------------
-    % 1. Resolve params via existing builder (Simulink.Parameter wrapper)
+    % 1. RNG seeding — MUST precede calc_simulation_params.
+    %    calc_thermal_params:19 and calc_ctrl_params:31 each consume one
+    %    randi(2^31-1) from the global rng to populate thermal.seed /
+    %    meas_noise_seed. Seeding here makes those values a deterministic
+    %    function of opts.seed, restoring full reproducibility of both the
+    %    thermal-force stream (via calc_thermal_force's rng(thermal.seed))
+    %    and the measurement-noise stream (which shares the global rng
+    %    after that point).
+    % ------------------------------------------------------------------
+    rng(opts.seed);
+
+    % ------------------------------------------------------------------
+    % 2. Resolve params via existing builder (Simulink.Parameter wrapper)
     % ------------------------------------------------------------------
     params = calc_simulation_params(config);
     P = params.Value;   % unwrap to plain struct (used by all .m functions)
-
-    % ------------------------------------------------------------------
-    % 2. RNG seeding (decision 6 — independent randn, same concept seed)
-    % ------------------------------------------------------------------
-    rng(opts.seed);
 
     % ------------------------------------------------------------------
     % 3. Clear controller / trajectory persistent state
