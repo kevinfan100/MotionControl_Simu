@@ -129,6 +129,27 @@ function simOut = run_pure_simulation(config, opts)
     if isfield(config, 'Pf_init_slot7')
         eq17_opts.Pf_init_slot7 = config.Pf_init_slot7;
     end
+    if isfield(config, 'sigma2_w_a_direct')
+        eq17_opts.sigma2_w_a_direct = config.sigma2_w_a_direct;
+    end
+    if isfield(config, 'Q66_physical_mode')
+        eq17_opts.Q66_physical_mode = config.Q66_physical_mode;
+    end
+    if isfield(config, 'Q66_OL_mode')
+        eq17_opts.Q66_OL_mode = config.Q66_OL_mode;
+    end
+    if isfield(config, 'R22_include_Q66')
+        eq17_opts.R22_include_Q66 = config.R22_include_Q66;
+    end
+    if isfield(config, 'Q36_cross_term')
+        eq17_opts.Q36_cross_term = config.Q36_cross_term;
+    end
+    if isfield(config, 'use_joseph_form')
+        eq17_opts.use_joseph_form = config.use_joseph_form;
+    end
+    if isfield(config, 'K_h_cap')
+        eq17_opts.K_h_cap = config.K_h_cap;
+    end
     if isfield(config, 'iir_warmup_mode') && ~isempty(config.iir_warmup_mode)
         eq17_opts.iir_warmup_mode = config.iir_warmup_mode;
     end
@@ -137,6 +158,12 @@ function simOut = run_pure_simulation(config, opts)
     % Phase 9 R(2,2) validation: optional a_hat freeze (locks state(6) per axis)
     if ~isempty(opts.a_hat_freeze)
         ctrl_const.a_hat_freeze = opts.a_hat_freeze(:);   % 3x1 [um/pN]
+    end
+
+    % Diagnostic: optional suppress x_D in control law (EKF still estimates
+    % x_D in slot 4; only the term −x̂_D/â_x is zeroed in Eq.17 force law).
+    if isfield(config, 'suppress_xD') && ~isempty(config.suppress_xD)
+        ctrl_const.suppress_xD = logical(config.suppress_xD);
     end
 
     % ------------------------------------------------------------------

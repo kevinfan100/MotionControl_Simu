@@ -58,7 +58,7 @@ function config = user_config()
     config.amplitude = 2.5;        % Oscillation half-amplitude [um]
     config.frequency = 1;
     config.n_cycles = 3;
-    config.trajectory_type = 'osc';    % 'osc' or 'positioning'
+    config.trajectory_type = 'osc';    % 'osc' | 'positioning' | 'ramp_descent'
 
     % Controller
     config.ctrl_enable = true;
@@ -110,6 +110,14 @@ function config = user_config()
     %               warmup_count=0 (controller emits real f_d from call 2 onward).
     %               Requires fixed h_init at start; ramp/motion lag <= 1 IIR tau.
     config.iir_warmup_mode = 'prefill';
+
+    % cdpmr_method: which mechanism populates ctrl.C_dpmr_eff_per_axis.
+    %   'closed_form' (default, Wave 4 test): finite-alpha analytical formula
+    %                  (uses a_pd, lambda_c; no per-axis dependence).
+    %   'lyapunov'    : Stage 11 Option I per-axis augmented Lyapunov solve
+    %                   (existing production behavior up to commit 6add6da).
+    %   C_np_eff is always taken from Lyapunov regardless of method.
+    config.cdpmr_method = 'closed_form';
 
     % 7-state EKF specific parameters
     config.beta = 0.5;                  % Disturbance/gain coupling parameter

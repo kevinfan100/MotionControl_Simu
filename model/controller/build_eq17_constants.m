@@ -108,6 +108,27 @@ function ctrl_const = build_eq17_constants(opts)
     if ~isfield(opts, 'Pf_init_slot7')
         opts.Pf_init_slot7 = [];
     end
+    if ~isfield(opts, 'sigma2_w_a_direct')
+        opts.sigma2_w_a_direct = [];
+    end
+    if ~isfield(opts, 'Q66_physical_mode')
+        opts.Q66_physical_mode = false;
+    end
+    if ~isfield(opts, 'Q66_OL_mode')
+        opts.Q66_OL_mode = false;   % open-loop thermal Q66 (pre-empts physical_mode)
+    end
+    if ~isfield(opts, 'R22_include_Q66')
+        opts.R22_include_Q66 = false;  % include d*Q66 term in R(2,2) eff
+    end
+    if ~isfield(opts, 'Q36_cross_term')
+        opts.Q36_cross_term = false;   % include Q(3,6)=Q(6,3) cross term
+    end
+    if ~isfield(opts, 'use_joseph_form')
+        opts.use_joseph_form = false;
+    end
+    if ~isfield(opts, 'K_h_cap')
+        opts.K_h_cap = 0;   % 0 = no cap, > 0 = cap |K_h| at this value
+    end
     if ~isfield(opts, 'iir_warmup_mode') || isempty(opts.iir_warmup_mode)
         opts.iir_warmup_mode = 'legacy';   % safe default
     end
@@ -308,6 +329,13 @@ function ctrl_const = build_eq17_constants(opts)
     ctrl_const.h_dot_max_override  = opts.h_dot_max_override;
     ctrl_const.h_ddot_max_override = opts.h_ddot_max_override;
     ctrl_const.Pf_init_slot7       = opts.Pf_init_slot7;
+    ctrl_const.sigma2_w_a_direct   = opts.sigma2_w_a_direct;
+    ctrl_const.Q66_physical_mode   = opts.Q66_physical_mode;
+    ctrl_const.Q66_OL_mode         = opts.Q66_OL_mode;
+    ctrl_const.R22_include_Q66     = opts.R22_include_Q66;
+    ctrl_const.Q36_cross_term      = opts.Q36_cross_term;
+    ctrl_const.use_joseph_form     = opts.use_joseph_form;
+    ctrl_const.K_h_cap             = opts.K_h_cap;
     ctrl_const.iir_warmup_mode     = opts.iir_warmup_mode;
 
     % Stage 11 Option I: per-axis effective C_dpmr_eff / C_np_eff

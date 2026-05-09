@@ -107,8 +107,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
 
     % Cached scalars / vectors (extracted once at init)
     persistent initialized
-    persistent lambda_c d_delay Ts kBT R_radius
-    persistent a_pd a_var a_cov sigma2_w_fD sigma2_w_fA
+    persistent lambda_c d_delay Ts kBT R_radius gamma_N_p
+    persistent a_pd a_var a_cov sigma2_w_fD sigma2_w_fA sigma2_w_a_direct
     persistent C_dpmr C_n IF_var IF_eff IF_eff_per_axis R22_prefactor xi_per_axis delay_R2_factor
     persistent C_dpmr_eff_per_axis C_np_eff_per_axis  % Stage 11 Option I: per-axis
     persistent t_warmup_kf h_bar_safe
@@ -131,6 +131,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         kBT       = params.ctrl.k_B * params.ctrl.T;     % [pN*um]
         R_radius  = params.common.R;                      % particle radius [um]
         gamma_N   = params.ctrl.gamma;                    % [pN*sec/um]
+        gamma_N_p = gamma_N;                              % persistent copy for OL Q66 (run-time)
         sigma2_n_s = params.ctrl.sigma2_noise;            % 3x1 [um^2]
 
         % --- 0B. Pull constants from ctrl_const (offline scalar bundle) ---
@@ -196,6 +197,15 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
             sigma2_w_fA = ctrl_const.sigma2_w_fA;          % Phase 5 §5.5 baseline 0
         else
             sigma2_w_fA = 0;
+        end
+        % Q66 direct random-walk variance (alternative to Q77 floor mechanism).
+        % If > 0: Q66 = a_nom_axis^2 * sigma2_w_a_direct, modeling a_x as
+        % direct random walk (Type 2 fudge analogous to sigma2_w_fA but on slot 6).
+        % Default 0 (preserves Phase 5 §6.8 Q66 = 0 baseline).
+        if isfield(ctrl_const, 'sigma2_w_a_direct') && ~isempty(ctrl_const.sigma2_w_a_direct)
+            sigma2_w_a_direct = ctrl_const.sigma2_w_a_direct;
+        else
+            sigma2_w_a_direct = 0;
         end
 
         % --- 0C. Wall geometry ---
@@ -284,7 +294,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
             Q_ss_ax = zeros(7);
             Q_ss_ax(3, 3) = 4 * kBT * a_init_ax;
             Q_ss_ax(5, 5) = a_nom_per_axis(ax)^2 * sigma2_w_fD;
-            Q_ss_ax(6, 6) = 0;                              % Q66 default 0 at positioning
+            Q_ss_ax(6, 6) = a_nom_per_axis(ax)^2 * sigma2_w_a_direct;
             Q_ss_ax(7, 7) = a_nom_per_axis(ax)^2 * sigma2_w_fA;
             R22_ss_ax = R22_prefactor * IF_eff_per_axis(ax) ...
                         * (a_init_ax + xi_per_axis(ax))^2;
@@ -536,11 +546,19 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
     %   x, y axes  ->  K_h_para, K_h_prime_para
     %   z axis     ->  K_h_perp, K_h_prime_perp
     if enable_wall && isfinite(h_bar) && h_bar > 1
-        [~, ~, derivs] = calc_correction_functions(h_bar, true);
+        [c_para_h, c_perp_h, derivs] = calc_correction_functions(h_bar, true);
         K_h_axis      = [derivs.K_h_para; derivs.K_h_para; derivs.K_h_perp];
         K_h_pr_axis   = [derivs.K_h_prime_para; derivs.K_h_prime_para; derivs.K_h_prime_perp];
+        % Optional saturation: cap |K_h| at K_h_cap when ctrl_const.K_h_cap > 0.
+        % Used to prevent Q66 / F_e blow-up at h_bar -> 1 (numerical robustness).
+        if isfield(ctrl_const, 'K_h_cap') && ctrl_const.K_h_cap > 0
+            cap = ctrl_const.K_h_cap;
+            K_h_axis    = sign(K_h_axis)    .* min(abs(K_h_axis),    cap);
+            K_h_pr_axis = sign(K_h_pr_axis) .* min(abs(K_h_pr_axis), cap^2);
+        end
     else
         % Far-field / wall-disabled: K_h ~ 0, K_h' ~ 0 → Q77 ~ 0
+        c_para_h = 1; c_perp_h = 1;
         K_h_axis    = zeros(3, 1);
         K_h_pr_axis = zeros(3, 1);
     end
@@ -602,10 +620,58 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         end
         Q77_per_axis(ax) = Q77_i;
 
+        % Q66 mode selection. Three modes (mutually exclusive in priority):
+        %   OL:       Q66 = (a·K_h/R)^2 · σ²_δh_thermal           (Layer 1 physical)
+        %             σ²_δh_thermal = 4·kBT·Ts/(γ_N·c_perp(h̄))    (paper Eq.11 convention, matches Q33 = 4·kBT·a)
+        %             Pure thermal-motion-driven a noise; no control-loop coupling.
+        %             + optional sigma2_w_a_direct floor.
+        %   physical: Q66 = (a·K_h/R)^2 · (σ²_δxr_hat(z) - σ²_n_proj)   (Phase 5 §6.9 NEW)
+        %             tracking-residual driven; circular w/ control loop.
+        %             + optional sigma2_w_a_direct floor.
+        %   legacy:   Q66 = a_nom^2 · sigma2_w_a_direct (pure engineering margin)
+        if isfield(ctrl_const, 'Q66_OL_mode') && ctrl_const.Q66_OL_mode
+            % Wall-normal Brownian increment per Ts (paper Eq.11 convention,
+            % sigma^2_dx_T = 4*k_B T * a, matches Q33 = 4*k_B T * a_x scaling)
+            sigma2_dh_thermal = 4 * kBT * Ts / (gamma_N_p * c_perp_h);
+            % δa = -a·K_h/R · δh  (chain rule on a = a_nom/c, K_h = (1/c)·dc/dh̄)
+            Q66_OL_i = (a_hat_i * K_h_i / R_radius)^2 * sigma2_dh_thermal;
+            % Optional fixed floor on top (covers safe region where OL ≪ Q77 budget)
+            Q66_i = Q66_OL_i + a_nom_per_axis(ax)^2 * sigma2_w_a_direct;
+        elseif isfield(ctrl_const, 'Q66_physical_mode') && ctrl_const.Q66_physical_mode
+            % Compute sigma2_n_proj (wall-normal projection of measurement noise)
+            % Avoid diag() builtin (shadowed by output var). Use elementwise sum.
+            sigma2_n_proj = sum((w_hat_n .^ 2) .* sigma2_n_s);
+            % Use z-axis (= wall-normal for default w_hat=[0;0;1]) sigma2_dxr estimate
+            sigma2_delta_xr_real = max(sigma2_dxr_hat_new(3) - sigma2_n_proj, 0);
+            Q66_i = (a_hat_i * K_h_i / R_radius)^2 * sigma2_delta_xr_real;
+            % Optionally add engineering margin on top
+            Q66_i = Q66_i + a_nom_per_axis(ax)^2 * sigma2_w_a_direct;
+        else
+            % Legacy: pure engineering margin only
+            Q66_i = a_nom_per_axis(ax)^2 * sigma2_w_a_direct;
+        end
+
         Q_i = zeros(7);
         Q_i(3, 3) = Q33_i;
         Q_i(5, 5) = Q55_i;
+        Q_i(6, 6) = Q66_i;
         Q_i(7, 7) = Q77_i;
+
+        % Optional Q(3,6)=Q(6,3) cross term. Physics:
+        %   w_3_ax ∝ F_th projected on axis ê_ax       (Q33 source)
+        %   w_6_ax ∝ -(a·K_h/R) · F_th projected on ŵ  (Q66 source via δh chain)
+        %   Cov(w_3, w_6) = (ê_ax · ŵ) · (-K_h_ax sign) · sqrt(Q33·Q66)
+        % For default w_hat=[0;0;1]: only z-axis has non-zero contribution.
+        if isfield(ctrl_const, 'Q36_cross_term') && ctrl_const.Q36_cross_term
+            weight = w_hat_n(ax);
+            if abs(weight) > 1e-12 && Q33_i > 0 && Q66_i > 0
+                rho_signed = -sign(K_h_axis(ax)) * weight;
+                Q36_val = rho_signed * sqrt(Q33_i * Q66_i);
+                Q_i(3, 6) = Q36_val;
+                Q_i(6, 3) = Q36_val;
+            end
+        end
+
         Q_per_axis{ax} = Q_i;
 
         % R(1,1) = sigma2_n_s,i  (Phase 6 §3)
@@ -622,6 +688,13 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
                          * (a_hat_i + xi_per_axis(ax))^2;
         % R(2,2) eff = intrinsic + delay_R2_factor * Q77  (Phase 6 §4.3)
         R2_eff_i = R2_intrinsic_i + delay_R2_factor * Q77_i;
+
+        % Optional: include d_delay * Q66 term (full innovation-noise
+        % variance from backward state expansion: Var(v_2) =
+        % delay_R2_factor*Q77 + d*Q66 + Var(n_a)). Default false (legacy).
+        if isfield(ctrl_const, 'R22_include_Q66') && ctrl_const.R22_include_Q66
+            R2_eff_i = R2_eff_i + d_delay * Q66_i;
+        end
 
         % --- 3-guard adaptive R_2 (Phase 6 §5) ----------------------
         t_now = (k_step - 1) * Ts;                  % real time at step k
@@ -738,8 +811,17 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, 
         end
 
         x_post = x_pred + K_kf * innov;
-        P_post = (eye(7) - K_kf * H_use) * P_pred;
-        P_post = 0.5 * (P_post + P_post');
+        % Joseph form (numerically stable) vs Standard form (legacy).
+        % Joseph: P_post = (I-KH) P_pred (I-KH)' + K R K'   — symmetric PSD by construction
+        % Standard: P_post = (I-KH) P_pred                  — needs explicit symmetrization
+        % Use Joseph when ctrl_const.use_joseph_form is true (default false).
+        if isfield(ctrl_const, 'use_joseph_form') && ctrl_const.use_joseph_form
+            I_minus_KH = eye(7) - K_kf * H_use;
+            P_post = I_minus_KH * P_pred * I_minus_KH' + K_kf * R_use * K_kf';
+        else
+            P_post = (eye(7) - K_kf * H_use) * P_pred;
+            P_post = 0.5 * (P_post + P_post');
+        end
 
         % --- Re-force a_hat freeze post-update (defense in depth) ---
         if has_freeze
