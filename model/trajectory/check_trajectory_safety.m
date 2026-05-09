@@ -35,6 +35,14 @@ function [is_safe, h_min_actual, t_critical] = check_trajectory_safety(params)
     T_sim = params.common.T_sim;
     Ts = params.common.Ts;
 
+    % Ramp descent mode: minimum = h_bottom (reached at t = T_sim)
+    if params.traj.trajectory_type > 2.5
+        h_min_actual = params.traj.h_bottom;
+        t_critical = T_sim;
+        is_safe = h_min_actual >= h_min_threshold;
+        return;
+    end
+
     % Positioning mode: trajectory is constant at h_init
     if params.traj.trajectory_type > 1.5
         h_min_actual = params.traj.h_init;

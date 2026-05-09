@@ -52,6 +52,28 @@ function [p_d, del_pd] = trajectory_generator(t, params)
     n_cycles  = params.traj.n_cycles;
     trajectory_type = params.traj.trajectory_type;
 
+    % Ramp descent mode: linear descent from h_init to h_bottom over T_sim
+    %   h(t) = max(h_init - rate * t, h_bottom)
+    %   rate = (h_init - h_bottom) / T_sim   (auto-fits descent end at T_sim)
+    if trajectory_type > 2.5
+        T_sim_local = params.common.T_sim;
+        if T_sim_local <= 0
+            rate = 0;
+        else
+            rate = (h_init - h_bottom) / T_sim_local;
+        end
+        t_next = t + Ts;
+        h = max(h_init - rate * t_next, h_bottom);
+        p_d = (pz + h) * w_hat;
+
+        if isempty(p_d_prev)
+            p_d_prev = p0;
+        end
+        del_pd = p_d - p_d_prev;
+        p_d_prev = p_d;
+        return;
+    end
+
     % Positioning mode: hold at h_init for entire simulation
     if trajectory_type > 1.5
         h = h_init;
@@ -66,7 +88,11 @@ function [p_d, del_pd] = trajectory_generator(t, params)
     end
 
     % Derived timing
-    t_descend = 1 / frequency;
+    if isfield(params.traj, 't_descend_override') && params.traj.t_descend_override > 0
+        t_descend = params.traj.t_descend_override;
+    else
+        t_descend = 1 / frequency;
+    end
     T_osc = n_cycles / frequency;
 
     % Phase boundaries
