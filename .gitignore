@@ -24,3 +24,7 @@ desktop.ini
 # MATLAB 生成檔案
 *.mex*
 codegen/
+
+# Claude Code 自動產物
+.claude/progress/
+.claude/scheduled_tasks.lock
