@@ -102,3 +102,13 @@ Recheck:
 - xi_paper / xi_eff sign and scaling with sigma2_n
 - a_xm formula constants (C_n*sigma2_n_s subtraction)
 
+
+---
+
+## Supplementary records (archived 2026-06-01)
+
+Three supplementary Phase 9 narratives were folded into archive/sessions/ during the pre-merge cleanup. They remain reachable for full context:
+
+- `archive/sessions/phase9_R22_validation_plan.md` — the original Layer 1/2/3 validation plan that scoped this report
+- `archive/sessions/phase9_nofreeze_validation.md` — no-freeze rerun exposing the -5%~-8% a_hat residual bias (not refuted by this report; bias source still open)
+- `archive/sessions/phase9_predictions_audit.md` — predictions vs observed numerical audit
