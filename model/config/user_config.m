@@ -59,22 +59,36 @@ function config = user_config()
     % Controller
     config.ctrl_enable = true;
     config.lambda_c = 0.7;
-    config.controller_type = 23;        % 6 = eq6 (Paper 2025 Eq.6) | 17 = eq17 (Paper 2023 Eq.17) | 23 = legacy 23-state
+    config.controller_type = 23;        % 23 or 7
+    config.lambda_e = 0;               % Observer pole (0 = deadbeat, used by controller_type=2)
+    config.kf_R = 0;                   % KF measurement noise variance (0 = use default, used by controller_type=4)
     config.meas_noise_enable = false;
     config.meas_noise_std = [0.01; 0.01; 0.01];
 
     % EKF estimation parameters (IIR single-layer HP + variance)
     config.a_pd = 0.05;             % EMA smoothing for LP (deterministic removal)
     config.a_prd = 0.05;            % EMA smoothing for HP residual mean
-    config.a_cov = 0.05;            % EMA smoothing for HP residual mean-square
     config.epsilon = 0.01;          % Anisotropy threshold for theta measurement
 
     % 7-state EKF specific parameters
-    config.beta = 0.5;                  % Disturbance/gain coupling parameter
-    config.lamdaF = 1.0;                % EKF forgetting factor
-    config.Pf_init_diag = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];  % 7x1
-    config.Qz_diag_scaling = [0; 0; 1e4; 1e-1; 0; 1e-4; 0];           % 7x1 (tuned near-wall)
-    config.Rz_diag_scaling = [1e-2; 1e0];                              % 2x1
+    config.beta = 0;                    % z-axis chart-extension coupling (0 = x/y Jordan-block form canonical; 0.5 = experimental predictor, off by default)
+    config.lamdaF = 1.0;                % EKF forgetting factor (1.0 = no forgetting, standard KF)
+
+    % === Q/R Preset Selector (Session 7, 2026-04-19) ===
+    % Choose one of:
+    %   'frozen_correct' - paper-level positioning (Sessions 4-7).
+    %                      a_hat_z bias < 1%, std 1-5%. Requires P6 controller
+    %                      (P5 IIR pre-fill + warmup_count=2). 3D RMSE 35/62 nm.
+    %                      Validated for static positioning at h=2.5 and h=50.
+    %   'empirical'      - historical near-wall tuning (pre-derivation, 2026-04-15).
+    %                      a_hat_z bias ~0%, std ~20%. 3D RMSE same as frozen.
+    %                      Use for dynamic / motion scenarios where frozen Q can't
+    %                      track changing a.
+    %   'beta'           - derived backward-diff beta interpretation (2026-04-17).
+    %                      Q(6,6) = Q(7,7) = Var(d2a). Tested in Sessions 4-5,
+    %                      drifts (a_hat std 22-39%) — not recommended for use.
+    config.qr_preset = 'frozen_correct';
+    config = apply_qr_preset(config);   % sets Qz/Rz/Pf_init_diag/a_cov
 
     % Thermal
     config.thermal_enable = true;
