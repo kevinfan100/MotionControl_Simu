@@ -1,0 +1,236 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath, amssymb, bm}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{enumitem}
+
+\newcommand{\dp}{\delta p}
+\newcommand{\dph}{\hat{\delta p}}
+\newcommand{\Fe}{\mathbf{F}_e}
+\newcommand{\Hm}{\mathbf{H}}
+\newcommand{\Qm}{\mathbf{Q}}
+\newcommand{\Pf}{\mathbf{P}_f}
+\newcommand{\Pm}{\mathbf{P}}
+\newcommand{\Lm}{\mathbf{L}}
+\newcommand{\I}{\mathbf{I}}
+
+\title{3-State Kalman Filter Observer: Derivation}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+%% ============================================================
+\section*{Part 1: System Definition}
+%% ============================================================
+
+\subsection*{Error dynamics}
+\begin{equation}
+\mathbf{e}[k+1] = (\Fe - \Lm \Hm)\,\mathbf{e}[k] + \mathbf{w}[k]
+\end{equation}
+\begin{equation}
+\Fe = \begin{bmatrix} 0 & 1 & 0 \\ 0 & 0 & 1 \\ 0 & 0 & 1 \end{bmatrix}, \quad
+\Hm = \begin{bmatrix} 1 & 0 & 0 \end{bmatrix}, \quad
+\mathbf{w} = \begin{bmatrix} 0 \\ 0 \\ -a_z f_T \end{bmatrix}
+\end{equation}
+
+\subsection*{Noise covariances}
+\begin{equation}
+\Qm = \sigma^2_{\Delta xT} \begin{bmatrix} 0&0&0\\0&0&0\\0&0&1 \end{bmatrix}, \qquad
+R = r \cdot \sigma^2_{\Delta xT}
+\end{equation}
+\begin{equation}
+r \triangleq \frac{R}{Q_{33}} = \frac{R}{\sigma^2_{\Delta xT}}
+\end{equation}
+
+\subsection*{Observer update}
+\begin{align}
+\text{innovation:} \quad & \nu[k] = \dp_m[k] - \dph_1[k] = e_1[k] + v[k] \\
+\dph_1[k\!+\!1] &= \dph_2[k] + L_1\,\nu[k] \\
+\dph_2[k\!+\!1] &= \dph_3[k] + L_2\,\nu[k] \\
+\dph_3[k\!+\!1] &= \lambda_c\,\dph_3[k] + L_3\,\nu[k]
+\end{align}
+
+%% ============================================================
+\section*{Part 2: DARE Derivation}
+%% ============================================================
+
+\subsection*{Step A: Predict}
+\begin{equation}
+\Pf = \Fe\,\Pm\,\Fe^\top + \Qm \tag{A}
+\end{equation}
+
+\begin{equation}
+\Fe\,\Pm\,\Fe^\top = \begin{bmatrix}
+P_{22} & P_{23} & P_{23} \\
+P_{23} & P_{33} & P_{33} \\
+P_{23} & P_{33} & P_{33}
+\end{bmatrix}
+\end{equation}
+
+\begin{equation}
+\Pf = \begin{bmatrix}
+P_{22} & P_{23} & P_{23} \\
+P_{23} & P_{33} & P_{33} \\
+P_{23} & P_{33} & P_{33}+1
+\end{bmatrix} \tag{A'}
+\end{equation}
+
+\subsection*{Step B: Innovation variance}
+\begin{equation}
+S = \Hm\,\Pf\,\Hm^\top + R = P_f(1,1) + R \tag{B}
+\end{equation}
+
+\subsection*{Step C: Kalman gain}
+\begin{equation}
+\Lm = \frac{\Pf\,\Hm^\top}{S} = \frac{1}{P_f(1,1)+R}\begin{bmatrix} P_f(1,1) \\ P_f(2,1) \\ P_f(3,1) \end{bmatrix} \tag{C}
+\end{equation}
+
+\subsection*{Step D: Update}
+\begin{equation}
+\Pm = (\I - \Lm\,\Hm)\,\Pf = \Pf - \frac{\Pf(:,1)\;\Pf(1,:)}{P_f(1,1)+R} \tag{D}
+\end{equation}
+
+\subsection*{Steady-state structure of $\Pf$}
+
+From (A'), $\Pf$ inherits structure from $\Pm$:
+\begin{equation}
+P_f(1,1) = P_{22}, \quad P_f(2,1) = P_{23}, \quad P_f(3,1) = P_{23}
+\end{equation}
+
+From (D): $P_{22} = P_f(2,2) - P_f(2,1)^2/S$, $P_{23} = P_f(2,3) - P_f(2,1) P_f(1,3)/S$.
+
+Substituting (A') into steady-state condition $P_f(2,1) = P_f(3,1)$:
+\begin{equation}
+P_{23} = P_{23} \quad \checkmark
+\end{equation}
+
+From (A'): $P_f(1,1) = P_{22}$ and $P_f(2,1) = P_{23}$.
+From (D) and steady state: $P_{22} = P_f(2,2) - P_f(2,1)^2/S = P_{33} - P_{23}^2/S$.
+From (A'): $P_f(1,1) = P_{22}$, $P_f(2,1) = P_{23}$.
+
+Setting $a \triangleq P_f(1,1)$ and $b \triangleq P_f(2,1)$:
+\begin{equation}
+P_f(1,1) = P_{22} = a, \quad P_f(2,1) = P_{23} = b
+\end{equation}
+
+From (A'): $P_f(2,2) = P_{33}$, and $P_{33} = P_{22} + 1 = a + 1$ (from the (3,3) relation below).
+
+Substituting into $a = P_{33} - b^2/(a+R)$:
+\begin{equation}
+a = (a+1) - b^2/(a+R)
+\end{equation}
+\begin{equation}
+b^2/(a+R) = 1 \tag{*}
+\end{equation}
+
+From (A'): $P_f(2,2) = P_{33}$ and $P_f(2,1) = P_{23}$.
+By the same chain: $b = P_{23}$, and from the structure $P_{22} = P_{33} - 1$ and $P_{23} = P_{22} = a$:
+\begin{equation}
+\boxed{b = a}
+\end{equation}
+
+\subsection*{$\Pf$ with single parameter $a$}
+\begin{equation}
+\boxed{
+\Pf = \begin{bmatrix} a & a & a \\ a & a+1 & a+1 \\ a & a+1 & a+2 \end{bmatrix}
+}
+\end{equation}
+
+\begin{equation}
+\Lm = \frac{1}{a+R}\begin{bmatrix}a\\a\\a\end{bmatrix}, \qquad
+L_1 = L_2 = L_3 = L = \frac{a}{a+R}
+\end{equation}
+
+\subsection*{Solving for $a$}
+
+From (A') element (3,3):
+\begin{equation}
+P_f(3,3) = P(3,3) + 1 \tag{A'.33}
+\end{equation}
+
+From (D):
+\begin{equation}
+P(3,3) = P_f(3,3) - \frac{P_f(3,1)^2}{P_f(1,1)+R} = (a+2) - \frac{a^2}{a+R} \tag{D.33}
+\end{equation}
+
+Substituting into (A'.33):
+\begin{align}
+(a+2) &= \left[(a+2) - \frac{a^2}{a+R}\right] + 1 \\[6pt]
+0 &= -\frac{a^2}{a+R} + 1 \\[6pt]
+\frac{a^2}{a+R} &= 1
+\end{align}
+
+Normalizing by $\sigma^2_{\Delta xT}$ ($R \to r$):
+\begin{equation}
+\boxed{a^2 - a - r = 0}
+\end{equation}
+
+\begin{equation}
+\boxed{a = \frac{1 + \sqrt{1+4r}}{2}}
+\end{equation}
+
+Since $a + r = a^2$:
+\begin{equation}
+\boxed{L = \frac{a}{a+r} = \frac{1}{a} = \frac{2}{1+\sqrt{1+4r}}}
+\end{equation}
+
+%% ============================================================
+\section*{Part 3: Final Formulas}
+%% ============================================================
+
+\subsection*{$r \to L$}
+\begin{equation}
+\boxed{L = \frac{2}{1+\sqrt{1+4r}}, \qquad r = \frac{R}{\sigma^2_{\Delta xT}}}
+\end{equation}
+
+\subsection*{$r \to \lambda_e$}
+\begin{equation}
+\boxed{\lambda_e = 1 - L = \frac{\sqrt{1+4r}-1}{\sqrt{1+4r}+1}}
+\end{equation}
+
+\subsection*{Observer eigenvalues}
+\begin{equation}
+\text{eig}(\Fe - L\,\mathbf{1}_{3\times1}\,\Hm) = \{0,\;0,\;\lambda_e\}
+\end{equation}
+
+\subsection*{Steady-state covariance}
+\begin{equation}
+\Pf_{ss} = \begin{bmatrix} a & a & a \\ a & a\!+\!1 & a\!+\!1 \\ a & a\!+\!1 & a\!+\!2 \end{bmatrix}, \quad
+a = \frac{1+\sqrt{1+4r}}{2}
+\end{equation}
+
+\subsection*{$C_{\delta pm}$ ($\lambda_e = 0$ case)}
+\begin{equation}
+C_{\delta pm}(\lambda_c) = 3 + \frac{1}{1-\lambda_c^2}
+\end{equation}
+
+\subsection*{$C_{\delta pm}$ (general $\lambda_e$, KF observer)}
+\begin{equation}
+C_{\delta pm}(\lambda_c, \lambda_e) = \frac{N(\lambda_c, \lambda_e)}{(\lambda_c^2-1)(\lambda_c\lambda_e-1)(\lambda_e-1)(\lambda_e+1)}
+\end{equation}
+$N(\lambda_c, \lambda_e)$: degree-3 polynomial, obtained from Lyapunov equation with
+\begin{equation}
+\mathbf{A}_4 = \begin{bmatrix}
+\lambda_c & 0 & 0 & 1\!-\!\lambda_c \\
+0 & \lambda_e\!-\!1 & 1 & 0 \\
+0 & \lambda_e\!-\!1 & 0 & 1 \\
+0 & \lambda_e\!-\!1 & 0 & 1
+\end{bmatrix}, \quad
+\mathbf{B}_4 = \begin{bmatrix}-1\\0\\0\\-1\end{bmatrix}
+\end{equation}
+
+\subsection*{Special values}
+
+\begin{center}
+\begin{tabular}{c|c|c|c}
+$r$ & $a$ & $L$ & $\lambda_e$ \\
+\hline
+$0$ & $1$ & $1$ & $0$ \\
+$1$ & $\frac{1+\sqrt{5}}{2}$ & $\frac{\sqrt{5}-1}{2}$ & $\frac{3-\sqrt{5}}{2}$ \\
+$2$ & $2$ & $\frac{1}{2}$ & $\frac{1}{2}$ \\
+$\to\infty$ & $\sqrt{r}$ & $\frac{1}{\sqrt{r}}\to 0$ & $\to 1$
+\end{tabular}
+\end{center}
+
+\end{document}
