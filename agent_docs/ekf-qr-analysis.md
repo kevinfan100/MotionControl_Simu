@@ -1,5 +1,11 @@
 # EKF Q/R Matrix Analysis
 
+> **Pointer**: This note covers the 23-state EKF Q/R derivation as a high-level summary.
+> The **canonical detailed derivation** for the production 7-state per-axis EKF lives in
+> `reference/qr_analysis/writeup_architecture.tex` / `.pdf`. Consult the .tex for the
+> rigorous Q/R + F_e + IIR + Lyapunov treatment; treat this file as a quick reference
+> for the 23-state baseline.
+
 23-state EKF 的 Process Noise (Q) 和 Measurement Noise (R) 矩陣推導分析。
 Reference: `reference/controller/Estimator_and_Control__.pdf`
 

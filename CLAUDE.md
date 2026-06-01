@@ -51,6 +51,22 @@ Scope: wall-effect, simulation, control, analysis, etc.
 
 ---
 
+## 雙 controller 架構
+
+本專案維護兩個 paper-form 不同的 controller, 由 `params.ctrl.controller_type` 切換:
+
+| controller_type | 路徑 | f_d 形式 | 主要文件 |
+|---|---|---|---|
+| 6 | `model/controller/motion_control_law_eq6.m` | Paper 2025 Eq.6: `f_d = (1/a) (del_pd + (1-lc) del_p3 - d)` | `reference/eq6_analysis/` |
+| 17 | `model/controller/motion_control_law_eq17.m` (wrapper) + `_eq17_core.m` | Paper 2023 Eq.17 d-step delay-compensated: 含 Σ f_d[k-i] 在 1/a 括號外 + x_D 加項補償 | `reference/eq17_analysis/` |
+| 23 | `model/controller/motion_control_law_23state.m` | Legacy 23-state EKF (paper full state) | — |
+
+兩 controller 共用同一個 7-state per-axis EKF 結構 `[del_p1, del_p2, del_p3, d, del_d, a, del_a]`; 主要差異在 F_e Row 3 + control law f_d 形式。共通推導文件在 `reference/shared/writeup_architecture.tex`, controller-specific 章節 (`control_law_eq6.tex`, `control_law_eq17.tex`) 為 TODO 由 writeup 主檔抽出。
+
+V5/V7 cross-branch 研究 (`reference/eq6_analysis/q66_value_dominance.md`) 發現 Q(6,6) 的「數值」(物理推導 1.89e-10 vs empirical 1e-8) 比 controller 架構更主導 a_hat std。on-the-fly 物理 Q/R 對兩 controller 都適用。
+
+---
+
 ## 專案結構
 
 ```
@@ -58,19 +74,39 @@ MotionControl_Simu/
 ├── model/                            # 核心模型
 │   ├── calc_simulation_params.m         # 模擬參數計算 + Bus Object 定義
 │   ├── system_model.slx                 # Simulink 主模型
-│   ├── config/                        # 參數配置
-│   ├── wall_effect/                   # Wall Effect 模組
+│   ├── config/                        # 參數配置 (含 apply_qr_preset)
+│   ├── wall_effect/                   # Wall Effect (含 K_h analytical derivatives)
 │   ├── thermal_force/                 # 熱力（布朗運動）模組
-│   ├── trajectory/                    # 軌跡模組
-│   └── controller/                    # 控制器模組
-├── test_script/                      # 模擬腳本
-├── agent_docs/                       # 詳細技術文件
+│   ├── trajectory/                    # 軌跡模組 (含 ramp_descent)
+│   ├── controller/                    # 控制器模組
+│   │   ├── motion_control_law.m         # dispatcher (switch on controller_type)
+│   │   ├── motion_control_law_eq6.m     # Paper 2025 Eq.6
+│   │   ├── motion_control_law_eq17.m + _eq17_core.m
+│   │   ├── motion_control_law_23state.m # legacy
+│   │   ├── build_eq17_constants.m       # eq17 offline scalars
+│   │   ├── calc_ctrl_params.m
+│   │   └── shared/                      # 共用 kernel (TODO)
+│   ├── pure_matlab/                   # dual-track 純 MATLAB driver (eq17)
+│   └── diag/                          # closed-loop variance oracles
+├── test_script/                      # 模擬入口 + verify_eq6_* + verify_eq17_* + verify_eq17_unit_*
+├── agent_docs/                       # 技術文件 (含 eq17-architecture, ekf-* 系列)
 ├── reference/                        # 參考文件
+│   ├── shared/                       # 跨 controller 共通推導 (writeup_architecture.tex)
+│   ├── eq6_analysis/                 # eq6 specific (含 archive/sessions/V5_V7_study)
+│   ├── eq17_analysis/                # eq17 specific (含 archive/sessions/suppress_xD_study)
+│   ├── figs/                         # 系統圖根集
+│   ├── controller/                   # Estimation_and_Control 論文源碼
+│   └── thesis/                       # 參考論文 PDF
+├── archive/                          # 給人看的故事索引
+│   └── branch-stories/{sigma.md, eq17.md}
 ├── test_results/                     # 模擬結果（不納入 Git）
-└── .claude/                          # Claude Code 配置
-    ├── rules/                           # 自動載入規則
-    └── commands/                        # Slash commands
+└── .claude/
 ```
+
+歷史分支以 archive tag 凍結:
+- `archive/sigma-pre-cleanup` → 整理前 sigma HEAD (origin remote)
+- `archive/eq17-pre-cleanup` → 整理前 eq17 HEAD (origin remote)
+- 對應 bundle 在 `D:\archives\MotionControl_Simu\` (離線備份)
 
 ---
 
@@ -79,3 +115,6 @@ MotionControl_Simu/
 - @agent_docs/simulink-architecture.md — Simulink 方塊圖、Block 模式、Solver、ToWorkspace
 - @agent_docs/math-model.md — 座標系統、單位、系統方程、Gamma_inv
 - @agent_docs/analysis-guide.md — GUI 分析 Tabs、建議測試參數
+- @agent_docs/eq17-architecture.md — eq17 7-state EKF + Eq.17 控制律設計
+- @agent_docs/eq17-verification.md — eq17 phase 0-9 驗證脈絡
+- @agent_docs/dual-track-simulation-design.md — pure-MATLAB vs Simulink 雙 track 設計
