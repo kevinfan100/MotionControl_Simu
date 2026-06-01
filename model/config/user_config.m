@@ -59,7 +59,7 @@ function config = user_config()
     % Controller
     config.ctrl_enable = true;
     config.lambda_c = 0.7;
-    config.controller_type = 23;        % 23 or 7
+    config.controller_type = 23;        % 6 = eq6 (Paper 2025 Eq.6) | 17 = eq17 (Paper 2023 Eq.17) | 23 = legacy 23-state
     config.meas_noise_enable = false;
     config.meas_noise_std = [0.01; 0.01; 0.01];
 
