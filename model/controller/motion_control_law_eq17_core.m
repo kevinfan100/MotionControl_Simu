@@ -878,13 +878,15 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     % ------------------------------------------------------------------
     if nargout >= 3
         % Per-axis posterior covariance entries
-        P_a_per_axis  = zeros(3, 1);
-        P_dx_per_axis = zeros(3, 1);
-        P77_per_axis  = zeros(3, 1);   % Phase 9 R(2,2) validation
+        P_a_per_axis   = zeros(3, 1);
+        P_dx_per_axis  = zeros(3, 1);
+        P77_per_axis   = zeros(3, 1);   % Phase 9 R(2,2) validation
+        P_dx1_per_axis = zeros(3, 1);   % slot 1 (δx̂_1, Eq.17 row 1) cov
         for ax = 1:3
-            P_a_per_axis(ax)  = P_per_axis{ax}(6, 6);
-            P_dx_per_axis(ax) = P_per_axis{ax}(3, 3);
-            P77_per_axis(ax)  = P_per_axis{ax}(7, 7);
+            P_a_per_axis(ax)   = P_per_axis{ax}(6, 6);
+            P_dx_per_axis(ax)  = P_per_axis{ax}(3, 3);
+            P77_per_axis(ax)   = P_per_axis{ax}(7, 7);
+            P_dx1_per_axis(ax) = P_per_axis{ax}(1, 1);
         end
 
         diag = struct();
@@ -906,6 +908,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         diag.a_hat                = a_hat_post;                    % 3x1 (Phase 9, slot 6)
         diag.P77                  = P77_per_axis;                  % 3x1 (Phase 9)
         diag.Q77                  = Q77_per_axis;                  % 3x1 (Phase 9)
+        diag.delta_x_hat_1        = x_e_per_axis(1, :).';          % 3x1 (Eq.17 slot 1, δx̂_1)
+        diag.P_dx1                = P_dx1_per_axis;                % 3x1 (P(1,1), δx̂_1 cov)
     end
 
 end
@@ -1014,4 +1018,6 @@ function d = empty_diag()
     d.a_hat                = zeros(3, 1);   % Phase 9: per-axis slot-6 estimate
     d.P77                  = zeros(3, 1);   % Phase 9: per-axis slot-7 covariance
     d.Q77                  = zeros(3, 1);   % Phase 9: per-axis Q77
+    d.delta_x_hat_1        = zeros(3, 1);   % Eq.17 slot 1 (δx̂_1)
+    d.P_dx1                = zeros(3, 1);   % P(1,1) (δx̂_1 cov)
 end
