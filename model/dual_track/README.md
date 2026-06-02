@@ -30,9 +30,9 @@ Future `verify_eq6_*` integration scripts can re-use `run_pure_simulation`
 without modification — just set `config.controller_type = 6` before
 calling `calc_simulation_params`.
 
-## Why the rename from `pure_matlab/`
+## Why the rename from `dual_track/`
 
-The previous name `pure_matlab/` was a generic placeholder that obscured
+The previous name `dual_track/` was a generic placeholder that obscured
 the intent. `dual_track` makes the relationship to Simulink explicit:
 this is the second of two simulation entry points kept in sync.
 

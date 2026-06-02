@@ -1,5 +1,5 @@
 function test_step_dynamics()
-%TEST_STEP_DYNAMICS Unit tests for model/pure_matlab/step_dynamics.m
+%TEST_STEP_DYNAMICS Unit tests for model/dual_track/step_dynamics.m
 %
 %   Verifies:
 %       T1: Static input — F_total = 0 → no change in p across one Ts.
@@ -21,7 +21,7 @@ function test_step_dynamics()
     addpath(fullfile(repo_root, 'model'));
     addpath(fullfile(repo_root, 'model', 'config'));
     addpath(fullfile(repo_root, 'model', 'wall_effect'));
-    addpath(fullfile(repo_root, 'model', 'pure_matlab'));
+    addpath(fullfile(repo_root, 'model', 'dual_track'));
 
     % --- Common scenario: world frame, w_hat = [0;0;1], no wall offset
     constants = physical_constants();

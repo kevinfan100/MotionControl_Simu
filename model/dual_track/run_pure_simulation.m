@@ -41,7 +41,7 @@ function simOut = run_pure_simulation(config, opts)
 %       simOut.meta       - struct(config, params_value, scheme, seed,
 %                                  driver, driver_version)
 %
-%   See also: step_dynamics, motion_control_law_eq17_7state,
+%   See also: step_dynamics, motion_control_law_eq17_core,
 %             trajectory_generator, calc_thermal_force, calc_gamma_inv
 
     % ------------------------------------------------------------------
@@ -80,7 +80,7 @@ function simOut = run_pure_simulation(config, opts)
     %    (mirrors run_simulation.m line 6 pattern)
     % ------------------------------------------------------------------
     clear motion_control_law motion_control_law_23state ...
-          motion_control_law_7state motion_control_law_eq17_7state ...
+          motion_control_law_eq6 motion_control_law_eq17 motion_control_law_eq17_core ...
           trajectory_generator calc_thermal_force; %#ok<CLFUNC>
 
     % ------------------------------------------------------------------
@@ -261,10 +261,10 @@ function simOut = run_pure_simulation(config, opts)
 
         % --- (d) Controller + EKF
         if opts.collect_diag
-            [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_7state( ...
+            [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_core( ...
                                 del_pd_k, pd_k, p_m_delayed, P, ctrl_const);
         else
-            [f_d_k, ekf_k] = motion_control_law_eq17_7state( ...
+            [f_d_k, ekf_k] = motion_control_law_eq17_core( ...
                                 del_pd_k, pd_k, p_m_delayed, P, ctrl_const);
         end
 

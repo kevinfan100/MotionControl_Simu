@@ -1,7 +1,7 @@
 function pred = predict_closed_loop_var_eq6(lambda_c, a_true, g, sigma2_n, kBT)
 %PREDICT_CLOSED_LOOP_VAR  Theoretical predictions for eq17_7state closed-loop variance
 %
-%   pred = predict_closed_loop_var(lambda_c, a_true, g, sigma2_n, kBT)
+%   pred = predict_closed_loop_var_eq6(lambda_c, a_true, g, sigma2_n, kBT)
 %
 %   Computes Lyapunov-based predictions for the closed-loop variance of dx
 %   under paper 2023 Eq.17 control law with possibly mismatched a_hat.

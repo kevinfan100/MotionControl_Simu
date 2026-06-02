@@ -1,8 +1,8 @@
 function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, params, ctrl_const)
 %MOTION_CONTROL_LAW_EQ17_7STATE Per-axis 7-state EKF controller (paper 2023 Eq.17, v2)
 %
-%   [f_d, ekf_out]       = motion_control_law_eq17_7state(del_pd, pd, p_m, params, ctrl_const)
-%   [f_d, ekf_out, diag] = motion_control_law_eq17_7state(del_pd, pd, p_m, params, ctrl_const)
+%   [f_d, ekf_out]       = motion_control_law_eq17_core(del_pd, pd, p_m, params, ctrl_const)
+%   [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, params, ctrl_const)
 %
 %   The optional 3rd output `diag` returns a struct of per-step diagnostics
 %   (IIR variance, KF gains, gate flags, posteriors, ...). Computation is
@@ -397,7 +397,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         pd_km_d = pd_km1;
     else
         % Generic d would require a longer delay buffer; not supported here.
-        error('motion_control_law_eq17_7state:unsupportedDelay', ...
+        error('motion_control_law_eq17_core:unsupportedDelay', ...
               'Only d=1 or d=2 supported, got d=%g.', d_delay);
     end
     delta_x_m = pd_km_d - p_m;        % 3x1 [um]
