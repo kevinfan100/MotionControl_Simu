@@ -24,3 +24,6 @@ desktop.ini
 # MATLAB 生成檔案
 *.mex*
 codegen/
+
+# Claude Code plan-mode 副作用: Windows 沒展開 ~ → cwd 出現字面 "~/" 目錄
+~/
