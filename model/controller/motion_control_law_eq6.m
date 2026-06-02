@@ -200,8 +200,8 @@ function [f_d, ekf_out] = motion_control_law_eq6(del_pd, pd, p_m, params)
     % falls back to K=2 formula (legacy, 24% bias at lc=0.7 vs truth).
     %
     % See:
-    %   test_script/compute_7state_cdpmr_eff.m  (derivation)
-    %   test_script/build_cdpmr_eff_lookup.m    (offline construction)
+    %   test_script/build_helpers/compute_7state_cdpmr_eff.m  (derivation)
+    %   test_script/build_helpers/build_cdpmr_eff_lookup.m    (offline construction)
     %   test_results/verify/cdpmr_eff_lookup.mat (the lookup table)
     den        = C_dpmr_eff_const * (4 * k_B * T_temp);      % 3x1 [pN*um]
     noise_corr = C_np_eff_const .* sigma2_noise;             % 3x1 [um^2]
