@@ -1,4 +1,5 @@
 {
+  "autoMemoryDirectory": "~/ClaudeVault/auto-memory/motioncontrol-simu",
   "permissions": {
     "allow": [
       "mcp__matlab__check_matlab_code",
