@@ -1,4 +1,4 @@
-function test_predict_closed_loop_var_eq17_v2()
+function test_predict_closed_loop_var_eq17()
 %TEST_PREDICT_CLOSED_LOOP_VAR_EQ17_V2  Unit tests for v2 closed-form variance prediction
 %
 %   Tests the modular block-triangular Lyapunov implementation per Phase 7 §6:
@@ -35,7 +35,7 @@ IF_var   = 4.224;                      % Phase 2 IF_var Option A
 
 % Positioning h=50 mock values (representative; actual numbers come from
 % calc_simulation_params in Simulink runtime).
-% Eq.17 a_x [um/pN] = Ts/gamma_N / c (per axis) — see motion_control_law_eq17_7state §174.
+% Eq.17 a_x [um/pN] = Ts/gamma_N / c (per axis) — see motion_control_law_eq17_core §174.
 % gamma_N = 0.0425 pN*sec/um, Ts = 1/1600 sec  -> a_nom ~ 1.47e-2 um/pN
 gamma_N   = 0.0425;
 Ts_const  = 1/1600;
@@ -76,7 +76,7 @@ opts_base = struct( ...
 );
 
 %% --- T1: positioning baseline, paper Eq.22 cross-check --------------------
-[s2_dx, s2_e_xD, ~, diag_out] = predict_closed_loop_var_eq17_v2(opts_base);
+[s2_dx, s2_e_xD, ~, diag_out] = predict_closed_loop_var_eq17(opts_base);
 
 % Hand-compute paper part for cross-check:
 sigma2_dXT_expected = 4 * k_B * T_K * a_x_axis;
@@ -109,7 +109,7 @@ assert(all(s2_e_xD == 0), ...
 % Now test sigma2_w_fD > 0 path: should give s2_e_xD ~ sqrt(a_x^2 * sigma2_w_fD * R)
 opts_wfD = opts_base;
 opts_wfD.sigma2_w_fD = 1e-6;          % small but nonzero
-[~, s2_e_xD_pos, ~, ~] = predict_closed_loop_var_eq17_v2(opts_wfD);
+[~, s2_e_xD_pos, ~, ~] = predict_closed_loop_var_eq17(opts_wfD);
 expected_xD = sqrt(a_x_axis.^2 * opts_wfD.sigma2_w_fD .* R_axis);
 xD_rel_err = abs(s2_e_xD_pos - expected_xD) ./ max(expected_xD, eps);
 assert(all(xD_rel_err < 1e-12), ...
@@ -126,7 +126,7 @@ opts_lc0 = opts_base;
 opts_lc0.lambda_c = 0;
 opts_lc0.C_dpmr   = 2 + 1/(1 - 0^2);    % = 3
 opts_lc0.C_n      = 2/(1 + 0);           % = 2
-[s2_dx_lc0, ~, ~, ~] = predict_closed_loop_var_eq17_v2(opts_lc0);
+[s2_dx_lc0, ~, ~, ~] = predict_closed_loop_var_eq17(opts_lc0);
 assert(all(isfinite(s2_dx_lc0)) && all(s2_dx_lc0 > 0), ...
     'T3a FAIL: lambda_c=0 should give finite positive s2_dx; got %s', mat2str(s2_dx_lc0, 3));
 
@@ -135,7 +135,7 @@ opts_lcHigh = opts_base;
 opts_lcHigh.lambda_c = 0.95;
 opts_lcHigh.C_dpmr   = 2 + 1/(1 - 0.95^2);
 opts_lcHigh.C_n      = 2/(1 + 0.95);
-[s2_dx_lcH, ~, ~, ~] = predict_closed_loop_var_eq17_v2(opts_lcHigh);
+[s2_dx_lcH, ~, ~, ~] = predict_closed_loop_var_eq17(opts_lcHigh);
 assert(all(isfinite(s2_dx_lcH)), ...
     'T3b FAIL: lambda_c=0.95 should give finite s2_dx');
 
@@ -143,7 +143,7 @@ assert(all(isfinite(s2_dx_lcH)), ...
 opts_lc1 = opts_base;
 opts_lc1.lambda_c = 1;
 try
-    predict_closed_loop_var_eq17_v2(opts_lc1);
+    predict_closed_loop_var_eq17(opts_lc1);
     error('T3c FAIL: lambda_c=1 should have thrown error');
 catch ME
     assert(strcmp(ME.identifier, 'predict_closed_loop_var_eq17_v2:badLambda'), ...
@@ -158,7 +158,7 @@ fprintf('         (lambda_c=0)    s2_dx = [%.4e, %.4e, %.4e]\n', ...
 % T4a: missing required field
 opts_bad = rmfield(opts_base, 'C_dpmr');
 try
-    predict_closed_loop_var_eq17_v2(opts_bad);
+    predict_closed_loop_var_eq17(opts_bad);
     error('T4a FAIL: missing field should have thrown');
 catch ME
     assert(strcmp(ME.identifier, 'predict_closed_loop_var_eq17_v2:missingField'), ...
@@ -169,7 +169,7 @@ end
 opts_bad2 = opts_base;
 opts_bad2.a_x_axis = [1, 2];   % only 2 entries
 try
-    predict_closed_loop_var_eq17_v2(opts_bad2);
+    predict_closed_loop_var_eq17(opts_bad2);
     error('T4b FAIL: bad axis dim should have thrown');
 catch ME
     assert(strcmp(ME.identifier, 'predict_closed_loop_var_eq17_v2:badAxisDim'), ...
@@ -180,7 +180,7 @@ end
 opts_bad3 = opts_base;
 opts_bad3.scenario = 'bogus';
 try
-    predict_closed_loop_var_eq17_v2(opts_bad3);
+    predict_closed_loop_var_eq17(opts_bad3);
     error('T4c FAIL: bad scenario should have thrown');
 catch ME
     assert(strcmp(ME.identifier, 'predict_closed_loop_var_eq17_v2:badScenario'), ...
@@ -191,7 +191,7 @@ end
 opts_bad4 = opts_base;
 opts_bad4.scenario = 'motion';
 try
-    predict_closed_loop_var_eq17_v2(opts_bad4);
+    predict_closed_loop_var_eq17(opts_bad4);
     error('T4d FAIL: motion w/o traj fields should have thrown');
 catch ME
     assert(strcmp(ME.identifier, 'predict_closed_loop_var_eq17_v2:motionMissingTraj'), ...
@@ -207,7 +207,7 @@ opts_motion.scenario       = 'motion';
 opts_motion.traj_amplitude = 2.5;
 opts_motion.traj_freq      = 1.0;
 opts_motion.Q77_axis       = [1e-8, 1e-8, 1e-8];   % motion: nonzero Q77
-[s2_dx_m, ~, ~, diag_m] = predict_closed_loop_var_eq17_v2(opts_motion);
+[s2_dx_m, ~, ~, diag_m] = predict_closed_loop_var_eq17(opts_motion);
 assert(all(isfinite(s2_dx_m)) && all(s2_dx_m > 0), ...
     'T5 FAIL: motion s2_dx not finite positive');
 % E_bracket^2 should equal (A*omega*Ts)^2/2 across all 3 axes

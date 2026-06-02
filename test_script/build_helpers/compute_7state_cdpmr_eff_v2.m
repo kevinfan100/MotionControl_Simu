@@ -34,7 +34,7 @@ function [C_dpmr_eff, C_np_eff, L, A_aug, diagnostics] = ...
 %       A_aug       11x11 augmented transition matrix
 %       diagnostics struct with max_eig, Sigma_th, Sigma_np, dare_iters, etc.
 %
-%   See also: build_eq17_constants, motion_control_law_eq17_7state,
+%   See also: build_eq17_constants, motion_control_law_eq17_core,
 %             compute_7state_cdpmr_eff (v1 / qr branch)
 
     if nargin < 6 || isempty(opts), opts = struct; end

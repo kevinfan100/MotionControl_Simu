@@ -47,7 +47,7 @@ function results = run_R22_validation(scenario, seed)
 %       * a_true_per_axis is computed analytically from h_init via
 %         calc_correction_functions(h_bar = h_init/R).
 %
-%   See also: run_pure_simulation, motion_control_law_eq17_7state,
+%   See also: run_pure_simulation, motion_control_law_eq17_core,
 %             calc_correction_functions
 
     if nargin < 2 || isempty(seed)
@@ -68,7 +68,7 @@ function results = run_R22_validation(scenario, seed)
     addpath(fullfile(project_root, 'model', 'thermal_force'));
     addpath(fullfile(project_root, 'model', 'trajectory'));
     addpath(fullfile(project_root, 'model', 'controller'));
-    addpath(fullfile(project_root, 'model', 'pure_matlab'));
+    addpath(fullfile(project_root, 'model', 'dual_track'));
     addpath(fullfile(project_root, 'model', 'diag'));
 
     % --- 2. Build base config from user_config defaults, then override ---

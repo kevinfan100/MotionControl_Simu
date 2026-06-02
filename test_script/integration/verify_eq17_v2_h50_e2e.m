@@ -8,7 +8,7 @@ function results = run_v2_h50_e2e(opts)
 %   h_init = 50 um, positioning trajectory, T_sim = 5 s. Mirrors the
 %   sigma-ratio-filter qr-branch verify_qr_positioning_run pattern: runs
 %   N seeds, aggregates per-axis tracking std and a_hat statistics, and
-%   compares against the Phase 7 oracle (predict_closed_loop_var_eq17_v2).
+%   compares against the Phase 7 oracle (predict_closed_loop_var_eq17).
 %
 %   This script is the **scaffold** invoked by Wave 4 Agent F. It does not
 %   modify any model code; it only orchestrates run_pure_simulation calls.
@@ -19,7 +19,7 @@ function results = run_v2_h50_e2e(opts)
 %       opts.h_init     - h_init [um]                  (default 50)
 %       opts.t_warmup   - start time for stats [sec]   (default 0.5)
 %       opts.verbose    - print per-seed progress      (default true)
-%       opts.run_oracle - call predict_closed_loop_var_eq17_v2 oracle for
+%       opts.run_oracle - call predict_closed_loop_var_eq17 oracle for
 %                         comparison (default true; requires model/diag on path)
 %
 %   ----- Output (struct results) -----
@@ -38,7 +38,7 @@ function results = run_v2_h50_e2e(opts)
 %                                       .a_hat_std_mean      1 x 3 [um/pN]
 %                                       .s2_dx_obs_mean      1 x 3 [um^2]
 %       results.oracle              - (if run_oracle) struct from
-%                                     predict_closed_loop_var_eq17_v2:
+%                                     predict_closed_loop_var_eq17:
 %                                       .s2_dx_pred          1 x 3 [um^2]
 %                                       .ratio_obs_to_pred   1 x 3 [-]
 %       results.meta                - timestamp, driver version, etc.
@@ -56,7 +56,7 @@ function results = run_v2_h50_e2e(opts)
 %          report ratio.
 %
 %   ----- Notes -----
-%       * ekf_out column order (per motion_control_law_eq17_7state):
+%       * ekf_out column order (per motion_control_law_eq17_core):
 %             col 1 = a_hat_x  (axis 1, tangential)
 %             col 2 = a_hat_z  (axis 3, normal)
 %             col 3 = a_hat_y  (axis 2, tangential)
@@ -67,8 +67,8 @@ function results = run_v2_h50_e2e(opts)
 %       * No simulation is invoked when this file is checkcode'd; only
 %         when the user explicitly calls run_v2_h50_e2e().
 %
-%   See also: run_pure_simulation, predict_closed_loop_var_eq17_v2,
-%             motion_control_law_eq17_7state
+%   See also: run_pure_simulation, predict_closed_loop_var_eq17,
+%             motion_control_law_eq17_core
 
     % --- 0. Defaults ---
     if nargin < 1 || isempty(opts); opts = struct(); end
@@ -88,7 +88,7 @@ function results = run_v2_h50_e2e(opts)
     addpath(fullfile(project_root, 'model', 'thermal_force'));
     addpath(fullfile(project_root, 'model', 'trajectory'));
     addpath(fullfile(project_root, 'model', 'controller'));
-    addpath(fullfile(project_root, 'model', 'pure_matlab'));
+    addpath(fullfile(project_root, 'model', 'dual_track'));
     addpath(fullfile(project_root, 'model', 'diag'));
 
     % --- 2. Base config ---
@@ -108,7 +108,7 @@ function results = run_v2_h50_e2e(opts)
     % Match run_simulation.m h=50 noise std (Wave 1 audit)
     config.meas_noise_std   = [0.00062; 0.000057; 0.00331];
     % Note: config.controller_type is unused by run_pure_simulation (driver
-    % is hard-wired to motion_control_law_eq17_7state). Kept for trace only.
+    % is hard-wired to motion_control_law_eq17_core). Kept for trace only.
     config.controller_type  = 7;
 
     % --- 3. Resolve params once for nominal a per-axis (used in bias %) ---
@@ -224,7 +224,7 @@ function results = run_v2_h50_e2e(opts)
             'scenario',    'positioning' );
 
         [s2_dx_pred, s2_e_xD_pred, s2_e_a_pred, diag_pred] = ...
-            predict_closed_loop_var_eq17_v2(oracle_opts);
+            predict_closed_loop_var_eq17(oracle_opts);
 
         oracle.s2_dx_pred       = s2_dx_pred(:).';     % 1x3
         oracle.s2_e_xD_pred     = s2_e_xD_pred(:).';

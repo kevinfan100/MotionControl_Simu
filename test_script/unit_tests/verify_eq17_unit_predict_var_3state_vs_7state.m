@@ -5,9 +5,9 @@ function test_predict_var_3state_vs_7state()
 %
 %   Compares two oracle predictions for sigma^2_dx (closed-loop tracking
 %   variance under positioning):
-%     - 3-state: predict_closed_loop_var.m (g=1 case, returns
+%     - 3-state: predict_closed_loop_var_eq6.m (g=1 case, returns
 %                 Sigma(1,1) of dlyap(A,B*var*B') for companion form A)
-%     - 7-state: predict_closed_loop_var_eq17_v2.m at sigma2_w_fD=0
+%     - 7-state: predict_closed_loop_var_eq17.m at sigma2_w_fD=0
 %                (paper part: (C_dpmr*4kBT*a + C_n*sigma2_n)/(1-lambda_c^2))
 %
 %   IMPORTANT FINDING:
@@ -64,7 +64,7 @@ function test_predict_var_3state_vs_7state()
     pred3 = cell(3, 1);
     s2_dx_3 = zeros(1, 3);
     for ax = 1:3
-        pred3{ax} = predict_closed_loop_var(lambda_c, a_x_axis(ax), 1.0, ...
+        pred3{ax} = predict_closed_loop_var_eq6(lambda_c, a_x_axis(ax), 1.0, ...
                                              sigma2_n_s(ax), kBT);
         s2_dx_3(ax) = pred3{ax}.var_dx_total_lyap;
     end
@@ -102,7 +102,7 @@ function test_predict_var_3state_vs_7state()
         'scenario',    'positioning' ...
     );
 
-    [~, ~, ~, diag7] = predict_closed_loop_var_eq17_v2(opts7);
+    [~, ~, ~, diag7] = predict_closed_loop_var_eq17(opts7);
     s2_dx_7_paper = diag7.s2_dx_paper_only;     % paper Eq.22 part only
 
     % Document the formulation gap: 7-state divides by (1-lambda_c^2)

@@ -3,7 +3,7 @@ function test_h_bar_threshold_3guard()
 %
 %   Priority 6 from deep audit §6.
 %
-%   Three guards in motion_control_law_eq17_7state.m §[4]:
+%   Three guards in motion_control_law_eq17_core.m §[4]:
 %     G1: t_now < t_warmup_kf           (warm-up)
 %     G2: sigma2_dxr_hat - C_n*sigma2_n_s <= 0   (low SNR)
 %     G3: h_bar < h_bar_safe            (near-wall)
@@ -48,19 +48,19 @@ function test_h_bar_threshold_3guard()
     % We need to first run past the 2-step warmup_count to get into the
     % EKF path. Then check G1 still active until k_step*Ts >= 0.2s.
     % ------------------------------------------------------------------
-    clear motion_control_law_eq17_7state;
+    clear motion_control_law_eq17_core;
 
     % First two calls = warmup_count steps (NO EKF run, no diag info).
-    [~, ~, ~]  = motion_control_law_eq17_7state(del_pd, pd, p0, params_mock, ctrl_const_mock);
-    [~, ~, ~]  = motion_control_law_eq17_7state(del_pd, pd, p0, params_mock, ctrl_const_mock);
-    [~, ~, ~]  = motion_control_law_eq17_7state(del_pd, pd, p0, params_mock, ctrl_const_mock);
+    [~, ~, ~]  = motion_control_law_eq17_core(del_pd, pd, p0, params_mock, ctrl_const_mock);
+    [~, ~, ~]  = motion_control_law_eq17_core(del_pd, pd, p0, params_mock, ctrl_const_mock);
+    [~, ~, ~]  = motion_control_law_eq17_core(del_pd, pd, p0, params_mock, ctrl_const_mock);
 
     % Now run more calls until we're at ~t=0.1s (still in G1 t_warmup_kf range)
     % t_warmup_kf is 0.2s, so 0.1s is mid-warmup.
     target_steps_g1 = round(0.1 / Ts);
     last_diag = struct();
     for k = 1:target_steps_g1
-        [~, ~, last_diag] = motion_control_law_eq17_7state( ...
+        [~, ~, last_diag] = motion_control_law_eq17_core( ...
             del_pd, pd, p0, params_mock, ctrl_const_mock);
     end
 
@@ -90,7 +90,7 @@ function test_h_bar_threshold_3guard()
     target_steps_g1_off = round(0.5 / Ts);
     additional = target_steps_g1_off - target_steps_g1;
     for k = 1:additional
-        [~, ~, last_diag] = motion_control_law_eq17_7state( ...
+        [~, ~, last_diag] = motion_control_law_eq17_core( ...
             del_pd, pd, p0, params_mock, ctrl_const_mock);
     end
     G1_axis_off = last_diag.guards_individual(1, :);
@@ -131,19 +131,19 @@ function test_h_bar_threshold_3guard()
     %     But constraint: calc_correction_functions errors if h_bar < 1.
     %     So 1.4 is safe.
     % ------------------------------------------------------------------
-    clear motion_control_law_eq17_7state;
+    clear motion_control_law_eq17_core;
     h_near = 1.4 * R_radius;            % 3.15 um
     p_near = [0; 0; h_near];
     pd_near = p_near;
 
     % Walk past warmup
-    [~, ~, ~]  = motion_control_law_eq17_7state(del_pd, pd_near, p_near, params_mock, ctrl_const_mock);
-    [~, ~, ~]  = motion_control_law_eq17_7state(del_pd, pd_near, p_near, params_mock, ctrl_const_mock);
-    [~, ~, ~]  = motion_control_law_eq17_7state(del_pd, pd_near, p_near, params_mock, ctrl_const_mock);
+    [~, ~, ~]  = motion_control_law_eq17_core(del_pd, pd_near, p_near, params_mock, ctrl_const_mock);
+    [~, ~, ~]  = motion_control_law_eq17_core(del_pd, pd_near, p_near, params_mock, ctrl_const_mock);
+    [~, ~, ~]  = motion_control_law_eq17_core(del_pd, pd_near, p_near, params_mock, ctrl_const_mock);
 
     target_steps = round(0.5 / Ts);
     for k = 1:target_steps
-        [~, ~, last_diag] = motion_control_law_eq17_7state( ...
+        [~, ~, last_diag] = motion_control_law_eq17_core( ...
             del_pd, pd_near, p_near, params_mock, ctrl_const_mock);
     end
     G3_near = last_diag.guards_individual(3, :);
@@ -155,17 +155,17 @@ function test_h_bar_threshold_3guard()
         last_diag.h_bar, h_bar_safe);
 
     % ---- Now test h_bar = 1.6 (above threshold) ----
-    clear motion_control_law_eq17_7state;
+    clear motion_control_law_eq17_core;
     h_far = 1.6 * R_radius;             % 3.6 um
     p_far = [0; 0; h_far];
     pd_far = p_far;
 
-    [~, ~, ~]  = motion_control_law_eq17_7state(del_pd, pd_far, p_far, params_mock, ctrl_const_mock);
-    [~, ~, ~]  = motion_control_law_eq17_7state(del_pd, pd_far, p_far, params_mock, ctrl_const_mock);
-    [~, ~, ~]  = motion_control_law_eq17_7state(del_pd, pd_far, p_far, params_mock, ctrl_const_mock);
+    [~, ~, ~]  = motion_control_law_eq17_core(del_pd, pd_far, p_far, params_mock, ctrl_const_mock);
+    [~, ~, ~]  = motion_control_law_eq17_core(del_pd, pd_far, p_far, params_mock, ctrl_const_mock);
+    [~, ~, ~]  = motion_control_law_eq17_core(del_pd, pd_far, p_far, params_mock, ctrl_const_mock);
 
     for k = 1:target_steps
-        [~, ~, last_diag] = motion_control_law_eq17_7state( ...
+        [~, ~, last_diag] = motion_control_law_eq17_core( ...
             del_pd, pd_far, p_far, params_mock, ctrl_const_mock);
     end
     G3_far = last_diag.guards_individual(3, :);
@@ -181,17 +181,17 @@ function test_h_bar_threshold_3guard()
     % T5: G3 strictness — at h_bar = h_bar_safe exactly, NOT triggered
     %     The check is "h_bar < h_bar_safe" (strict <).
     % ------------------------------------------------------------------
-    clear motion_control_law_eq17_7state;
+    clear motion_control_law_eq17_core;
     h_exact = h_bar_safe * R_radius;    % h_bar = 1.5 exactly
     p_exact = [0; 0; h_exact];
     pd_exact = p_exact;
 
-    [~, ~, ~]  = motion_control_law_eq17_7state(del_pd, pd_exact, p_exact, params_mock, ctrl_const_mock);
-    [~, ~, ~]  = motion_control_law_eq17_7state(del_pd, pd_exact, p_exact, params_mock, ctrl_const_mock);
-    [~, ~, ~]  = motion_control_law_eq17_7state(del_pd, pd_exact, p_exact, params_mock, ctrl_const_mock);
+    [~, ~, ~]  = motion_control_law_eq17_core(del_pd, pd_exact, p_exact, params_mock, ctrl_const_mock);
+    [~, ~, ~]  = motion_control_law_eq17_core(del_pd, pd_exact, p_exact, params_mock, ctrl_const_mock);
+    [~, ~, ~]  = motion_control_law_eq17_core(del_pd, pd_exact, p_exact, params_mock, ctrl_const_mock);
 
     for k = 1:target_steps
-        [~, ~, last_diag] = motion_control_law_eq17_7state( ...
+        [~, ~, last_diag] = motion_control_law_eq17_core( ...
             del_pd, pd_exact, p_exact, params_mock, ctrl_const_mock);
     end
 
@@ -213,7 +213,7 @@ end
 %% =================== Helpers ===================
 
 function [params_mock, ctrl_const_mock] = build_mocks()
-%BUILD_MOCKS Construct minimal struct mocks (mirrors test_motion_control_law_eq17_7state.m)
+%BUILD_MOCKS Construct minimal struct mocks (mirrors test_motion_control_law_eq17_core.m)
 
     R = 2.25;
     gamma_N = 0.0425;

@@ -16,14 +16,14 @@ function smoke_wave3_h50_no_noise()
     addpath(fullfile(repo_root, 'model', 'config'));
     addpath(fullfile(repo_root, 'model', 'controller'));
     addpath(fullfile(repo_root, 'model', 'wall_effect'));
-    addpath(fullfile(repo_root, 'model', 'pure_matlab'));
+    addpath(fullfile(repo_root, 'model', 'dual_track'));
     addpath(fullfile(repo_root, 'model', 'thermal_force'));
     addpath(fullfile(repo_root, 'model', 'trajectory'));
     addpath(fullfile(repo_root, 'model', 'diag'));
 
     % Force-clear all controller / driver persistent state
     clear motion_control_law motion_control_law_23state ...
-          motion_control_law_7state motion_control_law_eq17_7state ...
+          motion_control_law_eq6 motion_control_law_eq17 motion_control_law_eq17_core ...
           trajectory_generator calc_thermal_force; %#ok<CLFUNC>
 
     % Configuration per task brief

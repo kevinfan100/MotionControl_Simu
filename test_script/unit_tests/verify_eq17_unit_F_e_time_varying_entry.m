@@ -3,7 +3,7 @@ function test_F_e_time_varying_entry()
 %
 %   Priority 3 from deep audit §6 (closes GAP-3: F_e time-varying entry untested).
 %
-%   F_e is built internally per step in motion_control_law_eq17_7state.m
+%   F_e is built internally per step in motion_control_law_eq17_core.m
 %   (see local helper build_F_e). Only entry (3,6) is time-varying:
 %       Eq.19 form (default):
 %           Row 3 = [0, 0, lambda_c, -(1+d*(1-lambda_c)), 0, -f_d_i, 0]
@@ -20,7 +20,7 @@ function test_F_e_time_varying_entry()
 %     T5: build_F_e for d=1, lambda_c=0.7 gives F_e(3,4) = -1.3.
 %
 %   Implementation note: the local helper `build_F_e` is private to the
-%   motion_control_law_eq17_7state.m file. We replicate its logic here to
+%   motion_control_law_eq17_core.m file. We replicate its logic here to
 %   support verification — both paths must agree by construction.
 
     fprintf('=== test_F_e_time_varying_entry ===\n');
@@ -113,7 +113,7 @@ end
 %% =================== Local Helpers ==========================
 function F_e = local_build_F_e(lambda_c, d_delay, f_d_i, use_eq18)
 %LOCAL_BUILD_F_E Mirror of build_F_e local helper inside controller.
-%   Must stay in lock-step with motion_control_law_eq17_7state.m line 653-696.
+%   Must stay in lock-step with motion_control_law_eq17_core.m line 653-696.
 
     if nargin < 4 || isempty(use_eq18)
         use_eq18 = false;

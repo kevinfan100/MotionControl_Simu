@@ -3,7 +3,7 @@ function run_phase9_wave1()
 %
 %   run_phase9_wave1()
 %
-%   Calls run_R22_validation 12 times per the Wave 1 sim matrix:
+%   Calls verify_eq17_R22_validation 12 times per the Wave 1 sim matrix:
 %
 %     V1 (5 sims): seeds {1..5}, a_cov=0.05, sigma2_n_factor=1.0
 %     V2 a_cov sweep (4 sims): seed=1, a_cov in {0.01, 0.02, 0.10, 0.20},
@@ -18,7 +18,7 @@ function run_phase9_wave1()
 
     [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
     project_root = fileparts(script_dir);
-    addpath(script_dir);                               % run_R22_validation
+    addpath(script_dir);                               % verify_eq17_R22_validation
     out_dir = fullfile(project_root, 'reference', 'eq17_analysis');
     if ~exist(out_dir, 'dir'); mkdir(out_dir); end
 
@@ -64,7 +64,7 @@ function run_phase9_wave1()
                 i, n_sims, tag, seed, scenario.a_cov, scenario.sigma2_n_factor);
 
         t_sim = tic;
-        results = run_R22_validation(scenario, seed); %#ok<NASGU>
+        results = verify_eq17_R22_validation(scenario, seed); %#ok<NASGU>
         elapsed = toc(t_sim);
 
         save(out_file, '-struct', 'results', '-v7.3');

@@ -1,11 +1,11 @@
-function test_motion_control_law_eq17_7state()
+function test_motion_control_law_eq17_core()
 %TEST_MOTION_CONTROL_LAW_EQ17_7STATE Unit tests for eq17 7-state controller.
 %
 %   Verifies (text-only — no Simulink, no MATLAB MCP):
 %       T1: Output shapes are f_d (3x1) and ekf_out (4x1)
 %       T2: First call seeds persistent state without error; second call
 %           advances state (k_step increments, IIR states change)
-%       T3: 'clear motion_control_law_eq17_7state' resets persistent state
+%       T3: 'clear motion_control_law_eq17_core' resets persistent state
 %           between scenarios
 %       T4: Guard 1 (warm-up) — at t < t_warmup_kf, R_2 is gated to 1e10,
 %           and a synthetic huge a_xm input does NOT cause a_hat to jump
@@ -16,7 +16,7 @@ function test_motion_control_law_eq17_7state()
 %
 %   Usage (from MATLAB):
 %       cd test_script/unit_tests
-%       test_motion_control_law_eq17_7state
+%       test_motion_control_law_eq17_core
 
     this_dir = fileparts(mfilename('fullpath'));
     repo_root = fullfile(this_dir, '..', '..');
@@ -40,8 +40,8 @@ function test_motion_control_law_eq17_7state()
     % --------------------------------------------------------------
     % T1: Output shapes
     % --------------------------------------------------------------
-    clear motion_control_law_eq17_7state;
-    [f_d_1, ekf_1] = motion_control_law_eq17_7state( ...
+    clear motion_control_law_eq17_core;
+    [f_d_1, ekf_1] = motion_control_law_eq17_core( ...
         del_pd, pd, p_m, params_mock, ctrl_const_mock);
     assert(isequal(size(f_d_1), [3, 1]), ...
         'T1 failed: f_d shape = %s, expected [3 1]', mat2str(size(f_d_1)));
@@ -53,7 +53,7 @@ function test_motion_control_law_eq17_7state()
     % --------------------------------------------------------------
     % T2: First call init then second call advances
     % --------------------------------------------------------------
-    [f_d_2, ekf_2] = motion_control_law_eq17_7state( ...
+    [f_d_2, ekf_2] = motion_control_law_eq17_core( ...
         del_pd, pd, p_m, params_mock, ctrl_const_mock);
     assert(isequal(size(f_d_2), [3, 1]), 'T2 failed: f_d_2 wrong shape');
     assert(isequal(size(ekf_2), [4, 1]), 'T2 failed: ekf_2 wrong shape');
@@ -67,8 +67,8 @@ function test_motion_control_law_eq17_7state()
     % --------------------------------------------------------------
     % T3: Clear resets state — verify by checking first-call-zeros pattern
     % --------------------------------------------------------------
-    clear motion_control_law_eq17_7state;
-    [f_d_3, ekf_3] = motion_control_law_eq17_7state( ...
+    clear motion_control_law_eq17_core;
+    [f_d_3, ekf_3] = motion_control_law_eq17_core( ...
         del_pd, pd, p_m, params_mock, ctrl_const_mock);
     assert(all(f_d_3 == 0), ...
         'T3 failed: post-clear first call should yield f_d=0 (init), got %s', ...
@@ -90,12 +90,12 @@ function test_motion_control_law_eq17_7state()
     %     during warm-up. The variance EWMA will spike, a_xm will be huge,
     %     but Guard 1 should keep a_hat near its initial value.
     % --------------------------------------------------------------
-    clear motion_control_law_eq17_7state;
+    clear motion_control_law_eq17_core;
     Ts = params_mock.ctrl.Ts;
     a_nom_local = Ts / params_mock.ctrl.gamma;
     % t < t_warmup_kf (= 0.2 sec by default → ~320 steps at Ts=1/1600)
     n_warmup_steps = round(0.5 * ctrl_const_mock.t_warmup_kf / Ts);
-    [~, ekf_init] = motion_control_law_eq17_7state( ...
+    [~, ekf_init] = motion_control_law_eq17_core( ...
         del_pd, pd, p_m, params_mock, ctrl_const_mock);
     a_hat_init_x = ekf_init(1);
 
@@ -103,7 +103,7 @@ function test_motion_control_law_eq17_7state()
     p_m_outlier = p0 + [10; 10; 10];   % 10 um outlier per axis
     last_a_hat = a_hat_init_x;
     for k = 1:n_warmup_steps
-        [~, ekf_k] = motion_control_law_eq17_7state( ...
+        [~, ekf_k] = motion_control_law_eq17_core( ...
             del_pd, pd, p_m_outlier, params_mock, ctrl_const_mock);
         last_a_hat = ekf_k(1);
     end
@@ -125,13 +125,13 @@ function test_motion_control_law_eq17_7state()
     % T5: Far-field positioning (h_bar ~ 22), past warm-up — Guard 3
     %     should not trigger; a_hat stays positive/finite.
     % --------------------------------------------------------------
-    clear motion_control_law_eq17_7state;
+    clear motion_control_law_eq17_core;
     %   p0 = (0,0,50) µm at R=2.25 µm gives h_bar ≈ 22.2.
     %   Step long enough to clear warm-up.
     n_steps_far = round(2.0 * ctrl_const_mock.t_warmup_kf / Ts);
     last_ekf = [];
     for k = 1:n_steps_far
-        [~, last_ekf] = motion_control_law_eq17_7state( ...
+        [~, last_ekf] = motion_control_law_eq17_core( ...
             del_pd, pd, p_m, params_mock, ctrl_const_mock);
     end
     assert(all(isfinite(last_ekf)), 'T5 failed: ekf_out has non-finite entries');
@@ -149,14 +149,14 @@ function test_motion_control_law_eq17_7state()
     % --------------------------------------------------------------
     % T6: Smoke test — 10 steps constant positioning + small noise
     % --------------------------------------------------------------
-    clear motion_control_law_eq17_7state;
+    clear motion_control_law_eq17_core;
     rng(42);  % deterministic
     sigma_noise_um = 1e-3;   % 1 nm RMS noise
     f_d_log = zeros(3, 10);
     a_hat_log = zeros(3, 10);
     for k = 1:10
         p_m_k = p0 + sigma_noise_um * randn(3, 1);
-        [f_d_k, ekf_k] = motion_control_law_eq17_7state( ...
+        [f_d_k, ekf_k] = motion_control_law_eq17_core( ...
             del_pd, pd, p_m_k, params_mock, ctrl_const_mock);
         f_d_log(:, k) = f_d_k;
         a_hat_log(:, k) = ekf_k(1:3);

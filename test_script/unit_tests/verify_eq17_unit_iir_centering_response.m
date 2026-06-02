@@ -4,7 +4,7 @@ function test_iir_centering_response()
 %   Priority 2 from deep audit §6.
 %
 %   Verifies the IIR centering algorithm used in
-%   motion_control_law_eq17_7state.m §[1] (lines 305-313):
+%   motion_control_law_eq17_core.m §[1] (lines 305-313):
 %       dx_bar_m_new = (1 - a_var) * dx_bar_m + a_var * delta_x_m   (LP, NEW mean)
 %       dx_r         = delta_x_m - dx_bar_m_new                     (centered residual)
 %       sigma2_dxr_hat_new = (1 - a_cov) * sigma2_dxr_hat + a_cov * dx_r^2

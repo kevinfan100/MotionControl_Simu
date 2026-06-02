@@ -88,11 +88,11 @@ function ctrl = calc_ctrl_params(config, constants)
     % R(1,1) and R(2,2) are per-axis (and Q(7,7) per-axis since 2026-04-22).
     % Replaces the legacy 2-D lookup which used a single Q/R for all axes
     % and was built with beta-derivation values, not production frozen_correct.
-    % See test_script/compute_7state_cdpmr_eff.m for derivation.
+    % See test_script/build_helpers/compute_7state_cdpmr_eff.m for derivation.
     % ---------------------------------------------------------------
     here = fileparts(mfilename('fullpath'));              % .../model/controller
     project_root = fileparts(fileparts(here));            % .../
-    addpath(fullfile(project_root, 'test_script'));
+    addpath(fullfile(project_root, 'test_script', 'build_helpers'));
 
     ctrl.C_dpmr_eff      = zeros(3, 1);
     ctrl.C_np_eff        = zeros(3, 1);
