@@ -1,0 +1,277 @@
+% ======================================================
+% Compile: xelatex R22_derivation.tex
+% Path:    reference/eq17_analysis/derivation/R22_derivation.tex
+% Style:   self-contained; mimics Cdpmr_Cn_derivation.tex layout.
+% Note:    Companion document: Cdpmr_Cn_derivation.tex (shared notation).
+%          S2-S4 (three-layer decomposition, K_var, IF spectral integral /
+%          Isserlis) overlap with reference/shared/writeup_architecture.tex
+%          S7 (chi_sq, rho_a) and derivation/phase6_R_matrix_derivation.md /
+%          phase2_IF_var_dpr_derivation.md.
+%          NEW content unique to this document: S5 exact residue/Parseval
+%          closed form for rho_dpmr(tau) + S6 3-term geometric IF closed
+%          form (verified to <8e-15 against brute force).
+% ======================================================
+\documentclass[11pt,a4paper]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.15em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+\titlespacing*{\section}{0pt}{1.4ex}{0.6ex}
+\titlespacing*{\subsection}{0pt}{0.8ex}{0.3ex}
+
+% --- Inherited symbols ---
+\newcommand{\lc}{\lambda_c}
+\newcommand{\dxT}{\delta x_{T}}
+\newcommand{\nx}{n_{x}}
+\newcommand{\dpmr}{\delta p_{mr}}
+\newcommand{\FT}{F_{T}}
+\newcommand{\FN}{F_{N}}
+\newcommand{\HE}{H_{E}}
+\newcommand{\Cdpmr}{C_{\mathrm{dpmr}}}
+\newcommand{\Cn}{C_{n}}
+\newcommand{\apd}{a_{pd}}
+\newcommand{\acov}{a_{cov}}
+\newcommand{\sighatsq}{\hat{\sigma}^{2}}
+
+% --- New symbols ---
+\newcommand{\Kvar}{K_{\mathrm{var}}}
+\newcommand{\ggauss}{g_{\mathrm{gauss}}}
+\newcommand{\gE}{g_{E}}
+\newcommand{\IF}{\mathrm{IF}}
+\newcommand{\Rdpmr}{R_{\dpmr}}
+\newcommand{\rhodpmr}{\rho_{\dpmr}}
+\newcommand{\RfT}{R_{\FT}}
+\newcommand{\RfN}{R_{\FN}}
+
+\begin{document}
+\thispagestyle{empty}
+
+\begin{center}
+{\Large\bfseries Derivation of $R(2,2)$}
+\end{center}
+\vspace{0.3cm}
+
+%=====================================================================
+\section{Setup}
+%=====================================================================
+
+\subsection{HP Residual and Transfer Functions}
+
+For closed-loop delay $d=2$, the HP residual is
+\begin{equation}
+\dpmr(z^{-1}) = -\FT(z^{-1})\,\dxT(z^{-1}) + \FN(z^{-1})\,\nx(z^{-1}),
+\label{eq:dpmr}
+\end{equation}
+\begin{align}
+\FT(z^{-1}) &= \frac{(1-\apd)(1-z^{-1})\,z^{-3}\,[\,1+(1-\lc)z^{-1}+(1-\lc)z^{-2}\,]}{(1-(1-\apd)z^{-1})(1-\lc z^{-1})}, \label{eq:FT}\\[2pt]
+\FN(z^{-1}) &= (1-z^{-1})\,z^{3}\,\FT(z^{-1}), \label{eq:FN-vs-FT}
+\end{align}
+where $\dxT,\nx$ are independent zero-mean Gaussian white noise with variances $\sigma^{2}_{\dxT},\sigma^{2}_{\nx}$; $\apd\in(0,1)$ is the IIR LP coefficient and $\lc\in(0,1)$ is the closed-loop pole.
+
+\subsection{Variance of $\dpmr$}
+
+From the companion document,
+\begin{equation}
+\sigma^{2}_{\dpmr} = \Cdpmr(\lc,\apd)\,\sigma^{2}_{\dxT} + \Cn(\lc,\apd)\,\sigma^{2}_{\nx}.
+\label{eq:sigma-dpmr}
+\end{equation}
+
+\subsection{Variance Estimator and Target}
+
+\begin{equation}
+\sighatsq[k] = (1-\acov)\,\sighatsq[k-1] + \acov\,\dpmr^{2}[k],
+\qquad
+\HE(z^{-1}) = \frac{\acov}{1-(1-\acov)z^{-1}},\quad \acov\in(0,1).
+\label{eq:EWMA}
+\end{equation}
+\begin{equation}
+R(2,2) := \mathrm{Var}\bigl(\sighatsq[k]\bigr)\quad\text{at }k\to\infty.
+\label{eq:R22-def}
+\end{equation}
+
+%=====================================================================
+\section{Three-Layer Decomposition}
+%=====================================================================
+
+\begin{equation}
+R(2,2) = \Kvar\,\cdot\,\sigma^{4}_{\dpmr}\,\cdot\,\IF,
+\label{eq:R22-decomp}
+\end{equation}
+\begin{itemize}[leftmargin=*,topsep=0pt,itemsep=0pt]
+\item $\Kvar$ : variance-estimation prefactor, function of $\acov$ only (\S\ref{sec:Kvar}).
+\item $\sigma^{2}_{\dpmr}$ : from~\eqref{eq:sigma-dpmr}.
+\item $\IF$ : color-inflation factor ($\IF=1$ for white $\dpmr$), \S\S\ref{sec:IF-int}--\ref{sec:IF-closed}.
+\end{itemize}
+
+%=====================================================================
+\section{Closed Form for $\Kvar$}
+\label{sec:Kvar}
+%=====================================================================
+
+\subsection{Gaussian Fourth-Moment Factor}
+
+By Isserlis' theorem, for $X\sim\mathcal{N}(0,\sigma^{2})$, $\mathrm{Var}(X^{2}) = 2\sigma^{4}$. Define
+\begin{equation}
+\ggauss := \mathrm{Var}(\dpmr^{2})\,/\,\sigma^{4}_{\dpmr} = 2.
+\label{eq:ggauss}
+\end{equation}
+
+\subsection{Variance Gain of $\HE$}
+
+For a stable LTI filter $H$ and stationary input $x$ with PSD $S_{x}$,
+\begin{equation}
+\mathrm{Var}(H\cdot x) = \frac{1}{2\pi}\!\!\int_{-\pi}^{\pi}\!\!|H(e^{j\omega})|^{2}\,S_{x}(\omega)\,d\omega,
+\label{eq:univ-var}
+\end{equation}
+which for white $x$ reduces to $\|H\|^{2}\sigma^{2}_{x}$ with variance gain $\|H\|^{2}:=(1/2\pi)\int|H|^{2}d\omega$. Applied to $\HE$ in~\eqref{eq:EWMA},
+\begin{equation}
+\gE := \|\HE\|^{2}
+     = \frac{1}{2\pi}\!\!\int_{-\pi}^{\pi}\!\!|\HE(e^{j\omega})|^{2}\,d\omega
+     = \frac{\acov}{2-\acov}.
+\label{eq:gE}
+\end{equation}
+
+\subsection{Composition}
+\begin{equation}
+\Kvar := \ggauss\cdot\gE = \frac{2\,\acov}{2-\acov}.
+\label{eq:Kvar}
+\end{equation}
+
+%=====================================================================
+\section{$\IF$ as a Spectral Integral}
+\label{sec:IF-int}
+%=====================================================================
+
+\subsection{Apply Universal Variance Formula to $\sighatsq$}
+
+Let $v[k] := \dpmr^{2}[k] - \sigma^{2}_{\dpmr}$ be the centered squared residual, with PSD $S_{v}(\omega)$. Applying~\eqref{eq:univ-var} with $H=\HE$,
+\begin{equation}
+R(2,2) = \frac{1}{2\pi}\!\!\int_{-\pi}^{\pi}\!\!|\HE(e^{j\omega})|^{2}\,S_{v}(\omega)\,d\omega.
+\label{eq:R22-integral}
+\end{equation}
+Because $\dpmr$ inherits the LTI poles $1-\apd$ and $\lc$ from $\FT,\FN$, $v$ is colored ($S_{v}$ non-constant).
+
+\subsection{Isserlis' Theorem at Lag $\tau$}
+
+Define
+\begin{equation}
+\Rdpmr(\tau) := \mathrm{Cov}\bigl(\dpmr[k],\dpmr[k+\tau]\bigr),
+\qquad
+\rhodpmr(\tau) := \Rdpmr(\tau)/\sigma^{2}_{\dpmr}.
+\label{eq:Rdpmr-def}
+\end{equation}
+By Isserlis' theorem applied at lag $\tau$ for zero-mean stationary Gaussian $\dpmr$,
+\begin{equation}
+R_{v}(\tau) = 2\,\Rdpmr^{2}(\tau),\qquad
+\rho_{v}(\tau) = \rhodpmr^{2}(\tau).
+\label{eq:isserlis}
+\end{equation}
+
+\subsection{Result}
+
+Evaluating the integral~\eqref{eq:R22-integral} using \eqref{eq:isserlis} (details omitted),
+\begin{equation}
+\boxed{\;
+R(2,2) = \Kvar\cdot\sigma^{4}_{\dpmr}\cdot\IF,
+\qquad
+\IF := 1 + 2\!\sum_{\tau\ge 1}\rhodpmr^{2}(\tau)\,s^{\tau},
+\qquad s := 1-\acov.
+\;}
+\label{eq:IF-def}
+\end{equation}
+$\IF=1$ for white $\dpmr$ ($\rhodpmr(\tau)=0$, $\tau\ge 1$); the colored case is closed in \S\S\ref{sec:rho}--\ref{sec:IF-closed}.
+
+%=====================================================================
+\section{Closed Form for $\rhodpmr(\tau)$}
+\label{sec:rho}
+%=====================================================================
+
+\subsection{Local Notation}
+\begin{equation}
+\alpha := 1-\apd,\qquad \beta := \lc,\qquad c := 1-\lc.
+\label{eq:alpha-beta}
+\end{equation}
+
+\subsection{$\RfT(\tau)$ via Parseval and Residues}
+
+By Parseval,
+\begin{equation}
+\RfT(\tau) = \frac{1}{2\pi}\!\!\int_{-\pi}^{\pi}\!\!|\FT(e^{j\omega})|^{2}\cos(\omega\tau)\,d\omega.
+\label{eq:RfT-int}
+\end{equation}
+Evaluating~\eqref{eq:RfT-int} by residues at the poles $z=\alpha$ and $z=\beta$ of $\FT$,
+\begin{equation}
+\RfT(\tau) = A_{\alpha}\,\alpha^{\tau} + A_{\beta}\,\beta^{\tau},\qquad \tau\ge 3,
+\label{eq:RfT-tail}
+\end{equation}
+with $A_{\alpha},A_{\beta}$ closed in $(\alpha,\beta,c)$. Values $\RfT(0),\RfT(1),\RfT(2)$ follow by direct evaluation of~\eqref{eq:RfT-int}.
+
+\subsection{Autocorrelation $\RfN(\tau)$}
+
+From~\eqref{eq:FN-vs-FT}, $|\FN(e^{j\omega})|^{2} = 2(1-\cos\omega)|\FT(e^{j\omega})|^{2}$. By inverse DTFT,
+\begin{equation}
+\RfN(\tau) = 2\,\RfT(\tau) - \RfT(\tau-1) - \RfT(\tau+1).
+\label{eq:RfN-id}
+\end{equation}
+
+\subsection{Combined $\rhodpmr(\tau)$}
+
+By independence of $\dxT,\nx$,
+\begin{equation}
+\Rdpmr(\tau) = \sigma^{2}_{\dxT}\,\RfT(\tau) + \sigma^{2}_{\nx}\,\RfN(\tau),
+\qquad
+\rhodpmr(\tau) = \Rdpmr(\tau)/\sigma^{2}_{\dpmr}.
+\label{eq:rho-comb}
+\end{equation}
+For $\tau\ge 3$, both $\RfT,\RfN$ are linear combinations of $\alpha^{\tau},\beta^{\tau}$, so
+\begin{equation}
+\rhodpmr(\tau) = c_{\alpha}\,\alpha^{\tau} + c_{\beta}\,\beta^{\tau},\qquad \tau\ge 3,
+\label{eq:rho-tail}
+\end{equation}
+with $c_{\alpha},c_{\beta}$ closed in $(\alpha,\beta,c,\sigma^{2}_{\dxT},\sigma^{2}_{\nx})$. Values $\rhodpmr(1),\rhodpmr(2)$ follow by case-split evaluation.
+
+%=====================================================================
+\section{Closed Form for $\IF$}
+\label{sec:IF-closed}
+%=====================================================================
+
+Squaring~\eqref{eq:rho-tail},
+\begin{equation}
+\rhodpmr^{2}(\tau) = c_{\alpha}^{2}\,(\alpha^{2})^{\tau} + 2c_{\alpha}c_{\beta}\,(\alpha\beta)^{\tau} + c_{\beta}^{2}\,(\beta^{2})^{\tau},\qquad \tau\ge 3.
+\label{eq:rho-sq}
+\end{equation}
+The $\tau\ge 3$ part of the sum in~\eqref{eq:IF-def} splits into three geometric series:
+\begin{equation}
+\sum_{\tau\ge 3}(\alpha^{2}s)^{\tau} = \frac{(\alpha^{2}s)^{3}}{1-\alpha^{2}s},
+\end{equation}
+and likewise for $\alpha\beta s,\beta^{2}s$. With the explicit $\tau=1,2$ terms,
+\begin{equation}
+\boxed{\;
+\IF = 1 + 2\!\left[\,
+\rhodpmr^{2}(1)\,s + \rhodpmr^{2}(2)\,s^{2}
++ c_{\alpha}^{2}\frac{(\alpha^{2}s)^{3}}{1-\alpha^{2}s}
++ 2c_{\alpha}c_{\beta}\frac{(\alpha\beta s)^{3}}{1-\alpha\beta s}
++ c_{\beta}^{2}\frac{(\beta^{2}s)^{3}}{1-\beta^{2}s}
+\,\right].
+\;}
+\label{eq:IF-closed}
+\end{equation}
+Convergence requires $\alpha^{2}s,\alpha\beta s,\beta^{2}s<1$, guaranteed by $\alpha,\beta,s\in(0,1)$.
+
+\textit{Caveat.} The form~\eqref{eq:rho-tail} is valid only for $\tau\ge 3$. Replacing the three $(\cdot)^{3}/(1-\cdot)$ tails by $(\cdot)/(1-\cdot)$ and dropping the explicit $\tau=1,2$ terms introduces relative errors up to $\sim 135\%$ at $\apd=0.5$.
+
+\end{document}

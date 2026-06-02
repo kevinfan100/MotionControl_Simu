@@ -1,0 +1,195 @@
+% ======================================================
+% Compile: xelatex Cdpmr_Cn_derivation.tex
+% Path:    reference/eq17_analysis/derivation/Cdpmr_Cn_derivation.tex
+% Note:    Companion document: R22_derivation.tex (shared notation).
+%          New content vs existing docs: S2 FT/FN channel decomposition +
+%          S4 full alpha-dependent C_n closed form (mathematical source for
+%          the calc_ctrl_params C_n integration, pending port from Mac
+%          branch learn/variance-walkthrough commit 259df10).
+%          The C_dpmr alpha form (S3) also appears in
+%          investigations/cdpmr_closed_form_verify_5seed.md.
+% ======================================================
+\documentclass[11pt,a4paper]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.15em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+\titlespacing*{\section}{0pt}{1.4ex}{0.6ex}
+\titlespacing*{\subsection}{0pt}{0.8ex}{0.3ex}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\dx}{\delta x}
+\newcommand{\dxT}{\delta x_{T}}
+\newcommand{\nx}{n_{x}}
+\newcommand{\dpm}{\delta p_{m}}
+\newcommand{\dpmd}{\delta p_{md}}
+\newcommand{\dpmr}{\delta p_{mr}}
+\newcommand{\HT}{H_{T}}
+\newcommand{\Hn}{H_{n}}
+\newcommand{\HHP}{H_{\mathrm{HP}}}
+\newcommand{\HLP}{H_{\mathrm{LP}}}
+\newcommand{\HE}{H_{E}}
+\newcommand{\FT}{F_{T}}
+\newcommand{\FN}{F_{N}}
+\newcommand{\Cdpmr}{C_{\mathrm{dpmr}}}
+\newcommand{\Cn}{C_{n}}
+\newcommand{\apd}{a_{pd}}
+\newcommand{\acov}{a_{cov}}
+\newcommand{\sighatsq}{\hat{\sigma}^{2}}
+
+\begin{document}
+\thispagestyle{empty}
+
+\begin{center}
+{\Large\bfseries Derivation of $\Cdpmr$ and $\Cn$}
+\end{center}
+\vspace{0.3cm}
+
+%=====================================================================
+\section{Setup}
+%=====================================================================
+
+\subsection{Closed-Loop Tracking Error}
+
+For a $d{=}2$-step measurement delay, the tracking error $\dx[k] := x_d[k] - x[k]$ in the $z$-domain is
+\begin{equation}
+\dx(z^{-1}) = -\,\HT(z^{-1})\,\dxT(z^{-1}) \;-\; \Hn(z^{-1})\,\nx(z^{-1}),
+\label{eq:paper-dx}
+\end{equation}
+with
+\begin{align}
+\HT(z^{-1}) &= z^{-1}\cdot\frac{1+(1{-}\lc)z^{-1}+(1{-}\lc)z^{-2}}{1-\lc\,z^{-1}}, \label{eq:HT}\\[2pt]
+\Hn(z^{-1}) &= z^{-1}\cdot\frac{1{-}\lc}{1-\lc\,z^{-1}}. \label{eq:Hn}
+\end{align}
+
+\subsection{Measurement and Residual}
+
+\begin{equation}
+\dpm[k] = \dx[k-d] + \nx[k], \qquad d=2.
+\label{eq:dpm}
+\end{equation}
+\begin{equation}
+\dpmd[k] = (1-\apd)\,\dpmd[k-1] + \apd\,\dpm[k],
+\qquad
+\HLP(z^{-1}) = \frac{\apd}{1-(1-\apd)z^{-1}}.
+\label{eq:LP}
+\end{equation}
+\begin{equation}
+\dpmr[k] = \dpm[k] - \dpmd[k],
+\qquad
+\HHP(z^{-1}) = 1 - \HLP(z^{-1}) = \frac{(1-\apd)\bigl(1-z^{-1}\bigr)}{1-(1-\apd)z^{-1}}.
+\label{eq:HP}
+\end{equation}
+
+\subsection{Variance Estimate}
+
+\begin{equation}
+\sighatsq[k] = (1-\acov)\,\sighatsq[k-1] + \acov\,\dpmr^{2}[k],
+\qquad
+\HE(z^{-1}) = \frac{\acov}{1-(1-\acov)z^{-1}}.
+\label{eq:EWMA}
+\end{equation}
+
+%=====================================================================
+\section{Channel Decomposition of $\dpmr$}
+%=====================================================================
+
+Substituting~\eqref{eq:dpm} into~\eqref{eq:HP} and using~\eqref{eq:paper-dx},
+\begin{equation}
+\dpmr(z^{-1}) = -\,\FT(z^{-1})\,\dxT(z^{-1}) + \FN(z^{-1})\,\nx(z^{-1}),
+\label{eq:dpmr-decomp}
+\end{equation}
+\begin{align}
+\FT(z^{-1}) &= \HHP(z^{-1})\,z^{-d}\,\HT(z^{-1}), \label{eq:FT-def}\\[2pt]
+\FN(z^{-1}) &= \HHP(z^{-1})\,\bigl[\,1 - z^{-d}\,\Hn(z^{-1})\,\bigr]. \label{eq:FN-def}
+\end{align}
+Substituting~\eqref{eq:Hn} and factoring for $d=2$,
+\begin{equation}
+1 - z^{-d}\,\Hn(z^{-1}) = (1-z^{-1})\,\frac{1+(1{-}\lc)z^{-1}+(1{-}\lc)z^{-2}}{1-\lc z^{-1}},
+\label{eq:identity}
+\end{equation}
+\begin{equation}
+\FN(z^{-1}) = (1-z^{-1})\,z^{3}\,\FT(z^{-1}).
+\label{eq:FN-vs-FT}
+\end{equation}
+Since $\dxT$ and $\nx$ are independent,
+\begin{equation}
+\mathrm{Var}(\dpmr) = \Cdpmr\,\sigma^{2}_{\dxT} + \Cn\,\sigma^{2}_{\nx},
+\label{eq:variance-split}
+\end{equation}
+\begin{equation}
+\Cdpmr := \frac{1}{2\pi}\!\!\int_{-\pi}^{\pi}\!\!|\FT(e^{j\omega})|^{2}\,d\omega,
+\qquad
+\Cn := \frac{1}{2\pi}\!\!\int_{-\pi}^{\pi}\!\!|\FN(e^{j\omega})|^{2}\,d\omega.
+\label{eq:Cdpmr-Cn-def}
+\end{equation}
+
+%=====================================================================
+\section{Closed Form for $\Cdpmr$}
+%=====================================================================
+
+Evaluating~\eqref{eq:Cdpmr-Cn-def} by Parseval and residues at $z = 1-\apd$ and $z = \lc$,
+\begin{equation}
+\Cdpmr(\lc,\,\apd) = (1-\apd)^{2}\!\left[\,
+  2\cdot\frac{(1-\apd)(1-\lc)}{1-(1-\apd)\lc}
+  \;+\; \frac{2}{2-\apd}\cdot\frac{1}{(1+\lc)\bigl[1-(1-\apd)\lc\bigr]}
+\,\right].
+\label{eq:Cdpmr-closed}
+\end{equation}
+
+%=====================================================================
+\section{Closed Form for $\Cn$}
+%=====================================================================
+
+By~\eqref{eq:FN-vs-FT}, $|\FN(e^{j\omega})|^{2} = 2(1-\cos\omega)|\FT(e^{j\omega})|^{2}$, so
+\begin{equation}
+\Cn = 2\,\Cdpmr - 2\,R_{f_T}[1],
+\qquad
+R_{f_T}[1] := \frac{1}{2\pi}\!\!\int_{-\pi}^{\pi}\!\!\cos\omega\cdot|\FT(e^{j\omega})|^{2}\,d\omega.
+\label{eq:Cn-via-RFT}
+\end{equation}
+Evaluating $R_{f_T}[1]$ by the same residue method with one extra factor of $z$ at each pole,
+\begin{equation}
+\Cn(\lc,\,\apd) = \frac{2(1-\apd)^{2}}{2-\apd}\!\left[\,
+  1
+  \;+\; \frac{(1-\apd)^{2}\,\apd\,(1-\lc)}{1-(1-\apd)\lc}
+  \;+\; \frac{(1-\lc)^{2}}{(1+\lc)\bigl[1-(1-\apd)\lc\bigr]}
+\,\right].
+\label{eq:Cn-closed}
+\end{equation}
+
+%=====================================================================
+\section{Mean of the Variance Estimate}
+%=====================================================================
+
+For any stable LTI filter $H(z^{-1})$ acting on a stationary input $x[k]$ ($E[x[k]] = \mu_x$, $E[x[k]\,x[k+\tau]] = R_x(\tau)$) and output $y[k] = H\cdot x[k]$,
+\begin{equation}
+E\bigl[y[k]\bigr] = H(z{=}1)\cdot E\bigl[x[k]\bigr],
+\label{eq:univ-mean}
+\end{equation}
+\begin{equation}
+\mathrm{Var}\bigl(y[k]\bigr) = \frac{1}{2\pi}\!\!\int_{-\pi}^{\pi}\!\!|H(e^{j\omega})|^{2}\,S_{x}(\omega)\,d\omega.
+\label{eq:univ-var}
+\end{equation}
+Direct evaluation gives $\HHP(z{=}1) = 0$ and $\HE(z{=}1) = \acov/\acov = 1$, hence $\dpmr$ is zero-mean and $\mathrm{Var}(\dpmr) = E[\dpmr^{2}]$, so by~\eqref{eq:univ-mean},
+\begin{equation}
+E[\sighatsq] = \HE(z{=}1)\cdot E[\dpmr^{2}] = \mathrm{Var}(\dpmr) = \Cdpmr\,\sigma^{2}_{\dxT} + \Cn\,\sigma^{2}_{\nx},
+\label{eq:EWMA-mean}
+\end{equation}
+independent of $\acov$.
+
+\end{document}
