@@ -84,21 +84,19 @@ MotionControl_Simu/
 │   │   ├── motion_control_law_eq17.m + _eq17_core.m
 │   │   ├── motion_control_law_23state.m # legacy
 │   │   ├── build_eq17_constants.m       # eq17 offline scalars
-│   │   ├── calc_ctrl_params.m
-│   │   └── shared/                      # 共用 kernel (TODO)
-│   ├── pure_matlab/                   # dual-track 純 MATLAB driver (eq17)
-│   └── diag/                          # closed-loop variance oracles
-├── test_script/                      # 模擬入口 + verify_eq6_* + verify_eq17_* + verify_eq17_unit_*
-├── agent_docs/                       # 技術文件 (含 eq17-architecture, ekf-* 系列)
+│   │   └── calc_ctrl_params.m
+│   ├── dual_track/                    # 純 MATLAB driver (跨 controller, 與 Simulink 並行)
+│   └── diag/                          # closed-loop variance oracles (per-controller)
+├── test_script/                      # 模擬入口 + build_helpers/ + unit_tests/ + integration/
+├── agent_docs/                       # 技術文件 (shared/ + eq17/ + eq6_or_23state/)
 ├── reference/                        # 參考文件
 │   ├── shared/                       # 跨 controller 共通推導 (writeup_architecture.tex)
-│   ├── eq6_analysis/                 # eq6 specific (含 archive/sessions/V5_V7_study)
+│   ├── eq6_analysis/                 # eq6 specific (含 archive/historical_notes + V5_V7_study)
 │   ├── eq17_analysis/                # eq17 specific (含 archive/sessions/suppress_xD_study)
-│   ├── figs/                         # 系統圖根集
-│   ├── controller/                   # Estimation_and_Control 論文源碼
-│   └── thesis/                       # 參考論文 PDF
-├── archive/                          # 給人看的故事索引
-│   └── branch-stories/{sigma.md, eq17.md}
+│   ├── system_figs/                  # 系統圖根集 (C_del_x, total_block_diagram, ...)
+│   ├── controller_paper_source/      # Estimation_and_Control 論文源碼
+│   ├── thesis/                       # 參考論文 PDF
+│   └── branch-stories/               # sigma.md + eq17.md (歷史故事索引)
 ├── test_results/                     # 模擬結果（不納入 Git）
 └── .claude/
 ```
@@ -112,9 +110,19 @@ MotionControl_Simu/
 
 ## Detailed Docs
 
-- @agent_docs/simulink-architecture.md — Simulink 方塊圖、Block 模式、Solver、ToWorkspace
-- @agent_docs/math-model.md — 座標系統、單位、系統方程、Gamma_inv
-- @agent_docs/analysis-guide.md — GUI 分析 Tabs、建議測試參數
-- @agent_docs/eq17-architecture.md — eq17 7-state EKF + Eq.17 控制律設計
-- @agent_docs/eq17-verification.md — eq17 phase 0-9 驗證脈絡
-- @agent_docs/dual-track-simulation-design.md — pure-MATLAB vs Simulink 雙 track 設計
+### 跨 controller 共用
+- @agent_docs/shared/simulink-architecture.md — Simulink 方塊圖、Block 模式、Solver、ToWorkspace
+- @agent_docs/shared/math-model.md — 座標系統、單位、系統方程、Gamma_inv
+- @agent_docs/shared/analysis-guide.md — GUI 分析 Tabs、建議測試參數
+- @agent_docs/shared/dual-track-simulation-design.md — pure-MATLAB vs Simulink 雙 track 設計
+
+### eq17 controller
+- @agent_docs/eq17/eq17-architecture.md — eq17 7-state EKF + Eq.17 控制律設計
+- @agent_docs/eq17/eq17-verification.md — eq17 phase 0-9 驗證脈絡
+
+### eq6 (Paper 2025 Eq.6) 與 legacy 23-state
+- @agent_docs/eq6_or_23state/ekf-matrix-guide.md — 23-state EKF 矩陣完整文件
+- @agent_docs/eq6_or_23state/ekf-qr-analysis.md — 23-state Q/R 分析 (pointer to writeup)
+- @agent_docs/eq6_or_23state/kf-observer-analysis.md — KF observer 分析
+- @agent_docs/eq6_or_23state/literature-review.md — 文獻 review
+- @agent_docs/eq6_or_23state/verification-notes.md — 驗證筆記
