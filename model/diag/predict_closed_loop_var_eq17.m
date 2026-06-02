@@ -1,4 +1,4 @@
-function [s2_dx, s2_e_xD, s2_e_a, diag_out] = predict_closed_loop_var_eq17_v2(opts)
+function [s2_dx, s2_e_xD, s2_e_a, diag_out] = predict_closed_loop_var_eq17(opts)
 %PREDICT_CLOSED_LOOP_VAR_EQ17_V2  Closed-form variance prediction for v2 EKF (Eq.17, 5-state)
 %
 %   [s2_dx, s2_e_xD, s2_e_a, diag_out] = predict_closed_loop_var_eq17_v2(opts)
