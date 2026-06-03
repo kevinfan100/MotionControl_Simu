@@ -138,4 +138,82 @@ function ctrl = calc_ctrl_params(config, constants)
         ctrl.IIR_bias_factor = ones(3, 1);
     end
 
+    % ---------------------------------------------------------------
+    % eq17-only: closed-form C_dpmr / C_n -> ctrl.C_*_eff_per_axis
+    %
+    % The _per_axis fields feed ONLY the eq17 chain:
+    %   run_pure_simulation -> eq17_opts -> build_eq17_constants -> ctrl_const
+    % The no-suffix Lyapunov fields above (ctrl.C_dpmr_eff / C_np_eff) feed
+    % ONLY eq6 (motion_control_law_eq6.m reads them directly).
+    % This split preserves each controller's verified configuration:
+    %   eq6  -> per-axis augmented-Lyapunov values (qr-branch verified)
+    %   eq17 -> closed-form values (eq17-branch verified, Phase 8/9)
+    %
+    % C_dpmr (paper Eq.21 H_T composed with HP1 LP1(a_pd), d=2):
+    %   C_dpmr = (1-a)^2 * [ 2(1-a)(1-lc)/D + 2/((2-a)(1+lc)*D) ]
+    %   with  D = 1 - (1-a)*lc,  a = a_pd,  lc = lambda_c
+    %
+    % C_n   (paper Eq.21 H_n composed with HP1 LP1(a_pd), d=2):
+    %   C_n = (1-a)^2 * [ 2/(2-a)
+    %                   + 2(1-a)^2*a*(1-lc) / ((2-a)*D)
+    %                   + 2(1-lc)^2 / ((2-a)*(1+lc)*D) ]
+    %   Reduces to 2/(1+lc) as a -> 0 (matches paper small-alpha limit).
+    %   Derivation: reference/eq17_analysis/derivation/Cdpmr_Cn_derivation.tex
+    %   Verification: test_script/learn_variance/derive_Cn_closed_v2.m
+    % ---------------------------------------------------------------
+    alpha           = config.a_pd;
+    lambda          = config.lambda_c;
+    one_minus_alpha = 1 - alpha;
+    denom_common    = 1 - one_minus_alpha * lambda;
+
+    term1 = 2 * one_minus_alpha * (1 - lambda) / denom_common;
+    term2 = 2 / ((2 - alpha) * (1 + lambda) * denom_common);
+    C_dpmr_closed = one_minus_alpha^2 * (term1 + term2);
+    ctrl.C_dpmr_eff_per_axis = C_dpmr_closed * ones(3, 1);
+
+    Cn_t1 = 2 / (2 - alpha);
+    Cn_t2 = 2 * one_minus_alpha^2 * alpha * (1 - lambda) ...
+            / ((2 - alpha) * denom_common);
+    Cn_t3 = 2 * (1 - lambda)^2 ...
+            / ((2 - alpha) * (1 + lambda) * denom_common);
+    C_n_closed = one_minus_alpha^2 * (Cn_t1 + Cn_t2 + Cn_t3);
+    ctrl.C_np_eff_per_axis = C_n_closed * ones(3, 1);
+
+    % ---------------------------------------------------------------
+    % X2a: Per-axis empirical IF_eff calibration (Phase 9 Stage I)
+    %
+    % The closed-form rho_dx assumes MA(2) eps with geometric tail
+    % lambda_c^tau for tau >= 3. Empirical rho_dx in production conditions
+    % oscillates negative around lag 7-10; closed-form IF_eff(s) over-
+    % predicts variance by ~9% at a_cov=0.05. Using empirical IF_eff_emp(s)
+    % from stored ACF makes the R(2,2) V1 ratio collapse to 1.00 +/- 0.05.
+    %
+    % Plumb: ctrl -> run_pure_simulation -> eq17_opts.IF_eff_calibrated
+    %        -> build_eq17_constants -> ctrl_const.IF_eff_per_axis
+    % If the calibration file is absent, leave empty so build_eq17_constants
+    % falls back to the closed-form scalar IF_eff.
+    % ---------------------------------------------------------------
+    ctrl.IF_eff_calibrated_per_axis = [];
+
+    if isfield(config, 'IF_eff_calibration_file') && ...
+            ~isempty(config.IF_eff_calibration_file)
+        calibration_file = config.IF_eff_calibration_file;
+    else
+        calibration_file = fullfile(project_root, 'reference', ...
+                                    'eq17_analysis', 'verification', ...
+                                    'phase9_stageI_acf_diagnosis.mat');
+    end
+
+    if isfile(calibration_file)
+        try
+            ctrl.IF_eff_calibrated_per_axis = calibrate_IF_eff( ...
+                config.a_cov, config.lambda_c, calibration_file);
+        catch ME
+            warning('calc_ctrl_params:IF_eff_calibration_failed', ...
+                    ['IF_eff calibration failed (%s); falling back ' ...
+                     'to closed-form scalar.'], ME.message);
+            ctrl.IF_eff_calibrated_per_axis = [];
+        end
+    end
+
 end
