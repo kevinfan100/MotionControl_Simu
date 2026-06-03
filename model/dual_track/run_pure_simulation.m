@@ -237,6 +237,8 @@ function simOut = run_pure_simulation(config, opts)
         diag_log.gate_active       = false(N, 3);
         diag_log.guards_individual = false(N, 3, 3);   % [N x guard x axis]
         diag_log.h_bar             = zeros(N, 1);
+        diag_log.delta_x_hat_1     = zeros(N, 3);
+        diag_log.P_dx1             = zeros(N, 3);
     end
 
     % ------------------------------------------------------------------
@@ -320,6 +322,8 @@ function simOut = run_pure_simulation(config, opts)
             diag_log.gate_active(k, :)       = diag_k.gate_active_per_axis(:).';
             diag_log.guards_individual(k, :, :) = diag_k.guards_individual;
             diag_log.h_bar(k)                = diag_k.h_bar;
+            diag_log.delta_x_hat_1(k, :)     = diag_k.delta_x_hat_1.';
+            diag_log.P_dx1(k, :)             = diag_k.P_dx1.';
         end
 
         % --- (k) Update unit-delay for next step's controller input

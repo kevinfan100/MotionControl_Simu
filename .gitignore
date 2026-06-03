@@ -27,3 +27,16 @@ codegen/
 
 # Claude Code plan-mode 副作用: Windows 沒展開 ~ → cwd 出現字面 "~/" 目錄
 ~/
+
+# LaTeX 編譯產物
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# Claude Code 自動產物
+.claude/progress/
+.claude/scheduled_tasks.lock

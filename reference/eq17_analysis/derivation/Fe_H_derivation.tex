@@ -1,0 +1,384 @@
+% ======================================================
+% Compile: xelatex Fe_H_derivation.tex
+% Style: mimic IEEE Trans. Industrial Electronics (Meng 2025)
+% Path:  reference/eq17_analysis/derivation/Fe_H_derivation.tex
+% Note:  The complete F_e Row-3 form here (cols (3,5)/(3,7) nonzero via
+%        F_1/F_2 control history) SUPERSEDES the truncated form in
+%        derivation/phase1_Fe_derivation.md S10.1. The matching controller
+%        code (6-arg build_F_e) is pending port from the Mac branch
+%        learn/variance-walkthrough (commit 2aabec4); until that lands,
+%        eq17_core.m still implements the truncated Row 3 (cols 5/7 = 0).
+% ======================================================
+\documentclass[11pt,a4paper]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue}
+
+% --- Tight layout (mimic IEEE Trans density) ---
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.15em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+\titlespacing*{\section}{0pt}{1.4ex}{0.6ex}
+\titlespacing*{\subsection}{0pt}{0.8ex}{0.3ex}
+
+% ---------- Shortcuts ----------
+\newcommand{\dt}{\Delta t}
+\newcommand{\lc}{\lambda_c}
+\newcommand{\fdx}{f_{dx}}
+\newcommand{\fT}{f_T}
+\newcommand{\dx}{\delta x}
+\newcommand{\dxm}{\delta x_m}
+\newcommand{\axm}{a_{xm}}
+\newcommand{\dxone}{\delta x_1}
+\newcommand{\dxtwo}{\delta x_2}
+\newcommand{\dxthree}{\delta x_3}
+\newcommand{\xD}{x_D}
+\newcommand{\dxD}{\delta x_D}
+\newcommand{\ax}{a_x}
+\newcommand{\dax}{\delta a_x}
+\newcommand{\axhat}{\hat a_x}
+\newcommand{\xDhat}{\hat x_D}
+\newcommand{\dxhat}{\delta\hat x}
+
+% Bold for matrices / vectors
+\newcommand{\Fe}{\mathbf{F}_e}
+\newcommand{\HH}{\mathbf{H}}
+\newcommand{\LL}{\mathbf{L}}
+\newcommand{\xx}{\mathbf{x}}
+\newcommand{\xxhat}{\hat{\mathbf{x}}}
+\newcommand{\ee}{\mathbf{e}}
+\newcommand{\qq}{\mathbf{q}}
+
+% Estimation errors and composites
+\newcommand{\ea}{e_{a}}
+\newcommand{\exD}{e_{x_D}}
+\newcommand{\dea}{\delta e_{a}}
+\newcommand{\dexD}{\delta e_{x_D}}
+\newcommand{\epsT}{\varepsilon_T}
+\newcommand{\epsa}{\varepsilon_a}
+\newcommand{\epsxD}{\varepsilon_{x_D}}
+\newcommand{\etaR}{\eta_{R}}
+\newcommand{\QQ}{\mathbf{Q}}
+
+% Hat-state shortcuts
+\newcommand{\dxonehat}{\delta\hat x_1}
+\newcommand{\dxtwohat}{\delta\hat x_2}
+\newcommand{\dxthreehat}{\delta\hat x_3}
+\newcommand{\dxDhat}{\delta\hat x_D}
+\newcommand{\daxhat}{\delta\hat a_x}
+
+\begin{document}
+\thispagestyle{empty}
+
+\begin{center}
+{\Large\bfseries Derivation of $\fdx[k]$, $\Fe[k]$, and $\HH$}
+\end{center}
+\vspace{0.3cm}
+
+%=====================================================================
+\section{Setup}
+%=====================================================================
+
+\subsection{Plant Equation}
+
+\begin{align}
+\gamma\,\dot x(t) &= \fdx(t) + \fT(t), \label{eq:plant-cont} \\
+x[k{+}1] &= x[k] + \ax[k]\bigl\{\fdx[k]+\fT[k]\bigr\} + \xD[k]. \label{eq:plant-disc}
+\end{align}
+
+\subsection{Measurement}
+
+For a sensor delay of $d=2$ steps,
+\begin{equation}
+\dxm[k] = \dx[k{-}d], \qquad \dx[k] := x_d[k] - x[k].
+\label{eq:meas-dxm}
+\end{equation}
+
+%=====================================================================
+\section{Derivation of the Motion Control Law}
+\label{sec:ctrl-deriv}
+%=====================================================================
+
+This section constructs $\fdx[k]$ from \eqref{eq:plant-disc} so that the closed-loop tracking error follows a first-order pole $\lc \in [0,1)$. Forced approximations (no alternative) are labelled F1--F6 inline; their residual destinations are summarized in Appendix~\ref{app:catalog}.
+
+\subsection{Design Objective}
+
+The requirement is
+\begin{equation}
+\dx[k{+}1] \;\overset{!}{=}\; \lc\,\dx[k].
+\label{eq:dctl-target}
+\end{equation}
+Substituting \eqref{eq:plant-disc} into \eqref{eq:dctl-target} and equating to $\lc\,\dx[k] = \lc x_d[k] - \lc x[k]$,
+\begin{equation}
+\ax[k]\bigl\{\fdx[k]+\fT[k]\bigr\}
+   = x_d[k{+}1] - \lc\,x_d[k] - (1{-}\lc)\,x[k] - \xD[k].
+\label{eq:dctl-balance}
+\end{equation}
+
+\subsection{Idealized Control Law}
+
+If all quantities on the right of \eqref{eq:dctl-balance} are instantaneously available, solving for $\fdx$ yields
+\begin{equation}
+\fdx[k] = \ax^{-1}[k]\bigl\{x_d[k{+}1] - \lc\,x_d[k] - (1{-}\lc)\,x[k]\bigr\}
+         - \fT[k] - \ax^{-1}[k]\,\xD[k].
+\label{eq:dctl-ideal}
+\end{equation}
+The unknowns are $\ax[k]$, $x[k]$, $\fT[k]$, $\xD[k]$. The remaining derivation makes \eqref{eq:dctl-ideal} implementable using $\dxm[k]$, the past control history $\fdx[k{-}i]$, and the EKF estimates $\axhat[k{-}j]$, $\xDhat[k{-}j]$ for $j=0,\ldots,d$.
+
+\subsection{State Reconstruction}
+
+The sensor provides $x_m[k] = x[k{-}d] + n_x[k]$, not $x[k]$. Iterating \eqref{eq:plant-disc} from $k{-}d$ to $k$ (for $d=2$, two successive substitutions),
+\begin{align}
+x[k{-}1] &= x[k{-}2] + \ax[k{-}2]\{\fdx[k{-}2]+\fT[k{-}2]\} + \xD[k{-}2], \\
+x[k]     &= x[k{-}1] + \ax[k{-}1]\{\fdx[k{-}1]+\fT[k{-}1]\} + \xD[k{-}1],
+\end{align}
+and summing the two yields the exact identity
+\begin{equation}
+x[k] = x[k{-}d] + \sum_{i=1}^{d}\!\bigl\{\ax[k{-}i]\bigl(\fdx[k{-}i]+\fT[k{-}i]\bigr) + \xD[k{-}i]\bigr\}.
+\label{eq:tele-x}
+\end{equation}
+
+\subsection{Implementation Substitutions}
+
+Each unknown in \eqref{eq:dctl-ideal} and \eqref{eq:tele-x} is replaced by an available quantity:
+\begin{itemize}\setlength{\itemsep}{1pt}
+  \item \textbf{F1} \quad $\ax[k] \mapsto \axhat[k]$ (EKF posterior).
+  \item \textbf{F2} \quad $\ax[k{-}i] \mapsto \axhat[k{-}i]$, $i=1,\ldots,d$ (buffered past posteriors).
+  \item \textbf{F3} \quad $x[k{-}d] \mapsto x_m[k]$ (sensor; the discarded $-n_x[k]$ reappears in the closed-loop noise composite).
+  \item \textbf{F4} \quad $\fT[k]$ and $\fT[k{-}i] \mapsto 0$ (zero-mean white thermal force; unpredictable).
+  \item \textbf{F5} \quad $\xD[k] \mapsto \xDhat[k]$ (EKF posterior).
+  \item \textbf{F6} \quad $\xD[k{-}i] \mapsto \xDhat[k{-}i]$, $i=1,\ldots,d$ (buffered past posteriors).
+\end{itemize}
+After F2, F4, F6, the implementable reconstruction \eqref{eq:tele-x} becomes
+\begin{equation}
+\tilde x[k] = x_m[k] + \sum_{i=1}^{d}\!\bigl\{\axhat[k{-}i]\,\fdx[k{-}i] + \xDhat[k{-}i]\bigr\}.
+\label{eq:xk-impl}
+\end{equation}
+
+\subsection{Final Control Law}
+
+Substituting $\axhat[k]$, $\xDhat[k]$, and $\tilde x[k]$ into \eqref{eq:dctl-ideal}, dropping $\fT[k]$ per F4, and converting $x_m[k] = x_d[k{-}d] - \dxm[k]$,
+\begin{empheq}[box=\fbox]{align}
+\fdx[k] = \,& \axhat^{-1}[k]\bigl\{x_d[k{+}1] - \lc\,x_d[k] - (1{-}\lc)\,x_d[k{-}d] + (1{-}\lc)\,\dxm[k]\bigr\} \notag \\
+           & - \axhat^{-1}[k]\,(1{-}\lc)\!\sum_{i=1}^{d}\!\bigl\{\axhat[k{-}i]\,\fdx[k{-}i] + \xDhat[k{-}i]\bigr\} \notag \\
+           & - \axhat^{-1}[k]\,\xDhat[k].
+\label{eq:ctrl-law}
+\end{empheq}
+The controller buffers $\{\axhat[k{-}i]\}_{i=1}^{d}$ and $\{\xDhat[k{-}i]\}_{i=1}^{d}$ in addition to its own past output $\{\fdx[k{-}i]\}_{i=1}^{d}$. Two design alternatives are discussed in the Appendix: the legacy passive form (\S\ref{app:passive}) that collapses the buffered past estimates, and the Meng~2023 limit (\S\ref{app:meng}) in which $\ax$ is calibrated and $\xD\equiv 0$.
+
+%=====================================================================
+\section{Closed-Loop Tracking Error Dynamics}
+\label{sec:trk}
+%=====================================================================
+
+Define the estimation errors
+\begin{equation}
+\ea[k] := \ax[k] - \axhat[k], \qquad
+\exD[k] := \xD[k] - \xDhat[k].
+\label{eq:est-err-def}
+\end{equation}
+
+Since $\ax[k] = \axhat[k] + \ea[k]$, multiplying \eqref{eq:ctrl-law} by $\axhat[k]$ gives
+\begin{align}
+\ax[k]\,\fdx[k] = \,& \ea[k]\,\fdx[k] + x_d[k{+}1] - \lc\,x_d[k] - (1{-}\lc)\,x_d[k{-}d] + (1{-}\lc)\,\dxm[k] \notag\\
+& - (1{-}\lc)\!\sum_{i=1}^{d}\!\bigl\{\axhat[k{-}i]\,\fdx[k{-}i] + \xDhat[k{-}i]\bigr\} - \xDhat[k].
+\label{eq:axfdx}
+\end{align}
+
+Substituting \eqref{eq:plant-disc} and \eqref{eq:axfdx} into $\dx[k{+}1] = x_d[k{+}1] - x[k{+}1]$,
+\begin{align}
+\dx[k{+}1] = \,& \lc\,x_d[k] + (1{-}\lc)\,x_d[k{-}d] - x[k] - (1{-}\lc)\,\dxm[k] \notag\\
+& + (1{-}\lc)\!\sum_{i=1}^{d}\!\bigl\{\axhat[k{-}i]\,\fdx[k{-}i] + \xDhat[k{-}i]\bigr\} \notag\\
+& - \ea[k]\,\fdx[k] - \exD[k] - \ax[k]\,\fT[k].
+\label{eq:substitute}
+\end{align}
+
+Substituting \eqref{eq:meas-dxm} for $\dxm[k]$ and \eqref{eq:tele-x} for $x[k]$, the $x_d[k{-}d]$ terms cancel; the remaining $\lc\bigl(x_d[k]-x[k{-}d]\bigr)$ returns to $\lc\,\dx[k]$ through \eqref{eq:tele-x}:
+\begin{align}
+\dx[k{+}1] = \,& \lc\,\dx[k] - \ea[k]\,\fdx[k] - \exD[k] - \ax[k]\,\fT[k] \notag\\
+& - (1{-}\lc)\!\sum_{i=1}^{d}\!\bigl(\ax[k{-}i] - \axhat[k{-}i]\bigr)\fdx[k{-}i] \notag\\
+& - (1{-}\lc)\!\sum_{i=1}^{d}\!\bigl(\xD[k{-}i] - \xDhat[k{-}i]\bigr)
+  - (1{-}\lc)\!\sum_{i=1}^{d}\!\ax[k{-}i]\,\fT[k{-}i].
+\label{eq:collect}
+\end{align}
+
+Applying \eqref{eq:est-err-def} at steps $k{-}i$,
+\begin{align}
+\dx[k{+}1] = \,& \lc\,\dx[k] - \ea[k]\,\fdx[k] - \exD[k] \notag\\
+& - (1{-}\lc)\!\sum_{i=1}^{d}\!\bigl\{\ea[k{-}i]\,\fdx[k{-}i] + \exD[k{-}i]\bigr\} - \epsT[k],
+\label{eq:closed-loop}
+\end{align}
+where
+\begin{equation}
+\epsT[k] := \ax[k]\,\fT[k] + (1{-}\lc)\!\sum_{i=1}^{d}\!\ax[k{-}i]\,\fT[k{-}i].
+\label{eq:eps-T}
+\end{equation}
+
+Every residual in \eqref{eq:closed-loop} is an estimation error ($\ea$, $\exD$) or a thermal forcing ($\fT$); no Taylor expansion of $\ax$ is involved, hence no model-truncation residual appears.
+
+For brevity, define
+\begin{equation}
+\mathcal{F}_1[k] := \sum_{i=1}^{d}\!\fdx[k{-}i], \qquad
+\mathcal{F}_2[k] := \sum_{i=1}^{d}\!i\,\fdx[k{-}i].
+\label{eq:F12}
+\end{equation}
+
+%=====================================================================
+\section{State Vector and Output Matrix}
+%=====================================================================
+
+Estimation of $\axhat[k]$, $\dxhat[k]$, and $\xDhat[k]$ is required to update \eqref{eq:ctrl-law-passive}. Due to the $d$-step measurement delay, three variables $\dxone[k] = \dx[k{-}2]$, $\dxtwo[k] = \dx[k{-}1]$, $\dxthree[k] = \dx[k]$ model the motion error, and $\xD$ and $\ax$ are modeled as second-order processes. The augmented state vector is
+\begin{equation}
+\xx[k] = \bigl[\,\dxone,\ \dxtwo,\ \dxthree,\ \xD,\ \dxD,\ \ax,\ \dax\,\bigr]^T[k],
+\label{eq:state-vec}
+\end{equation}
+whose evolution is given by
+\begin{equation}
+\begin{cases}
+\dxone[k{+}1]   = \dxtwo[k] \\[2pt]
+\dxtwo[k{+}1]   = \dxthree[k] \\[2pt]
+\dxthree[k{+}1] = \lc\,\dxthree[k] - \fdx[k]\,\ea[k] - \exD[k] - (1{-}\lc)\!\sum_{i=1}^{d}\xD[k{-}i] - \epsT[k] + \etaR[k] \\[2pt]
+\xD[k{+}1]      = \xD[k] + \dxD[k] \\[2pt]
+\dxD[k{+}1]     = \dxD[k] \\[2pt]
+\ax[k{+}1]      = \ax[k] + \dax[k] \\[2pt]
+\dax[k{+}1]     = \dax[k]
+\end{cases}
+\label{eq:state-evo}
+\end{equation}
+
+The two measurements $y_1[k] = \dxm[k]$ and $y_2[k] = \axm[k]$ both inherit the $d$-step delay; in particular $y_1[k] = \dxone[k]$ and $\axm[k] \approx \ax[k{-}d] + n_a[k]$, where $n_a[k]$ is the intrinsic measurement noise. By the second-order process for $\ax$ in \eqref{eq:state-evo},
+\begin{equation}
+\ax[k{-}d] = \ax[k] - d\,\dax[k],
+\label{eq:ax-back}
+\end{equation}
+so that $\axm[k] \approx \ax[k] - d\,\dax[k] + n_a[k]$, yielding
+\begin{equation}
+\HH = \begin{bmatrix}
+1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & -d
+\end{bmatrix}.
+\label{eq:H}
+\end{equation}
+
+%=====================================================================
+\section{Closed-Loop Estimator and Error Dynamics}
+\label{sec:est}
+%=====================================================================
+
+Through the feedback of two estimation errors $e_x[k] = \dxm[k] - \dxonehat[k]$ and $e_{a_x}[k] = \axm[k] - \axhat[k]$, the closed-loop estimator is designed as
+\begin{equation}
+\left\{\begin{aligned}
+\dxonehat[k{+}1]   &= \dxtwohat[k] + \ell_{11}[k]\,e_x[k] + \ell_{12}[k]\,e_{a_x}[k] \\
+\dxtwohat[k{+}1]   &= \dxthreehat[k] + \ell_{21}[k]\,e_x[k] + \ell_{22}[k]\,e_{a_x}[k] \\
+\dxthreehat[k{+}1] &= \lc\,\dxthreehat[k] - d(1{-}\lc)\,\xDhat[k] + \tfrac{d(d{+}1)}{2}(1{-}\lc)\,\dxDhat[k] \\
+                   &\quad + (1{-}\lc)\mathcal{F}_2[k]\,\daxhat[k] + \ell_{31}[k]\,e_x[k] + \ell_{32}[k]\,e_{a_x}[k] \\
+\xDhat[k{+}1]      &= \xDhat[k] + \dxDhat[k] + \ell_{41}[k]\,e_x[k] + \ell_{42}[k]\,e_{a_x}[k] \\
+\dxDhat[k{+}1]     &= \dxDhat[k] + \ell_{51}[k]\,e_x[k] + \ell_{52}[k]\,e_{a_x}[k] \\
+\axhat[k{+}1]      &= \axhat[k] + \daxhat[k] + \ell_{61}[k]\,e_x[k] + \ell_{62}[k]\,e_{a_x}[k] \\
+\daxhat[k{+}1]     &= \daxhat[k] + \ell_{71}[k]\,e_x[k] + \ell_{72}[k]\,e_{a_x}[k]
+\end{aligned}\right.
+\label{eq:estimator}
+\end{equation}
+where $\ell_{ij}[k]$ are the entries of the $7\times 2$ estimator feedback matrix $\LL[k]$. The Row-3 predict terms in $\xDhat$, $\dxDhat$, and $\daxhat$ are chosen so that subtracting \eqref{eq:estimator} from \eqref{eq:state-evo} reproduces the error dynamics \eqref{eq:err-dyn}.
+
+The dynamics of estimation errors $\ee[k] = \xx[k] - \xxhat[k]$ is obtained by subtracting \eqref{eq:estimator} from \eqref{eq:state-evo}:
+\begin{equation}
+\ee[k{+}1] = \Fe[k]\,\ee[k] - \LL[k]\,\HH\,\ee[k] + \qq[k],
+\label{eq:err-dyn}
+\end{equation}
+where $\qq[k]$ is the process noise and $\Fe[k]$ is the state-transition matrix of the error dynamics given in \S\ref{sec:Fe}.
+
+%=====================================================================
+\section{State Transition Matrix}
+\label{sec:Fe}
+%=====================================================================
+
+By the second-order process for $\xD$ in \eqref{eq:state-evo}, each past value $\xD[k{-}i] = \xD[k] - i\,\dxD[k]$. Summing over $i = 1, \dots, d$ and using $\sum_{i=1}^{d} i = d(d{+}1)/2$,
+\begin{equation}
+\sum_{i=1}^{d}\xD[k{-}i] = d\,\xD[k] - \tfrac{d(d{+}1)}{2}\,\dxD[k].
+\label{eq:xD-sum}
+\end{equation}
+Substituting \eqref{eq:xD-sum} into Row~3 of \eqref{eq:state-evo} and absorbing the state-dependent part of $\etaR$ (via $\mathcal{F}_1,\mathcal{F}_2$ from \eqref{eq:F12}),
+\begin{equation}
+\Fe[k] = \begin{bmatrix}
+0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 & 0 & 0 \\
+0 & 0 & \lc & -(1{+}d(1{-}\lc)) & \tfrac{d(d{+}1)}{2}(1{-}\lc) & -\fdx[k]-(1{-}\lc)\mathcal{F}_1[k] & (1{-}\lc)\mathcal{F}_2[k] \\
+0 & 0 & 0 & 1 & 1 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 1 \\
+0 & 0 & 0 & 0 & 0 & 0 & 1
+\end{bmatrix}.
+\label{eq:Fe}
+\end{equation}
+
+%=====================================================================
+\appendix
+\newpage
+\section{Assumptions and Design Alternatives}
+\label{app:assumptions}
+%=====================================================================
+
+\subsection{Catalog of Forced Approximations}
+\label{app:catalog}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}llp{0.50\linewidth}@{}}
+\toprule
+Tag & Substitution & Reason \\
+\midrule
+F1 & $\ax[k] \mapsto \axhat[k]$ & True $\ax$ is unobservable; only the EKF posterior is available. \\
+F2 & $\ax[k{-}i] \mapsto \axhat[k{-}i]$ & Past true $\ax$ is unobservable; buffered past posteriors used. \\
+F3 & $x[k{-}d] \mapsto x_m[k]$ (drop $n_x$) & Sensor noise $n_x$ is unobservable. \\
+F4 & $\fT[\cdot] \mapsto 0$ & Zero-mean white thermal force; no predictor exists. \\
+F5 & $\xD[k] \mapsto \xDhat[k]$ & True $\xD$ is unobservable; only the EKF posterior is available. \\
+F6 & $\xD[k{-}i] \mapsto \xDhat[k{-}i]$ & Past true $\xD$ is unobservable; buffered past posteriors used. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+All six are forced: the substituted quantity is either unobservable (F1, F2, F5, F6) or zero-mean white noise without a predictor (F3, F4). The single design parameter $\lc \in (0,1)$ controls the closed-loop convergence rate versus noise injection trade-off.
+
+\subsection{Legacy Passive Form}
+\label{app:passive}
+
+Collapsing the buffered past estimates in \eqref{eq:ctrl-law} to their current values,
+\begin{equation}
+\axhat[k{-}i] \mapsto \axhat[k], \qquad \xDhat[k{-}i] \mapsto 0 \quad (i \geq 1),
+\label{eq:collapse}
+\end{equation}
+the control law simplifies to
+\begin{empheq}[box=\fbox]{align}
+\fdx[k] = \,& \axhat^{-1}[k]\bigl\{x_d[k{+}1] - \lc\,x_d[k] - (1{-}\lc)\,x_d[k{-}d] + (1{-}\lc)\,\dxm[k]\bigr\} \notag \\
+           & - (1{-}\lc)\!\sum_{i=1}^{d}\!\fdx[k{-}i] - \axhat^{-1}[k]\,\xDhat[k].
+\label{eq:ctrl-law-passive}
+\end{empheq}
+This is the form used in \S\ref{sec:trk}--\S\ref{sec:est}. Under \eqref{eq:ctrl-law-passive} the closed-loop \eqref{eq:closed-loop} carries the raw past disturbance $-(1{-}\lc)\!\sum_i \xD[k{-}i]$, and the $\axhat[k{-}i]$ contributions reduce, via the Taylor expansion $\ax[k{-}i] = \axhat[k] + \ea[k] - i\,\dax[k]$, to the $\etaR$ residuals carrying $\ea\,\mathcal{F}_1$ and $\dax\,\mathcal{F}_2$. The Row-3 predict in \eqref{eq:estimator} therefore retains $-d(1{-}\lc)\xDhat + \tfrac{d(d{+}1)}{2}(1{-}\lc)\dxDhat + (1{-}\lc)\mathcal{F}_2\,\daxhat$ so that subtraction reproduces the same $\Fe[k]$ \eqref{eq:Fe}.
+
+The full form \eqref{eq:ctrl-law}, by contrast, replaces $-(1{-}\lc)\!\sum_i \xD[k{-}i]$ by the estimation-error sum $-(1{-}\lc)\!\sum_i \exD[k{-}i]$ in \eqref{eq:closed-loop}, eliminating raw-disturbance leakage; the same $\Fe[k]$ is recovered because the error-dynamics matrix is invariant under the controller--estimator split of responsibility.
+
+\subsection{Relation to Meng 2023 Eq.~17}
+\label{app:meng}
+
+Setting $\xD \equiv 0$, $\xDhat \equiv 0$, and treating $\ax$ as a known calibrated constant $\dt/\gamma$ (i.e.\ skipping F1, F2, F5, F6), the passive form \eqref{eq:ctrl-law-passive} reduces to
+\begin{equation}
+\fdx[k] = (\gamma/\dt)\bigl\{x_d[k{+}1] - \lc\,x_d[k] - (1{-}\lc)\,x_d[k{-}d] + (1{-}\lc)\,\dxm[k]\bigr\}
+         - (1{-}\lc)\!\sum_{i=1}^{d}\!\fdx[k{-}i],
+\label{eq:ctrl-law-meng}
+\end{equation}
+which is Eq.~17 of Meng~2023. The present \eqref{eq:ctrl-law} is a strict generalization that estimates $\ax$ online (F1, F2) and incorporates a position-dependent disturbance compensator (F5, F6).
+
+\end{document}
