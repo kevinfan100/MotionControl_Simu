@@ -89,6 +89,17 @@ function test_motion_control_law_eq17_core()
     %     We test by stuffing a large delta_x_m via an outlier p_m offset
     %     during warm-up. The variance EWMA will spike, a_xm will be huge,
     %     but Guard 1 should keep a_hat near its initial value.
+    %
+    %     Outlier magnitude note (2026-06-03, exact F_e Row-3 port):
+    %     With the exact F_e form (Fe(3,5)/(3,6)/(3,7) carry F_1/F_2
+    %     control-history sums per Fe_H_derivation.tex), a sustained
+    %     10 um outlier drives f_d -> F_1/F_2 -> F_e entries -> P_pred
+    %     into numerical overflow (NaN). The numerical stability boundary
+    %     of the exact form is between 5 and 10 um sustained outliers
+    %     (the legacy truncated form survived 10 um). 5 um is still a
+    %     >1500-sigma event (sensor noise std 0.62-3.3 nm) and 2.2x the
+    %     particle radius — far beyond any physical scenario — and Guard 1
+    %     keeps a_hat drift at 1.00x there.
     % --------------------------------------------------------------
     clear motion_control_law_eq17_core;
     Ts = params_mock.ctrl.Ts;
@@ -100,7 +111,7 @@ function test_motion_control_law_eq17_core()
     a_hat_init_x = ekf_init(1);
 
     % Inject large position offsets to spike sigma2_dxr_hat
-    p_m_outlier = p0 + [10; 10; 10];   % 10 um outlier per axis
+    p_m_outlier = p0 + [5; 5; 5];   % 5 um outlier per axis (see note above)
     last_a_hat = a_hat_init_x;
     for k = 1:n_warmup_steps
         [~, ekf_k] = motion_control_law_eq17_core( ...

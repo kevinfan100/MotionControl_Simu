@@ -285,7 +285,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         %
         % NOTE: output var `diag` shadows MATLAB's diag() builtin, so we
         % construct diagonal matrices via assignment.
-        F_e_ss = build_F_e(lambda_c, d_delay, 0, false);
+        % Pf_init Riccati steady state uses positioning limit:
+        %   f_d = 0, F_1 = sum f_d_past = 0, F_2 = sum i*f_d_past = 0.
+        % Captures the limiting structural F_e form with no control-history
+        % accumulation (positioning Δp_d = 0 + KF-unbiased estimates).
+        F_e_ss = build_F_e(lambda_c, d_delay, 0, 0, 0, false);
         H_ss   = [1 0 0 0 0 0 0; 0 0 0 0 0 1 -d_delay];
 
         P_per_axis = cell(3, 1);
@@ -750,8 +754,24 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     %   'eq18'           : F_e(3,1)=-(1-λ_c), (3,3)=1, (3,4)=-1
     use_eq18 = isfield(ctrl_const, 'F_e_form') && strcmpi(ctrl_const.F_e_form, 'eq18');
     for ax = 1:3
-        % F_e takes the current f_d[k] computed above (only (3,6) varies)
-        F_e = build_F_e(lambda_c, d_delay, f_d(ax), use_eq18);
+        % Exact F_e (Fe_H_derivation.tex) — Row 3 columns (3,5)/(3,6)/(3,7)
+        % carry control-history sums:
+        %   F_1[k] = sum_{i=1..d} f_d[k-i]
+        %   F_2[k] = sum_{i=1..d} i * f_d[k-i]
+        % For d=2: F_1 = f_d_km1 + f_d_km2, F_2 = f_d_km1 + 2*f_d_km2.
+        % f_d_km1 / f_d_km2 are 3x1 persistent buffers; they are 0 on the
+        % first two steps (correct initial condition: no prior control).
+        if d_delay == 2
+            F_1_i = f_d_km1(ax) + f_d_km2(ax);
+            F_2_i = f_d_km1(ax) + 2 * f_d_km2(ax);
+        elseif d_delay == 1
+            F_1_i = f_d_km1(ax);
+            F_2_i = f_d_km1(ax);    % i=1: 1*f_d[k-1]
+        else
+            F_1_i = 0;
+            F_2_i = 0;
+        end
+        F_e = build_F_e(lambda_c, d_delay, f_d(ax), F_1_i, F_2_i, use_eq18);
 
         x_curr = x_e_per_axis(:, ax);
         P_curr = P_per_axis{ax};
@@ -917,48 +937,73 @@ end
 
 %% =================== Local Helper ===================
 
-function F_e = build_F_e(lambda_c, d_delay, f_d_i, use_eq18)
+function F_e = build_F_e(lambda_c, d_delay, f_d_i, F_1_i, F_2_i, use_eq18)
 %BUILD_F_E Build 7x7 augmented system matrix (per axis), v2.
 %
-%   See phase1_Fe_derivation.md §10 — only (3,6) is time-varying.
+%   See phase1_Fe_derivation.md §10 + Fe_H_derivation.tex (exact version).
 %
-%   use_eq18 (optional, default false) selects Row 3 form:
-%       false (Eq.19, v2 default):
-%           Row 3 = [0, 0, λ_c, -(1+d·(1-λ_c)), 0, -f_d_i, 0]
-%           For d=2, λ_c=0.7: F_e(3,4) = -1.6
-%       true  (Eq.18 direct):
-%           Row 3 = [-(1-λ_c), 0, 1, -1, 0, -f_d_i, 0]
+%   Inputs:
+%       lambda_c  - closed-loop pole (scalar)
+%       d_delay   - measurement delay (steps, typically 2)
+%       f_d_i     - current control force on this axis: f_d[k]
+%       F_1_i     - F_1[k] = sum_{i=1..d} f_d[k-i] (per axis)
+%       F_2_i     - F_2[k] = sum_{i=1..d} i * f_d[k-i] (per axis)
+%       use_eq18  - optional flag (default false), selects Row 3 partition
+%
+%   Row 3 (Eq.19, v2 default — exact F_e Fe_H_derivation.tex):
+%       [0, 0, λ_c, -(1+d·(1-λ_c)), (d(d+1)/2)·(1-λ_c),
+%        -f_d_i - (1-λ_c)·F_1_i,  (1-λ_c)·F_2_i]
+%
+%   Row 3 (Eq.18 legacy direct partition):
+%       [-(1-λ_c), 0, 1, -1, (d(d+1)/2)·(1-λ_c),
+%        -f_d_i - (1-λ_c)·F_1_i,  (1-λ_c)·F_2_i]
+%       Columns (3,5)/(3,6)/(3,7) use the same exact F_1/F_2 contribution
+%       as Eq.19 (only (3,1), (3,3), (3,4) differ between forms).
 %
 %   Eq.19 form (default) is the v2 paper-aligned algebraic rearrangement
 %   (Phase 1 §6) — Σf_d substitution introduces past x_D contribution that
 %   scales F_e(3,4) by (1+d·(1-λ_c)) under Option I (slowly-varying x_D).
 %
-%   Eq.18 is preserved for testing/comparison; same dynamics, different
-%   partition.
+%   F_1_i / F_2_i closed forms (for d=2):
+%       F_1_i = f_d[k-1] + f_d[k-2]
+%       F_2_i = 1·f_d[k-1] + 2·f_d[k-2]
+%   Passing F_1_i = F_2_i = 0 reproduces the legacy 4-argument call
+%   (positioning steady-state Riccati limit, no control-history coupling).
 
-    if nargin < 4 || isempty(use_eq18)
+    if nargin < 6 || isempty(use_eq18)
         use_eq18 = false;
     end
+    if nargin < 5 || isempty(F_2_i)
+        F_2_i = 0;
+    end
+    if nargin < 4 || isempty(F_1_i)
+        F_1_i = 0;
+    end
+
+    one_minus_lc = 1 - lambda_c;
+    Fe35 = (d_delay * (d_delay + 1) / 2) * one_minus_lc;
+    Fe36 = -f_d_i - one_minus_lc * F_1_i;
+    Fe37 = one_minus_lc * F_2_i;
 
     if use_eq18
-        F_e = [0           1 0        0  0   0       0; ...
-               0           0 1        0  0   0       0; ...
-              -(1-lambda_c) 0 1       -1  0  -f_d_i  0; ...
-               0           0 0        1  1   0       0; ...
-               0           0 0        0  1   0       0; ...
-               0           0 0        0  0   1       1; ...
-               0           0 0        0  0   0       1];
+        F_e = [0           1 0        0  0    0    0; ...
+               0           0 1        0  0    0    0; ...
+              -one_minus_lc 0 1       -1  Fe35 Fe36 Fe37; ...
+               0           0 0        1  1    0    0; ...
+               0           0 0        0  1    0    0; ...
+               0           0 0        0  0    1    1; ...
+               0           0 0        0  0    0    1];
     else
         % Eq.19 form (v2 default): F_e(3,4) = -(1 + d·(1-λ_c))
         % For d=2, λ_c=0.7  -> -(1 + 2·0.3) = -1.6
-        Fe34 = -(1 + d_delay * (1 - lambda_c));
-        F_e = [0 1 0        0     0   0       0; ...
-               0 0 1        0     0   0       0; ...
-               0 0 lambda_c Fe34  0  -f_d_i   0; ...
-               0 0 0        1     1   0       0; ...
-               0 0 0        0     1   0       0; ...
-               0 0 0        0     0   1       1; ...
-               0 0 0        0     0   0       1];
+        Fe34 = -(1 + d_delay * one_minus_lc);
+        F_e = [0 1 0        0     0    0    0; ...
+               0 0 1        0     0    0    0; ...
+               0 0 lambda_c Fe34  Fe35 Fe36 Fe37; ...
+               0 0 0        1     1    0    0; ...
+               0 0 0        0     1    0    0; ...
+               0 0 0        0     0    1    1; ...
+               0 0 0        0     0    0    1];
     end
 end
 
