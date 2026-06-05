@@ -22,12 +22,12 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
 %       y_1 = delta_x_m = p_d[k-2] - p_m[k]    (delayed tracking error)
 %       y_2 = a_xm      = (sigma2_dxr_hat - C_n*sigma2_n_s) / (C_dpmr*4kBT)
 %
-%   BUILD STAGE: B1 (skeleton). Uses the PASSIVE control law and a
-%   production-mirrored Q (Q33 = 4kBT*a_hat thermal only). The structural
-%   pieces (6-state vector, F_e 6x6, H 2x6, deterministic-map predict,
-%   3-guard update, Joseph form, prefill+Riccati init) are final. Stage B2
-%   switches the control law to the active (a_hat-weighted) form and Q33 to
-%   the full per-step Var(epsilon). S cross-covariance (Stage B3) is 0 here.
+%   BUILD STAGE: B2 (full Vpersonal). ACTIVE control law (past forces weighted
+%   by past gain estimates a_hat[k-i]) and full per-step Q33 = Var(epsilon)
+%   (thermal history + random-gain x force + n_x feedthrough; h=50 independence
+%   approximation -> diagonal Q). prefill+Riccati three-pillar init,
+%   deterministic-map predict (point 7), 3-guard update, Joseph form.
+%   S cross-covariance (Stage B3, near-wall / optimality) is 0 here.
 %
 %   F_e Row 3 (6-state, Vpersonal p.5):
 %       [0, 0, lc, -1, -F_dx, dF_dx]
@@ -62,6 +62,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     persistent sigma2_dxr_hat      % 3x1 EWMA variance of dx_r    [um^2]
     persistent pd_km1 pd_km2       % trajectory delay buffers
     persistent f_d_km1 f_d_km2     % past control buffers (for Sigma f_d[k-i])
+    persistent a_hat_km1 a_hat_km2          % past gain estimates a_hat[k-i] (active law + Q33)
+    persistent var_da_ram_km1 var_da_ram_km2 % past var(delta_a_ram[k-i]) (Q33 delta_x_daf^d)
     persistent warmup_count k_step
 
     persistent initialized
@@ -128,15 +130,22 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         x_e_per_axis(5, :) = a_x_init.';        % slot 5 = a_x
 
         % --- 0G. Riccati Pf (DARE steady state at h_init, positioning f_d=0) ---
+        one_minus_lc = 1 - lambda_c;
         F_e_ss = build_F_e_6state(lambda_c, 0, 0, 0);
         H_ss   = [1 0 0 0 0 0; 0 0 0 0 1 -d_delay];
         sigma2_dh_init = 4 * kBT * a_perp_init;            % wall-normal thermal motion var
+        var_da_init_vec = zeros(3, 1);
         P_per_axis = cell(3, 1);
         for ax = 1:3
             a_init_ax   = a_x_init(ax);
             var_da_init = (a_init_ax * K_h_init(ax) / R_radius)^2 * sigma2_dh_init;
+            var_da_init_vec(ax) = var_da_init;
+            % Q33 at f_d=0 limit: full epsilon (thermal history + n_x feedthrough;
+            % delta_x_daf^d term vanishes since f_d=0 at the positioning Riccati point).
+            Q33_ss = 4 * kBT * a_init_ax * (1 + one_minus_lc^2 * d_delay) ...
+                     + one_minus_lc^2 * sigma2_n_s(ax);
             Q_ss = zeros(6);
-            Q_ss(3, 3) = 4 * kBT * a_init_ax;              % Q33 thermal
+            Q_ss(3, 3) = Q33_ss;
             Q_ss(5, 5) = var_da_init;                      % Q55 = var(delta_a_ram)
             R22_ss = K_var * IF_eff_per_axis(ax) * (a_init_ax + xi_per_axis(ax))^2 ...
                      + d_delay * var_da_init;
@@ -163,6 +172,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         pd_km2  = pd;
         f_d_km1 = zeros(3, 1);
         f_d_km2 = zeros(3, 1);
+        a_hat_km1 = a_x_init;             a_hat_km2 = a_x_init;
+        var_da_ram_km1 = var_da_init_vec; var_da_ram_km2 = var_da_init_vec;
 
         % --- 0K. Misc ---
         k_step = 1;
@@ -244,6 +255,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         sigma2_dxr_hat = sigma2_dxr_hat_new;
         pd_km2 = pd_km1; pd_km1 = pd;
         f_d_km2 = f_d_km1; f_d_km1 = f_d;
+        a_hat_km2 = a_hat_km1; a_hat_km1 = a_hat;        % a_hat unchanged during warmup
         warmup_count = warmup_count - 1;
         k_step = k_step + 1;
         a_hat_post = x_e_per_axis(5, :).';
@@ -259,20 +271,24 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     end
 
     % ------------------------------------------------------------------
-    % [3] Control law (B1 PASSIVE form; B2 -> active a_hat-weighted)
-    %   f_d = a_hat^-1 {pd[k+1] - lc*pd[k] - (1-lc)*pd[k-d] + (1-lc)*dx_m}
-    %         - (1-lc)*sum f_d[k-i]  - delta_x_D^d / a_hat
+    % [3] Control law (B2 ACTIVE form, Vpersonal p.2)
+    %   f_d = a_hat^-1 { Delta_x_d[k;d] + (1-lc)[dx_m - sum a_hat[k-i]*f_d[k-i]]
+    %                    - delta_x_D^d }
+    %   Delta_x_d[k;d] = pd[k+1] - lc*pd[k] - (1-lc)*pd[k-d]
+    %   Past forces weighted by past gain estimates a_hat[k-i] (the displacement
+    %   each past force caused depends on the gain at that time); all terms inside
+    %   the 1/a_hat bracket.
     % ------------------------------------------------------------------
     if d_delay == 2
-        sum_fd_past = f_d_km1 + f_d_km2;
+        sum_a_fd_past = a_hat_km1 .* f_d_km1 + a_hat_km2 .* f_d_km2;
     else
-        sum_fd_past = f_d_km1;
+        sum_a_fd_past = a_hat_km1 .* f_d_km1;
     end
     inv_a_hat = 1 ./ a_hat;
     f_d = inv_a_hat .* (pd_kp1 - lambda_c * pd - one_minus_lc * pd_km_d ...
-                        + one_minus_lc * delta_x_m) ...
-          - one_minus_lc * sum_fd_past ...
-          - xD_comb .* inv_a_hat;
+                        + one_minus_lc * delta_x_m ...
+                        - one_minus_lc * sum_a_fd_past ...
+                        - xD_comb);
 
     % ------------------------------------------------------------------
     % [4] Q (6x6 diagonal) and R (2x2) per axis
@@ -290,8 +306,23 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         a_hat_i = a_hat(ax);
         var_da_ram(ax) = (a_hat_i * K_h_axis(ax) / R_radius)^2 * sigma2_dh;
 
+        % Q33 = Var(epsilon), full per-step (3 independent components; h=50 ->
+        % independence approx, no cross terms):
+        %   thermal:    4kBT*[a_hat[k] + (1-lc)^2 * sum a_hat[k-j]]   (uses a_hat)
+        %   randgain:   (1-lc)^2 * sum (d+1-j)^2 * f_d[k-j]^2 * var(da_ram[k-j])
+        %   n_x:        (1-lc)^2 * sigma2_nx
+        if d_delay == 2
+            Q33_thermal  = 4 * kBT * (a_hat_i + one_minus_lc^2 * (a_hat_km1(ax) + a_hat_km2(ax)));
+            Q33_randgain = one_minus_lc^2 * ( 4 * f_d_km1(ax)^2 * var_da_ram_km1(ax) ...
+                                            + 1 * f_d_km2(ax)^2 * var_da_ram_km2(ax) );
+        else
+            Q33_thermal  = 4 * kBT * (a_hat_i + one_minus_lc^2 * a_hat_km1(ax));
+            Q33_randgain = one_minus_lc^2 * (f_d_km1(ax)^2 * var_da_ram_km1(ax));
+        end
+        Q33_nx = one_minus_lc^2 * sigma2_n_s(ax);
+
         Q_i = zeros(6);
-        Q_i(3, 3) = 4 * kBT * a_hat_i;
+        Q_i(3, 3) = Q33_thermal + Q33_randgain + Q33_nx;
         Q_i(5, 5) = var_da_ram(ax);
         Q_per_axis{ax} = Q_i;
 
@@ -398,6 +429,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     % ------------------------------------------------------------------
     pd_km2 = pd_km1; pd_km1 = pd;
     f_d_km2 = f_d_km1; f_d_km1 = f_d;
+    a_hat_km2 = a_hat_km1; a_hat_km1 = a_hat;            % a_hat[k] used this step
+    var_da_ram_km2 = var_da_ram_km1; var_da_ram_km1 = var_da_ram;
     dx_bar_m = dx_bar_m_new;
     sigma2_dxr_hat = sigma2_dxr_hat_new;
     k_step = k_step + 1;
