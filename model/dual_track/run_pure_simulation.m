@@ -81,6 +81,7 @@ function simOut = run_pure_simulation(config, opts)
     % ------------------------------------------------------------------
     clear motion_control_law motion_control_law_23state ...
           motion_control_law_eq6 motion_control_law_eq17 motion_control_law_eq17_core ...
+          motion_control_law_eq17_6state ...
           trajectory_generator calc_thermal_force; %#ok<CLFUNC>
 
     % ------------------------------------------------------------------
@@ -160,7 +161,21 @@ function simOut = run_pure_simulation(config, opts)
     if isfield(config, 'iir_warmup_mode') && ~isempty(config.iir_warmup_mode)
         eq17_opts.iir_warmup_mode = config.iir_warmup_mode;
     end
-    ctrl_const = build_eq17_constants(eq17_opts);
+    % ---- Dispatch A1: 6-state (Vpersonal) vs 7-state (eq17_core) ----
+    is_6state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '6state');
+    if is_6state
+        % Prefill three-pillar defaults (override 7-state warmup defaults
+        % unless the caller explicitly set them).
+        if ~isfield(config, 't_warmup_kf') || isempty(config.t_warmup_kf)
+            eq17_opts.t_warmup_kf = 0;
+        end
+        if ~isfield(config, 'iir_warmup_mode') || isempty(config.iir_warmup_mode)
+            eq17_opts.iir_warmup_mode = 'prefill';
+        end
+        ctrl_const = build_eq17_6state_constants(eq17_opts);
+    else
+        ctrl_const = build_eq17_constants(eq17_opts);
+    end
 
     % Phase 9 R(2,2) validation: optional a_hat freeze (locks state(6) per axis)
     if ~isempty(opts.a_hat_freeze)
@@ -261,13 +276,23 @@ function simOut = run_pure_simulation(config, opts)
         % --- (c) Sensor-delayed p_m for controller (head of buffer)
         p_m_delayed = p_m_buffer(:, 1);
 
-        % --- (d) Controller + EKF
-        if opts.collect_diag
-            [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_core( ...
-                                del_pd_k, pd_k, p_m_delayed, P, ctrl_const);
+        % --- (d) Controller + EKF  (dispatch A1: 6-state vs 7-state)
+        if is_6state
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_6state( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const);
+            else
+                [f_d_k, ekf_k] = motion_control_law_eq17_6state( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const);
+            end
         else
-            [f_d_k, ekf_k] = motion_control_law_eq17_core( ...
-                                del_pd_k, pd_k, p_m_delayed, P, ctrl_const);
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_core( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const);
+            else
+                [f_d_k, ekf_k] = motion_control_law_eq17_core( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const);
+            end
         end
 
         % --- (e) Thermal force at current continuous-state position
