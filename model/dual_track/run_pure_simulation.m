@@ -231,6 +231,7 @@ function simOut = run_pure_simulation(config, opts)
     f_d_out  = zeros(N, 3);
     F_th_out = zeros(N, 3);
     p_m_out  = zeros(N, 3);
+    p_true_out = zeros(N, 3);    % ground-truth probe: noise-free true position [um]
     ekf_out  = zeros(N, 4);
 
     % Phase 9 R(2,2) validation: optional diag time-series accumulators
@@ -326,6 +327,7 @@ function simOut = run_pure_simulation(config, opts)
         f_d_out(k, :)  = f_d_k.';
         F_th_out(k, :) = f_th_k.';
         p_m_out(k, :)  = p_m_raw.';
+        p_true_out(k, :) = p_curr.';     % ground-truth probe (noise-free position)
         ekf_out(k, :)  = ekf_k.';
 
         % Phase 9 R(2,2) validation: log diag time-series
@@ -367,6 +369,7 @@ function simOut = run_pure_simulation(config, opts)
     simOut.f_d_out  = f_d_out;
     simOut.F_th_out = F_th_out;
     simOut.p_m_out  = p_m_out;
+    simOut.p_true_out = p_true_out;
     simOut.tout     = tout;
     simOut.ekf_out  = ekf_out;
     simOut.meta = struct( ...
