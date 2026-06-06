@@ -20,7 +20,13 @@ eq17_analysis/
 │   ├── phase4_observability_rank.md      rank-test design + theory
 │   ├── phase5_Q_matrix_derivation.md     Q assembly (Q33, Q66, Q77 physics)
 │   ├── phase6_R_matrix_derivation.md     R assembly + 3-guard logic
-│   └── phase7_lyapunov_bench.md          closed-loop variance oracle spec
+│   ├── phase7_lyapunov_bench.md          closed-loop variance oracle spec
+│   │   --- compiled standalone derivations (paper-style .tex/.pdf) ---
+│   ├── Fe_H_derivation.{tex,pdf}         F_e/H exact form (eta_R, F_1/F_2)
+│   ├── Cdpmr_Cn_derivation.{tex,pdf}     alpha-dependent C_dpmr/C_n closed form
+│   ├── R22_derivation.{tex,pdf}          R(2,2) residue/Parseval exact rho_dpmr
+│   └── Q66_OL_R22_derivation.{pdf,md}    Q66 OL thermal (z) + R22 EWMA inflation
+│                                         (.md = code map + verification)
 │
 ├── verification/   Phase 8 (Wave 1-3 + Stage 10) + Phase 9
 │   ├── phase8_e2e_h50_results_v4.md      canonical 5-seed h=50 results
