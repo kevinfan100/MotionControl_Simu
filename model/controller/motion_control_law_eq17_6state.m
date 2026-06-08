@@ -334,7 +334,15 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
 
         R11_i = sigma2_n_s(ax);
         R2_intrinsic_i = K_var * IF_eff_per_axis(ax) * (a_hat_i + xi_per_axis(ax))^2;
-        R2_eff_i = R2_intrinsic_i + d_delay * var_da_ram(ax);   % delay term (B1 simple d*var)
+        % R22 delay term = sum_{i=1}^d var(delta_a_ram[k-i])  (r_2 = n_a - sum
+        % delta_a_ram[k-i], Vpersonal p.3). Per-step buffered (not d*current),
+        % matching the Q33 randgain treatment.
+        if d_delay == 2
+            R22_delay_i = var_da_ram_km1(ax) + var_da_ram_km2(ax);
+        else
+            R22_delay_i = var_da_ram_km1(ax);
+        end
+        R2_eff_i = R2_intrinsic_i + R22_delay_i;
 
         G1 = (t_now < t_warmup_kf);
         G2 = ((sigma2_dxr_hat_new(ax) - C_n * sigma2_n_s(ax)) <= 0);
