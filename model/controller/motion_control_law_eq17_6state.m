@@ -68,7 +68,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
 
     persistent initialized
     persistent lambda_c d_delay Ts kBT R_radius gamma_N_p
-    persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_per_axis
+    persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_per_axis var_da_inc_factor
     persistent t_warmup_kf h_bar_safe R_OFF
     persistent sigma2_n_s a_x_init enable_wall w_hat_n pz_wall
 
@@ -97,6 +97,12 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         h_bar_safe      = ctrl_const.h_bar_safe;
         a_cov           = ctrl_const.a_cov;
         a_pd            = ctrl_const.a_pd;
+        % var(delta_a_ram) closed-form increment factor 2/(1+lc) (replaces i.i.d. 2x)
+        if isfield(ctrl_const, 'var_da_increment_factor') && ~isempty(ctrl_const.var_da_increment_factor)
+            var_da_inc_factor = ctrl_const.var_da_increment_factor;
+        else
+            var_da_inc_factor = 2 / (1 + lambda_c);     % closed-form fallback
+        end
 
         % --- 0C. Wall geometry ---
         if isfield(params, 'wall')
@@ -138,11 +144,12 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         P_per_axis = cell(3, 1);
         for ax = 1:3
             a_init_ax   = a_x_init(ax);
-            % var(delta_a_ram) = 2*var(a_xram): delta_a_ram = a_xram[k+1]-a_xram[k]
-            % (increment), so its variance is 2x the one-step level var(a_xram)
-            % (Vpersonal p.2). Applied to all delta_a_ram appearances (Q55, Q33
-            % randgain, R22 delay).
-            var_da_init = 2 * (a_init_ax * K_h_init(ax) / R_radius)^2 * sigma2_dh_init;
+            % var(delta_a_ram) closed form = [2/(1+lc)]*(a*K_h/R)^2*sigma2_dh.
+            % delta_a_ram = a_xram[k+1]-a_xram[k] (one-step increment); the
+            % closed-loop level amplification C_dx and the increment smoothing
+            % (1-rho1) cancel to 2/(1+lc) (var_da_inc_factor). Applies to all
+            % delta_a_ram appearances (Q55, Q33 randgain, R22 delay).
+            var_da_init = var_da_inc_factor * (a_init_ax * K_h_init(ax) / R_radius)^2 * sigma2_dh_init;
             var_da_init_vec(ax) = var_da_init;
             % Q33 at f_d=0 limit: full epsilon (thermal history + n_x feedthrough;
             % delta_x_daf^d term vanishes since f_d=0 at the positioning Riccati point).
@@ -297,9 +304,9 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
 
     % ------------------------------------------------------------------
     % [4] Q (6x6 diagonal) and R (2x2) per axis
-    %   B1: Q33 = 4kBT*a_hat (thermal only, production mirror)
-    %       Q55 = var(delta_a_ram) = 2*(a_hat*K_h/R)^2 * sigma2_dh (=2*var(a_xram))
-    %       Q44 = Q66 = 0
+    %   Q33 = Var(epsilon) (full per-step: thermal history + randgain + n_x); Q44=Q66=0
+    %       Q55 = var(delta_a_ram) = [2/(1+lc)]*(a_hat*K_h/R)^2 * sigma2_dh
+    %             (closed-form increment factor 2/(1+lc); was i.i.d. 2x)
     % ------------------------------------------------------------------
     Q_per_axis = cell(3, 1);
     R_per_axis = cell(3, 1);
@@ -309,9 +316,12 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     t_now = (k_step - 1) * Ts;
     for ax = 1:3
         a_hat_i = a_hat(ax);
-        % var(delta_a_ram) = 2*var(a_xram) (increment of the one-step gain
-        % fluctuation level; Vpersonal p.2). Feeds Q55, Q33 randgain, R22 delay.
-        var_da_ram(ax) = 2 * (a_hat_i * K_h_axis(ax) / R_radius)^2 * sigma2_dh;
+        % var(delta_a_ram) closed form = [2/(1+lc)]*(a*K_h/R)^2*sigma2_dh
+        % (var_da_inc_factor). delta_a_ram = a_xram[k+1]-a_xram[k]; the closed-loop
+        % level C_dx and the increment smoothing (1-rho1) cancel to 2/(1+lc) (the
+        % earlier i.i.d. 2x over-estimated by (1+lc)). Feeds Q55, Q33 randgain,
+        % R22 delay (all read this var_da_ram base).
+        var_da_ram(ax) = var_da_inc_factor * (a_hat_i * K_h_axis(ax) / R_radius)^2 * sigma2_dh;
 
         % Q33 = Var(epsilon), full per-step (3 independent components; h=50 ->
         % independence approx, no cross terms):

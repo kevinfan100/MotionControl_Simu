@@ -32,6 +32,8 @@ function ctrl_const = build_eq17_6state_constants(opts)
 %       lambda_c, d, a_cov, a_pd, kBT, sigma2_n_s
 %       C_dpmr, C_n        - FULL a_pd closed form (scalars)
 %       K_var (R22_prefactor) = 2*a_cov/(2-a_cov)
+%       var_da_increment_factor = 2/(1+lambda_c)  - closed-form increment factor
+%                            for Var(delta_a_ram) (replaces the i.i.d. 2x)
 %       IF_abc = [A;B;C]   - s-weighted autocorr sums for exact per-step IF_eff
 %                            (R22_derivation S4-S6); IF_eff = 1 + 2*(sxT^2 A +
 %                            2 sxT snx B + snx^2 C)/(C_dpmr sxT + C_n snx)^2
@@ -115,6 +117,22 @@ function ctrl_const = build_eq17_6state_constants(opts)
     K_var = 2 * a_cov / (2 - a_cov);
 
     % ------------------------------------------------------------
+    % var_da_increment_factor: closed-form factor for Var(delta_a_ram).
+    %   delta_a_ram[k] = a_xram[k+1]-a_xram[k] is the one-step increment of the
+    %   closed-loop gain fluctuation a_xram = (a*K_h/R)*x_ram. For a stationary
+    %   signal Var(increment) = 2(1-rho1)*Var(a_xram). Here x_ram is the
+    %   closed-loop wall-normal tracking error: Var(x_ram) = C_dx*sigma2_dh with
+    %   C_dx = 2+1/(1-lc^2), and lag-1 autocorr rho1 = lc + 2(1-lc)/C_dx, so
+    %   1-rho1 = 1/((1+lc)*C_dx). The C_dx amplification and the (1-rho1) smoothing
+    %   CANCEL: 2(1-rho1)*C_dx = 2/(1+lc). Hence
+    %       Var(delta_a_ram) = [2/(1+lc)] * (a*K_h/R)^2 * sigma2_dh.
+    %   (The earlier i.i.d. reading used factor 2, over-estimating by (1+lc)=1.7x
+    %    at lc=0.7; direct measurement of the true gain increment gives
+    %    emp/closed = 0.998. See eq17_6state_review_findings.md.)
+    % ------------------------------------------------------------
+    var_da_increment_factor = 2 / (1 + lc);
+
+    % ------------------------------------------------------------
     % IF color-inflation: EXACT closed form (R22_derivation.tex S4-S6).
     %   IF_eff = 1 + 2*sum_{tau>=1} rho_dpmr^2(tau)*s^tau, s=1-a_cov, depends on
     %   the per-axis ratio r = sigma2_dxT/sigma2_nx (= 4kBT*a/sigma2_nx). Since a
@@ -154,6 +172,7 @@ function ctrl_const = build_eq17_6state_constants(opts)
     ctrl_const.C_n             = C_n;
     ctrl_const.K_var           = K_var;
     ctrl_const.R22_prefactor   = K_var;             % alias (matches 7-state naming)
+    ctrl_const.var_da_increment_factor = var_da_increment_factor;  % 2/(1+lc) closed form
     ctrl_const.IF_abc          = [IF_abc_A; IF_abc_B; IF_abc_C];  % s-weighted autocorr sums for exact per-step IF_eff
     ctrl_const.xi_per_axis     = xi_per_axis;
     ctrl_const.t_warmup_kf     = t_warmup_kf;
