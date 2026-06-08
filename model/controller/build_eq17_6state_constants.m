@@ -35,9 +35,9 @@ function ctrl_const = build_eq17_6state_constants(opts)
 %       xi_per_axis       - (C_n/C_dpmr)*sigma2_n_s/(4*kBT)     [3x1]
 %       t_warmup_kf, h_bar_safe, iir_warmup_mode
 %
-%   Validation reference (lambda_c=0.7, a_pd=0.05):
-%       C_dpmr_full ~ 3.93  (vs a_pd->0 simplified 3.9608)
-%       C_n_full    ~ 1.15  (vs a_pd->0 simplified 1.1765)
+%   Validation reference (lambda_c=0.7, a_pd=0.05), verified by MCP eval:
+%       C_dpmr_full = 3.1610  (vs a_pd->0 simplified 3.9608)
+%       C_n_full    = 1.1093  (vs a_pd->0 simplified 1.1765)
 %
 %   See also: motion_control_law_eq17_6state, build_eq17_constants
 

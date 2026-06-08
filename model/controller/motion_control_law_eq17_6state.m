@@ -138,7 +138,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         P_per_axis = cell(3, 1);
         for ax = 1:3
             a_init_ax   = a_x_init(ax);
-            var_da_init = (a_init_ax * K_h_init(ax) / R_radius)^2 * sigma2_dh_init;
+            % var(delta_a_ram) = 2*var(a_xram): delta_a_ram = a_xram[k+1]-a_xram[k]
+            % (increment), so its variance is 2x the one-step level var(a_xram)
+            % (Vpersonal p.2). Applied to all delta_a_ram appearances (Q55, Q33
+            % randgain, R22 delay).
+            var_da_init = 2 * (a_init_ax * K_h_init(ax) / R_radius)^2 * sigma2_dh_init;
             var_da_init_vec(ax) = var_da_init;
             % Q33 at f_d=0 limit: full epsilon (thermal history + n_x feedthrough;
             % delta_x_daf^d term vanishes since f_d=0 at the positioning Riccati point).
@@ -293,7 +297,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     % ------------------------------------------------------------------
     % [4] Q (6x6 diagonal) and R (2x2) per axis
     %   B1: Q33 = 4kBT*a_hat (thermal only, production mirror)
-    %       Q55 = var(delta_a_ram) = (a_hat*K_h/R)^2 * sigma2_dh   (OL)
+    %       Q55 = var(delta_a_ram) = 2*(a_hat*K_h/R)^2 * sigma2_dh (=2*var(a_xram))
     %       Q44 = Q66 = 0
     % ------------------------------------------------------------------
     Q_per_axis = cell(3, 1);
@@ -304,7 +308,9 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     t_now = (k_step - 1) * Ts;
     for ax = 1:3
         a_hat_i = a_hat(ax);
-        var_da_ram(ax) = (a_hat_i * K_h_axis(ax) / R_radius)^2 * sigma2_dh;
+        % var(delta_a_ram) = 2*var(a_xram) (increment of the one-step gain
+        % fluctuation level; Vpersonal p.2). Feeds Q55, Q33 randgain, R22 delay.
+        var_da_ram(ax) = 2 * (a_hat_i * K_h_axis(ax) / R_radius)^2 * sigma2_dh;
 
         % Q33 = Var(epsilon), full per-step (3 independent components; h=50 ->
         % independence approx, no cross terms):
