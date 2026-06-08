@@ -25,13 +25,16 @@ function ctrl_const = build_eq17_6state_constants(opts)
 %       opts.t_warmup_kf  - KF warmup time [sec]                (default 0, prefill)
 %       opts.h_bar_safe   - safe h_bar threshold (Guard 3)      (default 1.5)
 %       opts.iir_warmup_mode - 'prefill' (default) | 'legacy'
-%       opts.IF_eff_calibrated - optional per-axis IF_eff       [3x1, override]
+%       (no IF_eff_calibrated override: IF_eff is computed exactly per-step in
+%        the controller from IF_abc below.)
 %
 %   --------- Outputs (struct ctrl_const) ---------
 %       lambda_c, d, a_cov, a_pd, kBT, sigma2_n_s
 %       C_dpmr, C_n        - FULL a_pd closed form (scalars)
 %       K_var (R22_prefactor) = 2*a_cov/(2-a_cov)
-%       IF_eff, IF_eff_per_axis - color-inflation factor (s-weighted)
+%       IF_abc = [A;B;C]   - s-weighted autocorr sums for exact per-step IF_eff
+%                            (R22_derivation S4-S6); IF_eff = 1 + 2*(sxT^2 A +
+%                            2 sxT snx B + snx^2 C)/(C_dpmr sxT + C_n snx)^2
 %       xi_per_axis       - (C_n/C_dpmr)*sigma2_n_s/(4*kBT)     [3x1]
 %       t_warmup_kf, h_bar_safe, iir_warmup_mode
 %
@@ -112,30 +115,24 @@ function ctrl_const = build_eq17_6state_constants(opts)
     K_var = 2 * a_cov / (2 - a_cov);
 
     % ------------------------------------------------------------
-    % IF_eff : self-correlation inflation factor (s-weighted, s=1-a_cov).
-    %   Simplified single-pole (lambda_c) closed form (matches
-    %   build_eq17_constants Option A 'A_MA2_full'); per-axis override
-    %   accepted via opts.IF_eff_calibrated for X2a-style calibration.
+    % IF color-inflation: EXACT closed form (R22_derivation.tex S4-S6).
+    %   IF_eff = 1 + 2*sum_{tau>=1} rho_dpmr^2(tau)*s^tau, s=1-a_cov, depends on
+    %   the per-axis ratio r = sigma2_dxT/sigma2_nx (= 4kBT*a/sigma2_nx). Since a
+    %   is time-varying, the controller evaluates IF_eff per-step from a_hat. Here
+    %   we precompute the three s-weighted autocorrelation sums (depend only on
+    %   lambda_c, a_pd, a_cov) so the controller's per-step IF is O(1):
+    %       A = sum R_fT(tau)^2 s^tau, B = sum R_fT R_fN s^tau, C = sum R_fN^2 s^tau
+    %       IF_eff = 1 + 2*(sxT^2*A + 2*sxT*snx*B + snx^2*C)/(C_dpmr*sxT+C_n*snx)^2
+    %   Replaces the old single-pole approximation + IF_eff_calibrated override.
+    %   Numerically exact: this IS the brute force R22_derivation validates to
+    %   <8e-15 against its analytic 3-term geometric closed form (S6).
     % ------------------------------------------------------------
-    denom_e = 1 + 2 * (1 - lc)^2;
-    rho_e_1 = (1 - lc) * (2 - lc) / denom_e;
-    rho_e_2 = (1 - lc) / denom_e;
-    Var_dx_over_sig_e = (1 + 2*lc*rho_e_1 + 2*lc^2*rho_e_2) / (1 - lc^2);
-    inv_var_ratio = 1 / Var_dx_over_sig_e;
-    rho_dx_1 = lc + inv_var_ratio * (rho_e_1 + lc*rho_e_2);
-    rho_dx_2 = lc * rho_dx_1 + inv_var_ratio * rho_e_2;
-    s_ewma = 1 - a_cov;
-    IF_eff = 1 + 2 * (rho_dx_1^2 * s_ewma ...
-                    + rho_dx_2^2 * s_ewma^2 / (1 - lc^2 * s_ewma));
-
-    if isfield(opts, 'IF_eff_calibrated') && ~isempty(opts.IF_eff_calibrated)
-        IF_eff_per_axis = opts.IF_eff_calibrated(:);
-        if numel(IF_eff_per_axis) ~= 3 || any(~isfinite(IF_eff_per_axis)) || any(IF_eff_per_axis <= 0)
-            error('build_eq17_6state_constants:invalidIFeff', ...
-                  'IF_eff_calibrated must be a 3-element positive finite vector.');
-        end
-    else
-        IF_eff_per_axis = IF_eff * ones(3, 1);
+    [IF_abc_A, IF_abc_B, IF_abc_C, RfT0, RfN0] = compute_if_abc(lc, apd, a_cov);
+    % Self-check: R_fT(0)=C_dpmr, R_fN(0)=C_n (independent route to the same consts).
+    if abs(RfT0 - C_dpmr) > 1e-5 * C_dpmr || abs(RfN0 - C_n) > 1e-5 * C_n
+        warning('build_eq17_6state_constants:IFselfcheck', ...
+                ['IF autocorr self-check mismatch: R_fT(0)=%.6f vs C_dpmr=%.6f ; ' ...
+                 'R_fN(0)=%.6f vs C_n=%.6f'], RfT0, C_dpmr, RfN0, C_n);
     end
 
     % ------------------------------------------------------------
@@ -157,8 +154,7 @@ function ctrl_const = build_eq17_6state_constants(opts)
     ctrl_const.C_n             = C_n;
     ctrl_const.K_var           = K_var;
     ctrl_const.R22_prefactor   = K_var;             % alias (matches 7-state naming)
-    ctrl_const.IF_eff          = IF_eff;
-    ctrl_const.IF_eff_per_axis = IF_eff_per_axis;
+    ctrl_const.IF_abc          = [IF_abc_A; IF_abc_B; IF_abc_C];  % s-weighted autocorr sums for exact per-step IF_eff
     ctrl_const.xi_per_axis     = xi_per_axis;
     ctrl_const.t_warmup_kf     = t_warmup_kf;
     ctrl_const.h_bar_safe      = h_bar_safe;
@@ -175,5 +171,40 @@ function v = get_opt(opts, name, default)
         v = opts.(name);
     else
         v = default;
+    end
+end
+
+
+function [A, B, C, RfT0, RfN0] = compute_if_abc(lc, apd, a_cov)
+%COMPUTE_IF_ABC  s-weighted autocorrelation sums for the exact IF_eff
+%   (R22_derivation.tex S4-S6), via F_T/F_N impulse responses (toolbox-free).
+%
+%   F_T = (1-apd)(1-q)q^3[1+(1-lc)q+(1-lc)q^2] / [(1-(1-apd)q)(1-lc q)],  q=z^-1
+%   F_N = (1-apd)(1-q)^2[1+(1-lc)q+(1-lc)q^2] / [same den]   (z^3 cancels q^3)
+%
+%   Returns  A = sum_{tau>=1} R_fT(tau)^2 s^tau,  B = sum R_fT(tau) R_fN(tau) s^tau,
+%   C = sum R_fN(tau)^2 s^tau  (s = 1-a_cov), plus RfT0=R_fT(0)=C_dpmr and
+%   RfN0=R_fN(0)=C_n for an independent self-check. Poles (1-apd, lc) < 1, so the
+%   impulse responses decay geometrically; N/Tmax are set for machine precision.
+    s = 1 - a_cov;
+    q1 = [1, -1]; q3 = [0, 0, 0, 1]; thnum = [1, (1 - lc), (1 - lc)];
+    numFT = (1 - apd) * conv(conv(q1, q3), thnum);
+    numFN = (1 - apd) * conv(conv(q1, q1), thnum);
+    den   = conv([1, -(1 - apd)], [1, -lc]);
+    N = 8000;
+    imp = [1; zeros(N - 1, 1)];
+    hFT = filter(numFT, den, imp);
+    hFN = filter(numFN, den, imp);
+    Tmax = 600;
+    RfT0 = sum(hFT .^ 2);
+    RfN0 = sum(hFN .^ 2);
+    A = 0; B = 0; C = 0;
+    for t = 1:Tmax
+        RfT = sum(hFT(1:end - t) .* hFT(1 + t:end));
+        RfN = sum(hFN(1:end - t) .* hFN(1 + t:end));
+        st  = s ^ t;
+        A = A + RfT ^ 2 * st;
+        B = B + RfT * RfN * st;
+        C = C + RfN ^ 2 * st;
     end
 end

@@ -68,7 +68,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
 
     persistent initialized
     persistent lambda_c d_delay Ts kBT R_radius gamma_N_p
-    persistent a_pd a_cov C_dpmr C_n K_var IF_eff_per_axis xi_per_axis
+    persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_per_axis
     persistent t_warmup_kf h_bar_safe R_OFF
     persistent sigma2_n_s a_x_init enable_wall w_hat_n pz_wall
 
@@ -91,7 +91,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         C_dpmr          = ctrl_const.C_dpmr;
         C_n             = ctrl_const.C_n;
         K_var           = ctrl_const.K_var;
-        IF_eff_per_axis = ctrl_const.IF_eff_per_axis(:);
+        IF_abc          = ctrl_const.IF_abc(:);     % [A;B;C] for exact per-step IF_eff
         xi_per_axis     = ctrl_const.xi_per_axis(:);
         t_warmup_kf     = ctrl_const.t_warmup_kf;
         h_bar_safe      = ctrl_const.h_bar_safe;
@@ -151,7 +151,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
             Q_ss = zeros(6);
             Q_ss(3, 3) = Q33_ss;
             Q_ss(5, 5) = var_da_init;                      % Q55 = var(delta_a_ram)
-            R22_ss = K_var * IF_eff_per_axis(ax) * (a_init_ax + xi_per_axis(ax))^2 ...
+            IF_ss  = if_eff_eval(IF_abc, C_dpmr, C_n, kBT, a_init_ax, sigma2_n_s(ax));
+            R22_ss = K_var * IF_ss * (a_init_ax + xi_per_axis(ax))^2 ...
                      + d_delay * var_da_init;
             R_ss = [sigma2_n_s(ax), 0; 0, R22_ss];
             P_per_axis{ax} = solve_dare_kf_local(F_e_ss, H_ss, Q_ss, R_ss);
@@ -333,7 +334,9 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         Q_per_axis{ax} = Q_i;
 
         R11_i = sigma2_n_s(ax);
-        R2_intrinsic_i = K_var * IF_eff_per_axis(ax) * (a_hat_i + xi_per_axis(ax))^2;
+        % IF_eff exact per-step (R22_derivation S4-S6) from current a_hat (time-varying)
+        IF_eff_i = if_eff_eval(IF_abc, C_dpmr, C_n, kBT, a_hat_i, sigma2_n_s(ax));
+        R2_intrinsic_i = K_var * IF_eff_i * (a_hat_i + xi_per_axis(ax))^2;
         % R22 delay term = sum_{i=1}^d var(delta_a_ram[k-i])  (r_2 = n_a - sum
         % delta_a_ram[k-i], Vpersonal p.3). Per-step buffered (not d*current),
         % matching the Q33 randgain treatment.
@@ -508,6 +511,18 @@ function F_e = build_F_e_6state(lambda_c, f_d_i, F_1_i, F_2_i)
            0 0 0        1  0      0; ...
            0 0 0        0  1      1; ...
            0 0 0        0  0      1];
+end
+
+
+function IF = if_eff_eval(IF_abc, C_dpmr, C_n, kBT, a, sigma2_nx)
+%IF_EFF_EVAL  Exact color-inflation factor IF_eff for R22 (R22_derivation S4-S6).
+%   IF = 1 + 2*(sxT^2*A + 2*sxT*snx*B + snx^2*C) / (C_dpmr*sxT + C_n*snx)^2,
+%   sxT = 4*kBT*a (thermal residual variance), snx = sigma2_nx, IF_abc=[A;B;C]
+%   the offline s-weighted autocorrelation sums. Per-axis, time-varying via a.
+    sxT = 4 * kBT * a;
+    num = sxT^2 * IF_abc(1) + 2 * sxT * sigma2_nx * IF_abc(2) + sigma2_nx^2 * IF_abc(3);
+    den = (C_dpmr * sxT + C_n * sigma2_nx)^2;
+    IF  = 1 + 2 * num / den;
 end
 
 
