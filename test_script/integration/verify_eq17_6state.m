@@ -70,7 +70,7 @@ function results = verify_eq17_6state(scenario, opts)
     config.lambda_c        = 0.7;
     config.a_pd            = 0.05;
     config.a_cov           = 0.05;
-    config.meas_noise_std  = [0.00062; 0.000057; 0.00331];
+    config.meas_noise_std  = [0.00062; 0.00057; 0.00331];   % [um] per-axis sensor std (y corrected 0.057->0.57 nm)
     config.eq17_variant    = '6state';        % <-- dispatch A1
 
     % --- 3. Params + wall geometry ---
