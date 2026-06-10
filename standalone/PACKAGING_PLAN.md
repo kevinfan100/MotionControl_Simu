@@ -77,7 +77,7 @@ gate 定義以此為準。逐部分的決定紀錄在 [DECISIONS.md](DECISIONS.m
 | 段 | 內容 | 狀態 |
 |---|---|---|
 | 第 0 段 | 本文件 + DECISIONS.md + 分支建立 | **DONE 2026-06-10** |
-| 第 1 段 | 母 repo 前置（feat/eq17-6state 上）：D6 遷移（spec §1b 5 項）→ verify h50 統計 gate → golden baseline 拍照 → spec §1 code anchors 更新 → merge 入本分支 | TODO |
+| 第 1 段 | 母 repo 前置（feat/eq17-6state 上）：D6 遷移（spec §1b 5 項）→ verify h50 統計 gate → golden baseline 拍照 → spec §1 code anchors 更新 → merge 入本分支 | **DONE 2026-06-11**（PASS；delta 全量化見 DECISIONS.md；等價 gate 答案卷 = golden_post_d6.mat） |
 | 第 2 段 | 8 部分 cycle（本分支 standalone/ 內），每部分 = 討論 → 實作 → 檢查（雙 gate）→ 簽收 | TODO |
 | 收尾 | standalone/ 搬出成獨立 repo（剪臍帶），母 repo 留 pointer | TODO |
 
