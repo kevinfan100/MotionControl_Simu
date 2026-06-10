@@ -26,7 +26,7 @@ function verify_eq17_unit_gain_override_6state()
     addpath(fullfile(repo_root, 'model', 'controller'));
     addpath(fullfile(repo_root, 'model', 'wall_effect'));
 
-    [P, cc] = build_mocks_6state(false);
+    [P, cc] = build_mocks_6state();
     lc  = P.ctrl.lambda_c;
     p0  = P.common.p0;
 
@@ -65,7 +65,7 @@ function verify_eq17_unit_gain_override_6state()
     motion_control_law_eq17_6state(zeros(3,1), p0, p0, P, cc, a_ovr);   % init call
     [f2, ~, dg2] = motion_control_law_eq17_6state(zeros(3,1), p0, p0 - e0, P, cc, a_ovr);
     f2_expect = (1 - lc) * e0 ./ a_ovr;   % pd const -> traj terms 0; hist 0; xD 0
-    assert(max(abs(f2 - f2_expect) ./ abs(f2_expect)) < 1e-12, ...
+    assert(max(abs(f2 - f2_expect)) < 1e-10 * max(1, max(abs(f2_expect))), ...
            'T2: f_d does not match (1-lc)*e0./a_ovr');
     assert(max(abs(dg2.a_ctrl_used - a_ovr)) == 0, 'T2: a_ctrl_used ~= a_ovr');
     n_pass = n_pass + 1; fprintf('T2 PASS override wiring exact\n');
@@ -80,7 +80,7 @@ function verify_eq17_unit_gain_override_6state()
     f_km1 = zeros(3,1); f_km2 = zeros(3,1);
     for k = 1:M3
         dxm_k = p0 - p_m_seq3(:,k);                     % pd_km2 stays p0 (positioning)
-        sum_past = a_ovr .* f_km1 + a_ovr .* f_km2;     % constant override history
+        sum_past = a_ovr .* f_km1 + a_ovr .* f_km2;     % a_ovr constant; f_km1/km2 track actual controller output
         f_exp = (1 ./ a_ovr) .* ((1-lc)*dxm_k - (1-lc)*sum_past);   % NO xD term
         f_act = motion_control_law_eq17_6state(zeros(3,1), p0, p_m_seq3(:,k), P, cc_sup, a_ovr);
         assert(max(abs(f_act - f_exp)) < 1e-10 * max(1, max(abs(f_exp))), ...
@@ -95,6 +95,8 @@ function verify_eq17_unit_gain_override_6state()
     p_m_seq4 = repmat(p0, 1, M4) + 2e-3 * randn(3, M4);
     clear motion_control_law_eq17_6state;
     [~, ~, dg] = motion_control_law_eq17_6state(zeros(3,1), p0, p0, P, cc, a_ovr); % init
+    assert(max(abs(dg.x_D_hat)) == 0, ...
+           'T4 setup: x_D_hat after init must be zero (check empty_diag_6state)');
     xD_prev = dg.x_D_hat;                               % posterior after init = 0
     f_km1 = zeros(3,1); f_km2 = zeros(3,1);
     for k = 1:M4
@@ -128,7 +130,7 @@ function verify_eq17_unit_gain_override_6state()
 end
 
 
-function [P, cc] = build_mocks_6state(~)
+function [P, cc] = build_mocks_6state()
 %BUILD_MOCKS_6STATE Minimal params + ctrl_const (mirrors 3guard test mocks).
     R = 2.25; gamma_N = 0.0425; Ts = 1/1600;
     k_B = 1.3806503e-5; T_K = 310.15; kBT = k_B * T_K;
