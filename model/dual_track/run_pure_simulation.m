@@ -56,6 +56,8 @@ function simOut = run_pure_simulation(config, opts)
     %   opts.collect_diag  - bool, accumulate per-step diag time series
     if ~isfield(opts, 'a_hat_freeze'); opts.a_hat_freeze = [];                 end
     if ~isfield(opts, 'collect_diag'); opts.collect_diag = false;              end
+    % Gain-oracle A/B: feed true time-varying gain to the 6-state control law
+    if ~isfield(opts, 'gain_oracle'); opts.gain_oracle = false;              end
 
     % ------------------------------------------------------------------
     % 1. RNG seeding — MUST precede calc_simulation_params.
@@ -82,7 +84,7 @@ function simOut = run_pure_simulation(config, opts)
     clear motion_control_law motion_control_law_23state ...
           motion_control_law_eq6 motion_control_law_eq17 motion_control_law_eq17_core ...
           motion_control_law_eq17_6state ...
-          trajectory_generator calc_thermal_force; %#ok<CLFUNC>
+          trajectory_generator calc_thermal_force;
 
     % ------------------------------------------------------------------
     % 4. Build offline constants for eq17_7state controller
@@ -163,6 +165,10 @@ function simOut = run_pure_simulation(config, opts)
     end
     % ---- Dispatch A1: 6-state (Vpersonal) vs 7-state (eq17_core) ----
     is_6state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '6state');
+    if opts.gain_oracle && ~is_6state
+        error('run_pure_simulation:gainOracleUnsupported', ...
+              'opts.gain_oracle=true requires config.eq17_variant=''6state''.');
+    end
     if is_6state
         % Prefill three-pillar defaults (override 7-state warmup defaults
         % unless the caller explicitly set them).
@@ -232,6 +238,7 @@ function simOut = run_pure_simulation(config, opts)
     F_th_out = zeros(N, 3);
     p_m_out  = zeros(N, 3);
     p_true_out = zeros(N, 3);    % ground-truth probe: noise-free true position [um]
+    a_true_out = zeros(N, 3);    % ground-truth gain at controller-call position [um/pN]
     ekf_out  = zeros(N, 4);
 
     % Phase 9 R(2,2) validation: optional diag time-series accumulators
@@ -255,7 +262,13 @@ function simOut = run_pure_simulation(config, opts)
         diag_log.h_bar             = zeros(N, 1);
         diag_log.delta_x_hat_1     = zeros(N, 3);
         diag_log.P_dx1             = zeros(N, 3);
+        diag_log.a_ctrl_used       = zeros(N, 3);
     end
+
+    % Gain-oracle support: a_true at the PRE-integration p_curr (the position
+    % the controller acts on at step k; p_true_out logs post-integration).
+    a_nom_drv   = P.common.Ts / P.common.gamma_N;
+    wall_on_drv = isfield(P, 'wall') && P.wall.enable_wall_effect > 0.5;
 
     % ------------------------------------------------------------------
     % 8. Time-stepping loop  (matches Simulink ordering)
@@ -277,14 +290,28 @@ function simOut = run_pure_simulation(config, opts)
         % --- (c) Sensor-delayed p_m for controller (head of buffer)
         p_m_delayed = p_m_buffer(:, 1);
 
+        % --- (c2) Ground-truth gain at current (pre-integration) position
+        if wall_on_drv
+            h_bar_true_k = max((dot(p_curr, P.wall.w_hat) - P.wall.pz) / P.common.R, 1.001);
+            [c_para_k, c_perp_k] = calc_correction_functions(h_bar_true_k);
+            a_true_k = [a_nom_drv / c_para_k; a_nom_drv / c_para_k; a_nom_drv / c_perp_k];
+        else
+            a_true_k = a_nom_drv * ones(3, 1);
+        end
+        if opts.gain_oracle
+            a_override_k = a_true_k;
+        else
+            a_override_k = [];
+        end
+
         % --- (d) Controller + EKF  (dispatch A1: 6-state vs 7-state)
         if is_6state
             if opts.collect_diag
                 [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_6state( ...
-                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const);
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
             else
                 [f_d_k, ekf_k] = motion_control_law_eq17_6state( ...
-                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const);
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
             end
         else
             if opts.collect_diag
@@ -328,6 +355,7 @@ function simOut = run_pure_simulation(config, opts)
         F_th_out(k, :) = f_th_k.';
         p_m_out(k, :)  = p_m_raw.';
         p_true_out(k, :) = p_curr.';     % ground-truth probe (noise-free position)
+        a_true_out(k, :) = a_true_k.';
         ekf_out(k, :)  = ekf_k.';
 
         % Phase 9 R(2,2) validation: log diag time-series
@@ -351,6 +379,7 @@ function simOut = run_pure_simulation(config, opts)
             diag_log.h_bar(k)                = diag_k.h_bar;
             diag_log.delta_x_hat_1(k, :)     = diag_k.delta_x_hat_1.';
             diag_log.P_dx1(k, :)             = diag_k.P_dx1.';
+            diag_log.a_ctrl_used(k, :)       = diag_k.a_ctrl_used.';
         end
 
         % --- (k) Update unit-delay for next step's controller input
@@ -370,6 +399,7 @@ function simOut = run_pure_simulation(config, opts)
     simOut.F_th_out = F_th_out;
     simOut.p_m_out  = p_m_out;
     simOut.p_true_out = p_true_out;
+    simOut.a_true_out = a_true_out;
     simOut.tout     = tout;
     simOut.ekf_out  = ekf_out;
     simOut.meta = struct( ...
