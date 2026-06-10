@@ -45,7 +45,14 @@ function analysis = analyze_gain_oracle_6state(freqs, opts)
         catch err
             % per-frequency isolation: report and continue (design §9.1 —
             % near-wall divergence is a plausible result, not an abort)
-            fprintf('[analyze:%gHz] FAILED: %s\n', f, err.message);
+            if isempty(err.stack)
+                loc = '(no stack)';
+            else
+                s1 = err.stack(1);
+                loc = sprintf('%s > %s (line %d)', s1.file, s1.name, s1.line);
+            end
+            fprintf('[analyze:%gHz] FAILED [%s]: %s\n  at: %s\n', ...
+                    f, err.identifier, err.message, loc);
             analysis(end+1) = struct('freq', f, 'det', [], 'ram', [], ...
                                      'anchor', [], 'ahat', [], ...
                                      'flags', struct('failed', true, ...
@@ -449,7 +456,136 @@ function s = passstr(b)
 end
 
 
-function make_figs(varargin)          %#ok<VANUS>  % Task 6 replaces this stub
+function make_figs(S, A, f, out_dir)
+%MAKE_FIGS fig1-fig4 per frequency (design §8), EXP/thesis style.
+    COL_TRUE = [0 0.6 0]; COL_B = [0.8 0 0]; COL_A = [0.45 0.30 0.75];
+    FS = 18; LFS = 14; LW = 2.0;
+    so_ref = S.runs.A.det.simOut;
+    t_e = so_ref.tout(2:end);
+
+    % ---- fig1: gain tracking (z, x), a_true vs arm B ensemble mean ----
+    f1 = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
+                'Visible', 'off');
+    tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+    cols = [3 1]; lbl = {'a_z', 'a_x'};
+    no_seeds = A.ahat.n_seeds == 0;
+    for r = 1:2
+        c = cols(r); nexttile; hold on;
+        plot(t_e, A.ahat.a_true(:, c),   '-', 'Color', COL_TRUE, 'LineWidth', 3, 'DisplayName', 'True');
+        plot(t_e, A.ahat.ens_mean(:, c), '-', 'Color', COL_B,    'LineWidth', LW, 'DisplayName', 'Estimated (ens. mean)');
+        if no_seeds
+            ttl = sprintf('%s:  rel-err (osc) -- (no seeds)', lbl{r});
+        else
+            ttl = sprintf('%s:  rel-err (osc) %+.2f%%', lbl{r}, A.ahat.rel_err_osc(c));
+        end
+        title(ttl, 'FontSize', FS, 'FontWeight', 'bold');
+        ylabel(sprintf('%s  (\\mum/pN)', lbl{r}), 'FontSize', FS, 'FontWeight', 'bold');
+        grid off; set(gca, 'FontSize', LFS);
+        if r == 1
+            legend('Location', 'northoutside', 'Orientation', 'horizontal');
+        end
+    end
+    xlabel('t (s)', 'FontSize', FS, 'FontWeight', 'bold');
+    exportgraphics(f1, fullfile(out_dir, 'fig1_gain_tracking.png'), 'Resolution', 150);
+    close(f1);
+
+    % ---- fig2: det error overlay (z), descent shading ----
+    f2 = figure('Position', [80 80 1100 500], 'Color', 'w', 'NumberTitle', 'off', ...
+                'Visible', 'off');
+    hold on;
+    e_B_z_abs_max = max(abs(A.e_det.B(:, 3)));
+    yl_half = max(1e-3, e_B_z_abs_max) * 1e3 * 1.2;
+    yl = [-yl_half, yl_half];
+    patch([S.cfg.t_hold, S.cfg.t_hold + S.cfg.t_descend_override, ...
+           S.cfg.t_hold + S.cfg.t_descend_override, S.cfg.t_hold], ...
+          yl([1 1 2 2]), [0.95 0.95 0.80], 'EdgeColor', 'none', 'DisplayName', 'descent');
+    plot(t_e, A.e_det.A(:, 3) * 1e3, '-', 'Color', COL_A, 'LineWidth', LW, 'DisplayName', 'arm A (oracle)');
+    plot(t_e, A.e_det.B(:, 3) * 1e3, '-', 'Color', COL_B, 'LineWidth', LW, 'DisplayName', 'arm B (estimated)');
+    title(sprintf('e_{det,z}:  A_e  A %.2f / B %.2f nm,  \\phi  A %.1f / B %.1f deg', ...
+          A.det.A.A_e(3)*1e3, A.det.B.A_e(3)*1e3, A.det.A.phi_deg(3), A.det.B.phi_deg(3)), ...
+          'FontSize', FS, 'FontWeight', 'bold');
+    xlabel('t (s)', 'FontSize', FS, 'FontWeight', 'bold');
+    ylabel('e_{det,z} (nm)', 'FontSize', FS, 'FontWeight', 'bold');
+    ylim(yl); grid off; set(gca, 'FontSize', LFS);
+    legend('Location', 'northoutside', 'Orientation', 'horizontal');
+    exportgraphics(f2, fullfile(out_dir, 'fig2_det_error.png'), 'Resolution', 150);
+    close(f2);
+
+    % ---- fig3: ram std per window (z), grouped A/B + ratio annotation ----
+    f3 = figure('Position', [80 80 900 500], 'Color', 'w', 'NumberTitle', 'off', ...
+                'Visible', 'off');
+    nw = numel(A.ram.wins);
+    sdA = arrayfun(@(w) mean(squeeze(A.ram.A.sd(w, :, 3)), 'omitnan'), 1:nw) * 1e3;
+    sdB = arrayfun(@(w) mean(squeeze(A.ram.B.sd(w, :, 3)), 'omitnan'), 1:nw) * 1e3;
+    hb = bar([sdA(:), sdB(:)], 'grouped');
+    hb(1).FaceColor = COL_A; hb(2).FaceColor = COL_B;
+    set(gca, 'XTickLabel', A.ram.wins, 'FontSize', LFS);
+    ylabel('std(ram_z) (nm)', 'FontSize', FS, 'FontWeight', 'bold');
+    ymax_bar = max([sdA(:); sdB(:)], [], 'omitnan');
+    for w = 1:nw
+        rv = A.ram.ratio.mean(w, 3);
+        if ~isnan(rv)
+            text(w, max(sdA(w), sdB(w)) * 1.05, sprintf('%.2fx', rv), ...
+                 'HorizontalAlignment', 'center', 'FontSize', LFS, 'FontWeight', 'bold');
+        end
+    end
+    if ~isnan(ymax_bar) && ymax_bar > 0
+        ylim([0, ymax_bar * 1.25]);
+    end
+    title(sprintf('ram std (z), %g Hz — B/A paired ratio annotated', f), ...
+          'FontSize', FS, 'FontWeight', 'bold');
+    legend({'arm A (oracle)', 'arm B (estimated)'}, 'Location', 'northoutside', ...
+           'Orientation', 'horizontal');
+    grid off;
+    exportgraphics(f3, fullfile(out_dir, 'fig3_ram_std.png'), 'Resolution', 150);
+    close(f3);
+
+    % ---- fig4: theory anchor — arm A normalized ram per seed ----
+    f4 = figure('Position', [80 80 900 420], 'Color', 'w', 'NumberTitle', 'off', ...
+                'Visible', 'off');
+    hold on;
+    yline(1.0,  '-',  'Color', COL_TRUE, 'LineWidth', 2, 'HandleVisibility', 'off');
+    yline(0.85, '--', 'Color', [0.55 0.55 0.55], 'HandleVisibility', 'off');
+    yline(1.15, '--', 'Color', [0.55 0.55 0.55], 'HandleVisibility', 'off');
+    ns_vals = A.anchor.norm_std;
+    plot(1:numel(ns_vals), ns_vals, 'o', 'Color', COL_A, ...
+         'MarkerFaceColor', COL_A, 'MarkerSize', 8);
+    xlabel('seed', 'FontSize', FS, 'FontWeight', 'bold');
+    ylabel('std(ram_z / \sigma_{th})', 'FontSize', FS, 'FontWeight', 'bold');
+    title(sprintf('arm A theory anchor (osc window): %s', passstr(A.anchor.norm_pass)), ...
+          'FontSize', FS, 'FontWeight', 'bold');
+    ylim([0.6 1.4]); grid off; set(gca, 'FontSize', LFS);
+    exportgraphics(f4, fullfile(out_dir, 'fig4_theory_anchor.png'), 'Resolution', 150);
+    close(f4);
 end
-function make_overview_fig(varargin)  %#ok<VANUS>  % Task 6 replaces this stub
+
+
+function make_overview_fig(analysis, out_dir)
+%MAKE_OVERVIEW_FIG fig5: paired B/A ratio vs frequency (z), per window.
+    ok_mask = arrayfun(@(a) ~a.flags.failed, analysis);   % skip failed freqs
+    ok = analysis(ok_mask);
+    if isempty(ok); return; end
+    if ~exist(out_dir, 'dir'); mkdir(out_dir); end
+    sweep = [0.10 0.30 0.85; 0.95 0.55 0.10; 0.55 0.20 0.65];
+    FS = 18; LFS = 14;
+    f5 = figure('Position', [80 80 900 500], 'Color', 'w', 'NumberTitle', 'off', ...
+                'Visible', 'off');
+    hold on;
+    wins = ok(1).ram.wins;
+    freqs = [ok.freq];
+    mk = {'o-', 's-', 'd-', '^-'};
+    for w = 1:numel(wins)
+        r = arrayfun(@(a) a.ram.ratio.mean(w, 3), ok);
+        plot(freqs, r, mk{w}, 'Color', sweep(min(w, 3), :), 'LineWidth', 2, ...
+             'MarkerSize', 9, 'DisplayName', wins{w});
+    end
+    yline(1.0, '--', 'Color', [0.55 0.55 0.55], 'HandleVisibility', 'off');
+    set(gca, 'XScale', 'log', 'XTick', freqs, 'FontSize', LFS);
+    xlabel('frequency (Hz)', 'FontSize', FS, 'FontWeight', 'bold');
+    ylabel('ram std ratio  B/A  (z)', 'FontSize', FS, 'FontWeight', 'bold');
+    title('Cost of estimated gain vs frequency', 'FontSize', FS, 'FontWeight', 'bold');
+    legend('Location', 'northoutside', 'Orientation', 'horizontal');
+    grid off;
+    exportgraphics(f5, fullfile(out_dir, 'fig5_freq_overview.png'), 'Resolution', 150);
+    close(f5);
 end
