@@ -29,7 +29,7 @@ not k_c.
 | N2 | C_dpmr / C_n | **full a_pd-dependent** | 3.16 / 1.11 (λc=0.7, a_pd=0.05); not the a_pd→0 simplification 3.96/1.18 |
 | N3 | Disturbance state | **δx_D^d** (combined) | Vpersonal pre-combines x_D + (1−λc)·Σδx_D[k−i] |
 | — | Pole symbol | **λc (lc)** | Vpersonal + codebase; k_c is IEEE-paper-only |
-| D6 (2026-06-10) | Implementation form | **Paper predictor form + Joseph** | Migrate code to the paper-literal Eq.19→16→20→21 cycle (persistent stores a-priori x̂[k\|k−1], P_f[k]); Eq.20 replaced by Joseph. See §1b. Code still split form until migration. |
+| D6 (2026-06-10) | Implementation form | **Paper predictor form + Joseph** | Code runs the paper-literal Eq.19→16→20→21 cycle (persistent stores a-priori x̂[k\|k−1], P_f[k]); Eq.20 replaced by Joseph. See §1b. **Migrated 2026-06-10** (h50 gates re-run, pre/post deltas in test_results/pack_baseline). |
 
 ---
 
@@ -57,15 +57,16 @@ Notes:
 - Innovation `y − H·x̂⁻` uses a-priori estimate; `e_y1 = δx_m − δx̂_1`, `e_y2 = a_xm − (â_x − d·δâ_x)`.
 - Time-varying entries (F_e(3,5)/(3,6) via f_d history; Q[k], R[k] via â_x, h̄) are CONTENT
   updates, not flow changes.
-- Code: predict-map L393-398, P_pred L399, gain L417, Joseph L427, per-axis loop L377-442.
+- Code implements §1b (D6 predictor form), not this split flow: per-axis loop L416-482;
+  gain L433, merged state update L441-447, Joseph L449-452, forecast L454-468.
 
 ---
 
 ## 1b. Target implementation form (D6, 2026-06-10): paper predictor form + Joseph
 
-DECIDED: the code will be migrated from the split filter form (§1, current code) to the
-paper-literal predictor form. Same filter — §1 remains the textbook-equivalent reference;
-this section is the implementation target.
+**IMPLEMENTED 2026-06-10**: the code was migrated from the split filter form (§1) to the
+paper-literal predictor form below. Same filter — §1 remains the textbook-equivalent
+reference; this section is what the code does.
 
 **Bookkeeping switch:** persistent stores the a-priori pair (x̂[k|k−1], P_f[k]) — i.e. the
 paper's own δx̂[k]/â_x[k] and P_f[k] — instead of the posterior pair.
@@ -81,7 +82,7 @@ paper's own δx̂[k]/â_x[k] and P_f[k] — instead of the posterior pair.
 (5) forecast     P_f⁺ = F_e·P·F_eᵀ + Q                                    Eq.21
 ```
 
-**Migration checklist (code changes required):**
+**Migration checklist (all DONE 2026-06-10; line refs updated to migrated code):**
 1. EKF block (current L398-451): drop x_pred/x_post split; reorder to (1)-(5) above.
 2. Init: store a-priori covariance P_f0 = F_e·P_DARE·F_eᵀ + Q (current solve_dare_kf_local
    returns the posterior steady state).
@@ -110,7 +111,7 @@ Deciding dimensions is necessary but NOT sufficient. You also fix the CONTENTS o
 | output map | H | which states measured | `[1 0 0 0 0 0; 0 0 0 0 1 −d]` |
 | process noise | Q[k] | §5 | 3-component Q33, Q55 |
 | meas noise | R[k] | §6 | R11, R22 (exact IF_eff) |
-| init | P_f₀ | DARE steady-state | `solve_dare_kf_local` L158 |
+| init | P_f₀ | DARE steady-state, advanced one step to a-priori (D6) | L168-177 |
 | (cross-cov) | S[k] | q-r correlation | 0 (near-wall: §8) |
 
 ---
@@ -122,8 +123,8 @@ The mean-propagation map Φ and the error Jacobian F_e are TWO different matrice
 | | Vpersonal location | Content | Code |
 |---|---|---|---|
 | True state | **p.3 "State equation"** | `δx_3[k+1]=λc·δx_3 − F_dx·e_ax + dF_dx·e_δax − e_δafd − ε` | plant |
-| **Φ** (mean) | **p.4 "Closed-loop Estimator"** (drop ℓ·e) | `δx̂_3[k+1]=λc·δx̂_3` | `x_pred` L393-398 |
-| **F_e** (cov) | **p.5 F_e matrix** | Row3 = `[0 0 λc −1 −F_dx dF_dx]` | `build_F_e_6state` L507-524 |
+| **Φ** (mean) | **p.4 "Closed-loop Estimator"** (drop ℓ·e) | `δx̂_3[k+1]=λc·δx̂_3` | merged state update L441-447 (D6) |
+| **F_e** (cov) | **p.5 F_e matrix** | Row3 = `[0 0 λc −1 −F_dx dF_dx]` | `build_F_e_6state` L541-558 |
 
 ```
 Φ  (from p.4 estimator)              F_e  (p.5)
@@ -150,7 +151,9 @@ Control-law dependence of F_e(3,3): eq17 (δx_m direct feedback) → F_e(3,3)=λ
 (δx̂ feedback) → F_e(3,3)=1 (control law adds (1−λc)·e₃ back). Both correct for their law.
 
 Helper sums (Vpersonal p.5): `F_dx = f_d[k] + (1−λc)·F_1`, `dF_dx = (1−λc)·F_2`,
-`F_1 = Σ_{i=1}^d f_d[k−i]`, `F_2 = Σ_{i=1}^d i·f_d[k−i]`. Code L389-395.
+`F_1 = Σ_{i=1}^d f_d[k−i]`, `F_2 = Σ_{i=1}^d i·f_d[k−i]`. Code L458-466 (forecast step,
+pre-shift buffers; paper-strict F_e[k] timing — the old split form applied the same F_e
+to P[k−1], one step early).
 
 ---
 
@@ -174,7 +177,7 @@ H = [1 0 0 0 0 0;       y_1 = δx_m = δx_1 + n_x
 
 ## 5. Q matrix (D3: 3-component Q33, Q55 closed form)
 
-6×6 diagonal, two nonzero entries; per axis, per step. Code L316-343.
+6×6 diagonal, two nonzero entries; per axis, per step. Code L321-363.
 
 ```
 Q33 = Var(ε)  (3 independent components, h=50 independence approx):
@@ -198,7 +201,7 @@ p.4 ε full form (D3). Empirically validated (review_findings §3.2, emp/closed 
 
 ## 6. R matrix (R22 exact per-step IF_eff)
 
-2×2 per axis, per step. Code L346-374.
+2×2 per axis, per step. Code L365-393.
 
 ```
 R11 = σ²_n_x                                                          (sensor spec)
@@ -208,7 +211,8 @@ R22 = K_var·IF_eff·(â_x + ξ)² + Σ_{i=1}^d Var(δa_ram[k−i])            (
             s_xT = 4kBT·â_x,  s_nx = σ²_n_x,  [A;B;C] = IF_abc (offline)   (R22_derivation S4-S6)
    ξ      = (C_n/C_dpmr)·σ²_n_x/(4kBT)                                (per-axis sensor floor)
 
-3-guard (OR → R22 = 1e10, drop y_2):
+3-guard (OR → drop y_2; actual mechanism = H collapses to row 1 in the EKF update,
+L419-428 — the R22 = 1e10 write is a documentation-only dead store):
    G1: t < t_warmup_kf            G2: σ̂²_δxr ≤ C_n·σ²_n_x (NaN)       G3: h̄ < h_bar_safe (wall)
 ```
 
@@ -256,8 +260,9 @@ trustworthiness / near-wall accuracy — NOT tracking or â-unbiasedness (both v
 family: model the correlation (correlated-noise predictor + off-diagonal Q + colored-meas KF +
 near-wall C_dpmr/ρ1) instead of assuming white/diagonal/independent. Backlog:
 
-- **D6 migration (NEXT)** — rewrite the EKF block to the paper predictor form + Joseph per
-  §1b checklist (5 items); re-run h50 gates; then update §1 code anchors.
+- ~~**D6 migration**~~ — DONE 2026-06-10: EKF block rewritten to the paper predictor form +
+  Joseph per §1b checklist (5 items); P_f0 advanced to a-priori; logs report a-priori values;
+  h50 gates re-run and pre/post deltas frozen via make_golden_baseline / compare_baselines.
 
 - **Near-wall S = E{q·rᵀ}** — fill the S[k] slot in §1 step (1). Sources: n_x in q3 & r1;
   δa_ram in q3/q5 & r2. Scale ∝ K_h/(1−λc). ~0.16% safe region, blocking near wall.

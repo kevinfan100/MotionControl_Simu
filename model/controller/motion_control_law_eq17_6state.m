@@ -22,12 +22,21 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
 %       y_1 = delta_x_m = p_d[k-2] - p_m[k]    (delayed tracking error)
 %       y_2 = a_xm      = (sigma2_dxr_hat - C_n*sigma2_n_s) / (C_dpmr*4kBT)
 %
-%   BUILD STAGE: B2 (full Vpersonal). ACTIVE control law (past forces weighted
-%   by past gain estimates a_hat[k-i]) and full per-step Q33 = Var(epsilon)
-%   (thermal history + random-gain x force + n_x feedthrough; h=50 independence
-%   approximation -> diagonal Q). prefill+Riccati three-pillar init,
-%   deterministic-map predict (point 7), 3-guard update, Joseph form.
+%   BUILD STAGE: B2 (full Vpersonal) + D6 (paper predictor form, 2026-06-10).
+%   ACTIVE control law (past forces weighted by past gain estimates a_hat[k-i])
+%   and full per-step Q33 = Var(epsilon) (thermal history + random-gain x force
+%   + n_x feedthrough; h=50 independence approximation -> diagonal Q).
+%   prefill+Riccati three-pillar init, 3-guard update, Joseph form.
 %   S cross-covariance (Stage B3, near-wall / optimality) is 0 here.
+%
+%   D6 (kf_canonical_spec.md section 1b): the EKF runs the paper-literal
+%   predictor cycle Eq.19 -> 16 -> 20(Joseph) -> 21. Persistent state holds
+%   the A-PRIORI pair (x_hat[k|k-1], P_f[k]); the state update is the merged
+%   one-line x+ = Phi_map(x) + L*innov (gain position L per paper convention,
+%   23-state precedent; NOT bit-identical to the earlier split filter form).
+%   Phi (mean map, Vpersonal p.4, Row3 = lc only) differs from F_e (p.5,
+%   error couplings) -- the deterministic-map predict that fixes the 7-state
+%   a_hat bias. All logged estimates (ekf_out, diag) are a-priori values.
 %
 %   F_e Row 3 (6-state, Vpersonal p.5):
 %       [0, 0, lc, -1, -F_dx, dF_dx]
@@ -56,8 +65,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     % ------------------------------------------------------------------
     % Persistent state
     % ------------------------------------------------------------------
-    persistent x_e_per_axis        % 6x3 EKF state (col = axis)
-    persistent P_per_axis          % cell{3} of 6x6 covariance
+    persistent x_e_per_axis        % 6x3 a-priori state x_hat[k|k-1] (col = axis; D6)
+    persistent P_per_axis          % cell{3} of 6x6 forecast covariance P_f[k] (D6)
     persistent dx_bar_m            % 3x1 IIR LP mean of delta_x_m [um]
     persistent sigma2_dxr_hat      % 3x1 EWMA variance of dx_r    [um^2]
     persistent pd_km1 pd_km2       % trajectory delay buffers
@@ -135,7 +144,9 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         x_e_per_axis = zeros(6, 3);
         x_e_per_axis(5, :) = a_x_init.';        % slot 5 = a_x
 
-        % --- 0G. Riccati Pf (DARE steady state at h_init, positioning f_d=0) ---
+        % --- 0G. Riccati P_f0 (DARE at h_init, positioning f_d=0).
+        %     D6 (spec 1b item 2): persistent stores the A-PRIORI covariance,
+        %     so advance the DARE posterior one step: P_f0 = F*P_dare*F' + Q. ---
         one_minus_lc = 1 - lambda_c;
         F_e_ss = build_F_e_6state(lambda_c, 0, 0, 0);
         H_ss   = [1 0 0 0 0 0; 0 0 0 0 1 -d_delay];
@@ -162,7 +173,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
             R22_ss = K_var * IF_ss * (a_init_ax + xi_per_axis(ax))^2 ...
                      + d_delay * var_da_init;
             R_ss = [sigma2_n_s(ax), 0; 0, R22_ss];
-            P_per_axis{ax} = solve_dare_kf_local(F_e_ss, H_ss, Q_ss, R_ss);
+            P_dare = solve_dare_kf_local(F_e_ss, H_ss, Q_ss, R_ss);   % posterior SS
+            P_per_axis{ax} = F_e_ss * P_dare * F_e_ss' + Q_ss;        % a-priori P_f0
         end
 
         % --- 0H. IIR states (prefill default: seed sigma2_dxr to steady state) ---
@@ -204,10 +216,10 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     end
 
     % ------------------------------------------------------------------
-    % Per-step: extract per-axis state
+    % Per-step: extract per-axis state (a-priori estimates, D6)
     % ------------------------------------------------------------------
-    a_hat    = x_e_per_axis(5, :).';     % 3x1 [um/pN]
-    xD_comb  = x_e_per_axis(4, :).';     % 3x1 [um]  (delta_x_D^d)
+    a_hat    = x_e_per_axis(5, :).';     % 3x1 [um/pN]  a-priori a_hat[k|k-1]
+    xD_comb  = x_e_per_axis(4, :).';     % 3x1 [um]  delta_x_D^d, a-priori
 
     % delta_x_m[k] = p_d[k-d] - p_m[k]
     if d_delay == 2
@@ -270,12 +282,12 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         a_hat_km2 = a_hat_km1; a_hat_km1 = a_hat;        % a_hat unchanged during warmup
         warmup_count = warmup_count - 1;
         k_step = k_step + 1;
-        a_hat_post = x_e_per_axis(5, :).';
+        a_hat_out = x_e_per_axis(5, :).';
         h_bar_now = local_h_bar_out(enable_wall, h_bar);
-        ekf_out = [a_hat_post(1); a_hat_post(3); a_hat_post(2); h_bar_now];
+        ekf_out = [a_hat_out(1); a_hat_out(3); a_hat_out(2); h_bar_now];
         if nargout >= 3
             diag = empty_diag_6state();
-            diag.f_d = f_d; diag.a_hat = a_hat_post;
+            diag.f_d = f_d; diag.a_hat = a_hat_out;
             diag.sigma2_dxr_hat = sigma2_dxr_hat_new; diag.a_xm = a_xm;
             diag.delta_x_m = delta_x_m; diag.h_bar = h_bar; diag.dx_r = dx_r;
         end
@@ -290,6 +302,9 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     %   Past forces weighted by past gain estimates a_hat[k-i] (the displacement
     %   each past force caused depends on the gain at that time); all terms inside
     %   the 1/a_hat bracket.
+    %   D6 (spec 1b item 3): a_hat and xD_comb are A-PRIORI estimates -- a_hat
+    %   no longer includes the current-step measurement (one extra Phi map vs
+    %   the old posterior); formula unchanged, semantics shift only.
     % ------------------------------------------------------------------
     if d_delay == 2
         sum_a_fd_past = a_hat_km1 .* f_d_km1 + a_hat_km2 .* f_d_km2;
@@ -364,6 +379,9 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         gate_off(ax) = G1 || G2 || G3;
 
         if gate_off(ax)
+            % Documentation only (dead store): the actual gating mechanism is
+            % the H collapse to row 1 in section [5]; R_per_axis is not read
+            % on the gated branch.
             R22_i = R_OFF;
         else
             R22_i = R2_eff_i;
@@ -375,7 +393,18 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     end
 
     % ------------------------------------------------------------------
-    % [5] EKF predict + update per axis
+    % [5] EKF per axis -- paper predictor form + Joseph (D6, spec 1b)
+    %     Persistent (x_e_per_axis, P_per_axis) hold the A-PRIORI pair
+    %     (x_hat[k|k-1], P_f[k]). Per-step cycle, paper Eq.19->16->20->21:
+    %       (1) innovation against the stored a-priori
+    %       (2) gain   L = P_f*H' / (H*P_f*H' + R)                    (Eq.19)
+    %       (3) state  x+ = Phi_map(x) + L*innov   (merged one-line,   Eq.16;
+    %           gain position L per paper convention / 23-state precedent --
+    %           the strict update-then-propagate equivalent would be Phi*L)
+    %       (4) cov    P  = Joseph(P_f, L, H, R)            (Eq.20 -> Joseph)
+    %       (5) fcast  P_f+ = F_e*P*F_e' + Q                          (Eq.21)
+    %     Phi (mean map, Vpersonal p.4: Row3 = lc only) <> F_e (p.5: error
+    %     couplings -1, -F_dx, dF_dx) -- mean uses Phi, covariance uses F_e.
     % ------------------------------------------------------------------
     H_full = [1 0 0 0 0 0; 0 0 0 0 1 -d_delay];
     H_y1   = H_full(1, :);
@@ -385,31 +414,10 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     innov_y2_v = zeros(3, 1);
 
     for ax = 1:3
-        % F_e (time-varying Row 3 via f_d history)
-        if d_delay == 2
-            F_1_i = f_d_km1(ax) + f_d_km2(ax);
-            F_2_i = f_d_km1(ax) + 2 * f_d_km2(ax);
-        else
-            F_1_i = f_d_km1(ax);
-            F_2_i = f_d_km1(ax);
-        end
-        F_e = build_F_e_6state(lambda_c, f_d(ax), F_1_i, F_2_i);
+        x_curr = x_e_per_axis(:, ax);      % a-priori x_hat[k|k-1]
+        P_f    = P_per_axis{ax};           % forecast covariance P_f[k]
 
-        x_curr = x_e_per_axis(:, ax);
-        P_curr = P_per_axis{ax};
-
-        % --- Predict: state via deterministic map (cross-terms are
-        %     estimation errors -> E[.]=0); covariance via full F_e ---
-        x_pred = [x_curr(2); ...
-                  x_curr(3); ...
-                  lambda_c * x_curr(3); ...
-                  x_curr(4); ...
-                  x_curr(5) + x_curr(6); ...
-                  x_curr(6)];
-        P_pred = F_e * P_curr * F_e' + Q_per_axis{ax};
-        P_pred = 0.5 * (P_pred + P_pred');
-
-        % --- Update (1D if y_2 gated, else 2D) ---
+        % --- (1)-(2) Innovation + gain (1D if y_2 gated, else 2D) ---
         if gate_off(ax)
             H_use = H_y1;
             y_use = delta_x_m(ax);
@@ -419,36 +427,58 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
             y_use = [delta_x_m(ax); a_xm(ax)];
             R_use = R_per_axis{ax};
         end
-
-        y_pred = H_use * x_pred;
-        innov  = y_use - y_pred;
-        S_inn  = H_use * P_pred * H_use' + R_use;
-        S_inn  = 0.5 * (S_inn + S_inn');
-        K_kf   = (P_pred * H_use') / S_inn;
+        innov = y_use - H_use * x_curr;
+        S_inn = H_use * P_f * H_use' + R_use;
+        S_inn = 0.5 * (S_inn + S_inn');
+        L_kf  = (P_f * H_use') / S_inn;
 
         % Warmup gate: freeze gain states during G1 (slots 5,6)
         if G_flags(1, ax)
-            K_kf(5, :) = 0;
-            K_kf(6, :) = 0;
+            L_kf(5, :) = 0;
+            L_kf(6, :) = 0;
         end
 
-        x_post = x_pred + K_kf * innov;
-        ImKH   = eye(6) - K_kf * H_use;
-        P_post = ImKH * P_pred * ImKH' + K_kf * R_use * K_kf';   % Joseph form
+        % --- (3) State: x+ = Phi_map(x_curr) + L*innov (Eq.16 merged) ---
+        x_plus = [x_curr(2); ...
+                  x_curr(3); ...
+                  lambda_c * x_curr(3); ...
+                  x_curr(4); ...
+                  x_curr(5) + x_curr(6); ...
+                  x_curr(6)] + L_kf * innov;
+
+        % --- (4) Posterior covariance, Joseph form (Eq.20 -> Joseph) ---
+        ImLH   = eye(6) - L_kf * H_use;
+        P_post = ImLH * P_f * ImLH' + L_kf * R_use * L_kf';
         P_post = 0.5 * (P_post + P_post');
 
-        % Diagnostics
-        K_dx_y1_v(ax) = K_kf(3, 1);
+        % --- (5) Forecast (Eq.21): P_f[k+1] = F_e[k]*P[k]*F_e' + Q[k].
+        %     F_e[k] is built AFTER the update, from f_d[k] (just computed)
+        %     and the pre-shift buffers f_d[k-1], f_d[k-2] -- paper-strict
+        %     timing (the old split form applied this same F_e to P[k-1],
+        %     one step early). ---
+        if d_delay == 2
+            F_1_i = f_d_km1(ax) + f_d_km2(ax);
+            F_2_i = f_d_km1(ax) + 2 * f_d_km2(ax);
+        else
+            F_1_i = f_d_km1(ax);
+            F_2_i = f_d_km1(ax);
+        end
+        F_e = build_F_e_6state(lambda_c, f_d(ax), F_1_i, F_2_i);
+        P_f_plus = F_e * P_post * F_e' + Q_per_axis{ax};
+        P_f_plus = 0.5 * (P_f_plus + P_f_plus');
+
+        % Diagnostics (gain entries from L)
+        K_dx_y1_v(ax) = L_kf(3, 1);
         if gate_off(ax)
             K_a_y2_v(ax)  = 0;
             innov_y2_v(ax) = 0;
         else
-            K_a_y2_v(ax)  = K_kf(5, 2);
+            K_a_y2_v(ax)  = L_kf(5, 2);
             innov_y2_v(ax) = innov(2);
         end
 
-        x_e_per_axis(:, ax) = x_post;
-        P_per_axis{ax} = P_post;
+        x_e_per_axis(:, ax) = x_plus;      % next a-priori x_hat[k+1|k]
+        P_per_axis{ax} = P_f_plus;         % next forecast P_f[k+1]
     end
 
     % ------------------------------------------------------------------
@@ -463,13 +493,17 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     k_step = k_step + 1;
 
     % ------------------------------------------------------------------
-    % [7] Output
+    % [7] Output (D6, spec 1b item 4: logs report the A-PRIORI estimate
+    %     x_hat[k+1|k] -> one-step shift vs a_true[k] in comparisons;
+    %     negligible for averaged statistics, kept uncorrected by design)
     % ------------------------------------------------------------------
-    a_hat_post = x_e_per_axis(5, :).';
+    a_hat_out = x_e_per_axis(5, :).';
     h_bar_now = local_h_bar_out(enable_wall, h_bar);
-    ekf_out = [a_hat_post(1); a_hat_post(3); a_hat_post(2); h_bar_now];
+    ekf_out = [a_hat_out(1); a_hat_out(3); a_hat_out(2); h_bar_now];
 
     if nargout >= 3
+        % D6: P_per_axis holds the a-priori P_f -> diag P values are forecast
+        % (not posterior) covariances.
         P_a_v = zeros(3, 1); P_dx_v = zeros(3, 1); P_dx1_v = zeros(3, 1);
         for ax = 1:3
             P_a_v(ax)   = P_per_axis{ax}(5, 5);
@@ -492,7 +526,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         diag.h_bar                = h_bar;
         diag.f_d                  = f_d;
         diag.dx_r                 = dx_r;
-        diag.a_hat                = a_hat_post;
+        diag.a_hat                = a_hat_out;
         diag.P77                  = zeros(3, 1);            % no slot 7 (driver compat)
         diag.Q77                  = zeros(3, 1);
         diag.var_da_ram           = var_da_ram;
