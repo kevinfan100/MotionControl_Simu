@@ -300,14 +300,30 @@ function write_summary_md(path, f, S, A)
         fprintf(fid, '| osc rms_res [nm] | %c | %.2f | %.2f | %.2f |\n',  arm, D.rms_res*1e3);
         fprintf(fid, '| trough bias [nm] | %c | %.2f | %.2f | %.2f |\n',  arm, D.trough_bias*1e3);
     end
-    fprintf(fid, '\n## ram (std over window, seed mean; paired B/A ratio)\n\n');
-    fprintf(fid, '| window | A sd_z [nm] | B sd_z [nm] | ratio mean | ratio range |\n|---|---|---|---|---|\n');
+    fprintf(fid, '\n## ram (std over window, seed mean [min, max]; paired B/A ratio)\n\n');
+    ax_name = 'xyz';
+    fprintf(fid, '| window | axis | A sd [nm] (rng) | B sd [nm] (rng) | ratio (rng) |\n|---|---|---|---|---|\n');
     for w = 1:numel(A.ram.wins)
-        sdA = mean(squeeze(A.ram.A.sd(w, :, 3)), 'omitnan') * 1e3;
-        sdB = mean(squeeze(A.ram.B.sd(w, :, 3)), 'omitnan') * 1e3;
-        fprintf(fid, '| %s | %.2f | %.2f | %.2f | [%.2f, %.2f] |\n', A.ram.wins{w}, ...
-                sdA, sdB, A.ram.ratio.mean(w, 3), ...
-                A.ram.ratio.rng(w, 3, 1), A.ram.ratio.rng(w, 3, 2));
+        for ax = 1:3
+            sdA = squeeze(A.ram.A.sd(w, :, ax)) * 1e3;
+            sdB = squeeze(A.ram.B.sd(w, :, ax)) * 1e3;
+            fprintf(fid, '| %s | %c | %.2f [%.2f, %.2f] | %.2f [%.2f, %.2f] | %.2f [%.2f, %.2f] |\n', ...
+                    A.ram.wins{w}, ax_name(ax), ...
+                    mean(sdA, 'omitnan'), min(sdA), max(sdA), ...
+                    mean(sdB, 'omitnan'), min(sdB), max(sdB), ...
+                    A.ram.ratio.mean(w, ax), ...
+                    A.ram.ratio.rng(w, ax, 1), A.ram.ratio.rng(w, ax, 2));
+        end
+    end
+    fprintf(fid, '\n## ram rectification bias mu (seed mean over window)\n\n');
+    fprintf(fid, '| window | axis | mu_A [nm] | mu_B [nm] |\n|---|---|---|---|\n');
+    for w = 1:numel(A.ram.wins)
+        for ax = 1:3
+            muA = mean(squeeze(A.ram.A.mu(w, :, ax)), 'omitnan') * 1e3;
+            muB = mean(squeeze(A.ram.B.mu(w, :, ax)), 'omitnan') * 1e3;
+            fprintf(fid, '| %s | %c | %.3f | %.3f |\n', ...
+                    A.ram.wins{w}, ax_name(ax), muA, muB);
+        end
     end
     fprintf(fid, '\n## validation\n\n');
     fprintf(fid, '- arm A det anchor: max|e_det| (osc, z) = %.3f nm -> %s (soft gate < 1 nm)\n', ...
