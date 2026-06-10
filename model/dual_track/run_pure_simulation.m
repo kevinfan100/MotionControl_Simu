@@ -22,9 +22,16 @@ function simOut = run_pure_simulation(config, opts)
 %                  config.a_cov
 %                Plus all wall/traj/ctrl fields user_config() defines.
 %       opts   - (optional) struct with fields (all defaulted):
-%                  opts.seed     - RNG seed                   (default 42)
-%                  opts.verbose  - print progress every 10%   (default false)
-%                  opts.scheme   - integration scheme tag     (default 'ode4_step10us')
+%                  opts.seed         - RNG seed                  (default 42)
+%                  opts.verbose      - print progress every 10%  (default false)
+%                  opts.scheme       - integration scheme tag    (default 'ode4_step10us')
+%                  opts.collect_diag - accumulate per-step diag
+%                                      time series into simOut.diag (default false)
+%                  opts.a_hat_freeze - 3x1 [um/pN] to lock the EKF
+%                                      gain state per axis        (default [])
+%                  opts.gain_oracle  - feed the true time-varying gain to
+%                                      the 6-state control law; requires
+%                                      config.eq17_variant='6state' (default false)
 %
 %   Output simOut struct (mirrors Simulink ToWorkspace, all [Nx3] except
 %   tout / ekf_out / meta):
@@ -35,6 +42,14 @@ function simOut = run_pure_simulation(config, opts)
 %                              (after measurement noise injection,
 %                               before sensor delay — matches Simulink
 %                               p_m_out tap point)
+%       simOut.p_true_out - Noise-free true position    [N x 3, um]
+%                              (ground-truth probe, logged AFTER the
+%                               step's continuous integration)
+%       simOut.a_true_out - True motion gain            [N x 3, um/pN]
+%                              (at the PRE-integration p_curr, i.e. the
+%                               position the controller acts on; always
+%                               populated, one sample ahead of
+%                               p_true_out's tap point)
 %       simOut.tout       - Time vector                 [N x 1, sec]
 %       simOut.ekf_out    - EKF diagnostic              [N x 4]
 %                              [a_hat_x; a_hat_z; a_hat_y; h_bar]
@@ -230,6 +245,11 @@ function simOut = run_pure_simulation(config, opts)
     %   p_d_out logs pd[k]. Unit Delay IC = p0 → pd_for_ctrl[1] = p0.
     pd_for_ctrl = p0;                     % 3x1 [um]
 
+    % Gain-oracle support: a_true at the PRE-integration p_curr (the position
+    % the controller acts on at step k; p_true_out logs post-integration).
+    a_nom_drv   = P.common.Ts / P.common.gamma_N;
+    wall_on_drv = isfield(P, 'wall') && P.wall.enable_wall_effect > 0.5;
+
     % ------------------------------------------------------------------
     % 7. Allocate logs (mirror Simulink ToWorkspace schema, [N x 3])
     % ------------------------------------------------------------------
@@ -238,7 +258,7 @@ function simOut = run_pure_simulation(config, opts)
     F_th_out = zeros(N, 3);
     p_m_out  = zeros(N, 3);
     p_true_out = zeros(N, 3);    % ground-truth probe: noise-free true position [um]
-    a_true_out = zeros(N, 3);    % ground-truth gain at controller-call position [um/pN]
+    a_true_out = zeros(N, 3);    % true gain at PRE-integration p_curr (position the controller acts on) [um/pN]
     ekf_out  = zeros(N, 4);
 
     % Phase 9 R(2,2) validation: optional diag time-series accumulators
@@ -264,11 +284,6 @@ function simOut = run_pure_simulation(config, opts)
         diag_log.P_dx1             = zeros(N, 3);
         diag_log.a_ctrl_used       = zeros(N, 3);
     end
-
-    % Gain-oracle support: a_true at the PRE-integration p_curr (the position
-    % the controller acts on at step k; p_true_out logs post-integration).
-    a_nom_drv   = P.common.Ts / P.common.gamma_N;
-    wall_on_drv = isfield(P, 'wall') && P.wall.enable_wall_effect > 0.5;
 
     % ------------------------------------------------------------------
     % 8. Time-stepping loop  (matches Simulink ordering)
