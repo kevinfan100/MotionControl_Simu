@@ -4,6 +4,21 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
 %
 %   [f_d, ekf_out]       = motion_control_law_eq17_6state(del_pd, pd, p_m, params, ctrl_const)
 %   [f_d, ekf_out, diag] = motion_control_law_eq17_6state(...)
+%   [f_d, ekf_out, diag] = motion_control_law_eq17_6state(..., ctrl_const, a_ctrl_override)
+%
+%   Gain-oracle A/B experiment support:
+%     a_ctrl_override (3x1 or [], default []): when non-empty, the control
+%       law (including the past-force history sum a_ctrl[k-i]*f_d[k-i])
+%       uses this gain instead of the EKF a_hat; the EKF itself is
+%       untouched (slot 5 still estimated). Intended use is one fixed mode
+%       per run; when alternating modes step-by-step, the history buffers
+%       record the gain actually used at each step.
+%     ctrl_const.suppress_xD (logical, default false): zeroes the -x_D term
+%       in the control law only (EKF slot 4 still estimated). NOTE: unlike
+%       the 7-state core (which reads it every step), this flag is latched
+%       at init.
+%     diag.a_ctrl_used (3x1): the gain the control law actually used this
+%       step.
 %
 %   Sibling of motion_control_law_eq17_core (7-state). Implements the
 %   RevisedControl_Vpersonal 6-state architecture: the disturbance is
@@ -51,6 +66,9 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     has_override = ~isempty(a_ctrl_override);
     if has_override
         a_ctrl_override = a_ctrl_override(:);
+        assert(numel(a_ctrl_override) == 3 && all(isfinite(a_ctrl_override)) && all(a_ctrl_override > 0), ...
+               'motion_control_law_eq17_6state:badOverride', ...
+               'a_ctrl_override must be a 3x1 finite positive vector.');
     end
 
     % ------------------------------------------------------------------
@@ -216,7 +234,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
             diag.f_d           = f_d;
             diag.a_hat         = a_x_init;
             diag.sigma2_dxr_hat = sigma2_dxr_hat;
-            diag.a_ctrl_used   = a_x_init;
+            if has_override
+                diag.a_ctrl_used = a_ctrl_override;
+            else
+                diag.a_ctrl_used = a_x_init;
+            end
         end
         return;
     end
@@ -297,6 +319,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         pd_km2 = pd_km1; pd_km1 = pd;
         f_d_km2 = f_d_km1; f_d_km1 = f_d;
         a_hat_km2 = a_hat_km1; a_hat_km1 = a_hat;        % a_hat unchanged during warmup
+        % NOTE: this shift site and bookkeeping [6] must stay lockstep when adding buffers
         a_ctrl_km2 = a_ctrl_km1; a_ctrl_km1 = a_ctrl;
         warmup_count = warmup_count - 1;
         k_step = k_step + 1;
