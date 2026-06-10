@@ -29,6 +29,7 @@ not k_c.
 | N2 | C_dpmr / C_n | **full a_pd-dependent** | 3.16 / 1.11 (λc=0.7, a_pd=0.05); not the a_pd→0 simplification 3.96/1.18 |
 | N3 | Disturbance state | **δx_D^d** (combined) | Vpersonal pre-combines x_D + (1−λc)·Σδx_D[k−i] |
 | — | Pole symbol | **λc (lc)** | Vpersonal + codebase; k_c is IEEE-paper-only |
+| D6 (2026-06-10) | Implementation form | **Paper predictor form + Joseph** | Migrate code to the paper-literal Eq.19→16→20→21 cycle (persistent stores a-priori x̂[k\|k−1], P_f[k]); Eq.20 replaced by Joseph. See §1b. Code still split form until migration. |
 
 ---
 
@@ -59,6 +60,43 @@ Notes:
 - Code: predict-map L393-398, P_pred L399, gain L417, Joseph L427, per-axis loop L377-442.
 
 ---
+
+## 1b. Target implementation form (D6, 2026-06-10): paper predictor form + Joseph
+
+DECIDED: the code will be migrated from the split filter form (§1, current code) to the
+paper-literal predictor form. Same filter — §1 remains the textbook-equivalent reference;
+this section is the implementation target.
+
+**Bookkeeping switch:** persistent stores the a-priori pair (x̂[k|k−1], P_f[k]) — i.e. the
+paper's own δx̂[k]/â_x[k] and P_f[k] — instead of the posterior pair.
+
+**Per-step cycle (paper order Eq.19 → 16 → 20 → 21, per axis):**
+```
+(1) innovations  e_x1 = δx_m − δx̂_1 ;  e_ax = a_xm − (â_x − d·δâ_x)      (against stored a-priori)
+(2) gain         L = P_f·Hᵀ·(H·P_f·Hᵀ + R)⁻¹                              Eq.19
+                 (G1 freeze: L(5,:)=L(6,:)=0 ; gating: H collapses to row 1)
+(3) state        x̂⁺ = Φ·x̂ + L·[e_x1; e_ax]                               Eq.16 merged one-line
+(4) covariance   P  = (I−LH)·P_f·(I−LH)ᵀ + L·R·Lᵀ                         Eq.20 → Joseph (only
+                 substitution; mandatory: L is hand-modified under G1/gating, simple form invalid)
+(5) forecast     P_f⁺ = F_e·P·F_eᵀ + Q                                    Eq.21
+```
+
+**Migration checklist (code changes required):**
+1. EKF block (current L398-451): drop x_pred/x_post split; reorder to (1)-(5) above.
+2. Init: store a-priori covariance P_f0 = F_e·P_DARE·F_eᵀ + Q (current solve_dare_kf_local
+   returns the posterior steady state).
+3. Control law inputs (L209-210) become a-priori â_x, x̂_D^d — formula unchanged, semantics
+   shift (â no longer includes current-step measurement; x̂_D^d unaffected, Φ keeps it).
+4. ekf_out / diag report a-priori (one-step timing shift vs current logs — note for
+   verify_eq17_6state comparisons against a_true).
+5. Re-run verify_eq17_6state h50 gates. NOT bit-identical to split form: the paper-literal
+   gain position is L (Eq.19) in the merged slot; strict textbook equivalence would be Φ·L.
+   Accepted per paper convention (23-state precedent, valid/stable observer); confirm
+   tracking/bias gates still pass.
+
+**Invariant under migration:** measurement chain (IIR a_xm), Q/R construction, F_e builder,
+3-guard logic, buffers — and the covariance numbers themselves (the P_f/P recursion is
+identical in both forms; only state bookkeeping and gain placement change).
 
 ## 2. Per-controller ingredients (what you "plug in")
 
@@ -218,6 +256,9 @@ trustworthiness / near-wall accuracy — NOT tracking or â-unbiasedness (both v
 family: model the correlation (correlated-noise predictor + off-diagonal Q + colored-meas KF +
 near-wall C_dpmr/ρ1) instead of assuming white/diagonal/independent. Backlog:
 
+- **D6 migration (NEXT)** — rewrite the EKF block to the paper predictor form + Joseph per
+  §1b checklist (5 items); re-run h50 gates; then update §1 code anchors.
+
 - **Near-wall S = E{q·rᵀ}** — fill the S[k] slot in §1 step (1). Sources: n_x in q3 & r1;
   δa_ram in q3/q5 & r2. Scale ∝ K_h/(1−λc). ~0.16% safe region, blocking near wall.
 - **r_2 weighting derivation** — confirm R22 delay {1,1} vs Q33 randgain {4,1} (§6).
@@ -257,3 +298,18 @@ near-wall C_dpmr/ρ1) instead of assuming white/diagonal/independent. Backlog:
 | color inflation | IF_eff, IF_var, IF_abc | `IF_eff`, `IF_abc` | — |
 | sensor floor | ξ | `xi_per_axis` | — |
 | wall sensitivity | K_h, K_h' | `K_h_axis`, `derivs.K_h_*` | — |
+
+### Filter form (ours) ↔ predictor form (IEEE paper Eq.16-21)
+
+The paper writes the merged predictor form (one-line recursion, Franklin-Powell-Workman
+"predictor estimator", paper ref [28]); we use the split filter form. Correspondence:
+
+| Ours (split) | Paper (merged) | Relation |
+|---|---|---|
+| x̂⁻[k] (`x_pred`, a-priori) | δx̂[k], â_x[k], x̂_D[k] — ALL paper hats | identical (paper's estimate IS the a-priori; its innovation e_x1 = δx_m − δx̂_1 proves it) |
+| x̂[k\|k] (`x_post`, a-posteriori) | (no symbol — fused inside Eq.16) | our extra landing point |
+| P_pred | P_f[k] (Eq.19, 21) | identical (paper splits covariance, not state) |
+| P_post | P[k] (Eq.20) | identical |
+| K = P_f·Hᵀ·S⁻¹ | L[k] (Eq.19, same formula) | same value; strict merged-form equivalent position is **Φ·K** (paper compacts K into the predictor slot — literature convention; literal implementation = legacy 23-state, valid/stable; update-then-propagate = ours, textbook-exact) |
+| Joseph update | simple (I−LH)P_f (Eq.20) | algebraically equal; Joseph numerically robust (23-state divergence root cause) |
+| Φ (named ingredient) | left half of Eq.16 rows (implicit) | merged form cannot express Φ≠F_e, Joseph, S slot, gating freezes — why thesis keeps split form as primary |
