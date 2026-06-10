@@ -9,10 +9,12 @@ function results = compare_gain_oracle_6state(freqs, opts)
 %   collect_diag. Arm A = gain_oracle (true time-varying gain in the
 %   control law), arm B = EKF gain. Both arms suppress_xD. Layer 0
 %   assertions run before saving. Output:
-%       test_results/gain_oracle_ab/f<f>Hz/runs.mat
+%       test_results/gain_oracle_ab/f<f>Hz/runs.mat        (production)
+%       test_results/gain_oracle_ab/f<f>Hz-smoke/runs.mat  (smoke mode)
 %
 %   opts: seeds (1:5), T_sim (7.0), verbose (true), out_root, smoke (false;
-%         true -> T_sim=2.0 + seeds=1 for fast end-to-end checks).
+%         true -> T_sim=2.0 + seeds=1 for fast end-to-end checks, saved
+%         under the -smoke suffix so production data is never overwritten).
 %
 %   See also: analyze_gain_oracle_6state, run_pure_simulation
 
@@ -60,20 +62,37 @@ function results = compare_gain_oracle_6state(freqs, opts)
             oracle = (arm == 'A');
             cfg_det = cfg;
             cfg_det.thermal_enable = false; cfg_det.meas_noise_enable = false;
-            runs.(arm).det = run_one(cfg_det, 0, oracle);
+            runs.(arm).det = run_one(cfg_det, 0, oracle, true);
             for s = 1:numel(opts.seeds)
-                runs.(arm).noisy(s) = run_one(cfg, opts.seeds(s), oracle);
+                runs.(arm).noisy(s) = run_one(cfg, opts.seeds(s), oracle, false);
             end
         end
 
         % --- Layer 0 assertions ---
         layer0 = layer0_checks(runs, opts);
 
-        % --- save ---
-        out_dir = fullfile(opts.out_root, sprintf('f%gHz', f));
-        if ~exist(out_dir, 'dir'); mkdir(out_dir); end
-        save(fullfile(out_dir, 'runs.mat'), 'runs', 'cfg', 'opts', 'layer0', '-v7.3');
+        % --- divergence bookkeeping (persisted with the runs) ---
         n_div = count_diverged(runs);
+        diverged_list = build_diverged_list(runs);
+        if opts.verbose && n_div > 0
+            for di = 1:numel(diverged_list)
+                dl = diverged_list(di);
+                det_tag = '';
+                if dl.is_det; det_tag = ' (det)'; end
+                fprintf('    DIVERGED arm %c seed %d%s: %s\n', ...
+                        dl.arm, dl.seed, det_tag, dl.reason);
+            end
+        end
+
+        % --- save (smoke output isolated from production dirs) ---
+        if opts.smoke
+            out_dir = fullfile(opts.out_root, sprintf('f%gHz-smoke', f));
+        else
+            out_dir = fullfile(opts.out_root, sprintf('f%gHz', f));
+        end
+        if ~exist(out_dir, 'dir'); mkdir(out_dir); end
+        save(fullfile(out_dir, 'runs.mat'), 'runs', 'cfg', 'opts', 'layer0', ...
+             'n_div', 'diverged_list', '-v7.3');
         if opts.verbose
             fprintf('  saved %s  (diverged runs: %d)\n', out_dir, n_div);
         end
@@ -96,7 +115,8 @@ function cfg = build_config(f, opts)
     cfg.t_hold    = 0.5;
     cfg.t_descend_override = 1.0; % decouple descent from 1/f
     cfg.T_sim     = opts.T_sim;
-    cfg.h_min     = 1.05 * 2.25;  % scenario-local override (global default 1.5R blocks h_bar=1.2)
+    pc = physical_constants();
+    cfg.h_min     = 1.05 * pc.R;  % scenario-local override (global default 1.5R blocks h_bar=1.2)
     cfg.ctrl_enable = true;
     cfg.thermal_enable = true;
     cfg.meas_noise_enable = true;
@@ -108,12 +128,13 @@ function cfg = build_config(f, opts)
 end
 
 
-function rec = run_one(cfg, seed, oracle)
+function rec = run_one(cfg, seed, oracle, is_det)
 %RUN_ONE Single run wrapped in try/catch (crash = diverged, design §7.3).
+    if nargin < 4; is_det = false; end
     ro = struct('seed', seed, 'verbose', false, 'collect_diag', true, ...
                 'gain_oracle', oracle);
-    rec = struct('seed', seed, 'oracle', oracle, 'diverged', false, ...
-                 'diverge_reason', '', 'simOut', []);
+    rec = struct('seed', seed, 'oracle', oracle, 'is_det', is_det, ...
+                 'diverged', false, 'diverge_reason', '', 'simOut', []);
     try
         rec.simOut = run_pure_simulation(cfg, ro);
     catch err
@@ -135,11 +156,16 @@ function layer0 = layer0_checks(runs, opts)
     ref = first_ok_run(runs);
     assert(~isempty(ref), 'Layer0: every run crashed — nothing to analyze');
     pd_ref = ref.simOut.p_d_out;
-    layer0 = struct('pd_identical', true, 'wiring_A', true, 'wiring_B', true);
+    layer0 = struct('pd_identical', true, 'wiring_A', true, 'wiring_B', true, ...
+                    'n_checked', 0, 'n_skipped', 0);
     for arm = 'AB'
         recs = [runs.(arm).det, runs.(arm).noisy];
         for r = recs
-            if isempty(r.simOut); continue; end   % crashed run: skip checks
+            if isempty(r.simOut)                  % crashed run: skip checks
+                layer0.n_skipped = layer0.n_skipped + 1;
+                continue;
+            end
+            layer0.n_checked = layer0.n_checked + 1;
             assert(isequal(size(r.simOut.p_d_out), size(pd_ref)) && ...
                    max(abs(r.simOut.p_d_out(:) - pd_ref(:))) == 0, ...
                    'Layer0: p_d_out differs (arm %c seed %d)', arm, r.seed);
@@ -158,6 +184,8 @@ end
 
 
 function rec = first_ok_run(runs)
+    % p_d_out is trajectory-deterministic (same cfg both arms), so any
+    % non-crashed run from either arm is a valid p_d reference.
     rec = [];
     for arm = 'AB'
         all_r = [runs.(arm).det, runs.(arm).noisy];
@@ -173,5 +201,21 @@ function n = count_diverged(runs)
     for arm = 'AB'
         all_r = [runs.(arm).det, runs.(arm).noisy];
         n = n + sum([all_r.diverged]);
+    end
+end
+
+
+function lst = build_diverged_list(runs)
+%BUILD_DIVERGED_LIST One entry per diverged run: {arm, seed, is_det, reason}.
+    lst = struct('arm', {}, 'seed', {}, 'is_det', {}, 'reason', {});
+    for arm = 'AB'
+        all_r = [runs.(arm).det, runs.(arm).noisy];
+        for r = all_r
+            if r.diverged
+                lst(end+1) = struct('arm', arm, 'seed', r.seed, ...
+                                    'is_det', r.is_det, ...
+                                    'reason', r.diverge_reason); %#ok<AGROW>
+            end
+        end
     end
 end
