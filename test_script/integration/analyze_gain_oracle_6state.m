@@ -29,18 +29,28 @@ function analysis = analyze_gain_oracle_6state(freqs, opts)
     for fi = 1:numel(freqs)
         f = freqs(fi);
         out_dir = fullfile(opts.out_root, sprintf('f%gHz', f));
-        S = load(fullfile(out_dir, 'runs.mat'));   % runs, cfg, opts, layer0, ...
+        try
+            S = load(fullfile(out_dir, 'runs.mat'));   % runs, cfg, opts, layer0, ...
 
-        A = per_freq_analysis(S.runs, S.cfg, f);
-        write_summary_md(fullfile(out_dir, 'summary.md'), f, S, A);
-        save(fullfile(out_dir, 'analysis.mat'), 'A');
-        if opts.save_fig
-            make_figs(S, A, f, out_dir);           % Task 6 (stub for now)
+            A = per_freq_analysis(S.runs, S.cfg, f);
+            write_summary_md(fullfile(out_dir, 'summary.md'), f, S, A);
+            save(fullfile(out_dir, 'analysis.mat'), 'A');
+            if opts.save_fig
+                make_figs(S, A, f, out_dir);           % Task 6 (stub for now)
+            end
+            analysis(end+1) = struct('freq', f, 'det', A.det, 'ram', A.ram, ...
+                                     'anchor', A.anchor, 'ahat', A.ahat, ...
+                                     'flags', A.flags); %#ok<AGROW>
+            if opts.verbose; fprintf('[analyze:%gHz] done -> %s\n', f, out_dir); end
+        catch err
+            % per-frequency isolation: report and continue (design §9.1 —
+            % near-wall divergence is a plausible result, not an abort)
+            fprintf('[analyze:%gHz] FAILED: %s\n', f, err.message);
+            analysis(end+1) = struct('freq', f, 'det', [], 'ram', [], ...
+                                     'anchor', [], 'ahat', [], ...
+                                     'flags', struct('failed', true, ...
+                                                     'err', err.message)); %#ok<AGROW>
         end
-        analysis(end+1) = struct('freq', f, 'det', A.det, 'ram', A.ram, ...
-                                 'anchor', A.anchor, 'ahat', A.ahat, ...
-                                 'flags', A.flags); %#ok<AGROW>
-        if opts.verbose; fprintf('[analyze:%gHz] done -> %s\n', f, out_dir); end
     end
     if numel(freqs) > 1 && opts.save_fig
         make_overview_fig(analysis, fullfile(opts.out_root, 'overview'));
@@ -50,6 +60,14 @@ end
 
 % ====================================================================
 function A = per_freq_analysis(runs, cfg, f)
+    % --- C3: a diverged det run invalidates the whole arm's det/ram
+    %     decomposition — fail the frequency loudly (caught per-freq) ---
+    for arm = 'AB'
+        assert(~runs.(arm).det.diverged && ~isempty(runs.(arm).det.simOut), ...
+               'arm %c det run diverged/empty: %s', ...
+               arm, runs.(arm).det.diverge_reason);
+    end
+
     % --- adaptation (a): extract physical constants from saved params ---
     P      = runs.A.det.simOut.meta.params_value;
     Ts     = P.common.Ts;
@@ -120,18 +138,54 @@ function A = per_freq_analysis(runs, cfg, f)
         end
         R.(arm).diverged = div;
     end
-    % paired ratios (same-seed, non-diverged pairs only)
+    % paired ratios (same-seed, non-diverged pairs only); C1: if no valid
+    % pair exists, ratios stay NaN (no empty-assignment crash)
     ok = ~R.A.diverged & ~R.B.diverged;
-    for w = 1:numel(wins)
-        for ax = 1:3
-            r = squeeze(R.B.sd(w, ok, ax)) ./ squeeze(R.A.sd(w, ok, ax));
-            R.ratio.mean(w, ax)    = mean(r);
-            R.ratio.rng(w, ax, 1) = min(r);
-            R.ratio.rng(w, ax, 2) = max(r);
+    R.ratio.mean = nan(numel(wins), 3);
+    R.ratio.rng  = nan(numel(wins), 3, 2);
+    if any(ok)
+        for w = 1:numel(wins)
+            for ax = 1:3
+                r = squeeze(R.B.sd(w, ok, ax)) ./ squeeze(R.A.sd(w, ok, ax));
+                R.ratio.mean(w, ax)   = mean(r);
+                R.ratio.rng(w, ax, 1) = min(r);
+                R.ratio.rng(w, ax, 2) = max(r);
+            end
         end
+    end
+    % M4: p_m cross-check (design §6.3) — osc window, z axis, both arms
+    w_osc = find(strcmp(wins, 'osc'));
+    rd = zeros(1, 0);
+    for arm = 'AB'
+        sd_z  = squeeze(R.(arm).sd(w_osc, :, 3));
+        sdp_z = squeeze(R.(arm).sd_pm(w_osc, :, 3));
+        okv   = ~R.(arm).diverged & ~isnan(sd_z) & sd_z > 0;
+        rd    = [rd, abs(sdp_z(okv) - sd_z(okv)) ./ sd_z(okv)]; %#ok<AGROW>
+    end
+    if isempty(rd)
+        R.pm_rel_diff_z = NaN;
+    else
+        R.pm_rel_diff_z = max(rd);
     end
     R.wins = wins;
     A.ram = R;
+
+    % --- tail-window observation (M3): hold at h_bar bottom, z axis ---
+    tail = struct();
+    for arm = 'AB'
+        ed = A.e_det.(arm);
+        tail.(arm).e_mean_z = mean(ed(W.tail, 3));
+        tail.(arm).e_std_z  = std(ed(W.tail, 3));
+        nzt = runs.(arm).noisy;
+        sdt = nan(1, numel(nzt));
+        for s = 1:numel(nzt)
+            if nzt(s).diverged; continue; end
+            ram_t  = get_e(nzt(s).simOut) - ed;
+            sdt(s) = std(ram_t(W.tail, 3));
+        end
+        tail.(arm).ram_sd_z = mean(sdt, 'omitnan');
+    end
+    A.tail = tail;
 
     % --- stationarity per cycle (design §6.2 / Layer 2) ---
     A.stationarity = cycle_stationarity(runs, A.e_det, get_e, W, f, Ts);
@@ -186,6 +240,9 @@ function D = det_metrics(e_det, t_e, W, f, t_osc0, t_osc1, Ts)
         % cycle-averaged waveform (z only; stored for figures)
         if ax == 3
             npc = round(1 / (f * Ts));
+            assert(abs(npc * f * Ts - 1) < 1e-9, ...
+                   'det_metrics: non-integer samples/cycle (npc*f*Ts = %.12g)', ...
+                   npc * f * Ts);
             io  = find(W.osc);
             nc  = floor(numel(io) / npc);
             if nc > 0
@@ -202,6 +259,9 @@ function st = cycle_stationarity(runs, e_det_all, get_e, W, f, Ts)
     for arm = 'AB'
         nz  = runs.(arm).noisy;
         npc = round(1 / (f * Ts));
+        assert(abs(npc * f * Ts - 1) < 1e-9, ...
+               'cycle_stationarity: non-integer samples/cycle (npc*f*Ts = %.12g)', ...
+               npc * f * Ts);
         io  = find(W.osc);
         nc  = floor(numel(io) / npc);
         sd_c = nan(nc, numel(nz));
@@ -230,6 +290,10 @@ function anc = theory_anchor(runsA, e_detA, get_e, W, cfg, kBT)
     C_dx       = 2 + 1 / (1 - lc^2);              % V1 closed form (3.9608 at lc=0.7)
     sigma2_nz  = cfg.meas_noise_std(3)^2;
 
+    % I2: an empty osc window would make the anchors vacuous
+    assert(any(W.osc), ...
+           'theory_anchor: W.osc is empty — check cfg timing fields (t_hold/t_descend_override/n_cycles/frequency)');
+
     % envelope from arm A det run's a_true (z axis), aligned to e[k]:
     % a_true_out[k] is at t_k (pre-integration); e[k] is at t_k+Ts -> shift one.
     a_true_z = runsA.det.simOut.a_true_out(2:end, 3);
@@ -248,8 +312,10 @@ function anc = theory_anchor(runsA, e_detA, get_e, W, cfg, kBT)
         zn    = ram_z(W.osc) ./ sigma_th(W.osc);
         zs(s) = std(zn);
     end
+    % I2: all-diverged arm A must not pass vacuously (all([]) == true)
+    valid = ~isnan(zs);
     anc.norm_std  = zs;
-    anc.norm_pass = all(abs(zs(~isnan(zs)) - 1) < 0.15);
+    anc.norm_pass = any(valid) && all(abs(zs(valid) - 1) < 0.15);
 end
 
 
@@ -257,17 +323,31 @@ function ah = ahat_analysis(runsB, W)
 %AHAT_ANALYSIS design §6.4: ensemble-mean systematic + per-seed random.
     nz = runsB.noisy;
     ok = find(~[nz.diverged]);
+    a_true = runsB.det.simOut.a_true_out(2:end, :);
+    ah.a_true  = a_true;
+    ah.n_seeds = numel(ok);
+    if isempty(ok)
+        % C2: all arm-B noisy seeds diverged — NaN-filled, same fields
+        ah.ens_mean      = nan(size(a_true));
+        ah.rel_err_osc   = nan(1, 3);
+        ah.rel_err_gon   = nan(1, 3);
+        ah.rel_err_goff  = nan(1, 3);
+        ah.ram_std_osc   = nan(3, 1);
+        ah.gate_duty_osc = nan(3, 1);
+        return;
+    end
     a_stack = [];
     for s = ok
         a_stack = cat(3, a_stack, nz(s).simOut.diag.a_hat(2:end, :));
     end
     ah.ens_mean = mean(a_stack, 3);                 % [N-1 x 3]
-    a_true = runsB.det.simOut.a_true_out(2:end, :);
-    ah.rel_err_osc = mean((ah.ens_mean(W.osc, :) - a_true(W.osc, :)) ...
-                          ./ a_true(W.osc, :), 1) * 100;  % [%], per axis
+    rel = (ah.ens_mean - a_true) ./ a_true * 100;   % [%], elementwise
+    ah.rel_err_osc  = mean(rel(W.osc,  :), 1);      % per axis [1x3]
+    ah.rel_err_gon  = mean(rel(W.gon,  :), 1);      % gate-on (trough region)
+    ah.rel_err_goff = mean(rel(W.goff, :), 1);      % gate-off (peak region)
     dev = a_stack - ah.ens_mean;
-    ah.ram_std_osc = squeeze(std(reshape(dev(W.osc, :, :), [], 3, size(dev,3)), 0, 1));
-    ah.a_true = a_true;
+    sd3 = std(dev(W.osc, :, :), 0, 1);              % [1 x 3 x Ns]
+    ah.ram_std_osc = reshape(sd3, 3, []);           % [3 x Ns] (M5)
     % gate duty cycle in W.osc (per axis, mean over seeds)
     gd = [];
     for s = ok
@@ -278,15 +358,20 @@ end
 
 
 function flags = collect_flags(A)
-    flags.anchor_det   = A.anchor.det_pass;
-    flags.anchor_norm  = A.anchor.norm_pass;
-    flags.stationary_A = A.stationarity.A.stationary;
-    flags.stationary_B = A.stationarity.B.stationary;
+    flags.failed        = false;
+    flags.anchor_det    = A.anchor.det_pass;
+    flags.anchor_norm   = A.anchor.norm_pass;
+    flags.stationary_A  = A.stationarity.A.stationary;
+    flags.stationary_B  = A.stationarity.B.stationary;
+    flags.pm_crosscheck = A.ram.pm_rel_diff_z < 0.02;   % M4 (NaN -> false)
 end
 
 
 function write_summary_md(path, f, S, A)
     fid = fopen(path, 'w');
+    if fid == -1
+        error('write_summary_md: cannot open %s for writing', path);
+    end
     fprintf(fid, '# gain_oracle_ab : %g Hz\n\n', f);
     fprintf(fid, 'osc_aggr (h %g -> %g um, A=%g um), %d seeds x %.1fs, suppress_xD both arms.\n\n', ...
             S.cfg.h_init, S.cfg.h_bottom, S.cfg.amplitude, numel(S.opts.seeds), S.cfg.T_sim);
@@ -325,6 +410,13 @@ function write_summary_md(path, f, S, A)
                     A.ram.wins{w}, ax_name(ax), muA, muB);
         end
     end
+    fprintf(fid, '\n## tail window (hold at h_bar bottom; observation only, z axis)\n\n');
+    fprintf(fid, '| arm | det e mean [nm] | det e std [nm] | ram sd [nm] (seed mean) |\n|---|---|---|---|\n');
+    for arm = 'AB'
+        fprintf(fid, '| %c | %.2f | %.2f | %.2f |\n', arm, ...
+                A.tail.(arm).e_mean_z*1e3, A.tail.(arm).e_std_z*1e3, ...
+                A.tail.(arm).ram_sd_z*1e3);
+    end
     fprintf(fid, '\n## validation\n\n');
     fprintf(fid, '- arm A det anchor: max|e_det| (osc, z) = %.3f nm -> %s (soft gate < 1 nm)\n', ...
             A.anchor.det_max_osc_um*1e3, passstr(A.anchor.det_pass));
@@ -332,12 +424,22 @@ function write_summary_md(path, f, S, A)
             mat2str(round(A.anchor.norm_std, 3)), passstr(A.anchor.norm_pass));
     fprintf(fid, '- stationarity (half-diff): A %.1f%% / B %.1f%%\n', ...
             A.stationarity.A.half_rel_diff*100, A.stationarity.B.half_rel_diff*100);
+    fprintf(fid, '- p_m cross-check (osc, z): max rel-diff = %.3f%% -> %s (soft gate < 2%%)\n', ...
+            A.ram.pm_rel_diff_z*100, passstr(A.flags.pm_crosscheck));
     fprintf(fid, '- diverged runs: A %s / B %s\n', ...
             mat2str(A.ram.A.diverged), mat2str(A.ram.B.diverged));
     fprintf(fid, '\n## arm B gain estimation\n\n');
     fprintf(fid, '- a_hat ensemble-mean rel-err (osc) [%%]: %s\n', ...
             mat2str(round(A.ahat.rel_err_osc, 2)));
+    fprintf(fid, '- a_hat ensemble-mean rel-err (gate-on, trough) [%%]: %s\n', ...
+            mat2str(round(A.ahat.rel_err_gon, 2)));
+    fprintf(fid, '- a_hat ensemble-mean rel-err (gate-off, peak) [%%]: %s\n', ...
+            mat2str(round(A.ahat.rel_err_goff, 2)));
+    rs = mean(A.ahat.ram_std_osc, 2, 'omitnan');    % [3x1], seed mean
+    fprintf(fid, '- a_hat ram std (osc, seed mean) [um/pN]: [%.3g %.3g %.3g]\n', rs);
     fprintf(fid, '- gate duty cycle (osc): %s\n', mat2str(round(A.ahat.gate_duty_osc, 3)));
+    fprintf(fid, ['\n_Note: a_hat ram std is measured against the %d-seed ensemble mean, ', ...
+                  'which deflates std by sqrt(1-1/Ns) (~ -10.6%% at Ns=5)._\n'], A.ahat.n_seeds);
     fclose(fid);
 end
 
