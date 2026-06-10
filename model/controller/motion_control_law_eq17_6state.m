@@ -219,6 +219,9 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         f_d_km1 = zeros(3, 1);
         f_d_km2 = zeros(3, 1);
         a_hat_km1 = a_x_init;             a_hat_km2 = a_x_init;
+        % a_ctrl_km1/km2 intentionally a_x_init even in override mode;
+        % harmless because f_d_km1/km2 = 0 for the first two steps
+        % (history terms multiply zero force).
         a_ctrl_km1 = a_x_init;            a_ctrl_km2 = a_x_init;
         var_da_ram_km1 = var_da_init_vec; var_da_ram_km2 = var_da_init_vec;
 

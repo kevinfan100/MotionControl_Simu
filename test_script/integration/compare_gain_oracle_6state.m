@@ -157,12 +157,21 @@ function layer0 = layer0_checks(runs, opts)
     assert(~isempty(ref), 'Layer0: every run crashed — nothing to analyze');
     pd_ref = ref.simOut.p_d_out;
     layer0 = struct('pd_identical', true, 'wiring_A', true, 'wiring_B', true, ...
-                    'n_checked', 0, 'n_skipped', 0);
+                    'n_checked', 0, 'n_skipped_A', 0, 'n_skipped_B', 0);
     for arm = 'AB'
         recs = [runs.(arm).det, runs.(arm).noisy];
         for r = recs
             if isempty(r.simOut)                  % crashed run: skip checks
-                layer0.n_skipped = layer0.n_skipped + 1;
+                layer0.(sprintf('n_skipped_%c', arm)) = ...
+                    layer0.(sprintf('n_skipped_%c', arm)) + 1;
+                continue;
+            end
+            % Skip diverged runs with populated simOut: wiring assertions
+            % are meaningless for numerically blown runs (NaN EKF states
+            % can cause max(NaN...) == 0 to be false, firing spuriously).
+            if r.diverged
+                layer0.(sprintf('n_skipped_%c', arm)) = ...
+                    layer0.(sprintf('n_skipped_%c', arm)) + 1;
                 continue;
             end
             layer0.n_checked = layer0.n_checked + 1;

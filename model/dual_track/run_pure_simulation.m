@@ -249,6 +249,13 @@ function simOut = run_pure_simulation(config, opts)
     % the controller acts on at step k; p_true_out logs post-integration).
     a_nom_drv   = P.common.Ts / P.common.gamma_N;
     wall_on_drv = isfield(P, 'wall') && P.wall.enable_wall_effect > 0.5;
+    % Oracle h̄ clip floor: keep consistent with the physics h_min floor so
+    % diverged excursions do not silently use a different singularity limit.
+    if wall_on_drv && isfield(P.wall, 'h_bar_min')
+        h_bar_floor_drv = P.wall.h_bar_min;
+    else
+        h_bar_floor_drv = 1.001;
+    end
 
     % ------------------------------------------------------------------
     % 7. Allocate logs (mirror Simulink ToWorkspace schema, [N x 3])
@@ -307,7 +314,7 @@ function simOut = run_pure_simulation(config, opts)
 
         % --- (c2) Ground-truth gain at current (pre-integration) position
         if wall_on_drv
-            h_bar_true_k = max((dot(p_curr, P.wall.w_hat) - P.wall.pz) / P.common.R, 1.001);
+            h_bar_true_k = max((dot(p_curr, P.wall.w_hat) - P.wall.pz) / P.common.R, h_bar_floor_drv);
             [c_para_k, c_perp_k] = calc_correction_functions(h_bar_true_k);
             a_true_k = [a_nom_drv / c_para_k; a_nom_drv / c_para_k; a_nom_drv / c_perp_k];
         else

@@ -386,8 +386,10 @@ function write_summary_md(path, f, S, A)
         error('write_summary_md: cannot open %s for writing', path);
     end
     fprintf(fid, '# gain_oracle_ab : %g Hz\n\n', f);
-    fprintf(fid, 'osc_aggr (h %g -> %g um, A=%g um), %d seeds x %.1fs, suppress_xD both arms.\n\n', ...
-            S.cfg.h_init, S.cfg.h_bottom, S.cfg.amplitude, numel(S.opts.seeds), S.cfg.T_sim);
+    R_phys_hdr = S.runs.A.det.simOut.meta.params_value.common.R;
+    h_bar_min_hdr = S.cfg.h_bottom / R_phys_hdr;
+    fprintf(fid, 'osc_aggr (h %g -> %g um, h_bar_min=%.2f, A=%g um), %d seeds x %.1fs, suppress_xD both arms.\n\n', ...
+            S.cfg.h_init, S.cfg.h_bottom, h_bar_min_hdr, S.cfg.amplitude, numel(S.opts.seeds), S.cfg.T_sim);
     fprintf(fid, '## det (e_det = p_d - p_true, noise-free run)\n\n');
     fprintf(fid, '| metric | arm | x | y | z |\n|---|---|---|---|---|\n');
     for arm = 'AB'

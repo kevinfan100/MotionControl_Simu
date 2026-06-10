@@ -257,5 +257,5 @@ summary.md 主表（每頻率，per axis [x y z]）：
 | 1 | 向後相容 | 無 override / 無 suppress_xD 時 controller 輸出 bit-identical；`run_eq17_6state_all` h50 PASS 數字不變 |
 | 2 | unit test | `verify_eq17_unit_gain_override_6state` 全 PASS |
 | 3 | Layer 0 | 36 runs assertions 全過（diverged 屬合法結果，單列）|
-| 4 | Layer 1 | arm A det < 1 nm（soft）；arm A normalized ram ∈ 1 ± 0.15（soft）；超出須有書面解釋 |
+| 4 | Layer 1 | arm A det < 1 nm（soft）；arm A normalized ram ∈ 1 ± 0.15（soft）；超出須有書面解釋。5 Hz 預期 FLAG（<2 nm）：近壁 quasi-static 近似殘差隨頻率增長，不影響 stochastic anchor（Layer 1 ram 檢查仍 PASS）。 |
 | 5 | 交付 | 3 組 per-freq 報告 + 跨頻率總覽 + 本設計文件對應的 findings 章節 |
