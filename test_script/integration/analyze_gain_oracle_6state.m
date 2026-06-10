@@ -53,6 +53,9 @@ function analysis = analyze_gain_oracle_6state(freqs, opts)
             end
             fprintf('[analyze:%gHz] FAILED [%s]: %s\n  at: %s\n', ...
                     f, err.identifier, err.message, loc);
+            % NOTE: failed entries carry a reduced flags schema ({failed, err}
+            % only) and [] det/ram/anchor/ahat — consumers must branch on
+            % flags.failed BEFORE touching any other field.
             analysis(end+1) = struct('freq', f, 'det', [], 'ram', [], ...
                                      'anchor', [], 'ahat', [], ...
                                      'flags', struct('failed', true, ...
@@ -164,8 +167,11 @@ function A = per_freq_analysis(runs, cfg, f)
     w_osc = find(strcmp(wins, 'osc'));
     rd = zeros(1, 0);
     for arm = 'AB'
-        sd_z  = squeeze(R.(arm).sd(w_osc, :, 3));
-        sdp_z = squeeze(R.(arm).sd_pm(w_osc, :, 3));
+        % reshape (not squeeze): squeeze on [1 x ns x 1] yields a COLUMN for
+        % ns > 1; AND-ing it with the ROW .diverged would implicitly expand
+        % to [ns x ns] and break the logical indexing below.
+        sd_z  = reshape(R.(arm).sd(w_osc, :, 3), 1, []);
+        sdp_z = reshape(R.(arm).sd_pm(w_osc, :, 3), 1, []);
         okv   = ~R.(arm).diverged & ~isnan(sd_z) & sd_z > 0;
         rd    = [rd, abs(sdp_z(okv) - sd_z(okv)) ./ sd_z(okv)]; %#ok<AGROW>
     end
@@ -486,6 +492,8 @@ function make_figs(S, A, f, out_dir)
         end
     end
     xlabel('t (s)', 'FontSize', FS, 'FontWeight', 'bold');
+    % NOTE: figures leak only if exportgraphics throws (close is skipped);
+    % acceptable for the -batch workflow (make_eq17_6state_figures precedent).
     exportgraphics(f1, fullfile(out_dir, 'fig1_gain_tracking.png'), 'Resolution', 150);
     close(f1);
 
@@ -554,6 +562,13 @@ function make_figs(S, A, f, out_dir)
     ylabel('std(ram_z / \sigma_{th})', 'FontSize', FS, 'FontWeight', 'bold');
     title(sprintf('arm A theory anchor (osc window): %s', passstr(A.anchor.norm_pass)), ...
           'FontSize', FS, 'FontWeight', 'bold');
+    n_clip = sum(isfinite(ns_vals) & (ns_vals < 0.6 | ns_vals > 1.4));
+    if n_clip > 0
+        fprintf(['[make_figs:%gHz] fig4: %d seed(s) outside ylim [0.6, 1.4] ', ...
+                 '(clipped from view); values: %s\n'], f, n_clip, ...
+                mat2str(round(ns_vals(isfinite(ns_vals) & ...
+                                      (ns_vals < 0.6 | ns_vals > 1.4)), 3)));
+    end
     ylim([0.6 1.4]); grid off; set(gca, 'FontSize', LFS);
     exportgraphics(f4, fullfile(out_dir, 'fig4_theory_anchor.png'), 'Resolution', 150);
     close(f4);
@@ -566,7 +581,7 @@ function make_overview_fig(analysis, out_dir)
     ok = analysis(ok_mask);
     if isempty(ok); return; end
     if ~exist(out_dir, 'dir'); mkdir(out_dir); end
-    sweep = [0.10 0.30 0.85; 0.95 0.55 0.10; 0.55 0.20 0.65];
+    sweep = [0.10 0.30 0.85; 0.95 0.55 0.10; 0.55 0.20 0.65; 0.85 0.25 0.10];
     FS = 18; LFS = 14;
     f5 = figure('Position', [80 80 900 500], 'Color', 'w', 'NumberTitle', 'off', ...
                 'Visible', 'off');
@@ -576,7 +591,7 @@ function make_overview_fig(analysis, out_dir)
     mk = {'o-', 's-', 'd-', '^-'};
     for w = 1:numel(wins)
         r = arrayfun(@(a) a.ram.ratio.mean(w, 3), ok);
-        plot(freqs, r, mk{w}, 'Color', sweep(min(w, 3), :), 'LineWidth', 2, ...
+        plot(freqs, r, mk{w}, 'Color', sweep(min(w, size(sweep, 1)), :), 'LineWidth', 2, ...
              'MarkerSize', 9, 'DisplayName', wins{w});
     end
     yline(1.0, '--', 'Color', [0.55 0.55 0.55], 'HandleVisibility', 'off');
