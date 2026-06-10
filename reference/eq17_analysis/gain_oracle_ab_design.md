@@ -94,7 +94,7 @@ z 軸 gain 動態範圍約 6×（h̄=22 的 ≈a_nom → h̄=1.2 的 a_nom/C_⊥
 輸出至 `test_results/gain_oracle_ab/f<freq>Hz/`（gitignored），含 runs.mat、analysis.mat、summary.md、figs。
 跨頻率總覽輸出至 `test_results/gain_oracle_ab/overview/`。
 
-### 4.4 新增 `test_script/unit_tests/test_gain_override_6state.m`
+### 4.4 新增 `test_script/unit_tests/verify_eq17_unit_gain_override_6state.m`
 
 - override 路徑：固定輸入下 f_d 與手算 Eq.17 公式逐項比對（gain = override 值、含過去項緩衝）。
 - suppress_xD 路徑：f_d 中無 −x̂_D 項。
@@ -255,7 +255,7 @@ summary.md 主表（每頻率，per axis [x y z]）：
 | # | 項目 | 標準 |
 |---|---|---|
 | 1 | 向後相容 | 無 override / 無 suppress_xD 時 controller 輸出 bit-identical；`run_eq17_6state_all` h50 PASS 數字不變 |
-| 2 | unit test | `test_gain_override_6state` 全 PASS |
+| 2 | unit test | `verify_eq17_unit_gain_override_6state` 全 PASS |
 | 3 | Layer 0 | 36 runs assertions 全過（diverged 屬合法結果，單列）|
 | 4 | Layer 1 | arm A det < 1 nm（soft）；arm A normalized ram ∈ 1 ± 0.15（soft）；超出須有書面解釋 |
 | 5 | 交付 | 3 組 per-freq 報告 + 跨頻率總覽 + 本設計文件對應的 findings 章節 |
