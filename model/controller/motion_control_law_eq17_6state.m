@@ -1,4 +1,4 @@
-function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, params, ctrl_const)
+function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override)
 %MOTION_CONTROL_LAW_EQ17_6STATE Per-axis 6-state EKF controller
 %   (RevisedControl_Vpersonal: paper 2023 Eq.17, disturbance pre-combined).
 %
@@ -41,6 +41,19 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
 %             calc_correction_functions
 
     % ------------------------------------------------------------------
+    % Optional gain override (gain-oracle A/B experiment): when non-empty,
+    % the CONTROL LAW uses a_ctrl_override (and its history) instead of the
+    % EKF a_hat. The EKF itself is untouched (slot 5 still estimated).
+    % ------------------------------------------------------------------
+    if nargin < 6
+        a_ctrl_override = [];
+    end
+    has_override = ~isempty(a_ctrl_override);
+    if has_override
+        a_ctrl_override = a_ctrl_override(:);
+    end
+
+    % ------------------------------------------------------------------
     % Open-loop bypass
     % ------------------------------------------------------------------
     if params.ctrl.enable < 0.5
@@ -64,6 +77,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     persistent f_d_km1 f_d_km2     % past control buffers (for Sigma f_d[k-i])
     persistent a_hat_km1 a_hat_km2          % past gain estimates a_hat[k-i] (active law + Q33)
     persistent var_da_ram_km1 var_da_ram_km2 % past var(delta_a_ram[k-i]) (Q33 delta_x_daf^d)
+    persistent a_ctrl_km1 a_ctrl_km2   % control-law gain history (= a_hat history unless override)
+    persistent suppress_xD_flag        % ctrl_const.suppress_xD (cached at init)
     persistent warmup_count k_step
 
     persistent initialized
@@ -103,6 +118,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         else
             var_da_inc_factor = 2 / (1 + lambda_c);     % closed-form fallback
         end
+        suppress_xD_flag = isfield(ctrl_const, 'suppress_xD') && ctrl_const.suppress_xD;
 
         % --- 0C. Wall geometry ---
         if isfield(params, 'wall')
@@ -185,6 +201,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         f_d_km1 = zeros(3, 1);
         f_d_km2 = zeros(3, 1);
         a_hat_km1 = a_x_init;             a_hat_km2 = a_x_init;
+        a_ctrl_km1 = a_x_init;            a_ctrl_km2 = a_x_init;
         var_da_ram_km1 = var_da_init_vec; var_da_ram_km2 = var_da_init_vec;
 
         % --- 0K. Misc ---
@@ -199,6 +216,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
             diag.f_d           = f_d;
             diag.a_hat         = a_x_init;
             diag.sigma2_dxr_hat = sigma2_dxr_hat;
+            diag.a_ctrl_used   = a_x_init;
         end
         return;
     end
@@ -208,6 +226,17 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     % ------------------------------------------------------------------
     a_hat    = x_e_per_axis(5, :).';     % 3x1 [um/pN]
     xD_comb  = x_e_per_axis(4, :).';     % 3x1 [um]  (delta_x_D^d)
+
+    if has_override
+        a_ctrl = a_ctrl_override;        % oracle (or externally supplied) gain
+    else
+        a_ctrl = a_hat;                  % normal mode: EKF posterior[k-1]
+    end
+    if suppress_xD_flag
+        xD_for_ctrl = zeros(3, 1);       % -x_D term removed from the law (EKF still estimates it)
+    else
+        xD_for_ctrl = xD_comb;
+    end
 
     % delta_x_m[k] = p_d[k-d] - p_m[k]
     if d_delay == 2
@@ -268,6 +297,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         pd_km2 = pd_km1; pd_km1 = pd;
         f_d_km2 = f_d_km1; f_d_km1 = f_d;
         a_hat_km2 = a_hat_km1; a_hat_km1 = a_hat;        % a_hat unchanged during warmup
+        a_ctrl_km2 = a_ctrl_km1; a_ctrl_km1 = a_ctrl;
         warmup_count = warmup_count - 1;
         k_step = k_step + 1;
         a_hat_post = x_e_per_axis(5, :).';
@@ -276,6 +306,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         if nargout >= 3
             diag = empty_diag_6state();
             diag.f_d = f_d; diag.a_hat = a_hat_post;
+            diag.a_ctrl_used = a_ctrl;
             diag.sigma2_dxr_hat = sigma2_dxr_hat_new; diag.a_xm = a_xm;
             diag.delta_x_m = delta_x_m; diag.h_bar = h_bar; diag.dx_r = dx_r;
         end
@@ -284,23 +315,24 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
 
     % ------------------------------------------------------------------
     % [3] Control law (B2 ACTIVE form, Vpersonal p.2)
-    %   f_d = a_hat^-1 { Delta_x_d[k;d] + (1-lc)[dx_m - sum a_hat[k-i]*f_d[k-i]]
-    %                    - delta_x_D^d }
+    %   f_d = a_ctrl^-1 { Delta_x_d[k;d] + (1-lc)[dx_m - sum a_ctrl[k-i]*f_d[k-i]]
+    %                     - xD_for_ctrl }
     %   Delta_x_d[k;d] = pd[k+1] - lc*pd[k] - (1-lc)*pd[k-d]
-    %   Past forces weighted by past gain estimates a_hat[k-i] (the displacement
-    %   each past force caused depends on the gain at that time); all terms inside
-    %   the 1/a_hat bracket.
+    %   Past forces weighted by a_ctrl history (= a_hat history unless override);
+    %   the displacement each past force caused depends on the gain at that time.
+    %   All terms inside the 1/a_ctrl bracket.
+    %   xD_for_ctrl = xD_comb unless suppress_xD_flag is set (A/B experiment).
     % ------------------------------------------------------------------
     if d_delay == 2
-        sum_a_fd_past = a_hat_km1 .* f_d_km1 + a_hat_km2 .* f_d_km2;
+        sum_a_fd_past = a_ctrl_km1 .* f_d_km1 + a_ctrl_km2 .* f_d_km2;
     else
-        sum_a_fd_past = a_hat_km1 .* f_d_km1;
+        sum_a_fd_past = a_ctrl_km1 .* f_d_km1;
     end
-    inv_a_hat = 1 ./ a_hat;
-    f_d = inv_a_hat .* (pd_kp1 - lambda_c * pd - one_minus_lc * pd_km_d ...
-                        + one_minus_lc * delta_x_m ...
-                        - one_minus_lc * sum_a_fd_past ...
-                        - xD_comb);
+    inv_a_ctrl = 1 ./ a_ctrl;
+    f_d = inv_a_ctrl .* (pd_kp1 - lambda_c * pd - one_minus_lc * pd_km_d ...
+                         + one_minus_lc * delta_x_m ...
+                         - one_minus_lc * sum_a_fd_past ...
+                         - xD_for_ctrl);
 
     % ------------------------------------------------------------------
     % [4] Q (6x6 diagonal) and R (2x2) per axis
@@ -457,6 +489,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     pd_km2 = pd_km1; pd_km1 = pd;
     f_d_km2 = f_d_km1; f_d_km1 = f_d;
     a_hat_km2 = a_hat_km1; a_hat_km1 = a_hat;            % a_hat[k] used this step
+    a_ctrl_km2 = a_ctrl_km1; a_ctrl_km1 = a_ctrl;
     var_da_ram_km2 = var_da_ram_km1; var_da_ram_km1 = var_da_ram;
     dx_bar_m = dx_bar_m_new;
     sigma2_dxr_hat = sigma2_dxr_hat_new;
@@ -493,6 +526,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         diag.f_d                  = f_d;
         diag.dx_r                 = dx_r;
         diag.a_hat                = a_hat_post;
+        diag.a_ctrl_used          = a_ctrl;
         diag.P77                  = zeros(3, 1);            % no slot 7 (driver compat)
         diag.Q77                  = zeros(3, 1);
         diag.var_da_ram           = var_da_ram;
@@ -593,4 +627,5 @@ function d = empty_diag_6state()
     d.var_da_ram           = zeros(3, 1);   % 6-state extra: Q55 = var(delta_a_ram)
     d.delta_x_hat_1        = zeros(3, 1);
     d.P_dx1                = zeros(3, 1);
+    d.a_ctrl_used          = zeros(3, 1);
 end
