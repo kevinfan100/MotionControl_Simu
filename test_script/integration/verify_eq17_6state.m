@@ -104,6 +104,10 @@ function results = verify_eq17_6state(scenario, opts)
         trk_meas(s, :) = std(out.p_d_out(idx, :) - out.p_m_out(idx, :), 0, 1) * 1e3;
 
         a_true = local_a_true(out.p_true_out, w_hat, pz_wall, R_radius, a_nom);  % [N x3] [x y z]
+        % D6 note (spec 1b item 4): diag.a_hat logs the A-PRIORI estimate
+        % x_hat[k+1|k], so it carries a one-step shift vs a_true[k]. Negligible
+        % for the averaged statistics below (Ts=625 us, thousands of samples);
+        % kept uncorrected by design.
         a_hat  = out.diag.a_hat;                                                 % [N x3] [x y z]
         a_hat_mean(s, :)  = mean(a_hat(idx, :), 1);
         a_hat_std(s, :)   = std(a_hat(idx, :), 0, 1);
