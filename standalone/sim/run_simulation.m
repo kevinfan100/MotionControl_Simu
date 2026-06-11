@@ -32,7 +32,7 @@ function out = run_simulation(scenario, opts)
 %       out.p_true_out  noise-free true position (probe)   [um]
 %       out.tout        time vector [N x 1, sec]
 %       out.ekf_out     [a_hat_x a_hat_y a_hat_z h_bar]    [N x 4]
-%                       (part-3 interim build: measurement-chain probe
+%                       (parts 3-4 interim build: measurement-chain probe
 %                        [delta_x_m_z sigma2_dxr_hat_z a_xm_z h_bar] --
 %                        final form arrives with the EKF in part 5/7)
 %       out.meta        struct(scenario, params, seed, driver_version)
@@ -86,6 +86,10 @@ function out = run_simulation(scenario, opts)
     % order is (i) read p_m_delayed = buffer(:,1), (ii) shift-append, so
     % buffer(:,1) at step k holds p_m from step k-d. IC = p0.
     d = cfg.d;
+    % The controller hardcodes d = 2 (pd_km2 + two-term Sigma a*f_d); a
+    % different cfg.d would silently desynchronize plant delay vs
+    % compensation -- fail loudly instead (PACKAGING_PLAN decision 6).
+    assert(d == 2, 'run_simulation:dContract', 'cfg.d must be 2 (got %g).', d);
     p_m_buffer = repmat(p0, 1, d + 1);
 
     % Trajectory unit-delay: trajectory_ref returns p_d[k+1]; the

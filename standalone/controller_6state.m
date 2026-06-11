@@ -1,15 +1,16 @@
-function [f_d, ekf_out] = controller_6state(del_pd, pd, p_m, params) %#ok<INUSL> del_pd unused until part 4 (control law)
+function [f_d, ekf_out] = controller_6state(del_pd, pd, p_m, params)
 %CONTROLLER_6STATE Per-axis 6-state EKF controller (RevisedControl_Vpersonal).
 %
 %   [f_d, ekf_out] = controller_6state(del_pd, pd, p_m, params)
 %
-%   PACKAGING STATUS: part-3 build. Implemented: [0] init subset (constants
-%   C_dpmr/C_n, wall-aware a_hat seed, IIR prefill, pd buffers), [2]
-%   measurement chain (delta_x_m + IIR -> a_xm), [11] shifts. Sections
-%   [1] control law (part 4) and [3]-[10] EKF (parts 5-6) are pending;
-%   f_d is a TEMP zero placeholder, so the loop runs "open loop with a
-%   live measurement chain". Reset between runs: `clear controller_6state`
-%   (the driver does this).
+%   PACKAGING STATUS: part-4 build. Implemented: [0] init subset (constants
+%   C_dpmr/C_n, wall-aware a_hat seed, IIR prefill, pd + force/gain
+%   buffers), [1] measurement chain (delta_x_m + IIR -> a_xm), [2] control
+%   law (Eq.17 ACTIVE form -- the loop CLOSES here for the first time),
+%   [11] shifts. Sections [3]-[10] EKF are pending (parts 5-6): until
+%   then a_hat is FROZEN at the wall-aware seed a_x_init and xD_comb = 0
+%   (TEMP), i.e. "perfect knowledge at h_init". Reset between runs:
+%   `clear controller_6state` (the driver does this).
 %
 %   Inputs:
 %       del_pd - Trajectory increment p_d[k+1] - p_d[k]  [3x1, um]
@@ -18,9 +19,9 @@ function [f_d, ekf_out] = controller_6state(del_pd, pd, p_m, params) %#ok<INUSL>
 %       params - Nested parameter struct from config.m
 %
 %   Outputs:
-%       f_d     - Control force f_d[k] [3x1, pN]  (TEMP: zeros until part 4)
+%       f_d     - Control force f_d[k] [3x1, pN]
 %       ekf_out - INTERIM probe [delta_x_m_z; sigma2_dxr_hat_z; a_xm_z; h_bar]
-%                 (z-axis measurement-chain probes for gates_part3 -- z is
+%                 (z-axis measurement-chain probes for gates, parts 3-4 -- z is
 %                 the wall-normal axis, the only one the ramp trajectory
 %                 moves, so the probe exercises BOTH the pd and p_m delay
 %                 buffers; the
@@ -32,8 +33,11 @@ function [f_d, ekf_out] = controller_6state(del_pd, pd, p_m, params) %#ok<INUSL>
 %     [0]  Init (first call): offline constants (C_dpmr, C_n, K_var,
 %          IF_abc, xi), wall-aware a_hat seed, DARE -> a-priori P_f0,
 %          prefill IIR, buffers
-%     [1]  Control law (Eq.17 ACTIVE form, a-priori a_hat / xD_comb)
-%     [2]  Measurement: delta_x_m, h_bar; IIR -> a_xm
+%     [1]  Measurement: delta_x_m, h_bar; IIR -> a_xm
+%     [2]  Control law (Eq.17 ACTIVE form, a-priori a_hat / xD_comb)
+%          (measurement BEFORE control: Eq.17 feeds back the RAW current
+%           delta_x_m -- unlike the 23-state, whose law uses estimates and
+%           can therefore run before the measurement step)
 %     ---- per-axis loop (x, y, z) ----
 %     [3]  Innovations e_x1, e_ax (against stored a-priori)
 %     [4]  R[k]  (R11; R22 = K_var*IF_eff*(a_hat+xi)^2 + buffered delay)
@@ -46,7 +50,7 @@ function [f_d, ekf_out] = controller_6state(del_pd, pd, p_m, params) %#ok<INUSL>
 %     ---- end loop ----
 %     [11] Buffer shifts + ekf_out
 %
-%   Params fields read here (param-flow contract, part-3 subset):
+%   Params fields read here (param-flow contract, parts 3-4 subset):
 %       params.ctrl.enable / lambda_c / a_pd / a_cov / k_B / T /
 %                   Ts / gamma / sigma2_noise
 %       params.common.R / p0
@@ -75,6 +79,9 @@ function [f_d, ekf_out] = controller_6state(del_pd, pd, p_m, params) %#ok<INUSL>
     persistent w_hat_n pz_wall enable_wall             % wall geometry
     persistent dx_bar_m sigma2_dxr_hat                 % IIR states (3x1)
     persistent pd_km1 pd_km2                           % trajectory delay buffers
+    persistent f_d_km1 f_d_km2                         % past control forces (Sigma f_d[k-i])
+    persistent a_hat_km1 a_hat_km2                     % past gain estimates (ACTIVE law)
+    persistent a_x_init                                % wall-aware seed (TEMP a_hat source until parts 5-6)
 
     % ------------------------------------------------------------------
     % [0] Initialization on first call
@@ -135,6 +142,10 @@ function [f_d, ekf_out] = controller_6state(del_pd, pd, p_m, params) %#ok<INUSL>
         % --- 0I. Delay buffers ---
         pd_km1 = pd;
         pd_km2 = pd;
+        f_d_km1 = zeros(3, 1);
+        f_d_km2 = zeros(3, 1);
+        a_hat_km1 = a_x_init;
+        a_hat_km2 = a_x_init;
 
         % --- 0L. First call returns zeros (no f_d yet) ---
         f_d = zeros(3, 1);
@@ -143,13 +154,7 @@ function [f_d, ekf_out] = controller_6state(del_pd, pd, p_m, params) %#ok<INUSL>
     end
 
     % ------------------------------------------------------------------
-    % [1] Control law -- TEMP (part 4): Eq.17 ACTIVE form arrives here.
-    %     Until then f_d = 0 (open loop with live measurement chain).
-    % ------------------------------------------------------------------
-    f_d = zeros(3, 1);
-
-    % ------------------------------------------------------------------
-    % [2] Measurement chain
+    % [1] Measurement chain
     %     delta_x_m[k] = p_d[k-d] - p_m[k]  (d = 2, hardcoded)
     %     IIR (paper 2025 Eq.9-13): mean EWMA (a_pd) -> residual ->
     %     variance EWMA (a_cov) -> a_xm linear inversion.
@@ -169,6 +174,31 @@ function [f_d, ekf_out] = controller_6state(del_pd, pd, p_m, params) %#ok<INUSL>
     a_xm = (sigma2_dxr_hat_new - C_n * sigma2_nx) / (C_dpmr * 4 * kBT);   % 3x1 [um/pN]
 
     % ------------------------------------------------------------------
+    % [2] Control law (Eq.17 ACTIVE form, Vpersonal p.2)
+    %     f_d = a_hat^-1 { Delta_x_d[k;d] + (1-lc)[dx_m - sum a_hat[k-i]*f_d[k-i]]
+    %                      - delta_x_D^d }
+    %     Delta_x_d[k;d] = pd[k+1] - lc*pd[k] - (1-lc)*pd[k-d]
+    %     Past forces weighted by PAST gain estimates a_hat[k-i] (the
+    %     displacement each past force caused depends on the gain at that
+    %     time); all terms inside the 1/a_hat bracket.
+    %     D6 semantics: a_hat and xD_comb are a-priori estimates.
+    %     TEMP (until parts 5-6 land the EKF): a_hat is frozen at the
+    %     wall-aware seed a_x_init and xD_comb = 0 -- "perfect knowledge
+    %     at h_init" (exactly the part-4 theory-gate condition).
+    % ------------------------------------------------------------------
+    a_hat   = a_x_init;                        % TEMP <- parts 5-6: x_e(5,:) a-priori
+    xD_comb = zeros(3, 1);                     % TEMP <- parts 5-6: x_e(4,:) a-priori
+
+    pd_kp1 = pd + del_pd;                      % p_d[k+1]
+    one_minus_lc = 1 - lambda_c;
+    sum_a_fd_past = a_hat_km1 .* f_d_km1 + a_hat_km2 .* f_d_km2;   % d = 2
+    inv_a_hat = 1 ./ a_hat;
+    f_d = inv_a_hat .* (pd_kp1 - lambda_c * pd - one_minus_lc * pd_km2 ...
+                        + one_minus_lc * delta_x_m ...
+                        - one_minus_lc * sum_a_fd_past ...
+                        - xD_comb);
+
+    % ------------------------------------------------------------------
     % [3]-[10] EKF per axis -- pending (parts 5-6):
     %     [3] innovations  [4] R[k]  [5] gain  [6] state (Phi + L*e)
     %     [7] Joseph  [8] F_e[k]  [9] Q[k]  [10] forecast
@@ -179,6 +209,10 @@ function [f_d, ekf_out] = controller_6state(del_pd, pd, p_m, params) %#ok<INUSL>
     % ------------------------------------------------------------------
     pd_km2 = pd_km1;
     pd_km1 = pd;
+    f_d_km2 = f_d_km1;
+    f_d_km1 = f_d;
+    a_hat_km2 = a_hat_km1;
+    a_hat_km1 = a_hat;
     dx_bar_m = dx_bar_m_new;
     sigma2_dxr_hat = sigma2_dxr_hat_new;
 
