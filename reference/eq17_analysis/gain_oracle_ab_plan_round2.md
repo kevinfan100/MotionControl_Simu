@@ -379,6 +379,33 @@ In `thermal_theory_check`, x-axis switches to direct e and the deflation correct
 
 (d) `write_summary_md`: thermal tables gain a `± SEM` column from the new `x_meas_sem` / `z_normvar_sem`; the â lines print `value ± SEM` per axis.
 
+- [ ] **Step 4.5: Graceful arm-B det-run divergence (PROBE FINDING 2026-06-11)**
+
+A full-length gate-free probe (`gain_oracle_ab_nogate_probe/`, 1 seed/freq) showed arm B's
+no-noise det run DIVERGES at ALL frequencies under h̄_safe=1 (|e|max 1.0–3.7 μm), and arm-B
+noisy runs diverge at 5/10 Hz (1 Hz survives). Root cause sketch: in the no-noise run Guard 2
+un-latches when deterministic δx_r content lifts σ̂²_δxr above threshold → y₂ ingests garbage
+a_xm → â corrupted; previously G3 re-protected near wall, now nothing does. This is a legitimate
+experimental outcome (design §9.1: divergence is a result), so the analyzer must DEGRADE, not die:
+
+1. `per_freq_analysis` C3 assert: keep HARD for arm A (oracle arm must never diverge —
+   that would be a real infrastructure bug); for arm B set `b_det_ok = false` + console
+   warning instead of asserting.
+2. When `~b_det_ok`: `A.e_det.B = nan(size(A.e_det.A));` BEFORE det metrics / v1 ram —
+   NaN then propagates naturally through det_metrics (guard the sine fit: `X\ew` with NaN
+   rows → set outputs NaN directly when any NaN in window), v1 ram tables, tail stats.
+3. `cycle_stationarity`: treat NaN `half_rel_diff` as n/a → `stationary = true` (cannot
+   evaluate), so `collect_flags` does not spuriously FLAG.
+4. summary.md: when `~b_det_ok`, print a prominent line in the header block:
+   `ARM B DET RUN DIVERGED (<reason>) — v1/B det metrics are NaN; ensemble-det (v2) path unaffected.`
+   and label the B crossval numbers as not meaningful.
+5. Layer-0 / runner side needs NO change (diverged runs already skipped there).
+
+Task 4 additionally REPLACES the two remaining det-run dependencies for arm B (see Task 4
+Step 0). Production expectation (Task 9): at 5/10 Hz the B side may have few or zero surviving
+seeds — all B-side stats then print NaN and the headline conclusion is "gate-free B unstable
+at f ≥ 5 Hz"; the run is still a SUCCESS.
+
 - [ ] **Step 5: Re-run analyzer on existing f2Hz data (regression-style check)**
 
 ```bash
@@ -400,6 +427,17 @@ git commit -m "feat(eq17): analyzer round-2 core - data_root, per-cycle discard,
 
 **Files:**
 - Modify: `test_script/integration/analyze_gain_oracle_6state.m`
+
+- [ ] **Step 0: De-couple remaining arm-B det-run dependencies (PROBE FINDING, cont.)**
+
+(a) `thermal_theory_check` currently builds the per-arm theory skeleton from
+`runs.(arm).det.simOut.a_true_out` — switch BOTH arms to the a_pd skeleton (`A.gain.a_pd`,
+Step 1 below; pass it in as an argument). This also aligns the windowed tables with
+fig_motion_var's theory semantics ("along the desired trajectory"); update the summary
+header text accordingly. Arm A values shift negligibly (its det ≈ desired).
+(b) `ahat_analysis` currently uses `runsB.det.simOut.a_true_out` as the rel-err reference —
+replace with the ensemble mean of `a_true_out` over the OK arm-B noisy seeds (each noisy
+run logs a_true_out). If no OK seeds, the existing C2 NaN branch covers it.
 
 - [ ] **Step 1: shared deterministic gain skeleton (used by A1, fig 1, fig 2)**
 
