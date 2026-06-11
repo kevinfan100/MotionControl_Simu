@@ -32,9 +32,7 @@ function out = run_simulation(scenario, opts)
 %       out.p_true_out  noise-free true position (probe)   [um]
 %       out.tout        time vector [N x 1, sec]
 %       out.ekf_out     [a_hat_x a_hat_y a_hat_z h_bar]    [N x 4]
-%                       (parts 3-4 interim build: measurement-chain probe
-%                        [delta_x_m_z sigma2_dxr_hat_z a_xm_z h_bar] --
-%                        final form arrives with the EKF in part 5/7)
+%                       (a-priori estimates, natural axis order)
 %       out.meta        struct(scenario, params, seed, driver_version)
 %
 %   See also: config, controller_6state, step_dynamics, thermal_force,

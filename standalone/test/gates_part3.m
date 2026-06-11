@@ -1,6 +1,9 @@
 function gates_part3()
 %GATES_PART3 Dual gates for packaging part 3 (measurement chain).
 %
+%   STATUS: C1/C4 live; C2/C3 SNAPSHOT since pack(6) (probe retired; see
+%   the notice in the body -- successor = part-7 closed-loop equivalence).
+%
 %   C1  Constants dual-source: C_dpmr / C_n full a_pd closed form
 %       transcribed here independently == mother build_eq17_6state_constants
 %       output (bit-exact) == reference values 3.1610 / 1.1093.
@@ -69,8 +72,20 @@ function gates_part3()
     assert(cfg.d == 2 && cc.d == 2, 'C4 d contract violated');
     fprintf('C4 PASS  d = 2 (config + mother builder)\n');
 
-    % ================= C2: delay-chain k-table (ramp, pd varies) =========
-    out = run_simulation('ramp2p7', struct('seed', 9, 'T_sim', 3));
+    % ================= C2/C3: SNAPSHOT (retired at pack(6)) =================
+    % Established at pack(4)/pack(5) using the INTERIM measurement-chain
+    % probe in ekf_out, which the part-5 EKF build replaced with the final
+    % [a_hat_xyz; h_bar] output. The facts they pinned (delay k-table row
+    % mapping; IIR chain == exact filter theory; a_xm inversion) are part
+    % of the frozen [1] section text; their successor is the part-7
+    % closed-loop equivalence gate vs the mother repo.
+    fprintf(['C2/C3 SNAPSHOT  established pack(4)-pack(5); probe retired; ' ...
+             'superseded by part-7 closed-loop equivalence\n']);
+    fprintf('\n=== gates_part3: ALL PASS (C1 constants, C4 d=2; C2/C3 snapshot) ===\n');
+    return;
+
+    % ----- retired probe-dependent sections below (kept for the record) -----
+    out = run_simulation('ramp2p7', struct('seed', 9, 'T_sim', 3)); %#ok<UNRCH>
     N = numel(out.tout);
 
     % k = 1: init return -- delta_x_m probe = 0, prefill visible in slot 2
