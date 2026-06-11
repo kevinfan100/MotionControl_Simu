@@ -684,12 +684,15 @@ function s = passstr(b)
 end
 
 
-function make_figs(S, A, ~, out_dir)
+function make_figs(S, A, f, out_dir)
 %MAKE_FIGS per-frequency figures, EXP style (user presentation spec).
 %   No titles; bold large fonts; 3 y-ticks; FIXED axis ranges across all
-%   frequencies. The single-seed ram comes from A.noisy_det.(arm).ram_traj
-%   (first paired non-diverged seed; seed number recorded in summary.md).
+%   frequencies (except fig_det_err: auto bound this round, reported per
+%   freq so a common lock can be chosen). The single-seed ram comes from
+%   A.noisy_det.(arm).ram_traj (first paired non-diverged seed; seed number
+%   recorded in summary.md).
 %   fig_traj_det : desired vs noisy-ensemble det trajectory, z only
+%   fig_det_err  : det error overlay, z only (asymmetric det reference)
 %   fig_traj_ram : trajectory-space ram (vs noisy-ensemble det), x/z
     COL_TRUE = [0 0.6 0]; COL_B = [0.8 0 0]; COL_A = [0.45 0.30 0.75];
     FS_LAB = 24; FS_AX = 20; FS_LEG = 18; LW = 2.0;
@@ -725,6 +728,34 @@ function make_figs(S, A, ~, out_dir)
     % acceptable for the -batch workflow (make_eq17_6state_figures precedent).
     exportgraphics(ft, fullfile(out_dir, 'fig_traj_det.png'), 'Resolution', 150);
     close(ft);
+
+    % ---- fig_det_err: det error overlay, z only (asymmetric det reference) ----
+    % User-approved asymmetric references: the a_true arm uses the NOISE-FREE
+    % det run (valid for arm A — crossval-validated, exact, zero extraction
+    % residual), while the â arm uses the 20-seed ENSEMBLE det (the noise-free
+    % run is invalid for arm B: Guard 2 latched, y2 off). The red curve
+    % therefore carries the ensemble extraction residual (~+-5.6 nm).
+    errA = A.e_det.A(:, 3) * 1e3;                                % [nm]
+    errB = (pd_al(:, 3) - A.noisy_det.B.det_traj(:, 3)) * 1e3;   % [nm]
+    % auto symmetric nice bound this round (not locked); reported per freq so
+    % the coordinator can lock a common value next round
+    b_nm = ceil(max(abs(errB)) * 1.15 / 50) * 50;
+    fprintf('[fig_det_err:%gHz] auto y-bound b = %g nm\n', f, b_nm);
+    fde = figure('Position', [80 80 1100 460], 'Color', 'w', 'NumberTitle', 'off', ...
+                 'Visible', 'off');
+    hold on;
+    plot(t_e, errA, '-', 'Color', COL_A, 'LineWidth', LW, 'DisplayName', 'a = a_{true}');
+    plot(t_e, errB, '-', 'Color', COL_B, 'LineWidth', LW, 'DisplayName', 'a = â');
+    xlim(XLIM_T); ylim([-b_nm b_nm]);
+    set(gca, 'XTick', XTICK_T, 'YTick', [-b_nm 0 b_nm], ...
+             'FontSize', FS_AX, 'FontWeight', 'bold');
+    ylabel('\deltaz_{det}  (nm)', 'FontSize', FS_LAB, 'FontWeight', 'bold');
+    xlabel('t (s)', 'FontSize', FS_LAB, 'FontWeight', 'bold');
+    grid off;
+    lg = legend('Location', 'northoutside', 'Orientation', 'horizontal');
+    lg.FontSize = FS_LEG; lg.FontWeight = 'bold';
+    exportgraphics(fde, fullfile(out_dir, 'fig_det_err.png'), 'Resolution', 150);
+    close(fde);
 
     % ---- fig_traj_ram: trajectory-space ram vs noisy-ensemble det, x/z ----
     % first-paired-seed ram stored by per_freq_analysis (A.noisy_det.(arm).ram_traj);
