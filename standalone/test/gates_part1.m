@@ -166,7 +166,45 @@ function gates_part1()
     assert(abs(ca_inf - 1) < 1e-5 && abs(ce_inf - 1) < 1e-5, 'T5 far-field limit');
     fprintf('T5 PASS  h_bar -> inf: c_para, c_perp -> 1\n');
 
-    fprintf('\n=== gates_part1: ALL PASS (E1-E4 bit-exact, T1-T5 theory) ===\n');
+    % ================= T6: randomness quality =================
+    % E3 proves reproducibility, T3/T4 prove magnitude; T6 checks the
+    % stochastic QUALITY of the thermal stream: whiteness (lags 1-10),
+    % cross-axis independence, Gaussianity (moments), and independence
+    % of different driver seeds. All bounds = 4 sigma of the estimator.
+    Nrq = 1e5;
+    pq = params; pq.thermal.seed = 17;
+    clear thermal_force;
+    Sq = zeros(3, Nrq);
+    for k = 1:Nrq, Sq(:, k) = thermal_force(p_th, pq); end
+    Z = (Sq - mean(Sq, 2)) ./ std(Sq, 0, 2);
+
+    tol_corr = 4 / sqrt(Nrq);
+    max_rho = 0;
+    for ax = 1:3
+        z = Z(ax, :); den = sum(z.^2);
+        for lag = 1:10
+            rho = sum(z(1:end-lag) .* z(1+lag:end)) / den;
+            max_rho = max(max_rho, abs(rho));
+            assert(abs(rho) < tol_corr, 'T6 autocorr ax=%d lag=%d rho=%g', ax, lag, rho);
+        end
+    end
+    Cx = corrcoef(Z'); off = Cx - eye(3);
+    assert(max(abs(off(:))) < tol_corr, 'T6 cross-axis corr %g', max(abs(off(:))));
+    skew = mean(Z.^3, 2); kurt = mean(Z.^4, 2);
+    assert(all(abs(skew) < 4*sqrt(6/Nrq)), 'T6 skewness %s', mat2str(skew', 3));
+    assert(all(abs(kurt - 3) < 4*sqrt(24/Nrq)), 'T6 kurtosis %s', mat2str(kurt', 3));
+    pq2 = params; pq2.thermal.seed = 18;
+    clear thermal_force;
+    Sq2 = zeros(3, Nrq);
+    for k = 1:Nrq, Sq2(:, k) = thermal_force(p_th, pq2); end
+    for ax = 1:3
+        cc = corrcoef(Sq(ax, :), Sq2(ax, :));
+        assert(abs(cc(1, 2)) < tol_corr, 'T6 seed-independence ax=%d corr=%g', ax, cc(1, 2));
+    end
+    fprintf(['T6 PASS  whiteness (max|rho| %.4f < %.4f), cross-axis indep, ' ...
+             'Gaussian moments, seed independence\n'], max_rho, tol_corr);
+
+    fprintf('\n=== gates_part1: ALL PASS (E1-E4 bit-exact, T1-T6 theory) ===\n');
 end
 
 
