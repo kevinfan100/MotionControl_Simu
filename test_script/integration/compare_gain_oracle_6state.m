@@ -31,11 +31,12 @@ function results = compare_gain_oracle_6state(freqs, opts)
 %     smoke        (false;  true -> T_sim=2.0 + seeds=1, saved under -smoke
 %                           suffix so production data is never overwritten)
 %
-%   To reproduce the Round-1 gated matrix:
+%   To reproduce the Round-1 gated matrix, set out_root to the ABSOLUTE
+%   path <project_root>/test_results/gain_oracle_ab (out_root is used
+%   verbatim; a relative path resolves against the current directory):
 %     compare_gain_oracle_6state([1 2 5], struct( ...
 %         'seeds', 1:20, 'T_sim', 7.0, 'n_cyc_per_s', 5, ...
-%         'h_bar_safe', 1.5, ...
-%         'out_root', fullfile(project_root,'test_results','gain_oracle_ab')))
+%         'h_bar_safe', 1.5, 'out_root', '<abs path>/test_results/gain_oracle_ab'))
 %
 %   See also: analyze_gain_oracle_6state, run_pure_simulation
 
