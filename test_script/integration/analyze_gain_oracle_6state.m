@@ -438,9 +438,15 @@ function ah = ahat_analysis(runsB, W)
     ah.rel_err_osc  = squeeze(mean(mean(rel_s(W.osc,  :, :), 1), 3)).';
     ah.rel_err_gon  = squeeze(mean(mean(rel_s(W.gon,  :, :), 1), 3)).';
     ah.rel_err_goff = squeeze(mean(mean(rel_s(W.goff, :, :), 1), 3)).';
-    ah.rel_sem_osc  = squeeze(std(mean(rel_s(W.osc,  :, :), 1), 0, 3)).' / sqrt(numel(ok));
-    ah.rel_sem_gon  = squeeze(std(mean(rel_s(W.gon,  :, :), 1), 0, 3)).' / sqrt(numel(ok));
-    ah.rel_sem_goff = squeeze(std(mean(rel_s(W.goff, :, :), 1), 0, 3)).' / sqrt(numel(ok));
+    if numel(ok) >= 2
+        ah.rel_sem_osc  = squeeze(std(mean(rel_s(W.osc,  :, :), 1), 0, 3)).' / sqrt(numel(ok));
+        ah.rel_sem_gon  = squeeze(std(mean(rel_s(W.gon,  :, :), 1), 0, 3)).' / sqrt(numel(ok));
+        ah.rel_sem_goff = squeeze(std(mean(rel_s(W.goff, :, :), 1), 0, 3)).' / sqrt(numel(ok));
+    else   % single seed: SEM undefined (std of one sample prints as 0)
+        ah.rel_sem_osc  = nan(1, 3);
+        ah.rel_sem_gon  = nan(1, 3);
+        ah.rel_sem_goff = nan(1, 3);
+    end
     dev = a_stack - ah.ens_mean;
     sd3 = std(dev(W.osc, :, :), 0, 1);              % [1 x 3 x Ns]
     ah.ram_std_osc = reshape(sd3, 3, []);           % [3 x Ns] (M5)
@@ -533,7 +539,7 @@ function ratio = paired_ratio_stats(RA, RB, nwins)
             for ax = 1:3
                 r = squeeze(RB.sd(w, okp, ax)) ./ squeeze(RA.sd(w, okp, ax));
                 ratio.mean(w, ax)   = mean(r);
-                ratio.sem(w, ax)    = std(r) / sqrt(numel(r));
+                ratio.sem(w, ax)    = sem_of(r);
                 ratio.rng(w, ax, 1) = min(r);
                 ratio.rng(w, ax, 2) = max(r);
             end
@@ -585,12 +591,17 @@ function th = thermal_theory_check(runs, det_e_v2, get_e, W, cfg, kBT, f)
         th.(arm).Ns = Ns;
         % x-direct: no det subtraction applied, so no deflation correction needed
         th.(arm).x_meas_nm2   = mean(vx, 2).' * 1e6;           % um^2 -> nm^2, no /corr
-        th.(arm).x_meas_sem   = std(vx, 0, 2).' / sqrt(Ns) * 1e6;
         th.(arm).x_theory_nm2 = cellfun(@(w) mean(s2x(W.(w))), th.wx) * 1e6;
         th.(arm).x_ratio      = th.(arm).x_meas_nm2 ./ th.(arm).x_theory_nm2;
         % z-axis: ensemble det subtraction in effect -> deflation correction
-        th.(arm).z_normvar     = mean(vz, 2).' / corr;
-        th.(arm).z_normvar_sem = std(vz / corr, 0, 2).' / sqrt(Ns);
+        th.(arm).z_normvar    = mean(vz, 2).' / corr;
+        if Ns >= 2
+            th.(arm).x_meas_sem    = std(vx, 0, 2).' / sqrt(Ns) * 1e6;
+            th.(arm).z_normvar_sem = std(vz / corr, 0, 2).' / sqrt(Ns);
+        else   % single seed: SEM undefined (std of one sample prints as 0)
+            th.(arm).x_meas_sem    = nan(1, numel(th.wx));
+            th.(arm).z_normvar_sem = nan(1, numel(th.wz));
+        end
         fprintf(['[thermal:%gHz arm %c] x full-span meas/theory = %.3f, ', ...
                  'z osc norm-var = %.3f\n'], f, arm, ...
                 th.(arm).x_ratio(strcmp(th.wx, 'full')), ...
@@ -731,11 +742,7 @@ function write_summary_md(path, f, S, A)
     fprintf(fid, '- a_hat ensemble-mean rel-err (gate-off, peak) [%%]: %s\n', ...
             fmt_err3(A.ahat.rel_err_goff, A.ahat.rel_sem_goff));
     rs = mean(A.ahat.ram_std_osc, 2, 'omitnan');    % [3x1], seed mean
-    if A.ahat.n_seeds > 1
-        rs_sem = std(A.ahat.ram_std_osc, 0, 2, 'omitnan') / sqrt(A.ahat.n_seeds);
-    else
-        rs_sem = nan(3, 1);
-    end
+    rs_sem = arrayfun(@(i) sem_of(A.ahat.ram_std_osc(i, :)), (1:3).');
     fprintf(fid, ['- a_hat ram std (osc, seed mean +/- SEM) [um/pN]: ', ...
                   '[%.3g %.3g %.3g] +/- [%.3g %.3g %.3g]\n'], ...
             rs(1), rs(2), rs(3), rs_sem(1), rs_sem(2), rs_sem(3));
@@ -756,7 +763,6 @@ end
 function write_ram_table(fid, R, ax_name)
 %WRITE_RAM_TABLE std-over-window table (mean +/- SEM [min, max]; B/A ratio).
 %   A2: cross-seed SEM added to all aggregate columns (§12.3).
-    sem = @(v) std(v(~isnan(v))) / sqrt(sum(~isnan(v)));
     fprintf(fid, '| window | axis | A sd [nm] | B sd [nm] | ratio |\n|---|---|---|---|---|\n');
     for w = 1:numel(R.wins)
         for ax = 1:3
@@ -765,8 +771,8 @@ function write_ram_table(fid, R, ax_name)
             fprintf(fid, ['| %s | %c | %.2f +/- %.2f [%.2f, %.2f] | ', ...
                           '%.2f +/- %.2f [%.2f, %.2f] | %.2f +/- %.2f [%.2f, %.2f] |\n'], ...
                     R.wins{w}, ax_name(ax), ...
-                    mean(sdA, 'omitnan'), sem(sdA), min(sdA), max(sdA), ...
-                    mean(sdB, 'omitnan'), sem(sdB), min(sdB), max(sdB), ...
+                    mean(sdA, 'omitnan'), sem_of(sdA), min(sdA), max(sdA), ...
+                    mean(sdB, 'omitnan'), sem_of(sdB), min(sdB), max(sdB), ...
                     R.ratio.mean(w, ax), R.ratio.sem(w, ax), ...
                     R.ratio.rng(w, ax, 1), R.ratio.rng(w, ax, 2));
         end
@@ -789,6 +795,18 @@ function s = fmt_err3(v, sem)
 %FMT_ERR3 format [val+/-sem val+/-sem val+/-sem] for 3-element row vectors.
     s = sprintf('[%.2f+/-%.2f  %.2f+/-%.2f  %.2f+/-%.2f]', ...
                 v(1), sem(1), v(2), sem(2), v(3), sem(3));
+end
+
+
+function s = sem_of(v)
+%SEM_OF NaN-robust SEM of a vector; NaN when fewer than 2 valid samples
+%   (std of a single sample is 0, which would misread as zero variance).
+    n = sum(~isnan(v));
+    if n < 2
+        s = NaN;
+    else
+        s = std(v(~isnan(v))) / sqrt(n);
+    end
 end
 
 
