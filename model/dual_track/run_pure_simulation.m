@@ -113,6 +113,9 @@ function simOut = run_pure_simulation(config, opts)
         eq17_opts.t_warmup_kf = config.t_warmup_kf;   % Phase 3 sweep override
     end
     eq17_opts.h_bar_safe  = 1.5;
+    if isfield(config, 'h_bar_safe') && ~isempty(config.h_bar_safe)
+        eq17_opts.h_bar_safe = config.h_bar_safe;   % Round-2 gate-free override (design §12.1)
+    end
     eq17_opts.d           = 2;
     eq17_opts.a_cov       = config.a_cov;
     % Wave 2D: separate a_pd (LP for δp_md mean) from a_cov (EWMA for σ²_δxr).
