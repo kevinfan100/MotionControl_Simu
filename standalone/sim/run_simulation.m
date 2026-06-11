@@ -6,7 +6,11 @@ function out = run_simulation(scenario, opts)
 %
 %   scenario : 'h50' | 'h10' | 'ramp2p7'   (see config.m)
 %   opts     : .seed (default 42), .verbose (default false),
-%              .ctrl_enable_override (default [] = use config value)
+%              .ctrl_enable_override (default [] = use config value),
+%              .T_sim (default [] = scenario value; gate scripts use
+%               shorter runs -- note the ramp rate is set by the
+%               SCENARIO T_sim in config.m, so a shorter opts.T_sim
+%               truncates the descent rather than rescaling it)
 %
 %   Two-rate structure (mirrors the mother repo / Simulink model):
 %       1600 Hz  discrete: trajectory, controller, thermal sample,
@@ -28,6 +32,9 @@ function out = run_simulation(scenario, opts)
 %       out.p_true_out  noise-free true position (probe)   [um]
 %       out.tout        time vector [N x 1, sec]
 %       out.ekf_out     [a_hat_x a_hat_y a_hat_z h_bar]    [N x 4]
+%                       (part-3 interim build: measurement-chain probe
+%                        [delta_x_m_z sigma2_dxr_hat_z a_xm_z h_bar] --
+%                        final form arrives with the EKF in part 5/7)
 %       out.meta        struct(scenario, params, seed, driver_version)
 %
 %   See also: config, controller_6state, step_dynamics, thermal_force,
@@ -38,6 +45,7 @@ function out = run_simulation(scenario, opts)
     if ~isfield(opts, 'seed');    opts.seed    = 42;    end
     if ~isfield(opts, 'verbose'); opts.verbose = false; end
     if ~isfield(opts, 'ctrl_enable_override'); opts.ctrl_enable_override = []; end
+    if ~isfield(opts, 'T_sim');   opts.T_sim   = [];    end
 
     % ------------------------------------------------------------------
     % 1. RNG seeding -- MUST precede config(): the params builder consumes
@@ -63,7 +71,9 @@ function out = run_simulation(scenario, opts)
     % 4. Time grid (discrete samples 0, Ts, 2Ts, ...)
     % ------------------------------------------------------------------
     Ts = params.common.Ts;
-    N = round(cfg.T_sim / Ts) + 1;
+    T_run = cfg.T_sim;
+    if ~isempty(opts.T_sim); T_run = opts.T_sim; end
+    N = round(T_run / Ts) + 1;
     tout = (0:N-1)' * Ts;
 
     % ------------------------------------------------------------------
@@ -166,5 +176,6 @@ function out = run_simulation(scenario, opts)
     out.tout       = tout;
     out.ekf_out    = ekf_out;
     out.meta = struct('scenario', scenario, 'params', params, ...
-                      'seed', opts.seed, 'driver_version', 'standalone-1.0');
+                      'seed', opts.seed, 'T_run', T_run, ...
+                      'driver_version', 'standalone-1.0');
 end
