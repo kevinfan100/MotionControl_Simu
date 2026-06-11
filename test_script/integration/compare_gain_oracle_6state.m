@@ -2,26 +2,49 @@ function results = compare_gain_oracle_6state(freqs, opts)
 %COMPARE_GAIN_ORACLE_6STATE Run the gain-oracle A/B matrix (design doc
 %   reference/eq17_analysis/gain_oracle_ab_design.md §2-§3, §7 Layer 0).
 %
-%   results = compare_gain_oracle_6state()            % freqs = [1 2 5]
+%   results = compare_gain_oracle_6state()            % freqs = [1 5 10]
 %   results = compare_gain_oracle_6state(freqs, opts)
+%
+%   Round-2 defaults (gate-free, 100 seeds):
+%     freqs      : [1 5 10] Hz
+%     seeds      : 1:100
+%     T_sim      : 4.0 s
+%     n_cyc_per_s: 2   (osc duration = n_cyc_per_s seconds, design §12.1)
+%     h_bar_safe : 1   (G3 unreachable; trough h_bar = 1.2, design §12.1)
+%     out_root   : test_results/gain_oracle_ab_nogate/
 %
 %   Per frequency: 2 arms x (1 det run + numel(seeds) noisy runs), all
 %   collect_diag. Arm A = gain_oracle (true time-varying gain in the
 %   control law), arm B = EKF gain. Both arms suppress_xD. Layer 0
-%   assertions run before saving. Output:
-%       test_results/gain_oracle_ab/f<f>Hz/runs.mat        (production)
-%       test_results/gain_oracle_ab/f<f>Hz-smoke/runs.mat  (smoke mode)
+%   assertions (incl. gate-free check, design §12.7 acceptance #6) run
+%   before saving. Output:
+%       test_results/gain_oracle_ab_nogate/f<f>Hz/runs.mat        (production)
+%       test_results/gain_oracle_ab_nogate/f<f>Hz-smoke/runs.mat  (smoke mode)
 %
-%   opts: seeds (1:5), T_sim (7.0), verbose (true), out_root, smoke (false;
-%         true -> T_sim=2.0 + seeds=1 for fast end-to-end checks, saved
-%         under the -smoke suffix so production data is never overwritten).
+%   opts fields:
+%     seeds        (1:100)  - RNG seeds for noisy runs
+%     T_sim        (4.0)    - simulation duration [s]
+%     n_cyc_per_s  (2)      - oscillation cycles per second of osc phase
+%     h_bar_safe   (1)      - Guard-3 threshold (1 = gate-free for h_bar>=1.2)
+%     verbose      (true)
+%     out_root     (test_results/gain_oracle_ab_nogate/)
+%     smoke        (false;  true -> T_sim=2.0 + seeds=1, saved under -smoke
+%                           suffix so production data is never overwritten)
+%
+%   To reproduce the Round-1 gated matrix:
+%     compare_gain_oracle_6state([1 2 5], struct( ...
+%         'seeds', 1:20, 'T_sim', 7.0, 'n_cyc_per_s', 5, ...
+%         'h_bar_safe', 1.5, ...
+%         'out_root', fullfile(project_root,'test_results','gain_oracle_ab')))
 %
 %   See also: analyze_gain_oracle_6state, run_pure_simulation
 
-    if nargin < 1 || isempty(freqs); freqs = [1 2 5]; end
+    if nargin < 1 || isempty(freqs); freqs = [1 5 10]; end
     if nargin < 2; opts = struct(); end
-    if ~isfield(opts, 'seeds');   opts.seeds = 1:5;    end
-    if ~isfield(opts, 'T_sim');   opts.T_sim = 7.0;    end
+    if ~isfield(opts, 'seeds');       opts.seeds = 1:100;     end
+    if ~isfield(opts, 'T_sim');       opts.T_sim = 4.0;       end
+    if ~isfield(opts, 'n_cyc_per_s'); opts.n_cyc_per_s = 2;   end   % osc duration [s] (design §12.1)
+    if ~isfield(opts, 'h_bar_safe');  opts.h_bar_safe = 1;    end   % gate-free B-prime (design §12.1)
     if ~isfield(opts, 'verbose'); opts.verbose = true; end
     if ~isfield(opts, 'smoke');   opts.smoke = false;  end
     if opts.smoke
@@ -37,7 +60,7 @@ function results = compare_gain_oracle_6state(freqs, opts)
             fullfile(project_root, 'model', 'controller'), ...
             fullfile(project_root, 'model', 'dual_track'), script_dir);
     if ~isfield(opts, 'out_root')
-        opts.out_root = fullfile(project_root, 'test_results', 'gain_oracle_ab');
+        opts.out_root = fullfile(project_root, 'test_results', 'gain_oracle_ab_nogate');
     end
 
     results = struct('freq', {}, 'out_dir', {}, 'layer0', {}, 'n_diverged', {});
@@ -69,7 +92,7 @@ function results = compare_gain_oracle_6state(freqs, opts)
         end
 
         % --- Layer 0 assertions ---
-        layer0 = layer0_checks(runs, opts);
+        layer0 = layer0_checks(runs, cfg, opts);
 
         % --- divergence bookkeeping (persisted with the runs) ---
         n_div = count_diverged(runs);
@@ -111,7 +134,7 @@ function cfg = build_config(f, opts)
     cfg.h_bottom = 2.7;           % [um] h_bar = 1.2 (below gate 1.5)
     cfg.amplitude = 2.5;          % [um] -> h_bar in [1.2, 3.42], gate-crossing
     cfg.frequency = f;
-    cfg.n_cycles  = 5 * f;        % osc duration fixed 5.0 s
+    cfg.n_cycles  = opts.n_cyc_per_s * f;   % osc duration = n_cyc_per_s seconds
     cfg.t_hold    = 0.5;
     cfg.t_descend_override = 1.0; % decouple descent from 1/f
     cfg.T_sim     = opts.T_sim;
@@ -125,6 +148,7 @@ function cfg = build_config(f, opts)
     cfg.a_cov = 0.05;
     cfg.meas_noise_std = [0.00062; 0.00057; 0.00331];   % [um]
     cfg.suppress_xD = true;       % both arms (design §2)
+    cfg.h_bar_safe = opts.h_bar_safe;   % Round 2: 1 -> G3 unreachable (trough h_bar = 1.2)
 end
 
 
@@ -151,13 +175,20 @@ function rec = run_one(cfg, seed, oracle, is_det)
 end
 
 
-function layer0 = layer0_checks(runs, opts)
+function layer0 = layer0_checks(runs, cfg, opts)
 %LAYER0_CHECKS Design §7 Layer 0: p_d identity + wiring assertions.
+%   Gate-free assertion (design §12.7 acceptance #6) is added when
+%   cfg.h_bar_safe < h_bottom/R so Guard 3 is unreachable for noisy runs.
     ref = first_ok_run(runs);
     assert(~isempty(ref), 'Layer0: every run crashed — nothing to analyze');
     pd_ref = ref.simOut.p_d_out;
     layer0 = struct('pd_identical', true, 'wiring_A', true, 'wiring_B', true, ...
                     'n_checked', 0, 'n_skipped_A', 0, 'n_skipped_B', 0);
+
+    R_phys = ref.simOut.meta.params_value.common.R;
+    gate_free_expected = isfield(cfg, 'h_bar_safe') && ...
+        cfg.h_bar_safe < cfg.h_bottom / R_phys * (1 - 1e-9);
+
     for arm = 'AB'
         recs = [runs.(arm).det, runs.(arm).noisy];
         for r = recs
@@ -185,6 +216,14 @@ function layer0 = layer0_checks(runs, opts)
                 d = abs(r.simOut.diag.a_ctrl_used(2:end, :) - r.simOut.diag.a_hat(1:end-1, :));
                 assert(max(d(:)) == 0, ...
                        'Layer0: arm B a_ctrl_used ~= a_hat posterior[k-1] (seed %d)', r.seed);
+            end
+            % design §12.7 acceptance #6: expected-gate-free NOISY runs must
+            % never gate. The no-noise det run is exempt: Guard 2 latches by
+            % design when sigma2_dxr -> 0 (known behavior, design §12.0).
+            if gate_free_expected && ~r.is_det
+                assert(~any(r.simOut.diag.gate_active(:)), ...
+                       'Layer0: gate fired in expected-gate-free run (arm %c seed %d)', ...
+                       arm, r.seed);
             end
         end
     end
