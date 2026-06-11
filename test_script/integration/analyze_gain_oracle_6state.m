@@ -110,6 +110,7 @@ function A = per_freq_analysis(runs, cfg, f)
     h_bar_d = (pd_al * w_hat - pz) / R_phys;       % [N-1 x 1], deterministic
     W.gon   = W.osc & (h_bar_d < H_BAR_GATE);
     W.goff  = W.osc & (h_bar_d >= H_BAR_GATE);
+    W.full  = true(size(W.osc));                   % full displayed span
 
     % --- det metrics per arm (design §6.1) ---
     D = struct();
@@ -201,6 +202,9 @@ function A = per_freq_analysis(runs, cfg, f)
     R2.ratio = paired_ratio_stats(R2.A, R2.B, numel(wins));
     R2.wins  = wins;
     A.ram_v2 = R2;
+
+    % --- thermal-theory validation of ram_v2 (V1 closed form, h50-validated) ---
+    A.thermal = thermal_theory_check(runs, det_e_v2, get_e, W, cfg, kBT, f);
 
     % --- tail-window observation (M3): hold at h_bar bottom, z axis ---
     tail = struct();
@@ -468,6 +472,58 @@ function ratio = paired_ratio_stats(RA, RB, nwins)
 end
 
 
+function th = thermal_theory_check(runs, det_e_v2, get_e, W, cfg, kBT, f)
+%THERMAL_THEORY_CHECK V1 closed-form thermal baseline vs ram_v2 (B1/B2).
+%   sigma2_th_i(t) = C_dx*4*kBT*a_true_i(t) + C_n_fb*sigma2_n_i, with
+%   C_dx = 2 + 1/(1-lc^2), C_n_fb = (1-lc)/(1+lc) (V1 closed form, validated
+%   at h50). a_true_i(t) is the arm's det-run deterministic skeleton.
+%   Measured window variances are corrected for the ensemble-det
+%   self-subtraction by dividing by (1 - 1/Ns).
+    lc       = cfg.lambda_c;
+    C_dx     = 2 + 1 / (1 - lc^2);
+    C_n_fb   = (1 - lc) / (1 + lc);
+    sigma2_n = cfg.meas_noise_std(:).^2;            % [um^2], 3x1
+
+    th.C_dx = C_dx; th.C_n_fb = C_n_fb; th.lc = lc;
+    th.wx = {'desc', 'osc', 'gon', 'goff', 'full'}; % B1 x-axis windows
+    th.wz = {'osc', 'gon', 'goff'};                 % B2 z-axis windows
+    for arm = 'AB'
+        nz = runs.(arm).noisy;
+        ok = find(~[nz.diverged]);
+        Ns = numel(ok);
+        if Ns > 1
+            corr = 1 - 1/Ns;                        % self-subtraction correction
+        else
+            corr = NaN;                             % degenerate: stats undefined
+        end
+        a_true = runs.(arm).det.simOut.a_true_out(2:end, :);
+        s2x = C_dx * 4 * kBT * a_true(:, 1) + C_n_fb * sigma2_n(1);  % [um^2]
+        s2z = C_dx * 4 * kBT * a_true(:, 3) + C_n_fb * sigma2_n(3);
+        vx = nan(numel(th.wx), Ns);
+        vz = nan(numel(th.wz), Ns);
+        for si = 1:Ns
+            ram = get_e(nz(ok(si)).simOut) - det_e_v2.(arm);
+            zn  = ram(:, 3) ./ sqrt(s2z);
+            for k = 1:numel(th.wx)
+                vx(k, si) = var(ram(W.(th.wx{k}), 1));
+            end
+            for k = 1:numel(th.wz)
+                vz(k, si) = var(zn(W.(th.wz{k})));
+            end
+        end
+        th.(arm).Ns = Ns;
+        th.(arm).x_meas_nm2   = mean(vx, 2).' / corr * 1e6;   % um^2 -> nm^2
+        th.(arm).x_theory_nm2 = cellfun(@(w) mean(s2x(W.(w))), th.wx) * 1e6;
+        th.(arm).x_ratio      = th.(arm).x_meas_nm2 ./ th.(arm).x_theory_nm2;
+        th.(arm).z_normvar    = mean(vz, 2).' / corr;
+        fprintf(['[thermal:%gHz arm %c] x full-span meas/theory = %.3f, ', ...
+                 'z osc norm-var = %.3f\n'], f, arm, ...
+                th.(arm).x_ratio(strcmp(th.wx, 'full')), ...
+                th.(arm).z_normvar(strcmp(th.wz, 'osc')));
+    end
+end
+
+
 function flags = collect_flags(A)
     flags.failed        = false;
     flags.anchor_det    = A.anchor.det_pass;
@@ -518,6 +574,29 @@ function write_summary_md(path, f, S, A)
                          A.ram.ratio.mean(wi, 3), A.ram_v2.ratio.mean(wi, 3));
     end
     fprintf(fid, '\n- headline z ratio (old -> v2): %s\n', strjoin(cmp, ', '));
+    fprintf(fid, '\n## thermal-theory validation (ram v2)\n\n');
+    T = A.thermal;
+    fprintf(fid, ['sigma2_th_i(t) = C_dx*4kBT*a_true_i(t) + C_n_fb*sigma2_n_i, ', ...
+                  'C_dx = %.3f, C_n_fb = %.3f (lc = %g). Measured variances ', ...
+                  'corrected by /(1-1/Ns).\n\n'], T.C_dx, T.C_n_fb, T.lc);
+    fprintf(fid, '### x-axis windowed variance\n\n');
+    fprintf(fid, '| window | arm | measured [nm^2] | theory [nm^2] | ratio |\n|---|---|---|---|---|\n');
+    for k = 1:numel(T.wx)
+        for arm = 'AB'
+            fprintf(fid, '| %s | %c | %.1f | %.1f | %.3f |\n', T.wx{k}, arm, ...
+                    T.(arm).x_meas_nm2(k), T.(arm).x_theory_nm2(k), T.(arm).x_ratio(k));
+        end
+    end
+    fprintf(fid, '\n### z-axis normalized variance (target 1)\n\n');
+    fprintf(fid, '| window | arm | norm var |\n|---|---|---|\n');
+    for k = 1:numel(T.wz)
+        for arm = 'AB'
+            fprintf(fid, '| %s | %c | %.3f |\n', T.wz{k}, arm, T.(arm).z_normvar(k));
+        end
+    end
+    fprintf(fid, ['\n_theory describes the thermal+noise baseline; arm-â excess ', ...
+                  'above 1 is estimation-induced (cf. paired ratios); quasi-static ', ...
+                  'approximation weakest at gate-on @5 Hz_\n']);
     fprintf(fid, '\n## ram rectification bias mu (seed mean over window)\n\n');
     fprintf(fid, '| window | axis | mu_A [nm] | mu_B [nm] |\n|---|---|---|---|\n');
     for w = 1:numel(A.ram.wins)
@@ -610,46 +689,38 @@ function make_figs(S, A, ~, out_dir)
 %   No titles; bold large fonts; 3 y-ticks; FIXED axis ranges across all
 %   frequencies. The single-seed ram comes from A.noisy_det.(arm).ram_traj
 %   (first paired non-diverged seed; seed number recorded in summary.md).
-%   fig_traj_det : desired vs noisy-ensemble det trajectories, x/z
+%   fig_traj_det : desired vs noisy-ensemble det trajectory, z only
 %   fig_traj_ram : trajectory-space ram (vs noisy-ensemble det), x/z
     COL_TRUE = [0 0.6 0]; COL_B = [0.8 0 0]; COL_A = [0.45 0.30 0.75];
     FS_LAB = 24; FS_AX = 20; FS_LEG = 18; LW = 2.0;
     % cross-frequency comparability locks: identical axis ranges/ticks at
     % every frequency so the figures can be compared side by side
-    XLIM_T     = [0 7];        XTICK_T     = 0:1:7;       % time axis [s]
-    DET_X_YLIM = [-0.06 0.06]; DET_X_YTICK = [-0.05 0 0.05];   % [um]
-    DET_Z_YLIM = [0 55];       DET_Z_YTICK = [0 25 50];        % [um]
-    RAM_YLIM   = [-150 150];   RAM_YTICK   = [-100 0 100];     % [nm]
+    XLIM_T     = [0 7];      XTICK_T     = 0:1:7;          % time axis [s]
+    DET_Z_YLIM = [0 55];     DET_Z_YTICK = [0 25 50];      % [um]
+    RAM_YLIM   = [-150 150]; RAM_YTICK   = [-100 0 100];   % [nm]
     so_ref = S.runs.A.det.simOut;
     t_e   = so_ref.tout(2:end);
     pd_al = so_ref.p_d_out(2:end, :);
-    cols = [1 3]; axl = 'xz';                       % top row = x, bottom = z
+    cols = [1 3]; axl = 'xz';                       % ram fig: top = x, bottom = z
 
-    % ---- fig_traj_det: desired vs noisy-ensemble det trajectories, x/z ----
-    det_ylim  = {DET_X_YLIM, DET_Z_YLIM};
-    det_ytick = {DET_X_YTICK, DET_Z_YTICK};
-    ft = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
+    % ---- fig_traj_det: desired vs noisy-ensemble det trajectory, z only ----
+    ft = figure('Position', [80 80 1100 460], 'Color', 'w', 'NumberTitle', 'off', ...
                 'Visible', 'off');
-    tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
-    for r = 1:2
-        c = cols(r); nexttile; hold on;
-        plot(t_e, pd_al(:, c), '-', 'Color', COL_TRUE, 'LineWidth', 3, ...
-             'DisplayName', 'desired');
-        plot(t_e, A.noisy_det.A.det_traj(:, c), '-', 'Color', COL_A, 'LineWidth', LW, ...
-             'DisplayName', 'a = a_{true}');
-        plot(t_e, A.noisy_det.B.det_traj(:, c), '-', 'Color', COL_B, 'LineWidth', LW, ...
-             'DisplayName', 'a = â');
-        xlim(XLIM_T); ylim(det_ylim{r});
-        set(gca, 'XTick', XTICK_T, 'YTick', det_ytick{r}, ...
-                 'FontSize', FS_AX, 'FontWeight', 'bold');
-        ylabel(sprintf('%c  (\\mum)', axl(r)), 'FontSize', FS_LAB, 'FontWeight', 'bold');
-        grid off;
-        if r == 1
-            lg = legend('Location', 'northoutside', 'Orientation', 'horizontal');
-            lg.FontSize = FS_LEG; lg.FontWeight = 'bold';
-        end
-    end
+    hold on;
+    plot(t_e, pd_al(:, 3), '-', 'Color', COL_TRUE, 'LineWidth', 3, ...
+         'DisplayName', 'desired');
+    plot(t_e, A.noisy_det.A.det_traj(:, 3), '-', 'Color', COL_A, 'LineWidth', LW, ...
+         'DisplayName', 'a = a_{true}');
+    plot(t_e, A.noisy_det.B.det_traj(:, 3), '-', 'Color', COL_B, 'LineWidth', LW, ...
+         'DisplayName', 'a = â');
+    xlim(XLIM_T); ylim(DET_Z_YLIM);
+    set(gca, 'XTick', XTICK_T, 'YTick', DET_Z_YTICK, ...
+             'FontSize', FS_AX, 'FontWeight', 'bold');
+    ylabel('z  (\mum)', 'FontSize', FS_LAB, 'FontWeight', 'bold');
     xlabel('t (s)', 'FontSize', FS_LAB, 'FontWeight', 'bold');
+    grid off;
+    lg = legend('Location', 'northoutside', 'Orientation', 'horizontal');
+    lg.FontSize = FS_LEG; lg.FontWeight = 'bold';
     % NOTE: figures leak only if exportgraphics throws (close is skipped);
     % acceptable for the -batch workflow (make_eq17_6state_figures precedent).
     exportgraphics(ft, fullfile(out_dir, 'fig_traj_det.png'), 'Resolution', 150);
@@ -657,7 +728,7 @@ function make_figs(S, A, ~, out_dir)
 
     % ---- fig_traj_ram: trajectory-space ram vs noisy-ensemble det, x/z ----
     % first-paired-seed ram stored by per_freq_analysis (A.noisy_det.(arm).ram_traj);
-    % per-tile legend carries each curve's variance over the full displayed span
+    % per-tile legends: x row carries each curve's full-span variance, z row plain
     fm = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
                 'Visible', 'off');
     tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
@@ -665,10 +736,15 @@ function make_figs(S, A, ~, out_dir)
         c = cols(r); nexttile; hold on;
         sigA = A.noisy_det.A.ram_traj(:, c) * 1e3;  % [nm]
         sigB = A.noisy_det.B.ram_traj(:, c) * 1e3;  % [nm]
-        plot(t_e, sigA, '-', 'Color', COL_A, 'LineWidth', LW, ...
-             'DisplayName', sprintf('a = a_{true}  (var %.0f nm^2)', var(sigA)));
-        plot(t_e, sigB, '-', 'Color', COL_B, 'LineWidth', LW, ...
-             'DisplayName', sprintf('a = â  (var %.0f nm^2)', var(sigB)));
+        if r == 1                                   % x row: legend with var
+            dnA = sprintf('a = a_{true}  (var %.0f nm^2)', var(sigA));
+            dnB = sprintf('a = â  (var %.0f nm^2)', var(sigB));
+        else                                        % z row: plain legend
+            dnA = 'a = a_{true}';
+            dnB = 'a = â';
+        end
+        plot(t_e, sigA, '-', 'Color', COL_A, 'LineWidth', LW, 'DisplayName', dnA);
+        plot(t_e, sigB, '-', 'Color', COL_B, 'LineWidth', LW, 'DisplayName', dnB);
         xlim(XLIM_T); ylim(RAM_YLIM);
         set(gca, 'XTick', XTICK_T, 'YTick', RAM_YTICK, ...
                  'FontSize', FS_AX, 'FontWeight', 'bold');
