@@ -183,6 +183,32 @@ function A = per_freq_analysis(runs, cfg, f)
     R.wins = wins;
     A.ram = R;
 
+    % --- noisy-ensemble det extraction (methodology update 2026-06-11) ---
+    % The noise-free det run is NOT a valid det reference for the estimated
+    % arm: its EKF runs in a no-noise regime (Guard 2 latched, y2 off); the
+    % saved mu columns quantify the discrepancy (-2.7 to -12.7 nm on z).
+    % det := ensemble mean of p_true over non-diverged noisy seeds.
+    % Phase 1 scope: feeds the trajectory-space figures only — all existing
+    % statistics/ratios/summary tables still use the noise-free det reference.
+    nd_pair_idx = find(ok, 1);                      % first paired seed
+    for arm = 'AB'
+        nd = noisy_det_extract(runs.(arm));
+        fprintf(['[noisy-det:%gHz arm %c] crossval vs noise-free run ', ...
+                 '[x y z] nm: max [%.2f %.2f %.2f] / rms [%.2f %.2f %.2f]\n'], ...
+                f, arm, nd.crossval * 1e3, nd.crossval_rms * 1e3);
+        % keep only what the figures need (limit analysis.mat size)
+        keep = struct('det_traj', nd.det_traj, 'crossval', nd.crossval, ...
+                      'crossval_rms', nd.crossval_rms, ...
+                      'n_seeds', nd.n_seeds, 'seeds_used', nd.seeds_used);
+        if isempty(nd_pair_idx)
+            keep.ram_traj = nan(size(nd.det_traj));
+        else
+            si = find(nd.seeds_used == nd_pair_idx, 1);
+            keep.ram_traj = nd.ram_traj(:, :, si);  % [N-1 x 3], first paired seed
+        end
+        A.noisy_det.(arm) = keep;
+    end
+
     % --- tail-window observation (M3): hold at h_bar bottom, z axis ---
     tail = struct();
     for arm = 'AB'
@@ -370,6 +396,35 @@ function ah = ahat_analysis(runsB, W)
 end
 
 
+function nd = noisy_det_extract(runs_arm)
+%NOISY_DET_EXTRACT det trajectory as ensemble mean over noisy seeds.
+%   The noise-free det run is invalid as a det reference for the estimated
+%   arm (EKF in a no-noise regime: Guard 2 latched, y2 off), so det is
+%   extracted as the ensemble mean of p_true over NON-diverged noisy seeds,
+%   on the aligned [N-1 x 3] grid (t_e = tout(2:end), p_true_out(1:end-1,:)).
+%   crossval / crossval_rms compare against the noise-free det run's
+%   trajectory: for arm A this validates the extraction (ensemble residual
+%   noise); for arm B it measures the Guard-2 discrepancy.
+    nz = runs_arm.noisy;
+    ok = find(~[nz.diverged]);
+    assert(~isempty(ok), 'noisy_det_extract: all noisy seeds diverged');
+    n  = numel(ok);
+    p1 = nz(ok(1)).simOut.p_true_out(1:end-1, :);
+    stack = zeros([size(p1), n]);
+    stack(:, :, 1) = p1;
+    for i = 2:n
+        stack(:, :, i) = nz(ok(i)).simOut.p_true_out(1:end-1, :);
+    end
+    nd.det_traj   = mean(stack, 3);                 % [N-1 x 3]
+    nd.ram_traj   = stack - nd.det_traj;            % [N-1 x 3 x n] per seed
+    nd.seeds_used = ok;
+    nd.n_seeds    = n;
+    p_det = runs_arm.det.simOut.p_true_out(1:end-1, :);
+    nd.crossval     = max(abs(nd.det_traj - p_det), [], 1).';   % [3x1]
+    nd.crossval_rms = rms(nd.det_traj - p_det, 1).';            % [3x1]
+end
+
+
 function flags = collect_flags(A)
     flags.failed        = false;
     flags.anchor_det    = A.anchor.det_pass;
@@ -465,15 +520,14 @@ end
 
 
 function make_figs(S, A, f, out_dir)
-%MAKE_FIGS per-frequency figures (presentation spec 2026-06-11), EXP style.
-%   fig_det_overlay    : e_det x/z overlay, both arms
-%   fig_ram_overlay    : single-seed ram x/z overlay, both arms
-%   fig_gain_overlay   : a_true vs raw single-seed a_hat (estimated arm), x/z
-%   fig_gain_err       : relative gain estimation error, x/z
-%   fig3_ram_std       : ram std per window (z), grouped bars + B/A ratio
-%   fig4_theory_anchor : arm A normalized ram per seed
+%MAKE_FIGS per-frequency figures, EXP style.
+%   Figure set under redesign; superseded overlays (noise-free-det reference
+%   is invalid for the estimated arm) removed — see git history (12f6994).
+%   They will be selectively reinstated once the error-presentation design
+%   is settled.
+%   fig_traj_det : desired vs noisy-ensemble det trajectories, x/z
+%   fig_traj_ram : trajectory-space ram (vs noisy-ensemble det), x/z
     COL_TRUE = [0 0.6 0]; COL_B = [0.8 0 0]; COL_A = [0.45 0.30 0.75];
-    COL_ERR  = [0 0.2 0.8];
     FS = 18; LFS = 14; LW = 2.0;
     so_ref = S.runs.A.det.simOut;
     t_e = so_ref.tout(2:end);
@@ -496,17 +550,20 @@ function make_figs(S, A, f, out_dir)
     end
     cols = [1 3]; axl = 'xz';                       % top row = x, bottom = z
 
-    % ---- fig_det_overlay: e_det x/z, both arms ----
-    fd = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
+    % ---- fig_traj_det: desired vs noisy-ensemble det trajectories, x/z ----
+    pd_al = so_ref.p_d_out(2:end, :);
+    ft = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
                 'Visible', 'off');
     tl = tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
     for r = 1:2
         c = cols(r); nexttile; hold on;
-        plot(t_e, A.e_det.A(:, c) * 1e3, '-', 'Color', COL_A, 'LineWidth', LW, ...
+        plot(t_e, pd_al(:, c), '-', 'Color', COL_TRUE, 'LineWidth', 3, ...
+             'DisplayName', 'desired');
+        plot(t_e, A.noisy_det.A.det_traj(:, c), '-', 'Color', COL_A, 'LineWidth', LW, ...
              'DisplayName', 'a = a_{true}');
-        plot(t_e, A.e_det.B(:, c) * 1e3, '-', 'Color', COL_B, 'LineWidth', LW, ...
+        plot(t_e, A.noisy_det.B.det_traj(:, c), '-', 'Color', COL_B, 'LineWidth', LW, ...
              'DisplayName', 'a = â');
-        ylabel(sprintf('\\delta%c_{det}  (nm)', axl(r)), 'FontSize', FS, 'FontWeight', 'bold');
+        ylabel(sprintf('%c  (\\mum)', axl(r)), 'FontSize', FS, 'FontWeight', 'bold');
         grid off; set(gca, 'FontSize', LFS);
         if r == 1
             legend('Location', 'northoutside', 'Orientation', 'horizontal');
@@ -516,24 +573,21 @@ function make_figs(S, A, f, out_dir)
     sgtitle(tl, sprintf('osc\\_aggr   %g Hz', f), 'FontSize', LFS, 'FontWeight', 'normal');
     % NOTE: figures leak only if exportgraphics throws (close is skipped);
     % acceptable for the -batch workflow (make_eq17_6state_figures precedent).
-    exportgraphics(fd, fullfile(out_dir, 'fig_det_overlay.png'), 'Resolution', 150);
-    close(fd);
+    exportgraphics(ft, fullfile(out_dir, 'fig_traj_det.png'), 'Resolution', 150);
+    close(ft);
 
-    % ---- fig_ram_overlay: single-seed ram x/z, both arms ----
-    % same alignment as per_freq_analysis: e[k] = p_d[k+1] - p_true[k]
-    get_e = @(so) so.p_d_out(2:end, :) - so.p_true_out(1:end-1, :);
-    ram_A = get_e(S.runs.A.noisy(seed_idx).simOut) - A.e_det.A;
-    ram_B = get_e(S.runs.B.noisy(seed_idx).simOut) - A.e_det.B;
-    fr = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
+    % ---- fig_traj_ram: trajectory-space ram vs noisy-ensemble det, x/z ----
+    % first-paired-seed ram stored by per_freq_analysis (A.noisy_det.(arm).ram_traj)
+    fm = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
                 'Visible', 'off');
     tl = tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
     for r = 1:2
         c = cols(r); nexttile; hold on;
-        plot(t_e, ram_A(:, c) * 1e3, '-', 'Color', COL_A, 'LineWidth', LW, ...
-             'DisplayName', 'a = a_{true}');
-        plot(t_e, ram_B(:, c) * 1e3, '-', 'Color', COL_B, 'LineWidth', LW, ...
-             'DisplayName', 'a = â');
-        ylabel(sprintf('\\delta%c_{ram}  (nm)', axl(r)), 'FontSize', FS, 'FontWeight', 'bold');
+        plot(t_e, A.noisy_det.A.ram_traj(:, c) * 1e3, '-', 'Color', COL_A, ...
+             'LineWidth', LW, 'DisplayName', 'a = a_{true}');
+        plot(t_e, A.noisy_det.B.ram_traj(:, c) * 1e3, '-', 'Color', COL_B, ...
+             'LineWidth', LW, 'DisplayName', 'a = â');
+        ylabel(sprintf('%c_{ram}  (nm)', axl(r)), 'FontSize', FS, 'FontWeight', 'bold');
         grid off; set(gca, 'FontSize', LFS);
         if r == 1
             legend('Location', 'northoutside', 'Orientation', 'horizontal');
@@ -542,115 +596,20 @@ function make_figs(S, A, f, out_dir)
     xlabel('t (s)', 'FontSize', FS, 'FontWeight', 'bold');
     sgtitle(tl, sprintf('osc\\_aggr   %g Hz   (seed %d)', f, seed_used), ...
             'FontSize', LFS, 'FontWeight', 'normal');
-    exportgraphics(fr, fullfile(out_dir, 'fig_ram_overlay.png'), 'Resolution', 150);
-    close(fr);
-
-    % ---- fig_gain_overlay: a_true vs raw single-seed a_hat (estimated arm) ----
-    so_B   = S.runs.B.noisy(seed_idx).simOut;
-    a_true = so_B.a_true_out(2:end, :);
-    a_hat  = so_B.diag.a_hat(2:end, :);
-    % osc-window mask, same construction as per_freq_analysis
-    t_osc0 = S.cfg.t_hold + S.cfg.t_descend_override;
-    t_osc1 = t_osc0 + S.cfg.n_cycles / S.cfg.frequency;
-    mask   = t_e >= t_osc0 + 1.0 & t_e < t_osc1;
-    fg = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
-                'Visible', 'off');
-    tl = tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
-    for r = 1:2
-        c = cols(r); nexttile; hold on;
-        plot(t_e, a_true(:, c), '-', 'Color', COL_TRUE, 'LineWidth', 3, 'DisplayName', 'True');
-        plot(t_e, a_hat(:, c),  '-', 'Color', COL_B,    'LineWidth', LW, 'DisplayName', 'Estimated');
-        rel = mean((a_hat(mask, c) - a_true(mask, c)) ./ a_true(mask, c)) * 100;
-        title(sprintf('a_%c:   rel-err (osc) %+.2f%%', axl(r), rel), ...
-              'FontSize', FS, 'FontWeight', 'bold');
-        ylabel(sprintf('a_%c  (\\mum/pN)', axl(r)), 'FontSize', FS, 'FontWeight', 'bold');
-        grid off; set(gca, 'FontSize', LFS);
-        if r == 1
-            legend('Location', 'northoutside', 'Orientation', 'horizontal');
-        end
-    end
-    xlabel('t (s)', 'FontSize', FS, 'FontWeight', 'bold');
-    sgtitle(tl, sprintf('osc\\_aggr   %g Hz', f), 'FontSize', LFS, 'FontWeight', 'normal');
-    exportgraphics(fg, fullfile(out_dir, 'fig_gain_overlay.png'), 'Resolution', 150);
-    close(fg);
-
-    % ---- fig_gain_err: relative gain estimation error, x/z ----
-    fe = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
-                'Visible', 'off');
-    tl = tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
-    for r = 1:2
-        c = cols(r); nexttile; hold on;
-        yline(0, '-', 'Color', [0.6 0.6 0.6], 'LineWidth', 0.5, 'HandleVisibility', 'off');
-        plot(t_e, (a_hat(:, c) - a_true(:, c)) ./ a_true(:, c) * 100, '-', ...
-             'Color', COL_ERR, 'LineWidth', 1.2);
-        title(sprintf('a_%c', axl(r)), 'FontSize', FS, 'FontWeight', 'bold');
-        ylabel('(â-a_{true})/a_{true}  (%)', 'FontSize', FS, 'FontWeight', 'bold');
-        grid off; set(gca, 'FontSize', LFS);
-    end
-    xlabel('t (s)', 'FontSize', FS, 'FontWeight', 'bold');
-    sgtitle(tl, sprintf('osc\\_aggr   %g Hz', f), 'FontSize', LFS, 'FontWeight', 'normal');
-    exportgraphics(fe, fullfile(out_dir, 'fig_gain_err.png'), 'Resolution', 150);
-    close(fe);
-
-    % ---- fig3: ram std per window (z), grouped A/B + ratio annotation ----
-    f3 = figure('Position', [80 80 900 500], 'Color', 'w', 'NumberTitle', 'off', ...
-                'Visible', 'off');
-    nw = numel(A.ram.wins);
-    sdA = arrayfun(@(w) mean(squeeze(A.ram.A.sd(w, :, 3)), 'omitnan'), 1:nw) * 1e3;
-    sdB = arrayfun(@(w) mean(squeeze(A.ram.B.sd(w, :, 3)), 'omitnan'), 1:nw) * 1e3;
-    hb = bar([sdA(:), sdB(:)], 'grouped');
-    hb(1).FaceColor = COL_A; hb(2).FaceColor = COL_B;
-    set(gca, 'XTickLabel', A.ram.wins, 'FontSize', LFS);
-    ylabel('std(ram_z) (nm)', 'FontSize', FS, 'FontWeight', 'bold');
-    ymax_bar = max([sdA(:); sdB(:)], [], 'omitnan');
-    for w = 1:nw
-        rv = A.ram.ratio.mean(w, 3);
-        if ~isnan(rv)
-            text(w, max(sdA(w), sdB(w)) * 1.05, sprintf('%.2fx', rv), ...
-                 'HorizontalAlignment', 'center', 'FontSize', LFS, 'FontWeight', 'bold');
-        end
-    end
-    if ~isnan(ymax_bar) && ymax_bar > 0
-        ylim([0, ymax_bar * 1.25]);
-    end
-    title(sprintf('ram std (z), %g Hz — B/A paired ratio annotated', f), ...
-          'FontSize', FS, 'FontWeight', 'bold');
-    legend({'arm A (oracle)', 'arm B (estimated)'}, 'Location', 'northoutside', ...
-           'Orientation', 'horizontal');
-    grid off;
-    exportgraphics(f3, fullfile(out_dir, 'fig3_ram_std.png'), 'Resolution', 150);
-    close(f3);
-
-    % ---- fig4: theory anchor — arm A normalized ram per seed ----
-    f4 = figure('Position', [80 80 900 420], 'Color', 'w', 'NumberTitle', 'off', ...
-                'Visible', 'off');
-    hold on;
-    yline(1.0,  '-',  'Color', COL_TRUE, 'LineWidth', 2, 'HandleVisibility', 'off');
-    yline(0.85, '--', 'Color', [0.55 0.55 0.55], 'HandleVisibility', 'off');
-    yline(1.15, '--', 'Color', [0.55 0.55 0.55], 'HandleVisibility', 'off');
-    ns_vals = A.anchor.norm_std;
-    plot(1:numel(ns_vals), ns_vals, 'o', 'Color', COL_A, ...
-         'MarkerFaceColor', COL_A, 'MarkerSize', 8);
-    xlabel('seed', 'FontSize', FS, 'FontWeight', 'bold');
-    ylabel('std(ram_z / \sigma_{th})', 'FontSize', FS, 'FontWeight', 'bold');
-    title(sprintf('arm A theory anchor (osc window): %s', passstr(A.anchor.norm_pass)), ...
-          'FontSize', FS, 'FontWeight', 'bold');
-    n_clip = sum(isfinite(ns_vals) & (ns_vals < 0.6 | ns_vals > 1.4));
-    if n_clip > 0
-        fprintf(['[make_figs:%gHz] fig4: %d seed(s) outside ylim [0.6, 1.4] ', ...
-                 '(clipped from view); values: %s\n'], f, n_clip, ...
-                mat2str(round(ns_vals(isfinite(ns_vals) & ...
-                                      (ns_vals < 0.6 | ns_vals > 1.4)), 3)));
-    end
-    ylim([0.6 1.4]); grid off; set(gca, 'FontSize', LFS);
-    exportgraphics(f4, fullfile(out_dir, 'fig4_theory_anchor.png'), 'Resolution', 150);
-    close(f4);
+    exportgraphics(fm, fullfile(out_dir, 'fig_traj_ram.png'), 'Resolution', 150);
+    close(fm);
 end
 
 
 function make_overview_fig(analysis, out_dir)
 %MAKE_OVERVIEW_FIG fig5: paired B/A ratio vs frequency (z), per window.
-    ok_mask = arrayfun(@(a) ~a.flags.failed, analysis);   % skip failed freqs
+    % DISABLED: stats based on superseded det reference; reinstate after
+    % det/ram stats redo.
+    fig5_enabled = false;
+    if ~fig5_enabled
+        return;
+    end
+    ok_mask = arrayfun(@(a) ~a.flags.failed, analysis);   %#ok<UNRCH> skip failed freqs
     ok = analysis(ok_mask);
     if isempty(ok); return; end
     if ~exist(out_dir, 'dir'); mkdir(out_dir); end
