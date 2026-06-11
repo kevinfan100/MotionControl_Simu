@@ -74,12 +74,36 @@ gate 定義以此為準。逐部分的決定紀錄在 [DECISIONS.md](DECISIONS.m
 
 ## 5. 三段式流程與狀態
 
+> **⏩ 從這裡接續（2026-06-11, HEAD = `pack(6)` 42deea1）**
+> 部分 1–5 全部 DONE + 簽收(部分 5 走讀待最後簽收，不影響接續)。controller_6state.m
+> 是**完整 EKF**(code 上 Q/R 已隨部分 5 一起落地)。git 全乾淨,5 個 gate 檔(part1–5)
+> 全 PASS。**下一步 = 部分 6 純驗證輪**:不改 code,只加 `gates_part6.m`(Q55 emp/closed
+> ≈0.998、IF dual-source、Q33 三成分)+ 走讀。新 session 開頭一句:
+> 「讀 standalone/PACKAGING_PLAN.md,做部分 6 驗證輪」即可無縫接上。逐部分細節見
+> [DECISIONS.md](DECISIONS.md)。
+
 | 段 | 內容 | 狀態 |
 |---|---|---|
 | 第 0 段 | 本文件 + DECISIONS.md + 分支建立 | **DONE 2026-06-10** |
-| 第 1 段 | 母 repo 前置（feat/eq17-6state 上）：D6 遷移（spec §1b 5 項）→ verify h50 統計 gate → golden baseline 拍照 → spec §1 code anchors 更新 → merge 入本分支 | **DONE 2026-06-11**（PASS；delta 全量化見 DECISIONS.md；等價 gate 答案卷 = golden_post_d6.mat） |
-| 第 2 段 | 8 部分 cycle（本分支 standalone/ 內），每部分 = 討論 → 實作 → 檢查（雙 gate）→ 簽收 | TODO |
+| 第 1 段 | 母 repo 前置：D6 遷移 → verify h50 gate → golden baseline → spec anchors → merge | **DONE 2026-06-11**（等價 gate 答案卷 = golden_post_d6.mat） |
+| 第 2 段 | 8 部分 cycle（見下方逐部分進度） | **進行中（5/8）** |
 | 收尾 | standalone/ 搬出成獨立 repo（剪臍帶），母 repo 留 pointer | TODO |
+
+**第 2 段逐部分進度**（commit / gate 檔）:
+
+| # | 部分 | 狀態 | commit | gate 檔 |
+|---|---|---|---|---|
+| 1 | 物理世界 | **DONE + 簽收** | pack(2) | gates_part1（E1–E4 bit-exact, T1–T6） |
+| 2 | 模擬骨架 | **DONE + 簽收** | pack(3) | gates_part2（G1–G3 bit-exact, T1–T3） |
+| 3 | 量測鏈 | **DONE + 簽收** | pack(4) | gates_part3（C1/C4 live；C2/C3 snapshot） |
+| 4 | 控制律 | **DONE + 簽收** | pack(5) | gates_part4（D2 live；D1 snapshot） |
+| 5 | EKF 遞迴 | **DONE**（走讀簽收待最後確認） | pack(6) | gates_part5（E1 DARE, E2 h50, E3 envelope） |
+| 6 | Q/R 驗證輪 | **NEXT**（code 已落地,只加 gate） | — | gates_part6（待建） |
+| 7 | 閉迴路等價 | TODO | — | h50 bit-exact vs 母 repo golden |
+| 8 | 驗證層 | TODO | — | verify 三場景 + README + figures |
+
+**重要**:部分 5+6 的 code 在 pack(6) 一起落地(EKF 與 Q/R 執行上不可分,見 DECISIONS
+「部分 5 前置決定」)。**部分 6 不再寫 code**,只驗 Q/R 內容物。
 
 ## 6. 第 2 段：8 部分清單與雙 gate
 
