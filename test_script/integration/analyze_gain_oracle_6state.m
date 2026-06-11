@@ -36,7 +36,7 @@ function analysis = analyze_gain_oracle_6state(freqs, opts)
             write_summary_md(fullfile(out_dir, 'summary.md'), f, S, A);
             save(fullfile(out_dir, 'analysis.mat'), 'A');
             if opts.save_fig
-                make_figs(S, A, f, out_dir);           % Task 6 (stub for now)
+                make_figs(S, A, f, out_dir);
             end
             analysis(end+1) = struct('freq', f, 'det', A.det, 'ram', A.ram, ...
                                      'anchor', A.anchor, 'ahat', A.ahat, ...
@@ -465,61 +465,132 @@ end
 
 
 function make_figs(S, A, f, out_dir)
-%MAKE_FIGS fig1-fig4 per frequency (design §8), EXP/thesis style.
+%MAKE_FIGS per-frequency figures (presentation spec 2026-06-11), EXP style.
+%   fig_det_overlay    : e_det x/z overlay, both arms
+%   fig_ram_overlay    : single-seed ram x/z overlay, both arms
+%   fig_gain_overlay   : a_true vs raw single-seed a_hat (estimated arm), x/z
+%   fig_gain_err       : relative gain estimation error, x/z
+%   fig3_ram_std       : ram std per window (z), grouped bars + B/A ratio
+%   fig4_theory_anchor : arm A normalized ram per seed
     COL_TRUE = [0 0.6 0]; COL_B = [0.8 0 0]; COL_A = [0.45 0.30 0.75];
+    COL_ERR  = [0 0.2 0.8];
     FS = 18; LFS = 14; LW = 2.0;
     so_ref = S.runs.A.det.simOut;
     t_e = so_ref.tout(2:end);
 
-    % ---- fig1: gain tracking (z, x), a_true vs arm B ensemble mean ----
-    f1 = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
+    % --- seed for the single-seed overlays: first non-diverged on BOTH arms ---
+    divA = [S.runs.A.noisy.diverged];
+    divB = [S.runs.B.noisy.diverged];
+    seed_idx = find(~divA & ~divB, 1);
+    if isempty(seed_idx)
+        error('make_figs:noPairedSeed', ...
+              'make_figs: no seed is non-diverged on both arms (A %s / B %s)', ...
+              mat2str(divA), mat2str(divB));
+    end
+    if isfield(S.runs.B.noisy, 'seed')
+        seed_used = S.runs.B.noisy(seed_idx).seed;
+    elseif isfield(S.opts, 'seeds')
+        seed_used = S.opts.seeds(seed_idx);
+    else
+        seed_used = seed_idx;
+    end
+    cols = [1 3]; axl = 'xz';                       % top row = x, bottom = z
+
+    % ---- fig_det_overlay: e_det x/z, both arms ----
+    fd = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
                 'Visible', 'off');
-    tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
-    cols = [3 1]; lbl = {'a_z', 'a_x'};
-    no_seeds = A.ahat.n_seeds == 0;
+    tl = tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
     for r = 1:2
         c = cols(r); nexttile; hold on;
-        plot(t_e, A.ahat.a_true(:, c),   '-', 'Color', COL_TRUE, 'LineWidth', 3, 'DisplayName', 'True');
-        plot(t_e, A.ahat.ens_mean(:, c), '-', 'Color', COL_B,    'LineWidth', LW, 'DisplayName', 'Estimated (ens. mean)');
-        if no_seeds
-            ttl = sprintf('%s:  rel-err (osc) -- (no seeds)', lbl{r});
-        else
-            ttl = sprintf('%s:  rel-err (osc) %+.2f%%', lbl{r}, A.ahat.rel_err_osc(c));
-        end
-        title(ttl, 'FontSize', FS, 'FontWeight', 'bold');
-        ylabel(sprintf('%s  (\\mum/pN)', lbl{r}), 'FontSize', FS, 'FontWeight', 'bold');
+        plot(t_e, A.e_det.A(:, c) * 1e3, '-', 'Color', COL_A, 'LineWidth', LW, ...
+             'DisplayName', 'a = a_{true}');
+        plot(t_e, A.e_det.B(:, c) * 1e3, '-', 'Color', COL_B, 'LineWidth', LW, ...
+             'DisplayName', 'a = â');
+        ylabel(sprintf('\\delta%c_{det}  (nm)', axl(r)), 'FontSize', FS, 'FontWeight', 'bold');
         grid off; set(gca, 'FontSize', LFS);
         if r == 1
             legend('Location', 'northoutside', 'Orientation', 'horizontal');
         end
     end
     xlabel('t (s)', 'FontSize', FS, 'FontWeight', 'bold');
+    sgtitle(tl, sprintf('osc\\_aggr   %g Hz', f), 'FontSize', LFS, 'FontWeight', 'normal');
     % NOTE: figures leak only if exportgraphics throws (close is skipped);
     % acceptable for the -batch workflow (make_eq17_6state_figures precedent).
-    exportgraphics(f1, fullfile(out_dir, 'fig1_gain_tracking.png'), 'Resolution', 150);
-    close(f1);
+    exportgraphics(fd, fullfile(out_dir, 'fig_det_overlay.png'), 'Resolution', 150);
+    close(fd);
 
-    % ---- fig2: det error overlay (z), descent shading ----
-    f2 = figure('Position', [80 80 1100 500], 'Color', 'w', 'NumberTitle', 'off', ...
+    % ---- fig_ram_overlay: single-seed ram x/z, both arms ----
+    % same alignment as per_freq_analysis: e[k] = p_d[k+1] - p_true[k]
+    get_e = @(so) so.p_d_out(2:end, :) - so.p_true_out(1:end-1, :);
+    ram_A = get_e(S.runs.A.noisy(seed_idx).simOut) - A.e_det.A;
+    ram_B = get_e(S.runs.B.noisy(seed_idx).simOut) - A.e_det.B;
+    fr = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
                 'Visible', 'off');
-    hold on;
-    e_B_z_abs_max = max(abs(A.e_det.B(:, 3)));
-    yl_half = max(1e-3, e_B_z_abs_max) * 1e3 * 1.2;
-    yl = [-yl_half, yl_half];
-    patch([S.cfg.t_hold, S.cfg.t_hold + S.cfg.t_descend_override, ...
-           S.cfg.t_hold + S.cfg.t_descend_override, S.cfg.t_hold], ...
-          yl([1 1 2 2]), [0.95 0.95 0.80], 'EdgeColor', 'none', 'DisplayName', 'descent');
-    plot(t_e, A.e_det.A(:, 3) * 1e3, '-', 'Color', COL_A, 'LineWidth', LW, 'DisplayName', 'arm A (oracle)');
-    plot(t_e, A.e_det.B(:, 3) * 1e3, '-', 'Color', COL_B, 'LineWidth', LW, 'DisplayName', 'arm B (estimated)');
-    title(sprintf('e_{det,z}:  A_e  A %.2f / B %.2f nm,  \\phi  A %.1f / B %.1f deg', ...
-          A.det.A.A_e(3)*1e3, A.det.B.A_e(3)*1e3, A.det.A.phi_deg(3), A.det.B.phi_deg(3)), ...
-          'FontSize', FS, 'FontWeight', 'bold');
+    tl = tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+    for r = 1:2
+        c = cols(r); nexttile; hold on;
+        plot(t_e, ram_A(:, c) * 1e3, '-', 'Color', COL_A, 'LineWidth', LW, ...
+             'DisplayName', 'a = a_{true}');
+        plot(t_e, ram_B(:, c) * 1e3, '-', 'Color', COL_B, 'LineWidth', LW, ...
+             'DisplayName', 'a = â');
+        ylabel(sprintf('\\delta%c_{ram}  (nm)', axl(r)), 'FontSize', FS, 'FontWeight', 'bold');
+        grid off; set(gca, 'FontSize', LFS);
+        if r == 1
+            legend('Location', 'northoutside', 'Orientation', 'horizontal');
+        end
+    end
     xlabel('t (s)', 'FontSize', FS, 'FontWeight', 'bold');
-    ylabel('e_{det,z} (nm)', 'FontSize', FS, 'FontWeight', 'bold');
-    ylim(yl); grid off; set(gca, 'FontSize', LFS);
-    legend('Location', 'northoutside', 'Orientation', 'horizontal');
-    exportgraphics(f2, fullfile(out_dir, 'fig2_det_error.png'), 'Resolution', 150);
-    close(f2);
+    sgtitle(tl, sprintf('osc\\_aggr   %g Hz   (seed %d)', f, seed_used), ...
+            'FontSize', LFS, 'FontWeight', 'normal');
+    exportgraphics(fr, fullfile(out_dir, 'fig_ram_overlay.png'), 'Resolution', 150);
+    close(fr);
+
+    % ---- fig_gain_overlay: a_true vs raw single-seed a_hat (estimated arm) ----
+    so_B   = S.runs.B.noisy(seed_idx).simOut;
+    a_true = so_B.a_true_out(2:end, :);
+    a_hat  = so_B.diag.a_hat(2:end, :);
+    % osc-window mask, same construction as per_freq_analysis
+    t_osc0 = S.cfg.t_hold + S.cfg.t_descend_override;
+    t_osc1 = t_osc0 + S.cfg.n_cycles / S.cfg.frequency;
+    mask   = t_e >= t_osc0 + 1.0 & t_e < t_osc1;
+    fg = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
+                'Visible', 'off');
+    tl = tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+    for r = 1:2
+        c = cols(r); nexttile; hold on;
+        plot(t_e, a_true(:, c), '-', 'Color', COL_TRUE, 'LineWidth', 3, 'DisplayName', 'True');
+        plot(t_e, a_hat(:, c),  '-', 'Color', COL_B,    'LineWidth', LW, 'DisplayName', 'Estimated');
+        rel = mean((a_hat(mask, c) - a_true(mask, c)) ./ a_true(mask, c)) * 100;
+        title(sprintf('a_%c:   rel-err (osc) %+.2f%%', axl(r), rel), ...
+              'FontSize', FS, 'FontWeight', 'bold');
+        ylabel(sprintf('a_%c  (\\mum/pN)', axl(r)), 'FontSize', FS, 'FontWeight', 'bold');
+        grid off; set(gca, 'FontSize', LFS);
+        if r == 1
+            legend('Location', 'northoutside', 'Orientation', 'horizontal');
+        end
+    end
+    xlabel('t (s)', 'FontSize', FS, 'FontWeight', 'bold');
+    sgtitle(tl, sprintf('osc\\_aggr   %g Hz', f), 'FontSize', LFS, 'FontWeight', 'normal');
+    exportgraphics(fg, fullfile(out_dir, 'fig_gain_overlay.png'), 'Resolution', 150);
+    close(fg);
+
+    % ---- fig_gain_err: relative gain estimation error, x/z ----
+    fe = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
+                'Visible', 'off');
+    tl = tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+    for r = 1:2
+        c = cols(r); nexttile; hold on;
+        yline(0, '-', 'Color', [0.6 0.6 0.6], 'LineWidth', 0.5, 'HandleVisibility', 'off');
+        plot(t_e, (a_hat(:, c) - a_true(:, c)) ./ a_true(:, c) * 100, '-', ...
+             'Color', COL_ERR, 'LineWidth', 1.2);
+        title(sprintf('a_%c', axl(r)), 'FontSize', FS, 'FontWeight', 'bold');
+        ylabel('(â-a_{true})/a_{true}  (%)', 'FontSize', FS, 'FontWeight', 'bold');
+        grid off; set(gca, 'FontSize', LFS);
+    end
+    xlabel('t (s)', 'FontSize', FS, 'FontWeight', 'bold');
+    sgtitle(tl, sprintf('osc\\_aggr   %g Hz', f), 'FontSize', LFS, 'FontWeight', 'normal');
+    exportgraphics(fe, fullfile(out_dir, 'fig_gain_err.png'), 'Resolution', 150);
+    close(fe);
 
     % ---- fig3: ram std per window (z), grouped A/B + ratio annotation ----
     f3 = figure('Position', [80 80 900 500], 'Color', 'w', 'NumberTitle', 'off', ...
