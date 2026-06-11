@@ -308,7 +308,10 @@ gate 子窗 mask：照 §6 用 h̄_d < 1.5 幾何定義（gate-free 下仍是有
 
 1. **A2 — SEM 誤差棒**：所有跨 seed 彙整統計從 `mean [min, max]` 升級為 `mean ± SEM [min, max]`（SEM = 跨 seed std/√N）；paired ratio 同樣逐 seed 配對後報 mean ± SEM。
 2. **x_ram 直取**：det_x ≡ 0（鏡射對稱，Round 1 雙重實證）→ x 軸 ram 直接用 x 本身，不做 ensemble 減法、無 deflation 修正；z 軸照 ensemble 法。
-3. **A1 — Q55 閉式近壁動態首驗**：用 arm A 的 a_true stack（100 seeds）做逐 seed ram = a_true_s − mean_s(a_true)，分窗 Var(a_ram) 對閉式 `Var(a_ram) = [2/(1+λ_c)]·(a·K_h/R)²·σ²_δh` 比對（per window 用窗內代表值；σ²_δh 取實測位置 ram 變異數）。輸出 ratio 表進 summary。先前僅 h=50 靜態驗過（emp/closed = 0.998）。
+3. **A1 — Q55 閉式近壁動態首驗**：用 arm A 的 a_true stack（100 seeds）做逐 seed ram = a_true_s − mean_s(a_true)，分窗驗**兩個量**（eq17_6state_review_findings.md §8.1 三層鏈）：
+   - **Level**：Var(a_ram) vs 閉式 `C_δx·(a·K_h/R)²·σ²_δh`（鏈 A+B）
+   - **Increment（= Q55 本體）**：Var(δa_ram)（一步差分）vs 閉式 `[2/(1+λ_c)]·(a·K_h/R)²·σ²_δh`（鏈 C，C_δx 與 (1−ρ₁) 對消）
+   - σ²_δh = 4k_B·T·a（per-step thermal kick）；理論逐點算（a、K_h 沿 h̄_d）再窗內平均。輸出 ratio 表進 summary。先前僅 h=50 靜態驗過（emp/closed = 0.998–1.001）。
 4. **A3 — desc 窗 â 統計**：summary 的 arm B gain estimation 區塊補 desc 窗（â ensemble-mean rel-err + â ram std），與 osc/gon/goff 並列。
 
 ### 12.4 新圖 1 — 三層 gain 對比（`fig_gain_compare`）
