@@ -139,6 +139,14 @@ function cfg = build_config(f, opts)
     cfg.t_hold    = 0.5;
     cfg.t_descend_override = 1.0; % decouple descent from 1/f
     cfg.T_sim     = opts.T_sim;
+    % Temporal completeness: fail loudly if T_sim truncates the osc phase
+    % (check_trajectory_safety only checks h_min, not duration). Smoke mode
+    % is exempt: it is a deliberately truncated end-to-end pipeline check.
+    if ~opts.smoke
+        assert(opts.T_sim >= cfg.t_hold + cfg.t_descend_override + opts.n_cyc_per_s, ...
+               'build_config: T_sim=%.2f s too short for hold+descend+osc = %.2f s', ...
+               opts.T_sim, cfg.t_hold + cfg.t_descend_override + opts.n_cyc_per_s);
+    end
     pc = physical_constants();
     cfg.h_min     = 1.05 * pc.R;  % scenario-local override (global default 1.5R blocks h_bar=1.2)
     cfg.ctrl_enable = true;
@@ -187,7 +195,7 @@ function layer0 = layer0_checks(runs, cfg, opts)
                     'n_checked', 0, 'n_skipped_A', 0, 'n_skipped_B', 0);
 
     R_phys = ref.simOut.meta.params_value.common.R;
-    gate_free_expected = isfield(cfg, 'h_bar_safe') && ...
+    gate_free_expected = isfield(cfg, 'h_bar_safe') && isfield(cfg, 'h_bottom') && ...
         cfg.h_bar_safe < cfg.h_bottom / R_phys * (1 - 1e-9);
 
     for arm = 'AB'
