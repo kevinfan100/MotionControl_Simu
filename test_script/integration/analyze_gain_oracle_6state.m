@@ -124,45 +124,14 @@ function A = per_freq_analysis(runs, cfg, f)
     wins = {'desc', 'osc', 'gon', 'goff'};
     R = struct();
     for arm = 'AB'
-        e_det  = A.e_det.(arm);
         em_det = get_em(runs.(arm).det.simOut);     % = e_det (noise-free)
-        nz  = runs.(arm).noisy;
-        ns  = numel(nz);
-        div = [nz.diverged];
-        R.(arm).mu    = nan(numel(wins), ns, 3);
-        R.(arm).sd    = nan(numel(wins), ns, 3);
-        R.(arm).sd_pm = nan(numel(wins), ns, 3);
-        for w = 1:numel(wins)
-            idx = W.(wins{w});
-            for s = 1:ns
-                if div(s); continue; end            % diverged: excluded (NaN)
-                ram  = get_e(nz(s).simOut)  - e_det;
-                ramm = get_em(nz(s).simOut) - em_det;
-                for ax = 1:3
-                    R.(arm).mu(w, s, ax)  = mean(ram(idx, ax));
-                    R.(arm).sd(w, s, ax)  = std(ram(idx, ax));
-                    sd_m = std(ramm(idx, ax));
-                    R.(arm).sd_pm(w, s, ax) = sqrt(max(sd_m^2 - sigma2_n(ax), 0));
-                end
-            end
-        end
-        R.(arm).diverged = div;
+        R.(arm) = ram_window_stats(runs.(arm).noisy, A.e_det.(arm), em_det, ...
+                                   get_e, get_em, W, wins, sigma2_n);
     end
     % paired ratios (same-seed, non-diverged pairs only); C1: if no valid
     % pair exists, ratios stay NaN (no empty-assignment crash)
     ok = ~R.A.diverged & ~R.B.diverged;
-    R.ratio.mean = nan(numel(wins), 3);
-    R.ratio.rng  = nan(numel(wins), 3, 2);
-    if any(ok)
-        for w = 1:numel(wins)
-            for ax = 1:3
-                r = squeeze(R.B.sd(w, ok, ax)) ./ squeeze(R.A.sd(w, ok, ax));
-                R.ratio.mean(w, ax)   = mean(r);
-                R.ratio.rng(w, ax, 1) = min(r);
-                R.ratio.rng(w, ax, 2) = max(r);
-            end
-        end
-    end
+    R.ratio = paired_ratio_stats(R.A, R.B, numel(wins));
     % M4: p_m cross-check (design §6.3) — osc window, z axis, both arms
     w_osc = find(strcmp(wins, 'osc'));
     rd = zeros(1, 0);
@@ -188,8 +157,8 @@ function A = per_freq_analysis(runs, cfg, f)
     % arm: its EKF runs in a no-noise regime (Guard 2 latched, y2 off); the
     % saved mu columns quantify the discrepancy (-2.7 to -12.7 nm on z).
     % det := ensemble mean of p_true over non-diverged noisy seeds.
-    % Phase 1 scope: feeds the trajectory-space figures only — all existing
-    % statistics/ratios/summary tables still use the noise-free det reference.
+    % Feeds the trajectory-space figures and the ram v2 statistics below;
+    % the v1 tables (noise-free det reference) are kept for comparison.
     nd_pair_idx = find(ok, 1);                      % first paired seed
     for arm = 'AB'
         nd = noisy_det_extract(runs.(arm));
@@ -208,6 +177,30 @@ function A = per_freq_analysis(runs, cfg, f)
         end
         A.noisy_det.(arm) = keep;
     end
+
+    % --- ram v2: ensemble-det reference (same windows/stats as v1) ---
+    % det_e_v2 = p_d_al - det_traj (error-space ensemble det); ram_v2_s =
+    % e_s - det_e_v2, identical sign convention to v1. Notes: (a) seed-mean
+    % of ram_v2 at every t is zero BY CONSTRUCTION (sample-mean centering) —
+    % rectification bias lives inside det_traj; (b) sd_v2 carries the
+    % self-subtraction deflation sqrt(1-1/Ns). No seed count is hardcoded.
+    R2 = struct();
+    det_e_v2 = struct();
+    for arm = 'AB'
+        nz_a = runs.(arm).noisy;
+        ok_a = find(~[nz_a.diverged]);
+        acc  = 0;
+        for s = ok_a
+            acc = acc + nz_a(s).simOut.p_m_out(1:end-1, :);
+        end
+        det_e_v2.(arm)  = pd_al - A.noisy_det.(arm).det_traj;
+        det_em_v2       = pd_al - acc / numel(ok_a);   % measured-space ensemble det
+        R2.(arm) = ram_window_stats(nz_a, det_e_v2.(arm), det_em_v2, ...
+                                    get_e, get_em, W, wins, sigma2_n);
+    end
+    R2.ratio = paired_ratio_stats(R2.A, R2.B, numel(wins));
+    R2.wins  = wins;
+    A.ram_v2 = R2;
 
     % --- tail-window observation (M3): hold at h_bar bottom, z axis ---
     tail = struct();
@@ -231,6 +224,10 @@ function A = per_freq_analysis(runs, cfg, f)
 
     % --- theory anchor on arm A (design §7.4-7.5) ---
     A.anchor = theory_anchor(runs.A, A.e_det.A, get_e, W, cfg, kBT);
+    % v2: same anchor with the ensemble-det reference (only norm_std kept;
+    % the det-anchor field of this call is noise-dominated and discarded)
+    anc_v2 = theory_anchor(runs.A, det_e_v2.A, get_e, W, cfg, kBT);
+    A.anchor.norm_std_v2 = anc_v2.norm_std;
 
     % --- a_hat decomposition, arm B (design §6.4) ---
     A.ahat = ahat_analysis(runs.B, W);
@@ -425,6 +422,52 @@ function nd = noisy_det_extract(runs_arm)
 end
 
 
+function Rarm = ram_window_stats(nz, e_ref, em_ref, get_e, get_em, W, wins, sigma2_n)
+%RAM_WINDOW_STATS per-arm per-window ram statistics against a det reference.
+%   Shared by v1 (noise-free det reference) and v2 (ensemble det reference).
+%   Diverged seeds excluded (NaN). Works for any number of seeds.
+    ns  = numel(nz);
+    div = [nz.diverged];
+    Rarm.mu    = nan(numel(wins), ns, 3);
+    Rarm.sd    = nan(numel(wins), ns, 3);
+    Rarm.sd_pm = nan(numel(wins), ns, 3);
+    for s = 1:ns
+        if div(s); continue; end                    % diverged: excluded (NaN)
+        ram  = get_e(nz(s).simOut)  - e_ref;
+        ramm = get_em(nz(s).simOut) - em_ref;
+        for w = 1:numel(wins)
+            idx = W.(wins{w});
+            for ax = 1:3
+                Rarm.mu(w, s, ax) = mean(ram(idx, ax));
+                Rarm.sd(w, s, ax) = std(ram(idx, ax));
+                sd_m = std(ramm(idx, ax));
+                Rarm.sd_pm(w, s, ax) = sqrt(max(sd_m^2 - sigma2_n(ax), 0));
+            end
+        end
+    end
+    Rarm.diverged = div;
+end
+
+
+function ratio = paired_ratio_stats(RA, RB, nwins)
+%PAIRED_RATIO_STATS same-seed B/A sd ratios (non-diverged pairs only).
+%   C1: if no valid pair exists, ratios stay NaN (no empty-assignment crash).
+    okp = ~RA.diverged & ~RB.diverged;
+    ratio.mean = nan(nwins, 3);
+    ratio.rng  = nan(nwins, 3, 2);
+    if any(okp)
+        for w = 1:nwins
+            for ax = 1:3
+                r = squeeze(RB.sd(w, okp, ax)) ./ squeeze(RA.sd(w, okp, ax));
+                ratio.mean(w, ax)   = mean(r);
+                ratio.rng(w, ax, 1) = min(r);
+                ratio.rng(w, ax, 2) = max(r);
+            end
+        end
+    end
+end
+
+
 function flags = collect_flags(A)
     flags.failed        = false;
     flags.anchor_det    = A.anchor.det_pass;
@@ -455,21 +498,26 @@ function write_summary_md(path, f, S, A)
         fprintf(fid, '| osc rms_res [nm] | %c | %.2f | %.2f | %.2f |\n',  arm, D.rms_res*1e3);
         fprintf(fid, '| trough bias [nm] | %c | %.2f | %.2f | %.2f |\n',  arm, D.trough_bias*1e3);
     end
-    fprintf(fid, '\n## ram (std over window, seed mean [min, max]; paired B/A ratio)\n\n');
+    fprintf(fid, '\n## ram (noise-free det reference — superseded, kept for comparison)\n\n');
     ax_name = 'xyz';
-    fprintf(fid, '| window | axis | A sd [nm] (rng) | B sd [nm] (rng) | ratio (rng) |\n|---|---|---|---|---|\n');
-    for w = 1:numel(A.ram.wins)
-        for ax = 1:3
-            sdA = squeeze(A.ram.A.sd(w, :, ax)) * 1e3;
-            sdB = squeeze(A.ram.B.sd(w, :, ax)) * 1e3;
-            fprintf(fid, '| %s | %c | %.2f [%.2f, %.2f] | %.2f [%.2f, %.2f] | %.2f [%.2f, %.2f] |\n', ...
-                    A.ram.wins{w}, ax_name(ax), ...
-                    mean(sdA, 'omitnan'), min(sdA), max(sdA), ...
-                    mean(sdB, 'omitnan'), min(sdB), max(sdB), ...
-                    A.ram.ratio.mean(w, ax), ...
-                    A.ram.ratio.rng(w, ax, 1), A.ram.ratio.rng(w, ax, 2));
-        end
+    write_ram_table(fid, A.ram, ax_name);
+    fprintf(fid, '\n## ram v2 (ensemble det reference)\n\n');
+    defl = @(n) (1 - sqrt(max(1 - 1/n, 0))) * 100;  % self-subtraction deflation [%]
+    fprintf(fid, ['Seed-mean of ram_v2 at every t is zero by construction ', ...
+                  '(sample-mean centering); rectification bias lives inside ', ...
+                  'det_traj. sd carries the self-subtraction deflation ', ...
+                  'sqrt(1-1/Ns): arm A -%.1f%% (Ns=%d), arm B -%.1f%% (Ns=%d).\n\n'], ...
+            defl(A.noisy_det.A.n_seeds), A.noisy_det.A.n_seeds, ...
+            defl(A.noisy_det.B.n_seeds), A.noisy_det.B.n_seeds);
+    write_ram_table(fid, A.ram_v2, ax_name);
+    wsel = {'osc', 'gon', 'goff'};
+    cmp = cell(1, numel(wsel));
+    for k = 1:numel(wsel)
+        wi = find(strcmp(A.ram.wins, wsel{k}));
+        cmp{k} = sprintf('%s %.2f -> %.2f', wsel{k}, ...
+                         A.ram.ratio.mean(wi, 3), A.ram_v2.ratio.mean(wi, 3));
     end
+    fprintf(fid, '\n- headline z ratio (old -> v2): %s\n', strjoin(cmp, ', '));
     fprintf(fid, '\n## ram rectification bias mu (seed mean over window)\n\n');
     fprintf(fid, '| window | axis | mu_A [nm] | mu_B [nm] |\n|---|---|---|---|\n');
     for w = 1:numel(A.ram.wins)
@@ -492,6 +540,19 @@ function write_summary_md(path, f, S, A)
             A.anchor.det_max_osc_um*1e3, passstr(A.anchor.det_pass));
     fprintf(fid, '- arm A normalized ram std (per seed): %s -> %s (soft gate 1 +- 0.15)\n', ...
             mat2str(round(A.anchor.norm_std, 3)), passstr(A.anchor.norm_pass));
+    fprintf(fid, '- arm A normalized ram std v2 (ensemble det, per seed): %s\n', ...
+            mat2str(round(A.anchor.norm_std_v2, 3)));
+    idx_pair = find(~A.ram.A.diverged & ~A.ram.B.diverged, 1);
+    if isempty(idx_pair)
+        fprintf(fid, '- traj-figure seed: none (no paired non-diverged seed)\n');
+    else
+        if isfield(S.runs.B.noisy, 'seed')
+            seed_no = S.runs.B.noisy(idx_pair).seed;
+        else
+            seed_no = idx_pair;
+        end
+        fprintf(fid, '- traj-figure seed: %d\n', seed_no);
+    end
     fprintf(fid, '- stationarity (half-diff): A %.1f%% / B %.1f%%\n', ...
             A.stationarity.A.half_rel_diff*100, A.stationarity.B.half_rel_diff*100);
     fprintf(fid, '- p_m cross-check (osc, z): max rel-diff = %.3f%% -> %s (soft gate < 2%%)\n', ...
@@ -508,9 +569,34 @@ function write_summary_md(path, f, S, A)
     rs = mean(A.ahat.ram_std_osc, 2, 'omitnan');    % [3x1], seed mean
     fprintf(fid, '- a_hat ram std (osc, seed mean) [um/pN]: [%.3g %.3g %.3g]\n', rs);
     fprintf(fid, '- gate duty cycle (osc): %s\n', mat2str(round(A.ahat.gate_duty_osc, 3)));
-    fprintf(fid, ['\n_Note: a_hat ram std is measured against the %d-seed ensemble mean, ', ...
-                  'which deflates std by sqrt(1-1/Ns) (~ -10.6%% at Ns=5)._\n'], A.ahat.n_seeds);
+    if A.ahat.n_seeds > 0
+        defl_ahat = (1 - sqrt(1 - 1/A.ahat.n_seeds)) * 100;
+    else
+        defl_ahat = NaN;
+    end
+    fprintf(fid, ['\n_Note: a_hat ram std (and ram v2 sd above) are measured ', ...
+                  'against the %d-seed ensemble mean; self-subtraction deflates ', ...
+                  'std by sqrt(1-1/Ns) = -%.1f%% at Ns=%d._\n'], ...
+            A.ahat.n_seeds, defl_ahat, A.ahat.n_seeds);
     fclose(fid);
+end
+
+
+function write_ram_table(fid, R, ax_name)
+%WRITE_RAM_TABLE std-over-window table (seed mean [min, max]; paired B/A ratio).
+    fprintf(fid, '| window | axis | A sd [nm] (rng) | B sd [nm] (rng) | ratio (rng) |\n|---|---|---|---|---|\n');
+    for w = 1:numel(R.wins)
+        for ax = 1:3
+            sdA = reshape(R.A.sd(w, :, ax), 1, []) * 1e3;
+            sdB = reshape(R.B.sd(w, :, ax), 1, []) * 1e3;
+            fprintf(fid, '| %s | %c | %.2f [%.2f, %.2f] | %.2f [%.2f, %.2f] | %.2f [%.2f, %.2f] |\n', ...
+                    R.wins{w}, ax_name(ax), ...
+                    mean(sdA, 'omitnan'), min(sdA), max(sdA), ...
+                    mean(sdB, 'omitnan'), min(sdB), max(sdB), ...
+                    R.ratio.mean(w, ax), ...
+                    R.ratio.rng(w, ax, 1), R.ratio.rng(w, ax, 2));
+        end
+    end
 end
 
 
@@ -519,42 +605,32 @@ function s = passstr(b)
 end
 
 
-function make_figs(S, A, f, out_dir)
-%MAKE_FIGS per-frequency figures, EXP style.
-%   Figure set under redesign; superseded overlays (noise-free-det reference
-%   is invalid for the estimated arm) removed — see git history (12f6994).
-%   They will be selectively reinstated once the error-presentation design
-%   is settled.
+function make_figs(S, A, ~, out_dir)
+%MAKE_FIGS per-frequency figures, EXP style (user presentation spec).
+%   No titles; bold large fonts; 3 y-ticks; FIXED axis ranges across all
+%   frequencies. The single-seed ram comes from A.noisy_det.(arm).ram_traj
+%   (first paired non-diverged seed; seed number recorded in summary.md).
 %   fig_traj_det : desired vs noisy-ensemble det trajectories, x/z
 %   fig_traj_ram : trajectory-space ram (vs noisy-ensemble det), x/z
     COL_TRUE = [0 0.6 0]; COL_B = [0.8 0 0]; COL_A = [0.45 0.30 0.75];
-    FS = 18; LFS = 14; LW = 2.0;
+    FS_LAB = 24; FS_AX = 20; FS_LEG = 18; LW = 2.0;
+    % cross-frequency comparability locks: identical axis ranges/ticks at
+    % every frequency so the figures can be compared side by side
+    XLIM_T     = [0 7];        XTICK_T     = 0:1:7;       % time axis [s]
+    DET_X_YLIM = [-0.06 0.06]; DET_X_YTICK = [-0.05 0 0.05];   % [um]
+    DET_Z_YLIM = [0 55];       DET_Z_YTICK = [0 25 50];        % [um]
+    RAM_YLIM   = [-150 150];   RAM_YTICK   = [-100 0 100];     % [nm]
     so_ref = S.runs.A.det.simOut;
-    t_e = so_ref.tout(2:end);
-
-    % --- seed for the single-seed overlays: first non-diverged on BOTH arms ---
-    divA = [S.runs.A.noisy.diverged];
-    divB = [S.runs.B.noisy.diverged];
-    seed_idx = find(~divA & ~divB, 1);
-    if isempty(seed_idx)
-        error('make_figs:noPairedSeed', ...
-              'make_figs: no seed is non-diverged on both arms (A %s / B %s)', ...
-              mat2str(divA), mat2str(divB));
-    end
-    if isfield(S.runs.B.noisy, 'seed')
-        seed_used = S.runs.B.noisy(seed_idx).seed;
-    elseif isfield(S.opts, 'seeds')
-        seed_used = S.opts.seeds(seed_idx);
-    else
-        seed_used = seed_idx;
-    end
+    t_e   = so_ref.tout(2:end);
+    pd_al = so_ref.p_d_out(2:end, :);
     cols = [1 3]; axl = 'xz';                       % top row = x, bottom = z
 
     % ---- fig_traj_det: desired vs noisy-ensemble det trajectories, x/z ----
-    pd_al = so_ref.p_d_out(2:end, :);
+    det_ylim  = {DET_X_YLIM, DET_Z_YLIM};
+    det_ytick = {DET_X_YTICK, DET_Z_YTICK};
     ft = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
                 'Visible', 'off');
-    tl = tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+    tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
     for r = 1:2
         c = cols(r); nexttile; hold on;
         plot(t_e, pd_al(:, c), '-', 'Color', COL_TRUE, 'LineWidth', 3, ...
@@ -563,39 +639,45 @@ function make_figs(S, A, f, out_dir)
              'DisplayName', 'a = a_{true}');
         plot(t_e, A.noisy_det.B.det_traj(:, c), '-', 'Color', COL_B, 'LineWidth', LW, ...
              'DisplayName', 'a = â');
-        ylabel(sprintf('%c  (\\mum)', axl(r)), 'FontSize', FS, 'FontWeight', 'bold');
-        grid off; set(gca, 'FontSize', LFS);
+        xlim(XLIM_T); ylim(det_ylim{r});
+        set(gca, 'XTick', XTICK_T, 'YTick', det_ytick{r}, ...
+                 'FontSize', FS_AX, 'FontWeight', 'bold');
+        ylabel(sprintf('%c  (\\mum)', axl(r)), 'FontSize', FS_LAB, 'FontWeight', 'bold');
+        grid off;
         if r == 1
-            legend('Location', 'northoutside', 'Orientation', 'horizontal');
+            lg = legend('Location', 'northoutside', 'Orientation', 'horizontal');
+            lg.FontSize = FS_LEG; lg.FontWeight = 'bold';
         end
     end
-    xlabel('t (s)', 'FontSize', FS, 'FontWeight', 'bold');
-    sgtitle(tl, sprintf('osc\\_aggr   %g Hz', f), 'FontSize', LFS, 'FontWeight', 'normal');
+    xlabel('t (s)', 'FontSize', FS_LAB, 'FontWeight', 'bold');
     % NOTE: figures leak only if exportgraphics throws (close is skipped);
     % acceptable for the -batch workflow (make_eq17_6state_figures precedent).
     exportgraphics(ft, fullfile(out_dir, 'fig_traj_det.png'), 'Resolution', 150);
     close(ft);
 
     % ---- fig_traj_ram: trajectory-space ram vs noisy-ensemble det, x/z ----
-    % first-paired-seed ram stored by per_freq_analysis (A.noisy_det.(arm).ram_traj)
+    % first-paired-seed ram stored by per_freq_analysis (A.noisy_det.(arm).ram_traj);
+    % per-tile legend carries each curve's variance over the full displayed span
     fm = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
                 'Visible', 'off');
-    tl = tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+    tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
     for r = 1:2
         c = cols(r); nexttile; hold on;
-        plot(t_e, A.noisy_det.A.ram_traj(:, c) * 1e3, '-', 'Color', COL_A, ...
-             'LineWidth', LW, 'DisplayName', 'a = a_{true}');
-        plot(t_e, A.noisy_det.B.ram_traj(:, c) * 1e3, '-', 'Color', COL_B, ...
-             'LineWidth', LW, 'DisplayName', 'a = â');
-        ylabel(sprintf('%c_{ram}  (nm)', axl(r)), 'FontSize', FS, 'FontWeight', 'bold');
-        grid off; set(gca, 'FontSize', LFS);
-        if r == 1
-            legend('Location', 'northoutside', 'Orientation', 'horizontal');
-        end
+        sigA = A.noisy_det.A.ram_traj(:, c) * 1e3;  % [nm]
+        sigB = A.noisy_det.B.ram_traj(:, c) * 1e3;  % [nm]
+        plot(t_e, sigA, '-', 'Color', COL_A, 'LineWidth', LW, ...
+             'DisplayName', sprintf('a = a_{true}  (var %.0f nm^2)', var(sigA)));
+        plot(t_e, sigB, '-', 'Color', COL_B, 'LineWidth', LW, ...
+             'DisplayName', sprintf('a = â  (var %.0f nm^2)', var(sigB)));
+        xlim(XLIM_T); ylim(RAM_YLIM);
+        set(gca, 'XTick', XTICK_T, 'YTick', RAM_YTICK, ...
+                 'FontSize', FS_AX, 'FontWeight', 'bold');
+        ylabel(sprintf('%c_{ram}  (nm)', axl(r)), 'FontSize', FS_LAB, 'FontWeight', 'bold');
+        grid off;
+        lg = legend('Location', 'northoutside', 'Orientation', 'horizontal');
+        lg.FontSize = FS_LEG; lg.FontWeight = 'bold';
     end
-    xlabel('t (s)', 'FontSize', FS, 'FontWeight', 'bold');
-    sgtitle(tl, sprintf('osc\\_aggr   %g Hz   (seed %d)', f, seed_used), ...
-            'FontSize', LFS, 'FontWeight', 'normal');
+    xlabel('t (s)', 'FontSize', FS_LAB, 'FontWeight', 'bold');
     exportgraphics(fm, fullfile(out_dir, 'fig_traj_ram.png'), 'Resolution', 150);
     close(fm);
 end
