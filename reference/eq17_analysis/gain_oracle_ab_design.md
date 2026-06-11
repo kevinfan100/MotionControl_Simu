@@ -1,8 +1,8 @@
 # Gain Oracle A/B 對比實驗設計（eq17-6state）
 
-Date: 2026-06-10
+Date: 2026-06-10（Round 1）/ 2026-06-11（Round 2，§12）
 Branch: `test/motion-test`（自 feat/eq17-6state @ d6f95cc 分出，獨立 worktree）
-Status: 設計定稿，待使用者 review 後進 implementation plan。
+Status: Round 1（§1–11）已實作完成並跑完 20-seed 生產批（部分細節被執行中的方法修正取代，見 §12.0）。Round 2（§12）= gate-free 新 scenario + 100 seeds + 新圖 + 分析升級，設計定稿待 review。
 
 ---
 
@@ -258,4 +258,105 @@ summary.md 主表（每頻率，per axis [x y z]）：
 | 2 | unit test | `verify_eq17_unit_gain_override_6state` 全 PASS |
 | 3 | Layer 0 | 36 runs assertions 全過（diverged 屬合法結果，單列）|
 | 4 | Layer 1 | arm A det < 1 nm（soft）；arm A normalized ram ∈ 1 ± 0.15（soft）；超出須有書面解釋。5 Hz 預期 FLAG（<2 nm）：近壁 quasi-static 近似殘差隨頻率增長，不影響 stochastic anchor（Layer 1 ram 檢查仍 PASS）。 |
+
+---
+
+## 12. Round 2 — gate-free 新 scenario + 100 seeds + 新圖 + 分析升級（2026-06-11）
+
+### 12.0 Round 1 執行後的方法修正（已實作，記錄供讀者對照 §1–11）
+
+Round 1 執行中經使用者質疑後修正的設計，git 歷史 905a1d8 / c6f17f4 / e5d4060 / 2a3c131：
+
+1. **det 萃取改 ensemble 法**：noise-free det run 對 arm B 無效（無噪聲下 Guard 2 latch → y₂ 關 → â 走 y₁-only 路徑，與 noisy 行為結構不同；crossval 實證 z 系統差 26–28 nm rms @2/5Hz）。det := 跨 seed 逐時刻平均。**不對稱參考（使用者核准）**：arm A 用 noise-free run（對 A 有效且精確）、arm B 用 ensemble。§6.1 的 det run 表、§8 圖組對 arm B 部分被此取代。
+2. **ram v2**：以 ensemble det 為參考重算（v1 的 ratio 1.6–1.7 是 det 洩漏 artifact；v2 headline：osc ≈ 1.0，超額僅 gate-on）。自減緊縮以 /(1−1/Ns) 精確補償。
+3. **seeds 5 → 20**（Round 1 生產批實際為 20）。
+4. **圖組重做**：§8 的 fig1–fig5 退役，改為 fig_traj_det / fig_traj_ram / fig_det_err 三張（git 12f6994 起）。
+5. 誤差帳本：det 殘餘 σ/√N（無偏、不可補償、誤差棒呈現）；deflation（精確補償）；有限樣本散佈（範圍/誤差棒）。
+
+### 12.1 Round 2 模擬配置（單一配置：B′ gate-free）
+
+只跑一組配置，輸出 `test_results/gain_oracle_ab_nogate/f<freq>Hz/`（不覆蓋既有資料）：
+
+| 項目 | Round 1 值 | Round 2 值 |
+|---|---|---|
+| 頻率 | {1, 2, 5} Hz | **{1, 5, 10} Hz** |
+| 震盪時長 | 5.0 s（n_cycles = 5f）| **2.0 s（n_cycles = 2f）** |
+| tail hold | 0.5 s | 0.5 s |
+| T_sim | 7.0 s | **4.0 s**（0.5 + 1.0 + 2.0 + 0.5）|
+| seeds | 20 | **100** |
+| **h̄_safe** | 1.5（G3 每週期觸發，duty ~23%）| **1（G3 永不觸發；軌跡谷 h̄ = 1.2 > 1）= gate-free** |
+| 其餘 | — | 不變（h_init 50、h_bottom 2.7、A 2.5、t_descend 1.0、h_min 1.05R、suppress_xD 兩臂、CRN 配對）|
+
+- h̄_safe = 1 語意：僅真正碰壁才觸發，實質關閉 G3。G1 本來就關（t_warmup_kf = 0）、G2 在 noisy run 數學上不可觸發（熱訊號高於噪聲地板 ~10⁴ 倍）→ 本配置 = EKF 全程雙回授。**近壁 â 無 gate 保護是本實驗的目的**；發散偵測（§7 Layer 0 #3）保留，diverged 屬合法結果。
+- driver/config plumbing：h̄_safe 需從 scenario config 接通到 `build_eq17_constants`（現為定值），additive、預設值不變。
+- 預估成本：~4.5 s/run × 202 runs/頻率 ≈ 15 min/頻率，全矩陣 ~45 min；runs.mat ~630 MB/頻率。
+- 風險：1 Hz 震盪段僅 2 週期（丟 1 留 1），窗統計薄，靠 100 seeds 補；10 Hz 的 quasi-static 近似最弱（Layer 1 soft gate 預期 FLAG 幅度更大，屬已知）。
+
+### 12.2 分析窗更新（per-cycle discard）
+
+discard 從固定 1.0 s 改為**丟震盪第 1 個週期**：
+
+```
+W_desc  = [0.5, 1.5] s
+discard = [1.5, 1.5 + 1/f] s          （第 1 週期暫態）
+W_osc   = [1.5 + 1/f, 3.5] s          （1 Hz: 1 cycle；5 Hz: 9；10 Hz: 19）
+W_tail  = [3.5, 4.0] s                 （hold at h̄ = 1.2，觀察用）
+gate 子窗 mask：照 §6 用 h̄_d < 1.5 幾何定義（gate-free 下仍是有意義的「近壁/遠壁」分窗，沿用名稱 gon/goff）
+```
+
+### 12.3 分析升級（既有 pipeline 上的四項）
+
+1. **A2 — SEM 誤差棒**：所有跨 seed 彙整統計從 `mean [min, max]` 升級為 `mean ± SEM [min, max]`（SEM = 跨 seed std/√N）；paired ratio 同樣逐 seed 配對後報 mean ± SEM。
+2. **x_ram 直取**：det_x ≡ 0（鏡射對稱，Round 1 雙重實證）→ x 軸 ram 直接用 x 本身，不做 ensemble 減法、無 deflation 修正；z 軸照 ensemble 法。
+3. **A1 — Q55 閉式近壁動態首驗**：用 arm A 的 a_true stack（100 seeds）做逐 seed ram = a_true_s − mean_s(a_true)，分窗 Var(a_ram) 對閉式 `Var(a_ram) = [2/(1+λ_c)]·(a·K_h/R)²·σ²_δh` 比對（per window 用窗內代表值；σ²_δh 取實測位置 ram 變異數）。輸出 ratio 表進 summary。先前僅 h=50 靜態驗過（emp/closed = 0.998）。
+4. **A3 — desc 窗 â 統計**：summary 的 arm B gain estimation 區塊補 desc 窗（â ensemble-mean rel-err + â ram std），與 osc/gon/goff 並列。
+
+### 12.4 新圖 1 — 三層 gain 對比（`fig_gain_compare`）
+
+x/z 兩列（a_x 用 C_∥、a_z 用 C_⊥），每列四層，由底至頂：
+
+| 層 | 信號 | 來源 | 線型 |
+|---|---|---|---|
+| 1 | `a_xm`（IIR 反解的 gain 量測）| **B 臂**、單 seed raw（traj-figure seed）| 淡藍細線（Measured 慣例）|
+| 2 | `a_pd = a_nom/C_i(h̄_d)` | 期望軌跡（確定性，分析端算）| 線型於樣張定 |
+| 3 | `a_true` | **A 臂**（完美控制下的實際 gain）、100-seed ensemble mean | 同上 |
+| 4 | `â` | **B 臂**（生產估測）、100-seed ensemble mean | 同上 |
+
+- 語意：a_pd = 設計上應有的 gain（先驗、實機可算）；a_true(A) = 完美控制下實際發生的 gain；â(B) = 生產控制器以為的 gain；a_xm = 估測器看到的原始量測。
+- 層 2–4 的顏色/粗細在樣張階段定（參考圖的 Measured/True/Estimated 風格 + §12.6 規範）。
+
+### 12.5 新圖 2 — motion variance 對比（`fig_motion_var`）
+
+x/z 兩列，每列三條曲線：
+
+```
+理論：σ²_th,i(t) = C_δx·4k_B·T·a_pd,i(t) + C_n_fb·σ²_n,i      （沿期望軌跡，確定性）
+實測 ×2：arm A、arm B 的逐時刻 ensemble var
+  z 軸：var_s over seeds of ram_v2(t_k)，× 1/(1−1/N) deflation 補償
+  x 軸：var over seeds of x(t_k)（直取，無補償）
+```
+
+- **純 pointwise，不做時間平滑**（使用者定案）；100 seeds 下每點散佈 ~√(2/99) ≈ 14%，曲線毛刺屬無偏呈現。
+- 不加第二條分解理論線（B 臂位置偏離效應不單獨拆；目標狀態 = 完美估測下該項趨零）。
+- 單位 nm²；本圖 = §7 Layer 1 thermal_theory_check 的時間解析版，分窗數字表照常並行輸出。
+
+### 12.6 圖風格全面定案（適用全部圖）
+
+1. **標題**：stats-in-title（統計數值進標題；各圖放哪些數字於樣張階段微調）。
+2. **時間軸**：全時段 [0, T_sim]，軸標 `Time (sec)`。
+3. **字體/tick**：對照 `make_eq17_6state_figures` 參考風格（自然 tick 密度、~18pt）；**外框（box on）與 tick mark 線寬加粗**，與資料線對比清楚。
+4. **ram 疊圖層次**：B 臂（â）= 藍 [0 0.2 0.9]、粗 2.5、底層先畫；A 臂（a_true）= 紅 [0.8 0 0]、細 1.0、疊上層（樣張 `fig_mockup/fig_traj_ram_mock_v3a_colorswap.png`）。讀法：藍色塊狀露出 = â 臂超額。
+5. **圖例名稱**：去 `a = ` 前綴，統一 `Desired` / `a_{true}` / `â`。
+6. **fig_det_err（δ_det 圖）凍結**：本輪不動（鎖範圍與標註留待後續）。
+
+### 12.7 工作流與驗收（Round 2 增量）
+
+- 順序：程式改動（driver plumbing + analyzer 升級 + 新圖 + 風格）→ **以既有 f2Hz 20-seed 資料出全套樣張供使用者過目** → 樣張定稿後跑 100-seed 批次（~45 min）→ 全套產出 review。
+- 驗收增量：
+  | # | 項目 | 標準 |
+  |---|---|---|
+  | 5 | 向後相容 | h̄_safe 預設值不變時既有 unit tests + h50 回歸 PASS 數字不變 |
+  | 6 | gate-free 接線 | **noisy** runs 全程 `diag.gate_active ≡ false`（assert 進 Layer 0；G1 關、G2 noisy 下不可觸發、G3 被 h̄_safe=1 關）。det run 不在此斷言內：無噪聲下 G2 latch 屬已知行為（§12.0）|
+  | 7 | A1 | Q55 閉式 ratio 表輸出（PASS 門檻不預設，近壁動態首驗屬探索性，數字單列討論）|
+  | 8 | 樣張 gate | 新圖 1/2 + 風格改版經使用者核准後才跑批 |
 | 5 | 交付 | 3 組 per-freq 報告 + 跨頻率總覽 + 本設計文件對應的 findings 章節 |
