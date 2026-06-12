@@ -501,7 +501,9 @@ function ah = ahat_analysis(runsB, W)
     ah.n_seeds = numel(ok);
     if isempty(ok)
         % C2: all arm-B noisy seeds diverged — NaN-filled, same fields and
-        % shapes as the computed branch ([3x1] for rel_err_*/rel_sem_*)
+        % shapes as the computed branch ([3x1] for rel_err_*/rel_sem_*).
+        % ram_std_* seed dimension intentionally collapsed to [3x1] here
+        % (vs computed [3xNs]); consumers reduce over seeds, so shape-safe.
         ah.a_true        = nan(N, 3);
         ah.ens_mean      = nan(N, 3);
         ah.rel_err_osc   = nan(3, 1);
@@ -554,7 +556,9 @@ function ah = ahat_analysis(runsB, W)
     dev = a_stack - ah.ens_mean;
     sd3 = std(dev(W.osc, :, :), 0, 1);              % [1 x 3 x Ns]
     ah.ram_std_osc  = reshape(sd3, 3, []);           % [3 x Ns] (M5)
-    % A3: per-window ram std (Task 4 Step 3)
+    % A3: per-window ram std (Task 4 Step 3). Left deflated by design for
+    % parity with the ram_v2 table (disclosed in summary prose), unlike
+    % q55/thermal which correct by /(1-1/Ns).
     sdw = @(wmask) reshape(std(dev(wmask, :, :), 0, 1), 3, []);
     ah.ram_std_desc = sdw(W.desc);
     ah.ram_std_gon  = sdw(W.gon);
@@ -606,18 +610,28 @@ function q = q55_dynamic_check(runsA, W, wins, gain, lc, kBT, R_phys)
     % per-step thermal kick in h-direction (wall normal = z axis = axis 3)
     s2dh = 4 * kBT * gain.a_pd(:, 3);                    % [N-1 x 1]
     base = (gain.a_pd .* gain.Kh_pd / R_phys).^2 .* s2dh; % [N-1 x 3]
+    % Increments must be taken on the FULL series before masking: diffing the
+    % masked-then-compacted rows creates a spurious "increment" at every
+    % junction between disjoint window segments (gon/goff are one segment per
+    % cycle), each with variance at the LEVEL scale (~C_dx*base) instead of
+    % the increment scale (~1.18*base), inflating meas_incr. The contiguous
+    % osc window is unaffected — and the h=50 static validation (single
+    % contiguous window) never hit this. vmask keeps only adjacent in-window
+    % pairs; increment theory is averaged on vmask for domain consistency.
+    d_ram = diff(a_ram, 1, 1);                            % [N-2 x 3 x Ns]
     for wi = 1:nw
-        idx = W.(wins{wi});
+        idx   = W.(wins{wi});                             % [N-1 x 1] logical
+        vmask = idx(1:end-1) & idx(2:end);                % [N-2 x 1] in-window pairs
         for ax = [1 3]
             % time-variance per seed → [Ns x 1]
-            vl = squeeze(var(a_ram(idx, ax, :), 0, 1)) / corr;
-            vi = squeeze(var(diff(a_ram(idx, ax, :), 1, 1), 0, 1)) / corr;
+            vl = squeeze(var(a_ram(idx,   ax, :), 0, 1)) / corr;
+            vi = squeeze(var(d_ram(vmask, ax, :), 0, 1)) / corr;
             q.meas_level(wi, ax) = mean(vl,  'omitnan');
             q.meas_incr(wi,  ax) = mean(vi,  'omitnan');
             q.sem_level(wi,  ax) = sem_of(vl(:));
             q.sem_incr(wi,   ax) = sem_of(vi(:));
-            q.th_level(wi, ax)   = C_dx       * mean(base(idx, ax));
-            q.th_incr(wi,  ax)   = 2/(1 + lc) * mean(base(idx, ax));
+            q.th_level(wi, ax)   = C_dx       * mean(base(idx,   ax));
+            q.th_incr(wi,  ax)   = 2/(1 + lc) * mean(base(vmask, ax));
         end
     end
     q.ratio_level = q.meas_level ./ q.th_level;
@@ -958,11 +972,17 @@ function write_summary_md(path, f, S, A)
                   'Increment (= Q55): Var(diff a_ram) vs [2/(1+lc)]*(a*K_h/R)^2*4kBT*a_z. ', ...
                   'Theory pointwise along a_pd (desired trajectory), window-averaged; ', ...
                   'meas /(1-1/Ns). Axes x and z only (y=x by symmetry).\n\n']);
-    fprintf(fid, '| window | axis | level meas/th | incr meas/th |\n|---|---|---|---|\n');
+    % ratio SEM = meas SEM / theory (theory deterministic); single-seed → NaN
+    fprintf(fid, ['| window | axis | level meas/th +/- sem | ', ...
+                  'incr meas/th +/- sem |\n|---|---|---|---|\n']);
     for wi = 1:numel(A.q55.wins)
         for ax = [1 3]
-            fprintf(fid, '| %s | %c | %.3f | %.3f |\n', A.q55.wins{wi}, ax_name_q(ax), ...
-                    A.q55.ratio_level(wi, ax), A.q55.ratio_incr(wi, ax));
+            fprintf(fid, '| %s | %c | %.3f +/- %.3f | %.3f +/- %.3f |\n', ...
+                    A.q55.wins{wi}, ax_name_q(ax), ...
+                    A.q55.ratio_level(wi, ax), ...
+                    A.q55.sem_level(wi, ax) / A.q55.th_level(wi, ax), ...
+                    A.q55.ratio_incr(wi, ax), ...
+                    A.q55.sem_incr(wi, ax) / A.q55.th_incr(wi, ax));
         end
     end
     fclose(fid);
