@@ -1201,15 +1201,16 @@ function make_figs(S, A, f, out_dir)
     close(fg);
 
     % ---- fig_delpm: raw measured tracking error, x+z (per traj seed) ----
-    % "Plain" per-axis del_pm time trace in the original-simulation style:
-    % aligned measured error e_m[k] = p_d[k+1] - p_m[k], first paired
-    % non-diverged seed, both arms with the standard layer convention.
+    % "Plain" per-axis del_pm in the CONTROLLER convention (user decision
+    % 2026-06-12): delta_x_m[k] = p_d[k-d] - p_m[k] with d = 2, taken
+    % directly from the controller's own diag log (zero reconstruction
+    % error). First paired non-diverged seed, both arms, standard layers.
     idx_pair_fig = find(~[S.runs.A.noisy.diverged] & ~[S.runs.B.noisy.diverged], 1);
     if ~isempty(idx_pair_fig)
         soA = S.runs.A.noisy(idx_pair_fig).simOut;
         soB = S.runs.B.noisy(idx_pair_fig).simOut;
-        emA = (soA.p_d_out(2:end, :) - soA.p_m_out(1:end-1, :)) * 1e3;   % [nm]
-        emB = (soB.p_d_out(2:end, :) - soB.p_m_out(1:end-1, :)) * 1e3;
+        emA = soA.diag.delta_x_m(2:end, :) * 1e3;   % [nm]
+        emB = soB.diag.delta_x_m(2:end, :) * 1e3;
         fpm = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
                      'Visible', 'off');
         tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
