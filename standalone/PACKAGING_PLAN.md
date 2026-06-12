@@ -74,12 +74,12 @@ gate 定義以此為準。逐部分的決定紀錄在 [DECISIONS.md](DECISIONS.m
 
 ## 5. 三段式流程與狀態
 
-> **⏩ 從這裡接續（2026-06-11, HEAD = `pack(6)` 42deea1）**
-> 部分 1–5 全部 DONE + 簽收(部分 5 走讀待最後簽收，不影響接續)。controller_6state.m
-> 是**完整 EKF**(code 上 Q/R 已隨部分 5 一起落地)。git 全乾淨,5 個 gate 檔(part1–5)
-> 全 PASS。**下一步 = 部分 6 純驗證輪**:不改 code,只加 `gates_part6.m`(Q55 emp/closed
-> ≈0.998、IF dual-source、Q33 三成分)+ 走讀。新 session 開頭一句:
-> 「讀 standalone/PACKAGING_PLAN.md,做部分 6 驗證輪」即可無縫接上。逐部分細節見
+> **⏩ 從這裡接續（2026-06-11, HEAD = `pack(7)`）**
+> 部分 1–6 全部 DONE（部分 5/6 走讀簽收待最後確認，不影響接續）。controller_6state.m
+> 是**完整 EKF + Q/R**。git 全乾淨,6 個 gate 檔(part1–6)全 PASS。**下一步 = 部分 7
+> 閉迴路等價**:把 standalone h50 閉迴路對母 repo golden baseline 做 bit-exact 比對
+> (part 5 E2 已見數字逐位元相同的苗頭)。新 session 開頭一句:「讀
+> standalone/PACKAGING_PLAN.md,做部分 7」即可無縫接上。逐部分細節見
 > [DECISIONS.md](DECISIONS.md)。
 
 | 段 | 內容 | 狀態 |
@@ -97,9 +97,9 @@ gate 定義以此為準。逐部分的決定紀錄在 [DECISIONS.md](DECISIONS.m
 | 2 | 模擬骨架 | **DONE + 簽收** | pack(3) | gates_part2（G1–G3 bit-exact, T1–T3） |
 | 3 | 量測鏈 | **DONE + 簽收** | pack(4) | gates_part3（C1/C4 live；C2/C3 snapshot） |
 | 4 | 控制律 | **DONE + 簽收** | pack(5) | gates_part4（D2 live；D1 snapshot） |
-| 5 | EKF 遞迴 | **DONE**（走讀簽收待最後確認） | pack(6) | gates_part5（E1 DARE, E2 h50, E3 envelope） |
-| 6 | Q/R 驗證輪 | **NEXT**（code 已落地,只加 gate） | — | gates_part6（待建） |
-| 7 | 閉迴路等價 | TODO | — | h50 bit-exact vs 母 repo golden |
+| 5 | EKF 遞迴 | **DONE + 簽收** | pack(6) | gates_part5（E1 DARE, E2 h50, E3 envelope） |
+| 6 | Q/R 驗證輪 | **DONE**（走讀簽收待確認；不改 code） | pack(7) | gates_part6（F1/F2/F4/F5 + F3；F2/F5 ground truth） |
+| 7 | 閉迴路等價 | **NEXT** | — | h50 bit-exact vs 母 repo golden（part 5 E2 已見苗頭） |
 | 8 | 驗證層 | TODO | — | verify 三場景 + README + figures |
 
 **重要**:部分 5+6 的 code 在 pack(6) 一起落地(EKF 與 Q/R 執行上不可分,見 DECISIONS
