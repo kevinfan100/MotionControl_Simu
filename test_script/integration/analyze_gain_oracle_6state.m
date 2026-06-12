@@ -204,7 +204,10 @@ function A = per_freq_analysis(runs, cfg, f)
             sz = size(A.noisy_det.A.det_traj);
             A.noisy_det.B = struct('det_traj', nan(sz), 'crossval', nan(3, 1), ...
                                    'crossval_rms', nan(3, 1), 'n_seeds', 0, ...
-                                   'seeds_used', [], 'ram_traj', nan(sz));
+                                   'seeds_used', [], 'ram_traj', nan(sz), ...
+                                   'e_traj', nan(sz));
+            A.motion_var.B = struct('var_x_um2', nan(sz(1), 1), ...
+                                    'var_z_um2', nan(sz(1), 1), 'Ns', 0);
             continue;
         end
         nd = noisy_det_extract(runs.(arm));
@@ -217,10 +220,26 @@ function A = per_freq_analysis(runs, cfg, f)
                       'n_seeds', nd.n_seeds, 'seeds_used', nd.seeds_used);
         if isempty(nd_pair_idx)
             keep.ram_traj = nan(size(nd.det_traj));
+            keep.e_traj   = nan(size(nd.det_traj));
         else
             si = find(nd.seeds_used == nd_pair_idx, 1);
-            keep.ram_traj = nd.ram_traj(:, :, si);  % [N-1 x 3], first paired seed
+            keep.ram_traj = nd.ram_traj(:, :, si);              % [N-1 x 3], first paired seed
+            keep.e_traj   = get_e(runs.(arm).noisy(nd_pair_idx).simOut);  % [N-1 x 3]
         end
+        % fig_motion_var data (design §12.5): pointwise across-seed variance
+        Nsn = nd.n_seeds;
+        if Nsn >= 2
+            mv_z = var(nd.ram_traj(:, 3, :), 0, 3) / (1 - 1/Nsn);  % deflation-corrected
+            e_x_stack = [];
+            for s2 = nd.seeds_used
+                e_s2 = get_e(runs.(arm).noisy(s2).simOut);
+                e_x_stack = cat(2, e_x_stack, e_s2(:, 1));
+            end
+            mv_x = var(e_x_stack, 0, 2);                              % x-direct: no correction
+        else
+            mv_z = nan(size(nd.det_traj, 1), 1); mv_x = mv_z;
+        end
+        A.motion_var.(arm) = struct('var_x_um2', mv_x(:), 'var_z_um2', mv_z(:), 'Ns', Nsn);
         A.noisy_det.(arm) = keep;
     end
 
@@ -303,6 +322,27 @@ function A = per_freq_analysis(runs, cfg, f)
     % --- A1: Q55 dynamic check (design §12.3; findings §8.1 three-layer chain) ---
     A.q55 = q55_dynamic_check(runs.A, W, {'osc', 'gon', 'goff'}, A.gain, ...
                               cfg.lambda_c, kBT, R_phys);
+
+    % --- fig_gain_compare data (design §12.4): arms per user decision ---
+    % a_true ensemble = ARM A (gain under near-perfect control);
+    % a_hat ensemble  = ARM B (= A.ahat.ens_mean); a_xm = ARM B traj seed.
+    nzA = runs.A.noisy;  okA = find(~[nzA.diverged]);
+    stA = [];
+    for s = okA
+        stA = cat(3, stA, nzA(s).simOut.a_true_out(2:end, :));
+    end
+    A.gain.a_true_ens = mean(stA, 3);                       % [N-1 x 3]
+    if ~isempty(nd_pair_idx)
+        A.gain.a_xm_seed = runs.B.noisy(nd_pair_idx).simOut.diag.a_xm(2:end, :);
+    else
+        A.gain.a_xm_seed = nan(size(A.gain.a_pd));
+    end
+
+    % --- fig_motion_var theory (along desired trajectory) + W_osc for fig ---
+    lc2 = cfg.lambda_c;
+    A.motion_var.theory_um2 = (2 + 1/(1 - lc2^2)) * 4 * kBT * A.gain.a_pd ...
+                              + (1 - lc2)/(1 + lc2) * repmat(sigma2_n.', size(A.gain.a_pd, 1), 1);
+    A.W_osc = W.osc;   % [N-1 x 1 logical] for fig_motion_var ratio calc
 
     % --- flags ---
     A.b_det_ok   = b_det_ok;        % consumed by write_summary_md for banners
@@ -989,40 +1029,53 @@ function make_figs(S, A, f, out_dir)
 %   fig_traj_det : desired vs noisy-ensemble det trajectory, z only
 %   fig_det_err  : det error overlay, z only (asymmetric det reference)
 %   fig_traj_ram : trajectory-space ram (vs noisy-ensemble det), x/z
-    COL_TRUE = [0 0.6 0]; COL_B = [0.8 0 0]; COL_A = [0.45 0.30 0.75];
+    COL_B = [0.8 0 0]; COL_A = [0.45 0.30 0.75];
     FS_LAB = 24; FS_AX = 20; FS_LEG = 18; LW = 2.0;
-    % cross-frequency comparability locks: identical axis ranges/ticks at
-    % every frequency so the figures can be compared side by side
-    XLIM_T     = [0 7];      XTICK_T     = 0:1:7;          % time axis [s]
-    DET_Z_YLIM = [0 55];     DET_Z_YTICK = [0 25 50];      % [um]
-    RAM_YLIM   = [-150 150]; RAM_YTICK   = [-100 0 100];   % [nm]
+    % cross-frequency comparability locks: time axis unchanged for fig_det_err
+    XLIM_T = [0 7];  XTICK_T = 0:1:7;   % used by fig_det_err (frozen)
+    RAM_YLIM = [-150 150];               % [nm] cross-frequency lock for fig_traj_ram
+    % Round-2 locked style (design §12.6): role colors + fonts
+    COL_DES   = [0 0.6 0];               % Desired / a_pd / theory
+    COL_TRUE2 = [0.8 0 0];              % a_true (arm A)
+    COL_HAT2  = [0 0.2 0.9];            % â (arm B)
+    COL_MEAS2 = [0.45 0.55 0.95 0.30]; % Measured a_xm (light blue + alpha)
+    FS2 = 18; LFS2 = 14; AXLW2 = 2.0;  % fonts + bold box/ticks
     so_ref = S.runs.A.det.simOut;
     t_e   = so_ref.tout(2:end);
     pd_al = so_ref.p_d_out(2:end, :);
+    T_END = ceil(t_e(end));             % full time span (design §12.6)
     cols = [1 3]; axl = 'xz';                       % ram fig: top = x, bottom = z
 
     % ---- fig_traj_det: desired vs noisy-ensemble det trajectory, z only ----
     ft = figure('Position', [80 80 1100 460], 'Color', 'w', 'NumberTitle', 'off', ...
                 'Visible', 'off');
     hold on;
-    plot(t_e, pd_al(:, 3), '-', 'Color', COL_TRUE, 'LineWidth', 3, ...
-         'DisplayName', 'desired');
-    plot(t_e, A.noisy_det.A.det_traj(:, 3), '-', 'Color', COL_A, 'LineWidth', LW, ...
-         'DisplayName', 'a = a_{true}');
-    plot(t_e, A.noisy_det.B.det_traj(:, 3), '-', 'Color', COL_B, 'LineWidth', LW, ...
-         'DisplayName', 'a = â');
-    xlim(XLIM_T); ylim(DET_Z_YLIM);
-    set(gca, 'XTick', XTICK_T, 'YTick', DET_Z_YTICK, ...
-             'FontSize', FS_AX, 'FontWeight', 'bold');
-    ylabel('z  (\mum)', 'FontSize', FS_LAB, 'FontWeight', 'bold');
-    xlabel('t (s)', 'FontSize', FS_LAB, 'FontWeight', 'bold');
+    plot(t_e, pd_al(:, 3), '-', 'Color', COL_DES, 'LineWidth', 3, 'DisplayName', 'Desired');
+    plot(t_e, A.noisy_det.A.det_traj(:, 3), '-', 'Color', COL_TRUE2, 'LineWidth', 2, ...
+         'DisplayName', 'a_{true}');
+    plot(t_e, A.noisy_det.B.det_traj(:, 3), '-', 'Color', COL_HAT2,  'LineWidth', 2, ...
+         'DisplayName', 'â');
+    xlim([0 T_END]);
+    title(sprintf(['z_{det}:   descent peak  a_{true} %.1f / â %.1f nm', ...
+                   '     osc A_e  %.2f / %.2f nm'], ...
+          A.det.A.desc_peak(3)*1e3, A.det.B.desc_peak(3)*1e3, ...
+          A.det.A.A_e(3)*1e3, A.det.B.A_e(3)*1e3), ...
+          'FontSize', FS2, 'FontWeight', 'bold');
+    ylabel('z  (\mum)', 'FontSize', FS2, 'FontWeight', 'bold');
+    xlabel('Time (sec)', 'FontSize', FS2, 'FontWeight', 'bold');
+    legend('Location', 'northoutside', 'Orientation', 'horizontal', ...
+           'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'off');
+    set(gca, 'FontSize', FS2, 'FontWeight', 'bold', 'LineWidth', AXLW2, 'Box', 'on');
     grid off;
-    lg = legend('Location', 'northoutside', 'Orientation', 'horizontal');
-    lg.FontSize = FS_LEG; lg.FontWeight = 'bold';
-    % NOTE: figures leak only if exportgraphics throws (close is skipped);
-    % acceptable for the -batch workflow (make_eq17_6state_figures precedent).
     exportgraphics(ft, fullfile(out_dir, 'fig_traj_det.png'), 'Resolution', 150);
     close(ft);
+
+    % NaN-guard for fig_det_err: prevent ylim([NaN NaN]) crash when arm B det run
+    % diverged.  A is a local copy in make_figs (analysis.mat saved before call);
+    % 1e-6 um offset → errB = 1e-3 nm constant → b_nm = 50, line visually absent.
+    if all(isnan(A.noisy_det.B.det_traj(:, 3)))
+        A.noisy_det.B.det_traj(:, 3) = pd_al(:, 3) - 1e-6;
+    end
 
     % ---- fig_det_err: det error overlay, z only (asymmetric det reference) ----
     % User-approved asymmetric references: the a_true arm uses the NOISE-FREE
@@ -1052,36 +1105,109 @@ function make_figs(S, A, f, out_dir)
     exportgraphics(fde, fullfile(out_dir, 'fig_det_err.png'), 'Resolution', 150);
     close(fde);
 
-    % ---- fig_traj_ram: trajectory-space ram vs noisy-ensemble det, x/z ----
-    % first-paired-seed ram stored by per_freq_analysis (A.noisy_det.(arm).ram_traj);
-    % per-tile legends: x row carries each curve's full-span variance, z row plain
+    % ---- fig_traj_ram: locked style (design §12.6); x-direct, z ensemble ----
+    % Layering: â blue 2.5 first (base), a_true red 1.0 on top (locked mockup).
+    % x row: direct aligned error e_traj(:,1); z row: ensemble ram_traj(:,3).
     fm = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
                 'Visible', 'off');
     tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
     for r = 1:2
         c = cols(r); nexttile; hold on;
-        sigA = A.noisy_det.A.ram_traj(:, c) * 1e3;  % [nm]
-        sigB = A.noisy_det.B.ram_traj(:, c) * 1e3;  % [nm]
-        if r == 1                                   % x row: legend with var
-            dnA = sprintf('a = a_{true}  (var %.0f nm^2)', var(sigA));
-            dnB = sprintf('a = â  (var %.0f nm^2)', var(sigB));
-        else                                        % z row: plain legend
-            dnA = 'a = a_{true}';
-            dnB = 'a = â';
+        if c == 1   % x-direct (design §12.3)
+            sigA = A.noisy_det.A.e_traj(:, 1) * 1e3;  % [nm]
+            sigB = A.noisy_det.B.e_traj(:, 1) * 1e3;
+        else
+            sigA = A.noisy_det.A.ram_traj(:, c) * 1e3;
+            sigB = A.noisy_det.B.ram_traj(:, c) * 1e3;
         end
-        plot(t_e, sigA, '-', 'Color', COL_A, 'LineWidth', LW, 'DisplayName', dnA);
-        plot(t_e, sigB, '-', 'Color', COL_B, 'LineWidth', LW, 'DisplayName', dnB);
-        xlim(XLIM_T); ylim(RAM_YLIM);
-        set(gca, 'XTick', XTICK_T, 'YTick', RAM_YTICK, ...
-                 'FontSize', FS_AX, 'FontWeight', 'bold');
-        ylabel(sprintf('%c_{ram}  (nm)', axl(r)), 'FontSize', FS_LAB, 'FontWeight', 'bold');
+        hB = plot(t_e, sigB, '-', 'Color', COL_HAT2,  'LineWidth', 2.5, 'DisplayName', 'â');
+        hA = plot(t_e, sigA, '-', 'Color', COL_TRUE2, 'LineWidth', 1.0, 'DisplayName', 'a_{true}');
+        xlim([0 T_END]); ylim(RAM_YLIM);
+        title(sprintf('%c_{ram}:   var  a_{true} %.0f nm^2     â %.0f nm^2', ...
+              axl(r), var(sigA), var(sigB)), 'FontSize', FS2, 'FontWeight', 'bold');
+        ylabel(sprintf('%c_{ram}  (nm)', axl(r)), 'FontSize', FS2, 'FontWeight', 'bold');
+        if r == 1
+            legend([hA hB], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
+                   'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'off');
+        end
+        set(gca, 'FontSize', FS2, 'FontWeight', 'bold', 'LineWidth', AXLW2, 'Box', 'on');
         grid off;
-        lg = legend('Location', 'northoutside', 'Orientation', 'horizontal');
-        lg.FontSize = FS_LEG; lg.FontWeight = 'bold';
     end
-    xlabel('t (s)', 'FontSize', FS_LAB, 'FontWeight', 'bold');
+    xlabel('Time (sec)', 'FontSize', FS2, 'FontWeight', 'bold');
     exportgraphics(fm, fullfile(out_dir, 'fig_traj_ram.png'), 'Resolution', 150);
     close(fm);
+
+    % ---- fig_gain_compare: a_xm / a_pd / a_true(A) / â(B), x+z ----
+    % a_xm may swing wild during warm-up; ylim clamps to 1.25 * max(a_pd)
+    fg = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
+                'Visible', 'off');
+    tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+    glbl = {'a_x', 'a_z'};
+    for r = 1:2
+        c = cols(r); nexttile; hold on;
+        hm = plot(t_e, A.gain.a_xm_seed(:, c),  '-', 'Color', COL_MEAS2, ...
+                  'LineWidth', 0.5, 'DisplayName', 'Measured');
+        hp = plot(t_e, A.gain.a_pd(:, c),        '-', 'Color', COL_DES, ...
+                  'LineWidth', 3.0, 'DisplayName', 'a_{pd}');
+        ht = plot(t_e, A.gain.a_true_ens(:, c),  '-', 'Color', COL_TRUE2, ...
+                  'LineWidth', 2.0, 'DisplayName', 'a_{true}');
+        hh = plot(t_e, A.ahat.ens_mean(:, c),    '-', 'Color', COL_HAT2, ...
+                  'LineWidth', 2.0, 'DisplayName', 'â');
+        xlim([0 T_END]);
+        ylim([0, 1.25 * max(A.gain.a_pd(:, c))]);
+        title(sprintf('%s:   â rel-err  osc %+.1f%%     near-wall %+.1f%%', ...
+              glbl{r}, A.ahat.rel_err_osc(c), A.ahat.rel_err_gon(c)), ...
+              'FontSize', FS2, 'FontWeight', 'bold');
+        ylabel(sprintf('%s  (\\mum/pN)', glbl{r}), 'FontSize', FS2, 'FontWeight', 'bold');
+        if r == 1
+            legend([hm hp ht hh], 'Location', 'northoutside', 'Orientation', ...
+                   'horizontal', 'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'off');
+        end
+        set(gca, 'FontSize', FS2, 'FontWeight', 'bold', 'LineWidth', AXLW2, 'Box', 'on');
+        grid off;
+    end
+    xlabel('Time (sec)', 'FontSize', FS2, 'FontWeight', 'bold');
+    exportgraphics(fg, fullfile(out_dir, 'fig_gain_compare.png'), 'Resolution', 150);
+    close(fg);
+
+    % ---- fig_motion_var: theory(a_pd) vs pointwise ensemble var, x+z ----
+    % NO smoothing (design §12.5 locked). Units nm^2 (x 1e6 from um^2).
+    W_osc_fig = A.W_osc;
+    fv = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
+                'Visible', 'off');
+    tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+    for r = 1:2
+        c = cols(r); nexttile; hold on;
+        if c == 1
+            vA = A.motion_var.A.var_x_um2 * 1e6;  % [nm^2]
+            vB = A.motion_var.B.var_x_um2 * 1e6;
+        else
+            vA = A.motion_var.A.var_z_um2 * 1e6;
+            vB = A.motion_var.B.var_z_um2 * 1e6;
+        end
+        vth = A.motion_var.theory_um2(:, c) * 1e6;
+        hB = plot(t_e, vB,  '-', 'Color', COL_HAT2,  'LineWidth', 1.0, 'DisplayName', 'â');
+        hA = plot(t_e, vA,  '-', 'Color', COL_TRUE2, 'LineWidth', 1.0, 'DisplayName', 'a_{true}');
+        hT = plot(t_e, vth, '-', 'Color', COL_DES,   'LineWidth', 3.0, 'DisplayName', 'Theory');
+        xlim([0 T_END]);
+        ymax_mv = max(vth) * 4;
+        if ~isfinite(ymax_mv) || ymax_mv <= 0; ymax_mv = 1; end
+        ylim([0, ymax_mv]);
+        rA = mean(vA(W_osc_fig)) / mean(vth(W_osc_fig));
+        rB = mean(vB(W_osc_fig)) / mean(vth(W_osc_fig));
+        title(sprintf('var(%c_{ram}):   osc meas/theory  a_{true} %.2f     â %.2f', ...
+              axl(r), rA, rB), 'FontSize', FS2, 'FontWeight', 'bold');
+        ylabel(sprintf('var(%c_{ram})  (nm^2)', axl(r)), 'FontSize', FS2, 'FontWeight', 'bold');
+        if r == 1
+            legend([hT hA hB], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
+                   'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'off');
+        end
+        set(gca, 'FontSize', FS2, 'FontWeight', 'bold', 'LineWidth', AXLW2, 'Box', 'on');
+        grid off;
+    end
+    xlabel('Time (sec)', 'FontSize', FS2, 'FontWeight', 'bold');
+    exportgraphics(fv, fullfile(out_dir, 'fig_motion_var.png'), 'Resolution', 150);
+    close(fv);
 end
 
 
