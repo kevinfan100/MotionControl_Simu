@@ -1081,7 +1081,7 @@ function make_figs(S, A, f, out_dir)
     COL_DES   = [0 0.6 0];               % Desired / a_pd / theory
     COL_TRUE2 = [0.8 0 0];              % a_true (arm A)
     COL_HAT2  = [0 0.2 0.9];            % â (arm B)
-    COL_MEAS2 = [0.45 0.55 0.95 0.30]; % Measured a_xm (light blue + alpha)
+    COL_MEAS3 = [0.45 0.55 0.95 0.22]; % Measured a_xm (light blue, thicker + more transparent)
     FS2 = 18; LFS2 = 14; AXLW2 = 2.0;  % fonts + bold box/ticks
     so_ref = S.runs.A.det.simOut;
     t_e   = so_ref.tout(2:end);
@@ -1178,8 +1178,8 @@ function make_figs(S, A, f, out_dir)
     glbl = {'a_x', 'a_z'};
     for r = 1:2
         c = cols(r); nexttile; hold on;
-        hm = plot(t_e, A.gain.a_xm_seed(:, c),  '-', 'Color', COL_MEAS2, ...
-                  'LineWidth', 0.5, 'DisplayName', 'Measured');
+        hm = plot(t_e, A.gain.a_xm_seed(:, c),  '-', 'Color', COL_MEAS3, ...
+                  'LineWidth', 0.9, 'DisplayName', 'Measured');
         hp = plot(t_e, A.gain.a_pd(:, c),        '-', 'Color', COL_DES, ...
                   'LineWidth', 3.0, 'DisplayName', 'a_{pd}');
         ht = plot(t_e, A.gain.a_true_ens(:, c),  '-', 'Color', COL_TRUE2, ...
@@ -1200,34 +1200,39 @@ function make_figs(S, A, f, out_dir)
     exportgraphics(fg, fullfile(out_dir, 'fig_gain_compare.png'), 'Resolution', 150);
     close(fg);
 
-    % ---- fig_gain_meas: a_xm vs â relationship (DRAFT, under discussion) ----
-    % Dedicated view of how the EKF digests the raw gain measurement: a_xm
-    % raw (light blue), â ensemble (blue thick base), a_true ensemble (red
-    % thin reference). Same ylim clamp as fig_gain_compare.
-    fgm = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
-                 'Visible', 'off');
-    tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
-    for r = 1:2
-        c = cols(r); nexttile; hold on;
-        hm2 = plot(t_e, A.gain.a_xm_seed(:, c),  '-', 'Color', COL_MEAS2, ...
-                   'LineWidth', 0.5, 'DisplayName', 'a_{xm}');
-        hh2 = plot(t_e, A.ahat.ens_mean(:, c),   '-', 'Color', COL_HAT2, ...
-                   'LineWidth', 2.5, 'DisplayName', 'â');
-        ht2 = plot(t_e, A.gain.a_true_ens(:, c), '-', 'Color', COL_TRUE2, ...
-                   'LineWidth', 1.0, 'DisplayName', 'a_{true}');
-        xlim([0 T_END]);
-        ylim([0, 1.25 * max(A.gain.a_pd(:, c))]);
-        ylabel(sprintf('%s  (\\mum/pN)', glbl{r}), 'FontSize', FS2, 'FontWeight', 'bold');
-        if r == 1
-            legend([hm2 hh2 ht2], 'Location', 'northoutside', 'Orientation', ...
-                   'horizontal', 'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'on');
+    % ---- fig_delpm: raw measured tracking error, x+z (per traj seed) ----
+    % "Plain" per-axis del_pm time trace in the original-simulation style:
+    % aligned measured error e_m[k] = p_d[k+1] - p_m[k], first paired
+    % non-diverged seed, both arms with the standard layer convention.
+    idx_pair_fig = find(~[S.runs.A.noisy.diverged] & ~[S.runs.B.noisy.diverged], 1);
+    if ~isempty(idx_pair_fig)
+        soA = S.runs.A.noisy(idx_pair_fig).simOut;
+        soB = S.runs.B.noisy(idx_pair_fig).simOut;
+        emA = (soA.p_d_out(2:end, :) - soA.p_m_out(1:end-1, :)) * 1e3;   % [nm]
+        emB = (soB.p_d_out(2:end, :) - soB.p_m_out(1:end-1, :)) * 1e3;
+        fpm = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
+                     'Visible', 'off');
+        tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+        for r = 1:2
+            c = cols(r); nexttile; hold on;
+            hBp = plot(t_e, emB(:, c), '-', 'Color', COL_HAT2,  'LineWidth', 2.5, ...
+                       'DisplayName', 'â');
+            hAp = plot(t_e, emA(:, c), '-', 'Color', COL_TRUE2, 'LineWidth', 1.0, ...
+                       'DisplayName', 'a_{true}');
+            xlim([0 T_END]); ylim(RAM_YLIM);
+            ylabel(sprintf('\\deltap_{m,%c}  (nm)', axl(r)), ...
+                   'FontSize', FS2, 'FontWeight', 'bold');
+            if r == 1
+                legend([hAp hBp], 'Location', 'northoutside', 'Orientation', ...
+                       'horizontal', 'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'on');
+            end
+            set(gca, 'FontSize', FS2, 'FontWeight', 'bold', 'LineWidth', AXLW2, 'Box', 'on');
+            grid off;
         end
-        set(gca, 'FontSize', FS2, 'FontWeight', 'bold', 'LineWidth', AXLW2, 'Box', 'on');
-        grid off;
+        xlabel('Time (sec)', 'FontSize', FS2, 'FontWeight', 'bold');
+        exportgraphics(fpm, fullfile(out_dir, 'fig_delpm.png'), 'Resolution', 150);
+        close(fpm);
     end
-    xlabel('Time (sec)', 'FontSize', FS2, 'FontWeight', 'bold');
-    exportgraphics(fgm, fullfile(out_dir, 'fig_gain_meas.png'), 'Resolution', 150);
-    close(fgm);
 
     % ---- fig_motion_var: theory(a_pd) vs pointwise ensemble var, x+z ----
     % NO smoothing (design §12.5 locked). Units nm^2 (x 1e6 from um^2).
@@ -1244,10 +1249,22 @@ function make_figs(S, A, f, out_dir)
             vB = A.motion_var.B.var_z_um2 * 1e6;
         end
         vth = A.motion_var.theory_um2(:, c) * 1e6;
-        % layer convention as fig_traj_ram: â blue thick base, a_true red
-        % thin on top, theory green thickest on the very top
-        hB = plot(t_e, vB,  '-', 'Color', COL_HAT2,  'LineWidth', 2.5, 'DisplayName', 'â');
-        hA = plot(t_e, vA,  '-', 'Color', COL_TRUE2, 'LineWidth', 1.0, 'DisplayName', 'a_{true}');
+        % readable split: raw pointwise variance (chi-squared fuzz, unbiased)
+        % stays as a transparent background; its local expectation is
+        % extracted with a short moving mean (window << oscillation cycle so
+        % the within-cycle structure is preserved) and drawn as the main
+        % lines. Layer convention: â blue thick base, a_true red thin,
+        % theory green thickest on the very top.
+        fs_fig = 1 / (t_e(2) - t_e(1));
+        w_mm   = max(3, round(min(0.025, 1/(8*f)) * fs_fig));   % [samples]
+        plot(t_e, vB, '-', 'Color', [COL_HAT2  0.25], 'LineWidth', 0.5, ...
+             'HandleVisibility', 'off');
+        plot(t_e, vA, '-', 'Color', [COL_TRUE2 0.25], 'LineWidth', 0.5, ...
+             'HandleVisibility', 'off');
+        hB = plot(t_e, movmean(vB, w_mm), '-', 'Color', COL_HAT2,  ...
+                  'LineWidth', 2.5, 'DisplayName', 'â');
+        hA = plot(t_e, movmean(vA, w_mm), '-', 'Color', COL_TRUE2, ...
+                  'LineWidth', 1.0, 'DisplayName', 'a_{true}');
         hT = plot(t_e, vth, '-', 'Color', COL_DES,   'LineWidth', 3.0, 'DisplayName', 'Theory');
         xlim([0 T_END]);
         ymax_mv = max(vth) * 4;
