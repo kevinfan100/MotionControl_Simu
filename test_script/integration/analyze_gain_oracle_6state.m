@@ -185,8 +185,26 @@ function A = per_freq_analysis(runs, cfg, f)
     % det := ensemble mean of p_true over non-diverged noisy seeds.
     % Feeds the trajectory-space figures and the ram v2 statistics below;
     % the v1 tables (noise-free det reference) are kept for comparison.
+    % C4 (mirror of C3): ALL arm-B noisy seeds diverged is a legitimate
+    % gate-free finding -> degrade gracefully (b_noisy_ok flag, NaN struct).
+    % Arm A all-diverged stays HARD (noisy_det_extract asserts): the oracle
+    % arm failing wholesale is a real infrastructure bug.
+    b_noisy_ok = any(~[runs.B.noisy.diverged]);
+    if ~b_noisy_ok
+        fprintf('[per_freq:%gHz] WARNING all arm B noisy seeds diverged (%d/%d)\n', ...
+                f, numel(runs.B.noisy), numel(runs.B.noisy));
+    end
     nd_pair_idx = find(ok, 1);                      % first paired seed
     for arm = 'AB'
+        if arm == 'B' && ~b_noisy_ok
+            % NaN-graceful mirror of the kept noisy_det_extract fields
+            % ('A' is processed first in this loop, so its size is known)
+            sz = size(A.noisy_det.A.det_traj);
+            A.noisy_det.B = struct('det_traj', nan(sz), 'crossval', nan(3, 1), ...
+                                   'crossval_rms', nan(3, 1), 'n_seeds', 0, ...
+                                   'seeds_used', [], 'ram_traj', nan(sz));
+            continue;
+        end
         nd = noisy_det_extract(runs.(arm));
         fprintf(['[noisy-det:%gHz arm %c] crossval vs noise-free run ', ...
                  '[x y z] nm: max [%.2f %.2f %.2f] / rms [%.2f %.2f %.2f]\n'], ...
@@ -262,7 +280,8 @@ function A = per_freq_analysis(runs, cfg, f)
     A.ahat = ahat_analysis(runs.B, W);
 
     % --- flags ---
-    A.b_det_ok = b_det_ok;          % consumed by write_summary_md for banner
+    A.b_det_ok   = b_det_ok;        % consumed by write_summary_md for banners
+    A.b_noisy_ok = b_noisy_ok;
     A.flags = collect_flags(A);
 end
 
@@ -301,7 +320,6 @@ function D = det_metrics(e_det, t_e, W, f, t_osc0, t_osc1, Ts)
         % trough bias: troughs near t = t_osc0 + j/f inside W.osc, +-5 samples
         tb = zeros(1, 0);
         for tj = (t_osc0 + 1/f):(1/f):(t_osc1 - 0.01/f)
-            if tj < t_osc0 + 1/f - 1e-9; continue; end   % inside per-cycle discard
             [~, k0] = min(abs(t_e - tj));
             tb(end+1) = mean(e_det(max(1,k0-5):min(numel(t_e),k0+5), ax)); %#ok<AGROW>
         end
@@ -414,14 +432,15 @@ function ah = ahat_analysis(runsB, W)
     ah.a_true  = a_true;
     ah.n_seeds = numel(ok);
     if isempty(ok)
-        % C2: all arm-B noisy seeds diverged — NaN-filled, same fields
+        % C2: all arm-B noisy seeds diverged — NaN-filled, same fields and
+        % shapes as the computed branch ([3x1] for rel_err_*/rel_sem_*)
         ah.ens_mean      = nan(size(a_true));
-        ah.rel_err_osc   = nan(1, 3);
-        ah.rel_err_gon   = nan(1, 3);
-        ah.rel_err_goff  = nan(1, 3);
-        ah.rel_sem_osc   = nan(1, 3);
-        ah.rel_sem_gon   = nan(1, 3);
-        ah.rel_sem_goff  = nan(1, 3);
+        ah.rel_err_osc   = nan(3, 1);
+        ah.rel_err_gon   = nan(3, 1);
+        ah.rel_err_goff  = nan(3, 1);
+        ah.rel_sem_osc   = nan(3, 1);
+        ah.rel_sem_gon   = nan(3, 1);
+        ah.rel_sem_goff  = nan(3, 1);
         ah.ram_std_osc   = nan(3, 1);
         ah.gate_duty_osc = nan(3, 1);
         return;
@@ -443,9 +462,9 @@ function ah = ahat_analysis(runsB, W)
         ah.rel_sem_gon  = squeeze(std(mean(rel_s(W.gon,  :, :), 1), 0, 3)).' / sqrt(numel(ok));
         ah.rel_sem_goff = squeeze(std(mean(rel_s(W.goff, :, :), 1), 0, 3)).' / sqrt(numel(ok));
     else   % single seed: SEM undefined (std of one sample prints as 0)
-        ah.rel_sem_osc  = nan(1, 3);
-        ah.rel_sem_gon  = nan(1, 3);
-        ah.rel_sem_goff = nan(1, 3);
+        ah.rel_sem_osc  = nan(3, 1);
+        ah.rel_sem_gon  = nan(3, 1);
+        ah.rel_sem_goff = nan(3, 1);
     end
     dev = a_stack - ah.ens_mean;
     sd3 = std(dev(W.osc, :, :), 0, 1);              % [1 x 3 x Ns]
@@ -538,7 +557,7 @@ function ratio = paired_ratio_stats(RA, RB, nwins)
         for w = 1:nwins
             for ax = 1:3
                 r = squeeze(RB.sd(w, okp, ax)) ./ squeeze(RA.sd(w, okp, ax));
-                ratio.mean(w, ax)   = mean(r);
+                ratio.mean(w, ax)   = mean(r, 'omitnan');
                 ratio.sem(w, ax)    = sem_of(r);
                 ratio.rng(w, ax, 1) = min(r);
                 ratio.rng(w, ax, 2) = max(r);
@@ -631,6 +650,11 @@ function write_summary_md(path, f, S, A)
                       'ensemble-det (v2) path unaffected; B crossval not meaningful.\n\n'], ...
                 S.runs.B.det.diverge_reason);
     end
+    if ~A.b_noisy_ok
+        nb = numel(S.runs.B.noisy);
+        fprintf(fid, ['**ALL ARM B NOISY SEEDS DIVERGED (%d/%d)** - all B-side ', ...
+                      'statistics are NaN; arm A results unaffected.\n\n'], nb, nb);
+    end
     R_phys_hdr = S.runs.A.det.simOut.meta.params_value.common.R;
     h_bar_min_hdr = S.cfg.h_bottom / R_phys_hdr;
     fprintf(fid, 'osc_aggr (h %g -> %g um, h_bar_min=%.2f, A=%g um), %d seeds x %.1fs, suppress_xD both arms.\n\n', ...
@@ -654,7 +678,11 @@ function write_summary_md(path, f, S, A)
                   '(sample-mean centering); rectification bias lives inside det_traj. ', ...
                   'x-axis is direct (exempt from deflation; det_x = 0 by symmetry). ', ...
                   'z-axis sd carries the self-subtraction deflation sqrt(1-1/Ns): ', ...
-                  'arm A -%.1f%% (Ns=%d), arm B -%.1f%% (Ns=%d).\n\n'], ...
+                  'arm A -%.1f%% (Ns=%d), arm B -%.1f%% (Ns=%d). ', ...
+                  'Paired z ratios carry a residual factor ', ...
+                  'sqrt((1-1/Ns_B)/(1-1/Ns_A)) when the two arms have unequal ', ...
+                  'surviving seeds (~0.5%% at 100 vs 50); stated as a caveat, ', ...
+                  'no correction applied.\n\n'], ...
             defl(A.noisy_det.A.n_seeds), A.noisy_det.A.n_seeds, ...
             defl(A.noisy_det.B.n_seeds), A.noisy_det.B.n_seeds);
     write_ram_table(fid, A.ram_v2, ax_name);
