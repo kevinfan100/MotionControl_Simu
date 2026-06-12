@@ -25,6 +25,8 @@ function analysis = analyze_gain_oracle_6state(freqs, opts)
 
     [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
     project_root = fileparts(fileparts(script_dir));
+    % ensure wall_effect functions reachable (calc_correction_functions for A.gain)
+    addpath(fullfile(project_root, 'model', 'wall_effect'));
     if ~isfield(opts, 'out_root')
         opts.out_root = fullfile(project_root, 'test_results', 'gain_oracle_ab_nogate');
     end
@@ -246,8 +248,27 @@ function A = per_freq_analysis(runs, cfg, f)
     R2.wins  = wins;
     A.ram_v2 = R2;
 
+    % --- deterministic gain skeleton along the DESIRED trajectory (a_pd) ---
+    % a_pd,i[k] = a_nom / C_i(h_bar_d[k]) — designer-known, no sim privilege.
+    % calc_correction_functions is scalar-only; loop over h_bar_d samples.
+    a_nom  = P.common.Ts / P.common.gamma_N;
+    hbd    = max(h_bar_d, 1.001);
+    Nd     = numel(hbd);
+    c_pa_d = zeros(Nd, 1); c_pe_d = zeros(Nd, 1);
+    Kh_pa  = zeros(Nd, 1); Kh_pe  = zeros(Nd, 1);
+    for ki = 1:Nd
+        [c_pa_d(ki), c_pe_d(ki), drv_k] = calc_correction_functions(hbd(ki), true);
+        Kh_pa(ki) = drv_k.K_h_para;
+        Kh_pe(ki) = drv_k.K_h_perp;
+    end
+    % [N-1 x 3]: x=para, y=para, z=perp (wall normal)
+    A.gain.a_pd  = [a_nom ./ c_pa_d, a_nom ./ c_pa_d, a_nom ./ c_pe_d];
+    A.gain.Kh_pd = [Kh_pa, Kh_pa, Kh_pe];
+
     % --- thermal-theory validation of ram_v2 (V1 closed form, h50-validated) ---
-    A.thermal = thermal_theory_check(runs, det_e_v2, get_e, W, cfg, kBT, f);
+    % Theory skeleton uses a_pd (desired trajectory) — arm A values shift
+    % negligibly vs a_true (det ≈ desired); arm B shifts slightly more (expected).
+    A.thermal = thermal_theory_check(runs, det_e_v2, get_e, W, cfg, kBT, f, A.gain.a_pd);
 
     % --- tail-window observation (M3): hold at h_bar bottom, z axis ---
     tail = struct();
@@ -278,6 +299,10 @@ function A = per_freq_analysis(runs, cfg, f)
 
     % --- a_hat decomposition, arm B (design §6.4) ---
     A.ahat = ahat_analysis(runs.B, W);
+
+    % --- A1: Q55 dynamic check (design §12.3; findings §8.1 three-layer chain) ---
+    A.q55 = q55_dynamic_check(runs.A, W, {'osc', 'gon', 'goff'}, A.gain, ...
+                              cfg.lambda_c, kBT, R_phys);
 
     % --- flags ---
     A.b_det_ok   = b_det_ok;        % consumed by write_summary_md for banners
@@ -426,25 +451,41 @@ end
 
 function ah = ahat_analysis(runsB, W)
 %AHAT_ANALYSIS design §6.4: ensemble-mean systematic + per-seed random.
+%   a_true reference (Step 0b, Task 4): ensemble mean of a_true_out over the
+%   OK (non-diverged) arm-B noisy seeds. The det-run a_true_out is no longer
+%   used (det run may be diverged and runs under y2-off Guard-2-latch regime,
+%   giving a structurally different a_hat path vs noisy runs).
     nz = runsB.noisy;
     ok = find(~[nz.diverged]);
-    a_true = runsB.det.simOut.a_true_out(2:end, :);
-    ah.a_true  = a_true;
+    N  = numel(W.full);           % N-1 samples on the aligned analysis grid
     ah.n_seeds = numel(ok);
     if isempty(ok)
         % C2: all arm-B noisy seeds diverged — NaN-filled, same fields and
         % shapes as the computed branch ([3x1] for rel_err_*/rel_sem_*)
-        ah.ens_mean      = nan(size(a_true));
+        ah.a_true        = nan(N, 3);
+        ah.ens_mean      = nan(N, 3);
         ah.rel_err_osc   = nan(3, 1);
         ah.rel_err_gon   = nan(3, 1);
         ah.rel_err_goff  = nan(3, 1);
+        ah.rel_err_desc  = nan(3, 1);
         ah.rel_sem_osc   = nan(3, 1);
         ah.rel_sem_gon   = nan(3, 1);
         ah.rel_sem_goff  = nan(3, 1);
+        ah.rel_sem_desc  = nan(3, 1);
         ah.ram_std_osc   = nan(3, 1);
+        ah.ram_std_desc  = nan(3, 1);
+        ah.ram_std_gon   = nan(3, 1);
+        ah.ram_std_goff  = nan(3, 1);
         ah.gate_duty_osc = nan(3, 1);
         return;
     end
+    % a_true from ensemble mean of OK noisy seeds (Step 0b)
+    a_true_stack = [];
+    for s = ok
+        a_true_stack = cat(3, a_true_stack, nz(s).simOut.a_true_out(2:end, :));
+    end
+    a_true    = mean(a_true_stack, 3);              % [N-1 x 3]
+    ah.a_true = a_true;
     a_stack = [];
     for s = ok
         a_stack = cat(3, a_stack, nz(s).simOut.diag.a_hat(2:end, :));
@@ -457,24 +498,90 @@ function ah = ahat_analysis(runsB, W)
     ah.rel_err_osc  = squeeze(mean(mean(rel_s(W.osc,  :, :), 1), 3)).';
     ah.rel_err_gon  = squeeze(mean(mean(rel_s(W.gon,  :, :), 1), 3)).';
     ah.rel_err_goff = squeeze(mean(mean(rel_s(W.goff, :, :), 1), 3)).';
+    % A3: desc-window â stats (Task 4 Step 3)
+    ah.rel_err_desc = squeeze(mean(mean(rel_s(W.desc, :, :), 1), 3)).';
     if numel(ok) >= 2
         ah.rel_sem_osc  = squeeze(std(mean(rel_s(W.osc,  :, :), 1), 0, 3)).' / sqrt(numel(ok));
         ah.rel_sem_gon  = squeeze(std(mean(rel_s(W.gon,  :, :), 1), 0, 3)).' / sqrt(numel(ok));
         ah.rel_sem_goff = squeeze(std(mean(rel_s(W.goff, :, :), 1), 0, 3)).' / sqrt(numel(ok));
+        ah.rel_sem_desc = squeeze(std(mean(rel_s(W.desc, :, :), 1), 0, 3)).' / sqrt(numel(ok));
     else   % single seed: SEM undefined (std of one sample prints as 0)
         ah.rel_sem_osc  = nan(3, 1);
         ah.rel_sem_gon  = nan(3, 1);
         ah.rel_sem_goff = nan(3, 1);
+        ah.rel_sem_desc = nan(3, 1);
     end
     dev = a_stack - ah.ens_mean;
     sd3 = std(dev(W.osc, :, :), 0, 1);              % [1 x 3 x Ns]
-    ah.ram_std_osc = reshape(sd3, 3, []);           % [3 x Ns] (M5)
+    ah.ram_std_osc  = reshape(sd3, 3, []);           % [3 x Ns] (M5)
+    % A3: per-window ram std (Task 4 Step 3)
+    sdw = @(wmask) reshape(std(dev(wmask, :, :), 0, 1), 3, []);
+    ah.ram_std_desc = sdw(W.desc);
+    ah.ram_std_gon  = sdw(W.gon);
+    ah.ram_std_goff = sdw(W.goff);
     % gate duty cycle in W.osc (per axis, mean over seeds)
     gd = [];
     for s = ok
         gd = cat(3, gd, double(nz(s).simOut.diag.gate_active(2:end, :)));
     end
     ah.gate_duty_osc = squeeze(mean(mean(gd(W.osc, :, :), 1), 3)).';
+end
+
+
+function q = q55_dynamic_check(runsA, W, wins, gain, lc, kBT, R_phys)
+%Q55_DYNAMIC_CHECK A1: arm-A true-gain ram vs Q55 closed forms (design
+%   §12.3; eq17_6state_review_findings.md §8.1 three-layer chain).
+%   Level    : Var(a_ram)       vs C_dx     *(a*K_h/R)^2*4kBT*a_z
+%   Increment: Var(diff(a_ram)) vs 2/(1+lc) *(a*K_h/R)^2*4kBT*a_z  (= Q55)
+%   Theory pointwise along a_pd/Kh_pd (desired trajectory), window-averaged.
+%   Measured variances deflation-corrected by /(1-1/Ns) (ensemble-mean
+%   self-subtraction; same correction for the increment since seeds are
+%   independent, exact to O(1/Ns^2)).
+%   Only x (axis 1) and z (axis 3) are computed (y=x by symmetry).
+%   When Ns < 2, corr = NaN propagates through to ratios — acceptable.
+    nz = runsA.noisy;
+    ok = find(~[nz.diverged]);
+    Ns = numel(ok);
+    q  = struct('Ns', Ns, 'wins', {wins});
+    nw = numel(wins);
+    [q.meas_level, q.sem_level, q.meas_incr, q.sem_incr, ...
+     q.th_level,   q.th_incr] = deal(nan(nw, 3));
+    if Ns < 1
+        q.ratio_level = nan(nw, 3);
+        q.ratio_incr  = nan(nw, 3);
+        return;
+    end
+    % build [N-1 x 3 x Ns] stack of arm-A a_true
+    stack = [];
+    for s = ok
+        stack = cat(3, stack, nz(s).simOut.a_true_out(2:end, :));
+    end
+    a_ram = stack - mean(stack, 3);                       % [N-1 x 3 x Ns]
+    if Ns < 2
+        corr = NaN;
+    else
+        corr = 1 - 1/Ns;
+    end
+    C_dx = 2 + 1 / (1 - lc^2);
+    % per-step thermal kick in h-direction (wall normal = z axis = axis 3)
+    s2dh = 4 * kBT * gain.a_pd(:, 3);                    % [N-1 x 1]
+    base = (gain.a_pd .* gain.Kh_pd / R_phys).^2 .* s2dh; % [N-1 x 3]
+    for wi = 1:nw
+        idx = W.(wins{wi});
+        for ax = [1 3]
+            % time-variance per seed → [Ns x 1]
+            vl = squeeze(var(a_ram(idx, ax, :), 0, 1)) / corr;
+            vi = squeeze(var(diff(a_ram(idx, ax, :), 1, 1), 0, 1)) / corr;
+            q.meas_level(wi, ax) = mean(vl,  'omitnan');
+            q.meas_incr(wi,  ax) = mean(vi,  'omitnan');
+            q.sem_level(wi,  ax) = sem_of(vl(:));
+            q.sem_incr(wi,   ax) = sem_of(vi(:));
+            q.th_level(wi, ax)   = C_dx       * mean(base(idx, ax));
+            q.th_incr(wi,  ax)   = 2/(1 + lc) * mean(base(idx, ax));
+        end
+    end
+    q.ratio_level = q.meas_level ./ q.th_level;
+    q.ratio_incr  = q.meas_incr  ./ q.th_incr;
 end
 
 
@@ -567,11 +674,13 @@ function ratio = paired_ratio_stats(RA, RB, nwins)
 end
 
 
-function th = thermal_theory_check(runs, det_e_v2, get_e, W, cfg, kBT, f)
+function th = thermal_theory_check(runs, det_e_v2, get_e, W, cfg, kBT, f, a_pd_skel)
 %THERMAL_THEORY_CHECK V1 closed-form thermal baseline vs ram_v2 (B1/B2).
-%   sigma2_th_i(t) = C_dx*4*kBT*a_true_i(t) + C_n_fb*sigma2_n_i, with
+%   sigma2_th_i(t) = C_dx*4*kBT*a_pd,i(t) + C_n_fb*sigma2_n_i, with
 %   C_dx = 2 + 1/(1-lc^2), C_n_fb = (1-lc)/(1+lc) (V1 closed form, validated
-%   at h50). a_true_i(t) is the arm's det-run deterministic skeleton.
+%   at h50). a_pd,i(t) is the shared skeleton along the DESIRED trajectory
+%   (designer-known, no sim privilege; arm A values shift negligibly vs a_true;
+%   arm B shifts slightly more — expected; Step 0a, Task 4).
 %   Measured window variances are corrected for the ensemble-det
 %   self-subtraction by dividing by (1 - 1/Ns).
     lc       = cfg.lambda_c;
@@ -591,9 +700,9 @@ function th = thermal_theory_check(runs, det_e_v2, get_e, W, cfg, kBT, f)
         else
             corr = NaN;                             % degenerate: stats undefined
         end
-        a_true = runs.(arm).det.simOut.a_true_out(2:end, :);
-        s2x = C_dx * 4 * kBT * a_true(:, 1) + C_n_fb * sigma2_n(1);  % [um^2]
-        s2z = C_dx * 4 * kBT * a_true(:, 3) + C_n_fb * sigma2_n(3);
+        % a_pd_skel [N-1 x 3] shared skeleton along desired trajectory
+        s2x = C_dx * 4 * kBT * a_pd_skel(:, 1) + C_n_fb * sigma2_n(1);  % [um^2]
+        s2z = C_dx * 4 * kBT * a_pd_skel(:, 3) + C_n_fb * sigma2_n(3);
         vx = nan(numel(th.wx), Ns);
         vz = nan(numel(th.wz), Ns);
         for si = 1:Ns
@@ -696,7 +805,8 @@ function write_summary_md(path, f, S, A)
     fprintf(fid, '\n- headline z ratio (old -> v2): %s\n', strjoin(cmp, ', '));
     fprintf(fid, '\n## thermal-theory validation (ram v2)\n\n');
     T = A.thermal;
-    fprintf(fid, ['sigma2_th_i(t) = C_dx*4kBT*a_true_i(t) + C_n_fb*sigma2_n_i, ', ...
+    fprintf(fid, ['sigma2_th_i(t) = C_dx*4kBT*a_pd,i(t) + C_n_fb*sigma2_n_i (theory along ', ...
+                  'desired trajectory; a_pd = a_nom/C_i(h_bar_d), Step 0a Task 4). ', ...
                   'C_dx = %.3f, C_n_fb = %.3f (lc = %g). x: direct (no deflation); ', ...
                   'z: corrected by /(1-1/Ns).\n\n'], T.C_dx, T.C_n_fb, T.lc);
     fprintf(fid, '### x-axis windowed variance\n\n');
@@ -763,12 +873,27 @@ function write_summary_md(path, f, S, A)
     fprintf(fid, '- diverged runs: A %s / B %s\n', ...
             mat2str(A.ram.A.diverged), mat2str(A.ram.B.diverged));
     fprintf(fid, '\n## arm B gain estimation\n\n');
+    fprintf(fid, '- a_hat ensemble-mean rel-err (desc) [%%]: %s\n', ...
+            fmt_err3(A.ahat.rel_err_desc, A.ahat.rel_sem_desc));
     fprintf(fid, '- a_hat ensemble-mean rel-err (osc) [%%]: %s\n', ...
             fmt_err3(A.ahat.rel_err_osc, A.ahat.rel_sem_osc));
     fprintf(fid, '- a_hat ensemble-mean rel-err (gate-on, trough) [%%]: %s\n', ...
             fmt_err3(A.ahat.rel_err_gon, A.ahat.rel_sem_gon));
     fprintf(fid, '- a_hat ensemble-mean rel-err (gate-off, peak) [%%]: %s\n', ...
             fmt_err3(A.ahat.rel_err_goff, A.ahat.rel_sem_goff));
+    % A3: per-window a_hat ram std table (one row per window, x and z columns)
+    win_stds = {'desc', 'osc', 'gon', 'goff'};
+    std_flds  = {'ram_std_desc', 'ram_std_osc', 'ram_std_gon', 'ram_std_goff'};
+    fprintf(fid, '\n### a_hat ram std (seed mean +/- SEM) [um/pN]\n\n');
+    fprintf(fid, '| window | x | z |\n|---|---|---|\n');
+    for wsi = 1:numel(win_stds)
+        fld = std_flds{wsi};
+        mat = A.ahat.(fld);              % [3 x Ns] or [3 x 1] (C2 NaN)
+        rx = mat(1, :); rz = mat(3, :);
+        fprintf(fid, '| %s | %.3g +/- %.3g | %.3g +/- %.3g |\n', ...
+                win_stds{wsi}, mean(rx, 'omitnan'), sem_of(rx), ...
+                mean(rz, 'omitnan'), sem_of(rz));
+    end
     rs = mean(A.ahat.ram_std_osc, 2, 'omitnan');    % [3x1], seed mean
     rs_sem = arrayfun(@(i) sem_of(A.ahat.ram_std_osc(i, :)), (1:3).');
     fprintf(fid, ['- a_hat ram std (osc, seed mean +/- SEM) [um/pN]: ', ...
@@ -784,6 +909,22 @@ function write_summary_md(path, f, S, A)
                   'against the %d-seed ensemble mean; self-subtraction deflates ', ...
                   'std by sqrt(1-1/Ns) = -%.1f%% at Ns=%d._\n'], ...
             A.ahat.n_seeds, defl_ahat, A.ahat.n_seeds);
+
+    % A1: Q55 dynamic check section
+    ax_name_q = 'xyz';
+    fprintf(fid, '\n## A1: a_true gain ram vs Q55 closed forms (arm A, %d seeds)\n\n', ...
+            A.q55.Ns);
+    fprintf(fid, ['Level: Var(a_ram) vs C_dx*(a*K_h/R)^2*4kBT*a_z; ', ...
+                  'Increment (= Q55): Var(diff a_ram) vs [2/(1+lc)]*(a*K_h/R)^2*4kBT*a_z. ', ...
+                  'Theory pointwise along a_pd (desired trajectory), window-averaged; ', ...
+                  'meas /(1-1/Ns). Axes x and z only (y=x by symmetry).\n\n']);
+    fprintf(fid, '| window | axis | level meas/th | incr meas/th |\n|---|---|---|---|\n');
+    for wi = 1:numel(A.q55.wins)
+        for ax = [1 3]
+            fprintf(fid, '| %s | %c | %.3f | %.3f |\n', A.q55.wins{wi}, ax_name_q(ax), ...
+                    A.q55.ratio_level(wi, ax), A.q55.ratio_incr(wi, ax));
+        end
+    end
     fclose(fid);
 end
 
