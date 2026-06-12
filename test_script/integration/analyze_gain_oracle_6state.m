@@ -267,6 +267,16 @@ function A = per_freq_analysis(runs, cfg, f)
     R2.wins  = wins;
     A.ram_v2 = R2;
 
+    % --- det v2: ensemble-referenced det metrics, both arms (figs + summary) ---
+    % Same metric set as A.det but on det_e_v2. For arm B this is the ONLY
+    % valid det reference (det run invalid, Round-1 finding); arm A v2 carries
+    % the ensemble extraction residual (sigma/sqrt(Ns) per point) unlike the
+    % exact det-run reference. When ~b_noisy_ok the B column is all-NaN and
+    % det_metrics' NaN guards return NaN fields.
+    for arm = 'AB'
+        A.det_v2.(arm) = det_metrics(det_e_v2.(arm), t_e, W, f, t_osc0, t_osc1, Ts);
+    end
+
     % --- deterministic gain skeleton along the DESIRED trajectory (a_pd) ---
     % a_pd,i[k] = a_nom / C_i(h_bar_d[k]) — designer-known, no sim privilege.
     % calc_correction_functions is scalar-only; loop over h_bar_d samples.
@@ -832,6 +842,20 @@ function write_summary_md(path, f, S, A)
         fprintf(fid, '| osc rms_res [nm] | %c | %.2f | %.2f | %.2f |\n',  arm, D.rms_res*1e3);
         fprintf(fid, '| trough bias [nm] | %c | %.2f | %.2f | %.2f |\n',  arm, D.trough_bias*1e3);
     end
+    fprintf(fid, '\n## det v2 (ensemble det reference)\n\n');
+    fprintf(fid, ['Arm A v2 metrics carry the ensemble extraction residual ', ...
+                  '(sigma/sqrt(Ns) per point) unlike the exact det-run reference ', ...
+                  'above; for arm B v2 is the ONLY valid det reference (det run ', ...
+                  'invalid per the Round-1 finding).\n\n']);
+    fprintf(fid, '| metric | arm | x | y | z |\n|---|---|---|---|---|\n');
+    for arm = 'AB'
+        D = A.det_v2.(arm);
+        fprintf(fid, '| descent peak [nm] | %c | %.1f | %.1f | %.1f |\n', arm, D.desc_peak*1e3);
+        fprintf(fid, '| osc A_e [nm] | %c | %.2f | %.2f | %.2f |\n',      arm, D.A_e*1e3);
+        fprintf(fid, '| osc phase [deg] | %c | %.2f | %.2f | %.2f |\n',   arm, D.phi_deg);
+        fprintf(fid, '| osc rms_res [nm] | %c | %.2f | %.2f | %.2f |\n',  arm, D.rms_res*1e3);
+        fprintf(fid, '| trough bias [nm] | %c | %.2f | %.2f | %.2f |\n',  arm, D.trough_bias*1e3);
+    end
     fprintf(fid, '\n## ram (noise-free det reference — superseded, kept for comparison)\n\n');
     ax_name = 'xyz';
     write_ram_table(fid, A.ram, ax_name);
@@ -1076,10 +1100,12 @@ function make_figs(S, A, f, out_dir)
     plot(t_e, A.noisy_det.B.det_traj(:, 3), '-', 'Color', COL_HAT2,  'LineWidth', 2, ...
          'DisplayName', 'â');
     xlim([0 T_END]);
+    % stats from det_v2 (ensemble det reference) — matches the PLOTTED curves;
+    % A.det quotes the det RUN (v1, superseded; B value is a Guard-2 artifact)
     title(sprintf(['z_{det}:   descent peak  a_{true} %.1f / â %.1f nm', ...
                    '     osc A_e  %.2f / %.2f nm'], ...
-          A.det.A.desc_peak(3)*1e3, A.det.B.desc_peak(3)*1e3, ...
-          A.det.A.A_e(3)*1e3, A.det.B.A_e(3)*1e3), ...
+          A.det_v2.A.desc_peak(3)*1e3, A.det_v2.B.desc_peak(3)*1e3, ...
+          A.det_v2.A.A_e(3)*1e3, A.det_v2.B.A_e(3)*1e3), ...
           'FontSize', FS2, 'FontWeight', 'bold');
     ylabel('z  (\mum)', 'FontSize', FS2, 'FontWeight', 'bold');
     xlabel('Time (sec)', 'FontSize', FS2, 'FontWeight', 'bold');
@@ -1089,13 +1115,6 @@ function make_figs(S, A, f, out_dir)
     grid off;
     exportgraphics(ft, fullfile(out_dir, 'fig_traj_det.png'), 'Resolution', 150);
     close(ft);
-
-    % NaN-guard for fig_det_err: prevent ylim([NaN NaN]) crash when arm B det run
-    % diverged.  A is a local copy in make_figs (analysis.mat saved before call);
-    % 1e-6 um offset → errB = 1e-3 nm constant → b_nm = 50, line visually absent.
-    if all(isnan(A.noisy_det.B.det_traj(:, 3)))
-        A.noisy_det.B.det_traj(:, 3) = pd_al(:, 3) - 1e-6;
-    end
 
     % ---- fig_det_err: det error overlay, z only (asymmetric det reference) ----
     % User-approved asymmetric references: the a_true arm uses the NOISE-FREE
@@ -1108,6 +1127,7 @@ function make_figs(S, A, f, out_dir)
     % auto symmetric nice bound this round (not locked); reported per freq so
     % the coordinator can lock a common value next round
     b_nm = ceil(max(abs(errB)) * 1.15 / 50) * 50;
+    if ~isfinite(b_nm); b_nm = 50; end   % degraded: arm-B ensemble det unavailable (all seeds diverged); NaN curve plots as absent
     fprintf('[fig_det_err:%gHz] auto y-bound b = %g nm\n', f, b_nm);
     fde = figure('Position', [80 80 1100 460], 'Color', 'w', 'NumberTitle', 'off', ...
                  'Visible', 'off');
