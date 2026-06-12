@@ -1064,21 +1064,20 @@ end
 
 
 function make_figs(S, A, f, out_dir)
-%MAKE_FIGS per-frequency figures, EXP style (user presentation spec).
-%   No titles; bold large fonts; 3 y-ticks; FIXED axis ranges across all
-%   frequencies (except fig_det_err: auto bound this round, reported per
-%   freq so a common lock can be chosen). The single-seed ram comes from
-%   A.noisy_det.(arm).ram_traj (first paired non-diverged seed; seed number
-%   recorded in summary.md).
-%   fig_traj_det : desired vs noisy-ensemble det trajectory, z only
-%   fig_det_err  : det error overlay, z only (asymmetric det reference)
-%   fig_traj_ram : trajectory-space ram (vs noisy-ensemble det), x/z
-    COL_B = [0.8 0 0]; COL_A = [0.45 0.30 0.75];
-    FS_LAB = 24; FS_AX = 20; FS_LEG = 18; LW = 2.0;
-    % cross-frequency comparability locks: time axis unchanged for fig_det_err
-    XLIM_T = [0 7];  XTICK_T = 0:1:7;   % used by fig_det_err (frozen)
+%MAKE_FIGS per-frequency figures, EXP style (user presentation spec,
+%   sample-gate revision 2026-06-12): NO titles / NO stats on any figure
+%   (numbers live in summary.md only); unified role colors; legends framed
+%   (Box on); bold box+ticks; natural tick density; full time span.
+%   Layer convention (locked mockup): â blue THICK drawn first as base,
+%   a_true red THIN on top; theory/Desired green on top where present.
+%   fig_traj_det    : desired vs noisy-ensemble det trajectory, z only
+%   fig_det_err     : det error overlay, z only (asymmetric det reference)
+%   fig_traj_ram    : trajectory-space ram (x direct / z ensemble)
+%   fig_gain_compare: a_xm / a_pd / a_true / â four-layer overlay
+%   fig_gain_meas   : a_xm vs â relationship (draft, under discussion)
+%   fig_motion_var  : a_pd theory vs pointwise ensemble variance
     RAM_YLIM = [-150 150];               % [nm] cross-frequency lock for fig_traj_ram
-    % Round-2 locked style (design §12.6): role colors + fonts
+    % Round-2 locked style (design §12.6 + sample-gate revision): role colors
     COL_DES   = [0 0.6 0];               % Desired / a_pd / theory
     COL_TRUE2 = [0.8 0 0];              % a_true (arm A)
     COL_HAT2  = [0 0.2 0.9];            % â (arm B)
@@ -1094,23 +1093,18 @@ function make_figs(S, A, f, out_dir)
     ft = figure('Position', [80 80 1100 460], 'Color', 'w', 'NumberTitle', 'off', ...
                 'Visible', 'off');
     hold on;
-    plot(t_e, pd_al(:, 3), '-', 'Color', COL_DES, 'LineWidth', 3, 'DisplayName', 'Desired');
-    plot(t_e, A.noisy_det.A.det_traj(:, 3), '-', 'Color', COL_TRUE2, 'LineWidth', 2, ...
+    % width-nested layering: identical-overlap curves stay individually
+    % visible as concentric borders (green widest under red under blue)
+    plot(t_e, pd_al(:, 3), '-', 'Color', COL_DES, 'LineWidth', 4.5, 'DisplayName', 'Desired');
+    plot(t_e, A.noisy_det.A.det_traj(:, 3), '-', 'Color', COL_TRUE2, 'LineWidth', 2.5, ...
          'DisplayName', 'a_{true}');
-    plot(t_e, A.noisy_det.B.det_traj(:, 3), '-', 'Color', COL_HAT2,  'LineWidth', 2, ...
+    plot(t_e, A.noisy_det.B.det_traj(:, 3), '-', 'Color', COL_HAT2,  'LineWidth', 1.0, ...
          'DisplayName', 'â');
     xlim([0 T_END]);
-    % stats from det_v2 (ensemble det reference) — matches the PLOTTED curves;
-    % A.det quotes the det RUN (v1, superseded; B value is a Guard-2 artifact)
-    title(sprintf(['z_{det}:   descent peak  a_{true} %.1f / â %.1f nm', ...
-                   '     osc A_e  %.2f / %.2f nm'], ...
-          A.det_v2.A.desc_peak(3)*1e3, A.det_v2.B.desc_peak(3)*1e3, ...
-          A.det_v2.A.A_e(3)*1e3, A.det_v2.B.A_e(3)*1e3), ...
-          'FontSize', FS2, 'FontWeight', 'bold');
     ylabel('z  (\mum)', 'FontSize', FS2, 'FontWeight', 'bold');
     xlabel('Time (sec)', 'FontSize', FS2, 'FontWeight', 'bold');
     legend('Location', 'northoutside', 'Orientation', 'horizontal', ...
-           'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'off');
+           'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'on');
     set(gca, 'FontSize', FS2, 'FontWeight', 'bold', 'LineWidth', AXLW2, 'Box', 'on');
     grid off;
     exportgraphics(ft, fullfile(out_dir, 'fig_traj_det.png'), 'Resolution', 150);
@@ -1129,19 +1123,20 @@ function make_figs(S, A, f, out_dir)
     b_nm = ceil(max(abs(errB)) * 1.15 / 50) * 50;
     if ~isfinite(b_nm); b_nm = 50; end   % degraded: arm-B ensemble det unavailable (all seeds diverged); NaN curve plots as absent
     fprintf('[fig_det_err:%gHz] auto y-bound b = %g nm\n', f, b_nm);
+    % unified style (sample-gate revision: D2 freeze lifted by user) — role
+    % colors + layer convention: â blue thick base, a_true red thin on top
     fde = figure('Position', [80 80 1100 460], 'Color', 'w', 'NumberTitle', 'off', ...
                  'Visible', 'off');
     hold on;
-    plot(t_e, errA, '-', 'Color', COL_A, 'LineWidth', LW, 'DisplayName', 'a = a_{true}');
-    plot(t_e, errB, '-', 'Color', COL_B, 'LineWidth', LW, 'DisplayName', 'a = â');
-    xlim(XLIM_T); ylim([-b_nm b_nm]);
-    set(gca, 'XTick', XTICK_T, 'YTick', [-b_nm 0 b_nm], ...
-             'FontSize', FS_AX, 'FontWeight', 'bold');
-    ylabel('\deltaz_{det}  (nm)', 'FontSize', FS_LAB, 'FontWeight', 'bold');
-    xlabel('t (s)', 'FontSize', FS_LAB, 'FontWeight', 'bold');
+    hBd = plot(t_e, errB, '-', 'Color', COL_HAT2,  'LineWidth', 2.5, 'DisplayName', 'â');
+    hAd = plot(t_e, errA, '-', 'Color', COL_TRUE2, 'LineWidth', 1.0, 'DisplayName', 'a_{true}');
+    xlim([0 T_END]); ylim([-b_nm b_nm]);
+    ylabel('\deltaz_{det}  (nm)', 'FontSize', FS2, 'FontWeight', 'bold');
+    xlabel('Time (sec)', 'FontSize', FS2, 'FontWeight', 'bold');
+    legend([hAd hBd], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
+           'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'on');
+    set(gca, 'FontSize', FS2, 'FontWeight', 'bold', 'LineWidth', AXLW2, 'Box', 'on');
     grid off;
-    lg = legend('Location', 'northoutside', 'Orientation', 'horizontal');
-    lg.FontSize = FS_LEG; lg.FontWeight = 'bold';
     exportgraphics(fde, fullfile(out_dir, 'fig_det_err.png'), 'Resolution', 150);
     close(fde);
 
@@ -1163,12 +1158,10 @@ function make_figs(S, A, f, out_dir)
         hB = plot(t_e, sigB, '-', 'Color', COL_HAT2,  'LineWidth', 2.5, 'DisplayName', 'â');
         hA = plot(t_e, sigA, '-', 'Color', COL_TRUE2, 'LineWidth', 1.0, 'DisplayName', 'a_{true}');
         xlim([0 T_END]); ylim(RAM_YLIM);
-        title(sprintf('%c_{ram}:   var  a_{true} %.0f nm^2     â %.0f nm^2', ...
-              axl(r), var(sigA), var(sigB)), 'FontSize', FS2, 'FontWeight', 'bold');
         ylabel(sprintf('%c_{ram}  (nm)', axl(r)), 'FontSize', FS2, 'FontWeight', 'bold');
         if r == 1
             legend([hA hB], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
-                   'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'off');
+                   'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'on');
         end
         set(gca, 'FontSize', FS2, 'FontWeight', 'bold', 'LineWidth', AXLW2, 'Box', 'on');
         grid off;
@@ -1195,13 +1188,10 @@ function make_figs(S, A, f, out_dir)
                   'LineWidth', 2.0, 'DisplayName', 'â');
         xlim([0 T_END]);
         ylim([0, 1.25 * max(A.gain.a_pd(:, c))]);
-        title(sprintf('%s:   â rel-err  osc %+.1f%%     near-wall %+.1f%%', ...
-              glbl{r}, A.ahat.rel_err_osc(c), A.ahat.rel_err_gon(c)), ...
-              'FontSize', FS2, 'FontWeight', 'bold');
         ylabel(sprintf('%s  (\\mum/pN)', glbl{r}), 'FontSize', FS2, 'FontWeight', 'bold');
         if r == 1
             legend([hm hp ht hh], 'Location', 'northoutside', 'Orientation', ...
-                   'horizontal', 'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'off');
+                   'horizontal', 'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'on');
         end
         set(gca, 'FontSize', FS2, 'FontWeight', 'bold', 'LineWidth', AXLW2, 'Box', 'on');
         grid off;
@@ -1210,9 +1200,37 @@ function make_figs(S, A, f, out_dir)
     exportgraphics(fg, fullfile(out_dir, 'fig_gain_compare.png'), 'Resolution', 150);
     close(fg);
 
+    % ---- fig_gain_meas: a_xm vs â relationship (DRAFT, under discussion) ----
+    % Dedicated view of how the EKF digests the raw gain measurement: a_xm
+    % raw (light blue), â ensemble (blue thick base), a_true ensemble (red
+    % thin reference). Same ylim clamp as fig_gain_compare.
+    fgm = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
+                 'Visible', 'off');
+    tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+    for r = 1:2
+        c = cols(r); nexttile; hold on;
+        hm2 = plot(t_e, A.gain.a_xm_seed(:, c),  '-', 'Color', COL_MEAS2, ...
+                   'LineWidth', 0.5, 'DisplayName', 'a_{xm}');
+        hh2 = plot(t_e, A.ahat.ens_mean(:, c),   '-', 'Color', COL_HAT2, ...
+                   'LineWidth', 2.5, 'DisplayName', 'â');
+        ht2 = plot(t_e, A.gain.a_true_ens(:, c), '-', 'Color', COL_TRUE2, ...
+                   'LineWidth', 1.0, 'DisplayName', 'a_{true}');
+        xlim([0 T_END]);
+        ylim([0, 1.25 * max(A.gain.a_pd(:, c))]);
+        ylabel(sprintf('%s  (\\mum/pN)', glbl{r}), 'FontSize', FS2, 'FontWeight', 'bold');
+        if r == 1
+            legend([hm2 hh2 ht2], 'Location', 'northoutside', 'Orientation', ...
+                   'horizontal', 'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'on');
+        end
+        set(gca, 'FontSize', FS2, 'FontWeight', 'bold', 'LineWidth', AXLW2, 'Box', 'on');
+        grid off;
+    end
+    xlabel('Time (sec)', 'FontSize', FS2, 'FontWeight', 'bold');
+    exportgraphics(fgm, fullfile(out_dir, 'fig_gain_meas.png'), 'Resolution', 150);
+    close(fgm);
+
     % ---- fig_motion_var: theory(a_pd) vs pointwise ensemble var, x+z ----
     % NO smoothing (design §12.5 locked). Units nm^2 (x 1e6 from um^2).
-    W_osc_fig = A.W_osc;
     fv = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off', ...
                 'Visible', 'off');
     tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
@@ -1226,21 +1244,19 @@ function make_figs(S, A, f, out_dir)
             vB = A.motion_var.B.var_z_um2 * 1e6;
         end
         vth = A.motion_var.theory_um2(:, c) * 1e6;
-        hB = plot(t_e, vB,  '-', 'Color', COL_HAT2,  'LineWidth', 1.0, 'DisplayName', 'â');
+        % layer convention as fig_traj_ram: â blue thick base, a_true red
+        % thin on top, theory green thickest on the very top
+        hB = plot(t_e, vB,  '-', 'Color', COL_HAT2,  'LineWidth', 2.5, 'DisplayName', 'â');
         hA = plot(t_e, vA,  '-', 'Color', COL_TRUE2, 'LineWidth', 1.0, 'DisplayName', 'a_{true}');
         hT = plot(t_e, vth, '-', 'Color', COL_DES,   'LineWidth', 3.0, 'DisplayName', 'Theory');
         xlim([0 T_END]);
         ymax_mv = max(vth) * 4;
         if ~isfinite(ymax_mv) || ymax_mv <= 0; ymax_mv = 1; end
         ylim([0, ymax_mv]);
-        rA = mean(vA(W_osc_fig)) / mean(vth(W_osc_fig));
-        rB = mean(vB(W_osc_fig)) / mean(vth(W_osc_fig));
-        title(sprintf('var(%c_{ram}):   osc meas/theory  a_{true} %.2f     â %.2f', ...
-              axl(r), rA, rB), 'FontSize', FS2, 'FontWeight', 'bold');
         ylabel(sprintf('var(%c_{ram})  (nm^2)', axl(r)), 'FontSize', FS2, 'FontWeight', 'bold');
         if r == 1
             legend([hT hA hB], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
-                   'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'off');
+                   'FontSize', LFS2, 'FontWeight', 'bold', 'Box', 'on');
         end
         set(gca, 'FontSize', FS2, 'FontWeight', 'bold', 'LineWidth', AXLW2, 'Box', 'on');
         grid off;
