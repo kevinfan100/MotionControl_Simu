@@ -317,8 +317,8 @@ function A = per_freq_analysis(runs, cfg, f)
                               cfg.lambda_c, kBT, R_phys);
 
     % --- fig_gain_compare data (design §12.4): arms per user decision ---
-    % a_true ensemble = ARM A (gain under near-perfect control);
-    % a_hat ensemble  = ARM B (= A.ahat.ens_mean); a_xm = ARM B traj seed.
+    % a_true ensemble = a=a_true (gain under near-perfect control);
+    % a_hat ensemble  = a=Ã¢ (= A.ahat.ens_mean); a_xm = a=Ã¢ traj seed.
     nzA = runs.A.noisy;  okA = find(~[nzA.diverged]);
     stA = [];
     for s = okA
@@ -802,13 +802,13 @@ function write_summary_md(path, f, S, A)
     end
     fprintf(fid, '# gain_compare : %g Hz\n\n', f);
     if ~A.b_det_ok
-        fprintf(fid, ['**ARM B DET RUN DIVERGED** (%s) - v1/B det metrics are NaN; ', ...
-                      'ensemble-det (v2) path unaffected; B crossval not meaningful.\n\n'], ...
+        fprintf(fid, ['**a=â DET RUN DIVERGED** (%s) - a=â det metrics are NaN; ', ...
+                      'ensemble-det ram path unaffected; a=â crossval not meaningful.\n\n'], ...
                 S.runs.B.det.diverge_reason);
     end
     if ~A.b_noisy_ok
         nb = numel(S.runs.B.noisy);
-        fprintf(fid, ['**ALL ARM B NOISY SEEDS DIVERGED (%d/%d)** - all B-side ', ...
+        fprintf(fid, ['**ALL a=â NOISY SEEDS DIVERGED (%d/%d)** - all a=â ', ...
                       'statistics are NaN; a=a_true results unaffected.\n\n'], nb, nb);
     end
     R_phys_hdr = S.runs.A.det.simOut.meta.params_value.common.R;

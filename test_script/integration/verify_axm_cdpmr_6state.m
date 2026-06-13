@@ -128,12 +128,12 @@ function results = verify_axm_cdpmr_6state(freq_dir, opts)
 
     W.desc = (t_e >= cfg.t_hold       & t_e < t_osc0);
     W.osc  = (t_e >= t_osc0+t_discard & t_e < t_osc1);
-    W.gon  = W.osc & (h_bar_d < H_BAR_GATE);
-    W.goff = W.osc & (h_bar_d >= H_BAR_GATE);
+    W.near  = W.osc & (h_bar_d < H_BAR_GATE);
+    W.far = W.osc & (h_bar_d >= H_BAR_GATE);
 
     if opts.verbose
-        fprintf('[axm_verify] windows: desc=%d  osc=%d  gon=%d  goff=%d samples\n', ...
-                sum(W.desc), sum(W.osc), sum(W.gon), sum(W.goff));
+        fprintf('[axm_verify] windows: desc=%d  osc=%d  near=%d  far=%d samples\n', ...
+                sum(W.desc), sum(W.osc), sum(W.near), sum(W.far));
     end
 
     % ================================================================
@@ -159,7 +159,7 @@ function results = verify_axm_cdpmr_6state(freq_dir, opts)
     % pole lambda_c.  Therefore var(dx_r, 0, 3) — the standard
     % Bessel-corrected sample variance across seeds — is an unbiased
     % estimator of E[dx_r^2] without any additional deflation factor.
-    % Contrast: the analyzer's ram_v2 subtracts a finite-sample det_traj,
+    % Contrast: the analyzer's ram subtracts a finite-sample det_traj,
     % introducing a 1-1/Ns self-subtraction deflation that must be corrected.
     % Here no such subtraction occurs, so no extra correction is needed.
     ARMS = {'A', 'B'};
@@ -206,13 +206,13 @@ function results = verify_axm_cdpmr_6state(freq_dir, opts)
     % ================================================================
     % NOTE (rigor point 1, d=2 timing): Var(dx_r[k]) thermal part formally
     % tracks a[k-d] because dx_m = p_d[k-d] - p_m[k] observes dx[k-d].
-    % In quasi-static windows (descent, goff): d*Ts = 2/1600 s << EWMA
+    % In quasi-static windows (descent, far): d*Ts = 2/1600 s << EWMA
     % memory (~20 steps = 12.5 ms) and a(t) variation is slow, so
     % a[k-d] ≈ a[k] to < 0.2%.  Theory is built from a_true_ens.A
     % (a=a_true arm: a_ctrl = a_true, strict lambda_c pole) without time-shift.
     % A 2-sample forward shift of a_true_ens.A is noted as a refinement
     % for near-wall analysis where a(t) changes rapidly, but is not
-    % applied here (effect < 0.5% in descent/goff).
+    % applied here (effect < 0.5% in descent/far).
     var_theory = C_dpmr * 4 * kBT .* V.A.a_true + C_n * sig2_n.';  % [N x 3]
 
     % ================================================================
@@ -258,9 +258,9 @@ function results = verify_axm_cdpmr_6state(freq_dir, opts)
     % 9. PER-WINDOW SUMMARY STATS
     % ================================================================
     % ratio   = mean(Var_meas) / mean(Var_theory)  — target 1.0 for a=a_true arm
-    %           in descent / goff (quasi-static windows).
+    %           in descent / far (quasi-static windows).
     % axm_bias = (mean(a_xm) - mean(a_true)) / mean(a_true) — target ~0 for a=a_true arm.
-    WIN_NAMES = {'desc', 'osc', 'gon', 'goff'};
+    WIN_NAMES = {'desc', 'osc', 'near', 'far'};
     win_stats = struct();
     for wi = 1:numel(WIN_NAMES)
         wn  = WIN_NAMES{wi};
@@ -545,8 +545,8 @@ function write_summary_md(path, cfg, V, win_stats, win_names, C_dpmr, C_n)
 
     % --- per-window table ---
     fprintf(fid, '## Per-window ratio and a_xm bias\n\n');
-    fprintf(fid, '`ratio` = mean(Var_meas) / mean(Var_theory).  Target: a=a_true arm desc/goff ≈ 1.0.\n');
-    fprintf(fid, '`axm_bias` = (mean(a_xm) - mean(a_true)) / mean(a_true).  Target: a=a_true arm desc/goff ≈ 0%%.\n\n');
+    fprintf(fid, '`ratio` = mean(Var_meas) / mean(Var_theory).  Target: a=a_true arm desc/far ≈ 1.0.\n');
+    fprintf(fid, '`axm_bias` = (mean(a_xm) - mean(a_true)) / mean(a_true).  Target: a=a_true arm desc/far ≈ 0%%.\n\n');
     fprintf(fid, '| window | arm | ratio_x | ratio_y | ratio_z | bias_x | bias_y | bias_z |\n');
     fprintf(fid, '|--------|-----|---------|---------|---------|--------|--------|--------|\n');
     for wi = 1:numel(win_names)
@@ -564,15 +564,15 @@ function write_summary_md(path, cfg, V, win_stats, win_names, C_dpmr, C_n)
     % --- interpretation ---
     fprintf(fid, '## Interpretation\n\n');
     fprintf(fid, '### Clean verification windows\n\n');
-    fprintf(fid, ['`desc` (descent, quasi-static a-sweep) and `goff` (oscillation, h_bar >= 1.5):\n', ...
+    fprintf(fid, ['`desc` (descent, quasi-static a-sweep) and `far` (oscillation, h_bar >= 1.5):\n', ...
                   'C_dpmr quasi-static assumption holds, a=a_true arm ratio should be ≈1.0 (±~5%%).\n', ...
                   'These are the primary evidence windows for the identity.\n\n']);
     fprintf(fid, '### Expected deviations (not bugs)\n\n');
-    fprintf(fid, ['- **`gon` (gate-on, h_bar < 1.5, near wall)**: rapid a(t) variation and\n', ...
+    fprintf(fid, ['- **`near` (gate-on, h_bar < 1.5, near wall)**: rapid a(t) variation and\n', ...
                   '  nonlinear wall correction dynamics invalidate the quasi-static assumption.\n', ...
                   '  a=a_true arm ratio deviating here is expected physics, not a bug.\n', ...
-                  '- **`osc` overall**: mixes gon + goff windows; result is dominated by the\n', ...
-                  '  gon fraction when the trajectory spends significant time near the wall.\n', ...
+                  '- **`osc` overall**: mixes near + far windows; result is dominated by the\n', ...
+                  '  near fraction when the trajectory spends significant time near the wall.\n', ...
                   '- **a=â arm, all windows**: systematic ratio deviation and a_xm bias reflect\n', ...
                   '  the self-consistent equilibrium (a_hat != a_true -> closed-loop pole\n', ...
                   '  shifts to ~lambda_c * g -> Var(dx_r) shifts -> a_xm shifts). This is\n', ...
