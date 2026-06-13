@@ -6,7 +6,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
 %   [f_d, ekf_out, diag] = motion_control_law_eq17_6state(...)
 %   [f_d, ekf_out, diag] = motion_control_law_eq17_6state(..., ctrl_const, a_ctrl_override)
 %
-%   Gain-oracle A/B experiment support:
+%   True-gain A/B experiment support:
 %     a_ctrl_override (3x1 or [], default []): when non-empty, the control
 %       law (including the past-force history sum a_ctrl[k-i]*f_d[k-i])
 %       uses this gain instead of the EKF a_hat; the EKF itself is
@@ -56,7 +56,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
 %             calc_correction_functions
 
     % ------------------------------------------------------------------
-    % Optional gain override (gain-oracle A/B experiment): when non-empty,
+    % Optional gain override (true-gain A/B experiment): when non-empty,
     % the CONTROL LAW uses a_ctrl_override (and its history) instead of the
     % EKF a_hat. The EKF itself is untouched (slot 5 still estimated).
     % ------------------------------------------------------------------
@@ -253,7 +253,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     xD_comb  = x_e_per_axis(4, :).';     % 3x1 [um]  (delta_x_D^d)
 
     if has_override
-        a_ctrl = a_ctrl_override;        % oracle (or externally supplied) gain
+        a_ctrl = a_ctrl_override;        % true-gain (or externally supplied) gain
     else
         a_ctrl = a_hat;                  % normal mode: EKF posterior[k-1]
     end

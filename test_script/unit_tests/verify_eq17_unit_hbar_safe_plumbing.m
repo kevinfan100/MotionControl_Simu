@@ -1,6 +1,6 @@
 function verify_eq17_unit_hbar_safe_plumbing()
 %VERIFY_EQ17_UNIT_HBAR_SAFE_PLUMBING config.h_bar_safe -> ctrl_const plumbing
-%   (gain_oracle_ab_design.md §12.1). Positioning hold at h_bar = 1.3
+%   (gain_compare_design.md §12.1). Positioning hold at h_bar = 1.3
 %   (inside the default gate band [1, 1.5)):
 %   T1: default (no config field)  -> G3 fires (gate_active true somewhere).
 %   T2: config.h_bar_safe = 1      -> G3 never fires on any axis.

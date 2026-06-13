@@ -1,9 +1,9 @@
-function results = compare_gain_oracle_6state(freqs, opts)
-%COMPARE_GAIN_ORACLE_6STATE Run the gain-oracle A/B matrix (design doc
-%   reference/eq17_analysis/gain_oracle_ab_design.md §2-§3, §7 Layer 0).
+function results = compare_gain_6state(freqs, opts)
+%COMPARE_GAIN_6STATE Run the true-gain A/B matrix (design doc
+%   reference/eq17_analysis/gain_compare_design.md §2-§3, §7 Layer 0).
 %
-%   results = compare_gain_oracle_6state()            % freqs = [1 5 10]
-%   results = compare_gain_oracle_6state(freqs, opts)
+%   results = compare_gain_6state()            % freqs = [1 5 10]
+%   results = compare_gain_6state(freqs, opts)
 %
 %   Round-2 defaults (gate-free, 100 seeds):
 %     freqs      : [1 5 10] Hz
@@ -11,15 +11,15 @@ function results = compare_gain_oracle_6state(freqs, opts)
 %     T_sim      : 4.0 s
 %     n_cyc_per_s: 2   (osc duration = n_cyc_per_s seconds, design §12.1)
 %     h_bar_safe : 1   (G3 unreachable; trough h_bar = 1.2, design §12.1)
-%     out_root   : test_results/gain_oracle_ab_nogate/
+%     out_root   : test_results/gain_compare/
 %
 %   Per frequency: 2 arms x (1 det run + numel(seeds) noisy runs), all
-%   collect_diag. Arm A = gain_oracle (true time-varying gain in the
-%   control law), arm B = EKF gain. Both arms suppress_xD. Layer 0
+%   collect_diag. a=a_true arm fed the true time-varying gain in the
+%   control law, a=â arm uses EKF gain. Both arms suppress_xD. Layer 0
 %   assertions (incl. gate-free check, design §12.7 acceptance #6) run
 %   before saving. Output:
-%       test_results/gain_oracle_ab_nogate/f<f>Hz/runs.mat        (production)
-%       test_results/gain_oracle_ab_nogate/f<f>Hz-smoke/runs.mat  (smoke mode)
+%       test_results/gain_compare/f<f>Hz/runs.mat        (production)
+%       test_results/gain_compare/f<f>Hz-smoke/runs.mat  (smoke mode)
 %
 %   opts fields:
 %     seeds        (1:100)  - RNG seeds for noisy runs
@@ -27,18 +27,18 @@ function results = compare_gain_oracle_6state(freqs, opts)
 %     n_cyc_per_s  (2)      - oscillation cycles per second of osc phase
 %     h_bar_safe   (1)      - Guard-3 threshold (1 = gate-free for h_bar>=1.2)
 %     verbose      (true)
-%     out_root     (test_results/gain_oracle_ab_nogate/)
+%     out_root     (test_results/gain_compare/)
 %     smoke        (false;  true -> T_sim=2.0 + seeds=1, saved under -smoke
 %                           suffix so production data is never overwritten)
 %
 %   To reproduce the Round-1 gated matrix, set out_root to the ABSOLUTE
-%   path <project_root>/test_results/gain_oracle_ab (out_root is used
+%   path <project_root>/test_results/gain_compare (out_root is used
 %   verbatim; a relative path resolves against the current directory):
-%     compare_gain_oracle_6state([1 2 5], struct( ...
+%     compare_gain_6state([1 2 5], struct( ...
 %         'seeds', 1:20, 'T_sim', 7.0, 'n_cyc_per_s', 5, ...
-%         'h_bar_safe', 1.5, 'out_root', '<abs path>/test_results/gain_oracle_ab'))
+%         'h_bar_safe', 1.5, 'out_root', '<abs path>/test_results/gain_compare'))
 %
-%   See also: analyze_gain_oracle_6state, run_pure_simulation
+%   See also: analyze_gain_6state, run_pure_simulation
 
     if nargin < 1 || isempty(freqs); freqs = [1 5 10]; end
     if nargin < 2; opts = struct(); end
@@ -63,7 +63,7 @@ function results = compare_gain_oracle_6state(freqs, opts)
             fullfile(project_root, 'model', 'controller'), ...
             fullfile(project_root, 'model', 'dual_track'), script_dir);
     if ~isfield(opts, 'out_root')
-        opts.out_root = fullfile(project_root, 'test_results', 'gain_oracle_ab_nogate');
+        opts.out_root = fullfile(project_root, 'test_results', 'gain_compare');
     end
 
     results = struct('freq', {}, 'out_dir', {}, 'layer0', {}, 'n_diverged', {});
@@ -78,19 +78,19 @@ function results = compare_gain_oracle_6state(freqs, opts)
                h_min_actual, t_crit);
 
         if opts.verbose
-            fprintf('[compare_gain_oracle:%gHz] T_sim=%.1fs seeds=%s\n', ...
+            fprintf('[compare_gain:%gHz] T_sim=%.1fs seeds=%s\n', ...
                     f, cfg.T_sim, mat2str(opts.seeds));
         end
 
         % --- run matrix ---
         runs = struct();
         for arm = 'AB'
-            oracle = (arm == 'A');
+            use_true_gain = (arm == 'A');
             cfg_det = cfg;
             cfg_det.thermal_enable = false; cfg_det.meas_noise_enable = false;
-            runs.(arm).det = run_one(cfg_det, 0, oracle, true);
+            runs.(arm).det = run_one(cfg_det, 0, use_true_gain, true);
             for s = 1:numel(opts.seeds)
-                runs.(arm).noisy(s) = run_one(cfg, opts.seeds(s), oracle, false);
+                runs.(arm).noisy(s) = run_one(cfg, opts.seeds(s), use_true_gain, false);
             end
         end
 
@@ -163,12 +163,12 @@ function cfg = build_config(f, opts)
 end
 
 
-function rec = run_one(cfg, seed, oracle, is_det)
+function rec = run_one(cfg, seed, use_true_gain, is_det)
 %RUN_ONE Single run wrapped in try/catch (crash = diverged, design §7.3).
     if nargin < 4; is_det = false; end
     ro = struct('seed', seed, 'verbose', false, 'collect_diag', true, ...
-                'gain_oracle', oracle);
-    rec = struct('seed', seed, 'oracle', oracle, 'is_det', is_det, ...
+                'use_true_gain', use_true_gain);
+    rec = struct('seed', seed, 'use_true_gain', use_true_gain, 'is_det', is_det, ...
                  'diverged', false, 'diverge_reason', '', 'simOut', []);
     try
         rec.simOut = run_pure_simulation(cfg, ro);
@@ -222,11 +222,11 @@ function layer0 = layer0_checks(runs, cfg, opts)
                    'Layer0: p_d_out differs (arm %c seed %d)', arm, r.seed);
             if arm == 'A'
                 assert(max(abs(r.simOut.diag.a_ctrl_used(:) - r.simOut.a_true_out(:))) == 0, ...
-                       'Layer0: arm A a_ctrl_used ~= a_true_out (seed %d)', r.seed);
+                       'Layer0: a=a_true arm a_ctrl_used ~= a_true_out (seed %d)', r.seed);
             else
                 d = abs(r.simOut.diag.a_ctrl_used(2:end, :) - r.simOut.diag.a_hat(1:end-1, :));
                 assert(max(d(:)) == 0, ...
-                       'Layer0: arm B a_ctrl_used ~= a_hat posterior[k-1] (seed %d)', r.seed);
+                       'Layer0: a=â arm a_ctrl_used ~= a_hat posterior[k-1] (seed %d)', r.seed);
             end
             % design §12.7 acceptance #6: expected-gate-free NOISY runs must
             % never gate. The no-noise det run is exempt: Guard 2 latches by

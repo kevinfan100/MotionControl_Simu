@@ -29,7 +29,7 @@ function simOut = run_pure_simulation(config, opts)
 %                                      time series into simOut.diag (default false)
 %                  opts.a_hat_freeze - 3x1 [um/pN] to lock the EKF
 %                                      gain state per axis        (default [])
-%                  opts.gain_oracle  - feed the true time-varying gain to
+%                  opts.use_true_gain - feed the true time-varying gain to
 %                                      the 6-state control law; requires
 %                                      config.eq17_variant='6state' (default false)
 %
@@ -71,8 +71,8 @@ function simOut = run_pure_simulation(config, opts)
     %   opts.collect_diag  - bool, accumulate per-step diag time series
     if ~isfield(opts, 'a_hat_freeze'); opts.a_hat_freeze = [];                 end
     if ~isfield(opts, 'collect_diag'); opts.collect_diag = false;              end
-    % Gain-oracle A/B: feed true time-varying gain to the 6-state control law
-    if ~isfield(opts, 'gain_oracle'); opts.gain_oracle = false;              end
+    % True-gain A/B: feed true time-varying gain to the 6-state control law
+    if ~isfield(opts, 'use_true_gain'); opts.use_true_gain = false;          end
 
     % ------------------------------------------------------------------
     % 1. RNG seeding — MUST precede calc_simulation_params.
@@ -183,9 +183,9 @@ function simOut = run_pure_simulation(config, opts)
     end
     % ---- Dispatch A1: 6-state (Vpersonal) vs 7-state (eq17_core) ----
     is_6state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '6state');
-    if opts.gain_oracle && ~is_6state
-        error('run_pure_simulation:gainOracleUnsupported', ...
-              'opts.gain_oracle=true requires config.eq17_variant=''6state''.');
+    if opts.use_true_gain && ~is_6state
+        error('run_pure_simulation:useTrueGainUnsupported', ...
+              'opts.use_true_gain=true requires config.eq17_variant=''6state''.');
     end
     if is_6state
         % Prefill three-pillar defaults (override 7-state warmup defaults
@@ -248,11 +248,11 @@ function simOut = run_pure_simulation(config, opts)
     %   p_d_out logs pd[k]. Unit Delay IC = p0 → pd_for_ctrl[1] = p0.
     pd_for_ctrl = p0;                     % 3x1 [um]
 
-    % Gain-oracle support: a_true at the PRE-integration p_curr (the position
+    % True-gain support: a_true at the PRE-integration p_curr (the position
     % the controller acts on at step k; p_true_out logs post-integration).
     a_nom_drv   = P.common.Ts / P.common.gamma_N;
     wall_on_drv = isfield(P, 'wall') && P.wall.enable_wall_effect > 0.5;
-    % Oracle h̄ clip floor: keep consistent with the physics h_min floor so
+    % True-gain h̄ clip floor: keep consistent with the physics h_min floor so
     % diverged excursions do not silently use a different singularity limit.
     if wall_on_drv && isfield(P.wall, 'h_bar_min')
         h_bar_floor_drv = P.wall.h_bar_min;
@@ -323,7 +323,7 @@ function simOut = run_pure_simulation(config, opts)
         else
             a_true_k = a_nom_drv * ones(3, 1);
         end
-        if opts.gain_oracle
+        if opts.use_true_gain
             a_override_k = a_true_k;
         else
             a_override_k = [];

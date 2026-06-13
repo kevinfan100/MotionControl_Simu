@@ -5,7 +5,7 @@ function results = verify_axm_cdpmr_6state(freq_dir, opts)
 %   results = verify_axm_cdpmr_6state(freq_dir, opts)
 %
 %   freq_dir : path to a single-frequency dir containing runs.mat
-%              (e.g. .../test_results/gain_oracle_ab_nogate/f1Hz)
+%              (e.g. .../test_results/gain_compare/f1Hz)
 %   opts     : optional struct
 %                opts.n_seg    descent segments for scatter (default 10)
 %                opts.save_fig write PNG figures to freq_dir (default true)
@@ -23,13 +23,13 @@ function results = verify_axm_cdpmr_6state(freq_dir, opts)
 %
 %   Theory identity (plan D2, full a_pd form):
 %     Var(dx_r[k]) = C_dpmr * 4kBT * a[k] + C_n * sigma2_n
-%   Arm A (a_ctrl = a_true) = verification baseline (theory strict).
-%   Arm B (a_ctrl = a_hat)  = diagnosis (self-consistent bias expected).
+%   a=a_true arm (a_ctrl = a_true) = verification baseline (theory strict).
+%   a=â arm (a_ctrl = a_hat)  = diagnosis (self-consistent bias expected).
 %
 %   Design decisions: see plan sleepy-forging-planet.md.
-%   Figure style mirrors analyze_gain_oracle_6state.m make_figs (locked round-2).
+%   Figure style mirrors analyze_gain_6state.m make_figs (locked round-2).
 %
-%   See also: analyze_gain_oracle_6state, compare_gain_oracle_6state
+%   See also: analyze_gain_6state, compare_gain_6state
 
     % ----------------------------------------------------------------
     % Input guards
@@ -65,12 +65,12 @@ function results = verify_axm_cdpmr_6state(freq_dir, opts)
     % ================================================================
     ok_ref = find(~[runs.A.noisy.diverged], 1);
     assert(~isempty(ok_ref), ...
-        'verify_axm_cdpmr_6state: all arm A noisy seeds diverged');
+        'verify_axm_cdpmr_6state: all a=a_true arm noisy seeds diverged');
     so_ref = runs.A.noisy(ok_ref).simOut;
 
     assert(isfield(so_ref, 'diag'), ...
         ['verify_axm_cdpmr_6state: simOut.diag missing. ', ...
-         'Re-run compare_gain_oracle_6state with collect_diag=true.']);
+         'Re-run compare_gain_6state with collect_diag=true.']);
     assert(isfield(so_ref.diag, 'dx_r'), ...
         'verify_axm_cdpmr_6state: simOut.diag.dx_r missing');
     assert(isfield(so_ref.diag, 'a_xm'), ...
@@ -209,7 +209,7 @@ function results = verify_axm_cdpmr_6state(freq_dir, opts)
     % In quasi-static windows (descent, goff): d*Ts = 2/1600 s << EWMA
     % memory (~20 steps = 12.5 ms) and a(t) variation is slow, so
     % a[k-d] ≈ a[k] to < 0.2%.  Theory is built from a_true_ens.A
-    % (arm A: a_ctrl = a_true, strict lambda_c pole) without time-shift.
+    % (a=a_true arm: a_ctrl = a_true, strict lambda_c pole) without time-shift.
     % A 2-sample forward shift of a_true_ens.A is noted as a refinement
     % for near-wall analysis where a(t) changes rapidly, but is not
     % applied here (effect < 0.5% in descent/goff).
@@ -228,7 +228,7 @@ function results = verify_axm_cdpmr_6state(freq_dir, opts)
     % V.(arm).var_dxr (SAME estimator as the time-domain figure).  The
     % cross-seed variance removes the seed-common deterministic component
     % (high-passed trajectory residual); a per-seed temporal variance would
-    % retain it (matters for arm B near wall).  Error bar = jackknife-over-
+    % retain it (matters for a=â arm near wall).  Error bar = jackknife-over-
     % seeds SEM (seeds are the independent replication units).
     SCALE_NM2 = 1e6;   % um^2 -> nm^2 conversion factor
     sc = struct();
@@ -257,9 +257,9 @@ function results = verify_axm_cdpmr_6state(freq_dir, opts)
     % ================================================================
     % 9. PER-WINDOW SUMMARY STATS
     % ================================================================
-    % ratio   = mean(Var_meas) / mean(Var_theory)  — target 1.0 for arm A
+    % ratio   = mean(Var_meas) / mean(Var_theory)  — target 1.0 for a=a_true arm
     %           in descent / goff (quasi-static windows).
-    % axm_bias = (mean(a_xm) - mean(a_true)) / mean(a_true) — target ~0 arm A.
+    % axm_bias = (mean(a_xm) - mean(a_true)) / mean(a_true) — target ~0 for a=a_true arm.
     WIN_NAMES = {'desc', 'osc', 'gon', 'goff'};
     win_stats = struct();
     for wi = 1:numel(WIN_NAMES)
@@ -290,8 +290,8 @@ function results = verify_axm_cdpmr_6state(freq_dir, opts)
     if opts.save_fig
         % --- Round-2 locked style constants (mirror analyzer L1081-1085) ---
         COL_DES   = [0 0.6 0];                % Desired / a_pd / theory (green)
-        COL_TRUE2 = [0.8 0 0];               % a_true / arm A (red)
-        COL_HAT2  = [0 0.2 0.9];             % a_hat / arm B (blue)
+        COL_TRUE2 = [0.8 0 0];               % a_true / a=a_true arm (red)
+        COL_HAT2  = [0 0.2 0.9];             % a_hat / a=â arm (blue)
         COL_MEAS3 = [0.45 0.55 0.95 0.22];  % single-seed a_xm (light blue, transparent)
         FS2   = 18;    % axis label font size
         LFS2  = 14;    % legend font size
@@ -356,7 +356,7 @@ function results = verify_axm_cdpmr_6state(freq_dir, opts)
 
         % ---- fig_dxr_var_scatter ----
         % X = a_true (um/pN), Y = Var(dx_r) (nm^2).
-        % Descent segments: solid markers with errorbar (arm A red, B blue).
+        % Descent segments: solid markers with errorbar (a=a_true arm red, a=â arm blue).
         % Osc per-cycle: lighter semi-transparent markers (no label).
         % Theory line: C_dpmr*4kBT*a + C_n*sig2_n (green LW3).
         fs2 = figure('Position', [80 80 1100 720], 'Color', 'w', ...
@@ -416,10 +416,10 @@ function results = verify_axm_cdpmr_6state(freq_dir, opts)
         if opts.verbose; fprintf('[axm_verify] wrote fig_dxr_var_scatter.png\n'); end
 
         % ---- fig_axm_recover (mirrors fig_gain_compare L1173-1201) ----
-        % a_true_ens green LW3 (reference); a_xm_ens arm A red LW2;
-        % a_xm_ens arm B blue LW2.  Optional: one seed a_xm background
+        % a_true_ens green LW3 (reference); a_xm_ens a=a_true arm red LW2;
+        % a_xm_ens a=â arm blue LW2.  Optional: one seed a_xm background
         % (COL_MEAS3 LW0.9, HandleVisibility off) to show noise scatter.
-        ok_pair = find(~[runs.A.noisy.diverged], 1);   % first non-diverged arm A seed
+        ok_pair = find(~[runs.A.noisy.diverged], 1);   % first non-diverged a=a_true arm seed
         fg = figure('Position', [80 80 1100 720], 'Color', 'w', ...
                     'NumberTitle', 'off', 'Visible', 'off');
         tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
@@ -427,14 +427,14 @@ function results = verify_axm_cdpmr_6state(freq_dir, opts)
         for r = 1:2
             c = COLS(r); nexttile; hold on;
 
-            % optional single-seed a_xm background (arm A, faint light blue)
+            % optional single-seed a_xm background (a=a_true arm, faint light blue)
             if ~isempty(ok_pair)
                 axm_seed = runs.A.noisy(ok_pair).simOut.diag.a_xm(2:end, :);
                 plot(t_e, axm_seed(:, c), '-', 'Color', COL_MEAS3, ...
                      'LineWidth', 0.9, 'HandleVisibility', 'off');
             end
 
-            % ensemble lines: theory green base, arm A red, arm B blue
+            % ensemble lines: theory green base, a=a_true arm red, a=â arm blue
             ht = plot(t_e, V.A.a_true(:, c), '-', 'Color', COL_DES,   ...
                       'LineWidth', 3.0, 'DisplayName', 'a_{true}');
             hA = plot(t_e, V.A.a_xm(:, c),   '-', 'Color', COL_TRUE2, ...
@@ -536,17 +536,17 @@ function write_summary_md(path, cfg, V, win_stats, win_names, C_dpmr, C_n)
     end
 
     fprintf(fid, '# axm / C_dpmr verification : %g Hz\n\n', cfg.frequency);
-    fprintf(fid, 'freq=%.4g Hz | arm A = %d seeds | arm B = %d seeds | T_sim = %s\n\n', ...
+    fprintf(fid, 'freq=%.4g Hz | a=a_true = %d seeds | a=â = %d seeds | T_sim = %s\n\n', ...
             cfg.frequency, n_seeds_A, n_seeds_B, t_sim_str);
     fprintf(fid, 'C_dpmr = %.4f (full form, target ~3.16)  |  C_n = %.4f (target ~1.11)\n\n', ...
             C_dpmr, C_n);
     fprintf(fid, ['Identity verified:  Var(dx_r) = C_dpmr * 4kBT * a + C_n * sigma2_n\n', ...
-                  'Theory anchor: arm A a_true ensemble (a_ctrl = a_true -> strict lambda_c pole).\n\n']);
+                  'Theory anchor: a=a_true arm ensemble (a_ctrl = a_true -> strict lambda_c pole).\n\n']);
 
     % --- per-window table ---
     fprintf(fid, '## Per-window ratio and a_xm bias\n\n');
-    fprintf(fid, '`ratio` = mean(Var_meas) / mean(Var_theory).  Target: arm A desc/goff ≈ 1.0.\n');
-    fprintf(fid, '`axm_bias` = (mean(a_xm) - mean(a_true)) / mean(a_true).  Target: arm A desc/goff ≈ 0%%.\n\n');
+    fprintf(fid, '`ratio` = mean(Var_meas) / mean(Var_theory).  Target: a=a_true arm desc/goff ≈ 1.0.\n');
+    fprintf(fid, '`axm_bias` = (mean(a_xm) - mean(a_true)) / mean(a_true).  Target: a=a_true arm desc/goff ≈ 0%%.\n\n');
     fprintf(fid, '| window | arm | ratio_x | ratio_y | ratio_z | bias_x | bias_y | bias_z |\n');
     fprintf(fid, '|--------|-----|---------|---------|---------|--------|--------|--------|\n');
     for wi = 1:numel(win_names)
@@ -565,21 +565,21 @@ function write_summary_md(path, cfg, V, win_stats, win_names, C_dpmr, C_n)
     fprintf(fid, '## Interpretation\n\n');
     fprintf(fid, '### Clean verification windows\n\n');
     fprintf(fid, ['`desc` (descent, quasi-static a-sweep) and `goff` (oscillation, h_bar >= 1.5):\n', ...
-                  'C_dpmr quasi-static assumption holds, arm A ratio should be ≈1.0 (±~5%%).\n', ...
+                  'C_dpmr quasi-static assumption holds, a=a_true arm ratio should be ≈1.0 (±~5%%).\n', ...
                   'These are the primary evidence windows for the identity.\n\n']);
     fprintf(fid, '### Expected deviations (not bugs)\n\n');
     fprintf(fid, ['- **`gon` (gate-on, h_bar < 1.5, near wall)**: rapid a(t) variation and\n', ...
                   '  nonlinear wall correction dynamics invalidate the quasi-static assumption.\n', ...
-                  '  Arm A ratio deviating here is expected physics, not a bug.\n', ...
+                  '  a=a_true arm ratio deviating here is expected physics, not a bug.\n', ...
                   '- **`osc` overall**: mixes gon + goff windows; result is dominated by the\n', ...
                   '  gon fraction when the trajectory spends significant time near the wall.\n', ...
-                  '- **Arm B, all windows**: systematic ratio deviation and a_xm bias reflect\n', ...
+                  '- **a=â arm, all windows**: systematic ratio deviation and a_xm bias reflect\n', ...
                   '  the self-consistent equilibrium (a_hat != a_true -> closed-loop pole\n', ...
                   '  shifts to ~lambda_c * g -> Var(dx_r) shifts -> a_xm shifts). This is\n', ...
                   '  the expected diagnosis of estimated-arm cost; it is not a failure.\n\n']);
     fprintf(fid, '### Sanity check\n\n');
     fprintf(fid, ['C_dpmr = %.4f (full form used here). If the simplified form (3.96,\n', ...
-                  'lambda_c-only) were used instead, arm A a_xm would be systematically\n', ...
+                  'lambda_c-only) were used instead, a=a_true arm a_xm would be systematically\n', ...
                   'high-biased by ~25%% (ratio_xm / ratio_cdpmr = 3.96/3.16 ≈ 1.25).\n'], C_dpmr);
     fclose(fid);
 end
@@ -594,7 +594,7 @@ function out = scatter_points(groups, V, dxr_stack_all, arms, scale)
 %   Point estimate = group-mean of the cross-seed pointwise variance
 %   V.(arm).var_dxr (consistent with the time-domain figure; removes the
 %   seed-common deterministic component).  Error bar = jackknife-over-seeds
-%   SEM.  x-axis = a_true (arm A ensemble) at the group.
+%   SEM.  x-axis = a_true (a=a_true arm ensemble) at the group.
     ng  = numel(groups);
     out = struct('x_a',  zeros(ng, 3), 'y_A',  zeros(ng, 3), 'y_B', zeros(ng, 3), ...
                  'sem_A', zeros(ng, 3), 'sem_B', zeros(ng, 3));

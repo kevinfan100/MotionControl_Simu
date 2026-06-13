@@ -1,8 +1,8 @@
 function verify_eq17_unit_gain_override_6state()
 %VERIFY_EQ17_UNIT_GAIN_OVERRIDE_6STATE Unit tests for the optional
 %   a_ctrl_override (6th arg) + ctrl_const.suppress_xD support in
-%   motion_control_law_eq17_6state (gain-oracle A/B experiment, see
-%   reference/eq17_analysis/gain_oracle_ab_design.md §4.1).
+%   motion_control_law_eq17_6state (true-gain A/B experiment, see
+%   reference/eq17_analysis/gain_compare_design.md §4.1).
 %
 %   T1: backward-compat — 5-arg call vs 6-arg call with [] give
 %       bit-identical f_d and a_hat over 40 steps.
