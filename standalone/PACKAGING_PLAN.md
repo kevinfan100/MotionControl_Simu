@@ -74,7 +74,7 @@ gate 定義以此為準。逐部分的決定紀錄在 [DECISIONS.md](DECISIONS.m
 
 ## 5. 三段式流程與狀態
 
-> **⏩ 從這裡接續（2026-06-11, HEAD = `pack(8)`）**
+> **⏩ 從這裡接續（2026-06-11, HEAD = `pack(9)`）— 8 部分全部 DONE**
 > 部分 1–7 全部 DONE（走讀簽收陸續補確認，不影響接續）。controller_6state.m 是**完整
 > EKF + Q/R**，已對母 repo 證明 rounding-floor 等價（h50/h10 ~3 ulps；唯一差異 = 近壁
 > h̄<1.5 的 a_hat，L2 邊界）。git 全乾淨,7 個 gate 檔(part1–7)全 PASS。**下一步 = 部分 8
@@ -87,8 +87,8 @@ gate 定義以此為準。逐部分的決定紀錄在 [DECISIONS.md](DECISIONS.m
 |---|---|---|
 | 第 0 段 | 本文件 + DECISIONS.md + 分支建立 | **DONE 2026-06-10** |
 | 第 1 段 | 母 repo 前置：D6 遷移 → verify h50 gate → golden baseline → spec anchors → merge | **DONE 2026-06-11**（等價 gate 答案卷 = golden_post_d6.mat） |
-| 第 2 段 | 8 部分 cycle（見下方逐部分進度） | **進行中（7/8）** |
-| 收尾 | standalone/ 搬出成獨立 repo（剪臍帶），母 repo 留 pointer | TODO |
+| 第 2 段 | 8 部分 cycle（見下方逐部分進度） | **DONE（8/8）** |
+| 收尾 | standalone/ 搬出成獨立 repo（剪臍帶）：歸檔母 repo 比對 gate(1/2/3/7) PASS transcript + git init + 母 repo 留 pointer | **NEXT** |
 
 **第 2 段逐部分進度**（commit / gate 檔）:
 
@@ -101,7 +101,7 @@ gate 定義以此為準。逐部分的決定紀錄在 [DECISIONS.md](DECISIONS.m
 | 5 | EKF 遞迴 | **DONE + 簽收** | pack(6) | gates_part5（E1 DARE, E2 h50, E3 envelope） |
 | 6 | Q/R 驗證輪 | **DONE**（走讀簽收待確認；不改 code） | pack(7) | gates_part6（F1/F2/F4/F5 + F3；F2/F5 ground truth） |
 | 7 | 閉迴路等價 | **DONE**（走讀簽收待確認） | pack(8) | gates_part7（H1 h50/H2 h10 rounding-floor equiv；H3 ramp L2 邊界） |
-| 8 | 驗證層 | **NEXT** | — | verify 三場景 + README + figures + envelope 聲明 |
+| 8 | 驗證層 | **DONE**（走讀簽收待確認） | pack(9) | verify_standalone + make_figures + main_run + README |
 
 **重要**:部分 5+6 的 code 在 pack(6) 一起落地(EKF 與 Q/R 執行上不可分,見 DECISIONS
 「部分 5 前置決定」)。**部分 6 不再寫 code**,只驗 Q/R 內容物。
