@@ -46,6 +46,8 @@ function results = compare_gain_oracle_6state(freqs, opts)
     if ~isfield(opts, 'T_sim');       opts.T_sim = 4.0;       end
     if ~isfield(opts, 'n_cyc_per_s'); opts.n_cyc_per_s = 2;   end   % osc duration [s] (design §12.1)
     if ~isfield(opts, 'h_bar_safe');  opts.h_bar_safe = 1;    end   % gate-free B-prime (design §12.1)
+    if ~isfield(opts, 't_hold');      opts.t_hold = 0.5;      end   % initial hold [s]
+    if ~isfield(opts, 't_descend');   opts.t_descend = 1.0;   end   % descent duration [s] (decoupled from 1/f)
     if ~isfield(opts, 'verbose'); opts.verbose = true; end
     if ~isfield(opts, 'smoke');   opts.smoke = false;  end
     if opts.smoke
@@ -136,8 +138,8 @@ function cfg = build_config(f, opts)
     cfg.amplitude = 2.5;          % [um] -> h_bar in [1.2, 3.42], gate-crossing
     cfg.frequency = f;
     cfg.n_cycles  = opts.n_cyc_per_s * f;   % osc duration = n_cyc_per_s seconds
-    cfg.t_hold    = 0.5;
-    cfg.t_descend_override = 1.0; % decouple descent from 1/f
+    cfg.t_hold    = opts.t_hold;
+    cfg.t_descend_override = opts.t_descend; % decouple descent from 1/f
     cfg.T_sim     = opts.T_sim;
     % Temporal completeness: fail loudly if T_sim truncates the osc phase
     % (check_trajectory_safety only checks h_min, not duration). Smoke mode
