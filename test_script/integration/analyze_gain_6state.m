@@ -1,22 +1,22 @@
-function analysis = analyze_gain_oracle_6state(freqs, opts)
-%ANALYZE_GAIN_ORACLE_6STATE det/ram analysis of compare_gain_oracle_6state
+function analysis = analyze_gain_6state(freqs, opts)
+%ANALYZE_GAIN_6STATE det/ram analysis of compare_gain_6state
 %   output (design doc §6-§8). Loads runs.mat per frequency, computes det
 %   metrics, ram window statistics, paired A/B ratios, p_m cross-check,
 %   theory anchor, a_hat decomposition; writes summary.md (+ figures,
 %   make_figs). Re-runnable without re-simulating.
 %
-%   analysis = analyze_gain_oracle_6state()             % freqs = [1 5 10]
-%   analysis = analyze_gain_oracle_6state(freqs, opts)
+%   analysis = analyze_gain_6state()             % freqs = [1 5 10]
+%   analysis = analyze_gain_6state(freqs, opts)
 %
 %   opts:
 %     data_root  source dir for runs.mat  (default = out_root)
-%     out_root   dest dir for outputs     (default test_results/gain_oracle_ab_nogate)
+%     out_root   dest dir for outputs     (default test_results/gain_compare)
 %     save_fig   true/false               (default true)
 %     verbose    true/false               (default true)
 %   data_root and out_root may differ: e.g. read from Round-1 production data
 %   and write to a separate round2_dev folder without disturbing the source.
 %
-%   See also: compare_gain_oracle_6state
+%   See also: compare_gain_6state
 
     if nargin < 1 || isempty(freqs); freqs = [1 5 10]; end
     if nargin < 2; opts = struct(); end
@@ -28,7 +28,7 @@ function analysis = analyze_gain_oracle_6state(freqs, opts)
     % ensure wall_effect functions reachable (calc_correction_functions for A.gain)
     addpath(fullfile(project_root, 'model', 'wall_effect'));
     if ~isfield(opts, 'out_root')
-        opts.out_root = fullfile(project_root, 'test_results', 'gain_oracle_ab_nogate');
+        opts.out_root = fullfile(project_root, 'test_results', 'gain_compare');
     end
     if ~isfield(opts, 'data_root')
         opts.data_root = opts.out_root;   % default: read where we write
@@ -82,14 +82,14 @@ end
 
 % ====================================================================
 function A = per_freq_analysis(runs, cfg, f)
-    % --- C3: arm A det run diverged = real infrastructure bug, fail loud.
-    %         arm B det run diverged = legitimate gate-free finding (design
+    % --- C3: a=a_true det run diverged = real infrastructure bug, fail loud.
+    %         a=â det run diverged = legitimate gate-free finding (design
     %         §9.1); degrade gracefully (b_det_ok flag, NaN propagation). ---
     assert(~runs.A.det.diverged && ~isempty(runs.A.det.simOut), ...
-           'arm A det run diverged/empty: %s', runs.A.det.diverge_reason);
+           'a=a_true det run diverged/empty: %s', runs.A.det.diverge_reason);
     b_det_ok = ~runs.B.det.diverged && ~isempty(runs.B.det.simOut);
     if ~b_det_ok
-        fprintf('[per_freq:%gHz] WARNING arm B det run diverged/empty: %s\n', ...
+        fprintf('[per_freq:%gHz] WARNING a=â det run diverged/empty: %s\n', ...
                 f, runs.B.det.diverge_reason);
     end
 
@@ -127,12 +127,12 @@ function A = per_freq_analysis(runs, cfg, f)
     W.osc   = (t_e >= t_osc0 + t_discard & t_e < t_osc1);
     W.tail  = (t_e >= t_osc1);
     h_bar_d = (pd_al * w_hat - pz) / R_phys;       % [N-1 x 1], deterministic
-    W.gon   = W.osc & (h_bar_d < H_BAR_GATE);
-    W.goff  = W.osc & (h_bar_d >= H_BAR_GATE);
+    W.near   = W.osc & (h_bar_d < H_BAR_GATE);
+    W.far  = W.osc & (h_bar_d >= H_BAR_GATE);
     W.full  = true(size(W.osc));                   % full displayed span
 
     % --- det metrics per arm (design §6.1) ---
-    % When arm B det run diverged (!b_det_ok), NaN-fill e_det.B so the
+    % When a=â det run diverged (!b_det_ok), NaN-fill e_det.B so the
     % degraded outputs propagate naturally rather than using garbage data.
     D = struct();
     for arm = 'AB'
@@ -146,58 +146,25 @@ function A = per_freq_analysis(runs, cfg, f)
     end
     A.det = D;
 
-    % --- ram metrics per arm (design §6.2) + p_m cross-check (§6.3) ---
-    % v1 uses noise-free det reference (superseded but kept for comparison).
-    % When arm B det run diverged, em_det for B is also NaN-filled.
-    wins = {'desc', 'osc', 'gon', 'goff'};
-    R = struct();
-    for arm = 'AB'
-        if arm == 'B' && ~b_det_ok
-            em_det = nan(size(A.e_det.A));
-        else
-            em_det = get_em(runs.(arm).det.simOut); % = e_det (noise-free)
-        end
-        R.(arm) = ram_window_stats(runs.(arm).noisy, A.e_det.(arm), em_det, ...
-                                   get_e, get_em, W, wins, sigma2_n);
-    end
-    % paired ratios (same-seed, non-diverged pairs only); C1: if no valid
-    % pair exists, ratios stay NaN (no empty-assignment crash)
-    ok = ~R.A.diverged & ~R.B.diverged;
-    R.ratio = paired_ratio_stats(R.A, R.B, numel(wins));
-    % M4: p_m cross-check (design §6.3) — osc window, z axis, both arms
-    w_osc = find(strcmp(wins, 'osc'));
-    rd = zeros(1, 0);
-    for arm = 'AB'
-        % reshape (not squeeze): squeeze on [1 x ns x 1] yields a COLUMN for
-        % ns > 1; AND-ing it with the ROW .diverged would implicitly expand
-        % to [ns x ns] and break the logical indexing below.
-        sd_z  = reshape(R.(arm).sd(w_osc, :, 3), 1, []);
-        sdp_z = reshape(R.(arm).sd_pm(w_osc, :, 3), 1, []);
-        okv   = ~R.(arm).diverged & ~isnan(sd_z) & sd_z > 0;
-        rd    = [rd, abs(sdp_z(okv) - sd_z(okv)) ./ sd_z(okv)]; %#ok<AGROW>
-    end
-    if isempty(rd)
-        R.pm_rel_diff_z = NaN;
-    else
-        R.pm_rel_diff_z = max(rd);
-    end
-    R.wins = wins;
-    A.ram = R;
+    % --- analysis windows + paired-seed mask ---
+    % ram is computed on the ensemble-det reference in the block below; the
+    % paired non-diverged mask feeds the trajectory-figure seed selection.
+    wins = {'desc', 'osc', 'near', 'far'};
+    ok = ~[runs.A.noisy.diverged] & ~[runs.B.noisy.diverged];   % paired non-diverged seeds
 
     % --- noisy-ensemble det extraction (methodology update 2026-06-11) ---
     % The noise-free det run is NOT a valid det reference for the estimated
     % arm: its EKF runs in a no-noise regime (Guard 2 latched, y2 off); the
     % saved mu columns quantify the discrepancy (-2.7 to -12.7 nm on z).
     % det := ensemble mean of p_true over non-diverged noisy seeds.
-    % Feeds the trajectory-space figures and the ram v2 statistics below;
-    % the v1 tables (noise-free det reference) are kept for comparison.
-    % C4 (mirror of C3): ALL arm-B noisy seeds diverged is a legitimate
+    % Feeds the trajectory-space figures and the ram statistics below.
+    % C4 (mirror of C3): ALL a=â noisy seeds diverged is a legitimate
     % gate-free finding -> degrade gracefully (b_noisy_ok flag, NaN struct).
-    % Arm A all-diverged stays HARD (noisy_det_extract asserts): the oracle
-    % arm failing wholesale is a real infrastructure bug.
+    % a=a_true all-diverged stays HARD (noisy_det_extract asserts): the
+    % true-gain-control arm failing wholesale is a real infrastructure bug.
     b_noisy_ok = any(~[runs.B.noisy.diverged]);
     if ~b_noisy_ok
-        fprintf('[per_freq:%gHz] WARNING all arm B noisy seeds diverged (%d/%d)\n', ...
+        fprintf('[per_freq:%gHz] WARNING all a=â noisy seeds diverged (%d/%d)\n', ...
                 f, numel(runs.B.noisy), numel(runs.B.noisy));
     end
     nd_pair_idx = find(ok, 1);                      % first paired seed
@@ -215,9 +182,9 @@ function A = per_freq_analysis(runs, cfg, f)
             continue;
         end
         nd = noisy_det_extract(runs.(arm));
-        fprintf(['[noisy-det:%gHz arm %c] crossval vs noise-free run ', ...
+        fprintf(['[noisy-det:%gHz %s] crossval vs noise-free run ', ...
                  '[x y z] nm: max [%.2f %.2f %.2f] / rms [%.2f %.2f %.2f]\n'], ...
-                f, arm, nd.crossval * 1e3, nd.crossval_rms * 1e3);
+                f, arm_label(arm), nd.crossval * 1e3, nd.crossval_rms * 1e3);
         % keep only what the figures need (limit analysis.mat size)
         keep = struct('det_traj', nd.det_traj, 'crossval', nd.crossval, ...
                       'crossval_rms', nd.crossval_rms, ...
@@ -247,14 +214,14 @@ function A = per_freq_analysis(runs, cfg, f)
         A.noisy_det.(arm) = keep;
     end
 
-    % --- ram v2: ensemble-det reference (same windows/stats as v1) ---
-    % det_e_v2 = p_d_al - det_traj (error-space ensemble det); ram_v2_s =
-    % e_s - det_e_v2, identical sign convention to v1. Notes: (a) seed-mean
-    % of ram_v2 at every t is zero BY CONSTRUCTION (sample-mean centering) —
-    % rectification bias lives inside det_traj; (b) sd_v2 carries the
-    % self-subtraction deflation sqrt(1-1/Ns). No seed count is hardcoded.
+    % --- ram: ensemble-det reference ---
+    % det_e = p_d_al - det_traj (error-space ensemble det); ram_s = e_s -
+    % det_e. Notes: (a) seed-mean of ram at every t is zero BY CONSTRUCTION
+    % (sample-mean centering) — rectification bias lives inside det_traj;
+    % (b) z-axis sd carries the self-subtraction deflation sqrt(1-1/Ns); x is
+    % direct (§12.3). No seed count is hardcoded.
     R2 = struct();
-    det_e_v2 = struct();
+    det_e_ens = struct();
     for arm = 'AB'
         nz_a = runs.(arm).noisy;
         ok_a = find(~[nz_a.diverged]);
@@ -262,23 +229,35 @@ function A = per_freq_analysis(runs, cfg, f)
         for s = ok_a
             acc = acc + nz_a(s).simOut.p_m_out(1:end-1, :);
         end
-        det_e_v2.(arm)  = pd_al - A.noisy_det.(arm).det_traj;
-        det_em_v2       = pd_al - acc / numel(ok_a);   % measured-space ensemble det
-        R2.(arm) = ram_window_stats(nz_a, det_e_v2.(arm), det_em_v2, ...
+        det_e_ens.(arm)  = pd_al - A.noisy_det.(arm).det_traj;
+        det_em_ens       = pd_al - acc / numel(ok_a);   % measured-space ensemble det
+        R2.(arm) = ram_window_stats(nz_a, det_e_ens.(arm), det_em_ens, ...
                                     get_e, get_em, W, wins, sigma2_n, 1);  % x-direct (§12.3)
     end
     R2.ratio = paired_ratio_stats(R2.A, R2.B, numel(wins));
     R2.wins  = wins;
-    A.ram_v2 = R2;
+    % p_m cross-check (design §6.3) — osc window, z axis, both arms, on the
+    % ensemble-det ram. reshape (not squeeze): a [1 x ns x 1] slice would
+    % squeeze to a COLUMN for ns>1 and AND-expand against the ROW .diverged.
+    w_osc = find(strcmp(wins, 'osc'));
+    rd = zeros(1, 0);
+    for arm = 'AB'
+        sd_z  = reshape(R2.(arm).sd(w_osc, :, 3), 1, []);
+        sdp_z = reshape(R2.(arm).sd_pm(w_osc, :, 3), 1, []);
+        okv   = ~R2.(arm).diverged & ~isnan(sd_z) & sd_z > 0;
+        rd    = [rd, abs(sdp_z(okv) - sd_z(okv)) ./ sd_z(okv)]; %#ok<AGROW>
+    end
+    if isempty(rd); R2.pm_rel_diff_z = NaN; else; R2.pm_rel_diff_z = max(rd); end
+    A.ram = R2;
 
-    % --- det v2: ensemble-referenced det metrics, both arms (figs + summary) ---
-    % Same metric set as A.det but on det_e_v2. For arm B this is the ONLY
-    % valid det reference (det run invalid, Round-1 finding); arm A v2 carries
+    % --- det (ensemble-ref): ensemble-referenced det metrics, both arms (figs + summary) ---
+    % Same metric set as A.det but on det_e_ens. For a=â this is the ONLY
+    % valid det reference (det run invalid, Round-1 finding); a=a_true v2 carries
     % the ensemble extraction residual (sigma/sqrt(Ns) per point) unlike the
     % exact det-run reference. When ~b_noisy_ok the B column is all-NaN and
     % det_metrics' NaN guards return NaN fields.
     for arm = 'AB'
-        A.det_v2.(arm) = det_metrics(det_e_v2.(arm), t_e, W, f, t_osc0, t_osc1, Ts);
+        A.det_ens.(arm) = det_metrics(det_e_ens.(arm), t_e, W, f, t_osc0, t_osc1, Ts);
     end
 
     % --- deterministic gain skeleton along the DESIRED trajectory (a_pd) ---
@@ -298,10 +277,10 @@ function A = per_freq_analysis(runs, cfg, f)
     A.gain.a_pd  = [a_nom ./ c_pa_d, a_nom ./ c_pa_d, a_nom ./ c_pe_d];
     A.gain.Kh_pd = [Kh_pa, Kh_pa, Kh_pe];
 
-    % --- thermal-theory validation of ram_v2 (V1 closed form, h50-validated) ---
-    % Theory skeleton uses a_pd (desired trajectory) — arm A values shift
-    % negligibly vs a_true (det ≈ desired); arm B shifts slightly more (expected).
-    A.thermal = thermal_theory_check(runs, det_e_v2, get_e, W, cfg, kBT, f, A.gain.a_pd);
+    % --- thermal-theory validation of ram (thermal closed form, h50-validated) ---
+    % Theory skeleton uses a_pd (desired trajectory) — a=a_true values shift
+    % negligibly vs a_true (det ≈ desired); a=â shifts slightly more (expected).
+    A.thermal = thermal_theory_check(runs, det_e_ens, get_e, W, cfg, kBT, f, A.gain.a_pd);
 
     % --- tail-window observation (M3): hold at h_bar bottom, z axis ---
     tail = struct();
@@ -323,18 +302,18 @@ function A = per_freq_analysis(runs, cfg, f)
     % --- stationarity per cycle (design §6.2 / Layer 2) ---
     A.stationarity = cycle_stationarity(runs, A.e_det, get_e, W, f, Ts);
 
-    % --- theory anchor on arm A (design §7.4-7.5) ---
+    % --- theory anchor on a=a_true (design §7.4-7.5) ---
     A.anchor = theory_anchor(runs.A, A.e_det.A, get_e, W, cfg, kBT);
     % v2: same anchor with the ensemble-det reference (only norm_std kept;
     % the det-anchor field of this call is noise-dominated and discarded)
-    anc_v2 = theory_anchor(runs.A, det_e_v2.A, get_e, W, cfg, kBT);
-    A.anchor.norm_std_v2 = anc_v2.norm_std;
+    anc_ens = theory_anchor(runs.A, det_e_ens.A, get_e, W, cfg, kBT);
+    A.anchor.norm_std_ens = anc_ens.norm_std;
 
-    % --- a_hat decomposition, arm B (design §6.4) ---
+    % --- a_hat decomposition, a=â (design §6.4) ---
     A.ahat = ahat_analysis(runs.B, W);
 
     % --- A1: Q55 dynamic check (design §12.3; findings §8.1 three-layer chain) ---
-    A.q55 = q55_dynamic_check(runs.A, W, {'osc', 'gon', 'goff'}, A.gain, ...
+    A.q55 = q55_dynamic_check(runs.A, W, {'osc', 'near', 'far'}, A.gain, ...
                               cfg.lambda_c, kBT, R_phys);
 
     % --- fig_gain_compare data (design §12.4): arms per user decision ---
@@ -382,7 +361,7 @@ function D = det_metrics(e_det, t_e, W, f, t_osc0, t_osc1, Ts)
             D.desc_peak(ax) = pk; D.desc_peak_t(ax) = td(ipk);
         end
         % sine fit on W.osc: e ~ c0 + a1 cos + b1 sin
-        % Guard NaN data (arm B det diverged): set outputs NaN explicitly
+        % Guard NaN data (a=â det diverged): set outputs NaN explicitly
         % rather than relying on MATLAB backslash silently propagating NaN.
         tw = t_e(W.osc); ew = e_det(W.osc, ax);
         if any(isnan(ew))
@@ -456,7 +435,7 @@ function st = cycle_stationarity(runs, e_det_all, get_e, W, f, Ts)
         h2 = mean(m(floor(nc/2)+1:end));
         st.(arm).per_cycle_sd  = m;
         st.(arm).half_rel_diff = abs(h2 - h1) / max(h1, eps);
-        % NaN half_rel_diff (e.g. arm B det diverged -> NaN ram_z):
+        % NaN half_rel_diff (e.g. a=â det diverged -> NaN ram_z):
         % treat as n/a, same as nc < 2 case above.
         if isnan(st.(arm).half_rel_diff)
             st.(arm).stationary = true;   % n/a: NaN ram
@@ -468,17 +447,17 @@ end
 
 
 function anc = theory_anchor(runsA, e_detA, get_e, W, cfg, kBT)
-%THEORY_ANCHOR design §7.4-7.5: arm A det ~ 0 and normalized ram ~ 1.
+%THEORY_ANCHOR design §7.4-7.5: a=a_true det ~ 0 and normalized ram ~ 1.
     % --- adaptation (d): theory-anchor constants from cfg ---
     lc         = cfg.lambda_c;
-    C_dx       = 2 + 1 / (1 - lc^2);              % V1 closed form (3.9608 at lc=0.7)
+    C_dx       = 2 + 1 / (1 - lc^2);              % thermal closed form (3.9608 at lc=0.7)
     sigma2_nz  = cfg.meas_noise_std(3)^2;
 
     % I2: an empty osc window would make the anchors vacuous
     assert(any(W.osc), ...
            'theory_anchor: W.osc is empty — check cfg timing fields (t_hold/t_descend_override/n_cycles/frequency)');
 
-    % envelope from arm A det run's a_true (z axis), aligned to e[k]:
+    % envelope from a=a_true det run's a_true (z axis), aligned to e[k]:
     % a_true_out[k] is at t_k (pre-integration); e[k] is at t_k+Ts -> shift one.
     a_true_z = runsA.det.simOut.a_true_out(2:end, 3);
     sigma_th  = sqrt(C_dx * 4 * kBT * a_true_z + (1-lc)/(1+lc) * sigma2_nz);
@@ -496,7 +475,7 @@ function anc = theory_anchor(runsA, e_detA, get_e, W, cfg, kBT)
         zn    = ram_z(W.osc) ./ sigma_th(W.osc);
         zs(s) = std(zn);
     end
-    % I2: all-diverged arm A must not pass vacuously (all([]) == true)
+    % I2: all-diverged a=a_true must not pass vacuously (all([]) == true)
     valid = ~isnan(zs);
     anc.norm_std  = zs;
     anc.norm_pass = any(valid) && all(abs(zs(valid) - 1) < 0.15);
@@ -552,14 +531,14 @@ function ah = ahat_analysis(runsB, W)
     % ens-mean-based number, so values are unchanged — only +/- SEM added.
     rel_s = (a_stack - a_true) ./ a_true * 100;    % [N-1 x 3 x Ns]
     ah.rel_err_osc  = squeeze(mean(mean(rel_s(W.osc,  :, :), 1), 3)).';
-    ah.rel_err_gon  = squeeze(mean(mean(rel_s(W.gon,  :, :), 1), 3)).';
-    ah.rel_err_goff = squeeze(mean(mean(rel_s(W.goff, :, :), 1), 3)).';
+    ah.rel_err_gon  = squeeze(mean(mean(rel_s(W.near,  :, :), 1), 3)).';
+    ah.rel_err_goff = squeeze(mean(mean(rel_s(W.far, :, :), 1), 3)).';
     % A3: desc-window â stats (Task 4 Step 3)
     ah.rel_err_desc = squeeze(mean(mean(rel_s(W.desc, :, :), 1), 3)).';
     if numel(ok) >= 2
         ah.rel_sem_osc  = squeeze(std(mean(rel_s(W.osc,  :, :), 1), 0, 3)).' / sqrt(numel(ok));
-        ah.rel_sem_gon  = squeeze(std(mean(rel_s(W.gon,  :, :), 1), 0, 3)).' / sqrt(numel(ok));
-        ah.rel_sem_goff = squeeze(std(mean(rel_s(W.goff, :, :), 1), 0, 3)).' / sqrt(numel(ok));
+        ah.rel_sem_gon  = squeeze(std(mean(rel_s(W.near,  :, :), 1), 0, 3)).' / sqrt(numel(ok));
+        ah.rel_sem_goff = squeeze(std(mean(rel_s(W.far, :, :), 1), 0, 3)).' / sqrt(numel(ok));
         ah.rel_sem_desc = squeeze(std(mean(rel_s(W.desc, :, :), 1), 0, 3)).' / sqrt(numel(ok));
     else   % single seed: SEM undefined (std of one sample prints as 0)
         ah.rel_sem_osc  = nan(3, 1);
@@ -571,12 +550,12 @@ function ah = ahat_analysis(runsB, W)
     sd3 = std(dev(W.osc, :, :), 0, 1);              % [1 x 3 x Ns]
     ah.ram_std_osc  = reshape(sd3, 3, []);           % [3 x Ns] (M5)
     % A3: per-window ram std (Task 4 Step 3). Left deflated by design for
-    % parity with the ram_v2 table (disclosed in summary prose), unlike
+    % parity with the ram table (disclosed in summary prose), unlike
     % q55/thermal which correct by /(1-1/Ns).
     sdw = @(wmask) reshape(std(dev(wmask, :, :), 0, 1), 3, []);
     ah.ram_std_desc = sdw(W.desc);
-    ah.ram_std_gon  = sdw(W.gon);
-    ah.ram_std_goff = sdw(W.goff);
+    ah.ram_std_gon  = sdw(W.near);
+    ah.ram_std_goff = sdw(W.far);
     % gate duty cycle in W.osc (per axis, mean over seeds)
     gd = [];
     for s = ok
@@ -626,7 +605,7 @@ function q = q55_dynamic_check(runsA, W, wins, gain, lc, kBT, R_phys)
     base = (gain.a_pd .* gain.Kh_pd / R_phys).^2 .* s2dh; % [N-1 x 3]
     % Increments must be taken on the FULL series before masking: diffing the
     % masked-then-compacted rows creates a spurious "increment" at every
-    % junction between disjoint window segments (gon/goff are one segment per
+    % junction between disjoint window segments (near/far are one segment per
     % cycle), each with variance at the LEVEL scale (~C_dx*base) instead of
     % the increment scale (~1.18*base), inflating meas_incr. The contiguous
     % osc window is unaffected — and the h=50 static validation (single
@@ -660,8 +639,8 @@ function nd = noisy_det_extract(runs_arm)
 %   extracted as the ensemble mean of p_true over NON-diverged noisy seeds,
 %   on the aligned [N-1 x 3] grid (t_e = tout(2:end), p_true_out(1:end-1,:)).
 %   crossval / crossval_rms compare against the noise-free det run's
-%   trajectory: for arm A this validates the extraction (ensemble residual
-%   noise); for arm B it measures the Guard-2 discrepancy.
+%   trajectory: for a=a_true this validates the extraction (ensemble residual
+%   noise); for a=â it measures the Guard-2 discrepancy.
     nz = runs_arm.noisy;
     ok = find(~[nz.diverged]);
     assert(~isempty(ok), 'noisy_det_extract: all noisy seeds diverged');
@@ -684,7 +663,7 @@ end
 
 function Rarm = ram_window_stats(nz, e_ref, em_ref, get_e, get_em, W, wins, sigma2_n, direct_axes)
 %RAM_WINDOW_STATS per-arm per-window ram statistics against a det reference.
-%   Shared by v1 (noise-free det reference) and v2 (ensemble det reference).
+%   Computes per-arm per-window ram stats on the given ensemble-det reference.
 %   Diverged seeds excluded (NaN). Works for any number of seeds.
 %
 %   direct_axes (optional, default []): column indices where det == 0 by
@@ -742,13 +721,13 @@ function ratio = paired_ratio_stats(RA, RB, nwins)
 end
 
 
-function th = thermal_theory_check(runs, det_e_v2, get_e, W, cfg, kBT, f, a_pd_skel)
-%THERMAL_THEORY_CHECK V1 closed-form thermal baseline vs ram_v2 (B1/B2).
+function th = thermal_theory_check(runs, det_e_ens, get_e, W, cfg, kBT, f, a_pd_skel)
+%THERMAL_THEORY_CHECK thermal closed-form baseline vs ram (B1/B2).
 %   sigma2_th_i(t) = C_dx*4*kBT*a_pd,i(t) + C_n_fb*sigma2_n_i, with
-%   C_dx = 2 + 1/(1-lc^2), C_n_fb = (1-lc)/(1+lc) (V1 closed form, validated
+%   C_dx = 2 + 1/(1-lc^2), C_n_fb = (1-lc)/(1+lc) (thermal closed form, validated
 %   at h50). a_pd,i(t) is the shared skeleton along the DESIRED trajectory
-%   (designer-known, no sim privilege; arm A values shift negligibly vs a_true;
-%   arm B shifts slightly more — expected; Step 0a, Task 4).
+%   (designer-known, no sim privilege; a=a_true values shift negligibly vs a_true;
+%   a=â shifts slightly more — expected; Step 0a, Task 4).
 %   Measured window variances are corrected for the ensemble-det
 %   self-subtraction by dividing by (1 - 1/Ns).
     lc       = cfg.lambda_c;
@@ -757,8 +736,8 @@ function th = thermal_theory_check(runs, det_e_v2, get_e, W, cfg, kBT, f, a_pd_s
     sigma2_n = cfg.meas_noise_std(:).^2;            % [um^2], 3x1
 
     th.C_dx = C_dx; th.C_n_fb = C_n_fb; th.lc = lc;
-    th.wx = {'desc', 'osc', 'gon', 'goff', 'full'}; % B1 x-axis windows
-    th.wz = {'osc', 'gon', 'goff'};                 % B2 z-axis windows
+    th.wx = {'desc', 'osc', 'near', 'far', 'full'}; % B1 x-axis windows
+    th.wz = {'osc', 'near', 'far'};                 % B2 z-axis windows
     for arm = 'AB'
         nz = runs.(arm).noisy;
         ok = find(~[nz.diverged]);
@@ -775,7 +754,7 @@ function th = thermal_theory_check(runs, det_e_v2, get_e, W, cfg, kBT, f, a_pd_s
         vz = nan(numel(th.wz), Ns);
         for si = 1:Ns
             e_s = get_e(nz(ok(si)).simOut);
-            ram = e_s - det_e_v2.(arm);
+            ram = e_s - det_e_ens.(arm);
             zn  = ram(:, 3) ./ sqrt(s2z);
             for k = 1:numel(th.wx)
                 vx(k, si) = var(e_s(W.(th.wx{k}), 1));  % x-direct (design §12.3)
@@ -798,8 +777,8 @@ function th = thermal_theory_check(runs, det_e_v2, get_e, W, cfg, kBT, f, a_pd_s
             th.(arm).x_meas_sem    = nan(1, numel(th.wx));
             th.(arm).z_normvar_sem = nan(1, numel(th.wz));
         end
-        fprintf(['[thermal:%gHz arm %c] x full-span meas/theory = %.3f, ', ...
-                 'z osc norm-var = %.3f\n'], f, arm, ...
+        fprintf(['[thermal:%gHz %s] x full-span meas/theory = %.3f, ', ...
+                 'z osc norm-var = %.3f\n'], f, arm_label(arm), ...
                 th.(arm).x_ratio(strcmp(th.wx, 'full')), ...
                 th.(arm).z_normvar(strcmp(th.wz, 'osc')));
     end
@@ -821,7 +800,7 @@ function write_summary_md(path, f, S, A)
     if fid == -1
         error('write_summary_md: cannot open %s for writing', path);
     end
-    fprintf(fid, '# gain_oracle_ab : %g Hz\n\n', f);
+    fprintf(fid, '# gain_compare : %g Hz\n\n', f);
     if ~A.b_det_ok
         fprintf(fid, ['**ARM B DET RUN DIVERGED** (%s) - v1/B det metrics are NaN; ', ...
                       'ensemble-det (v2) path unaffected; B crossval not meaningful.\n\n'], ...
@@ -830,7 +809,7 @@ function write_summary_md(path, f, S, A)
     if ~A.b_noisy_ok
         nb = numel(S.runs.B.noisy);
         fprintf(fid, ['**ALL ARM B NOISY SEEDS DIVERGED (%d/%d)** - all B-side ', ...
-                      'statistics are NaN; arm A results unaffected.\n\n'], nb, nb);
+                      'statistics are NaN; a=a_true results unaffected.\n\n'], nb, nb);
     end
     R_phys_hdr = S.runs.A.det.simOut.meta.params_value.common.R;
     h_bar_min_hdr = S.cfg.h_bottom / R_phys_hdr;
@@ -840,52 +819,42 @@ function write_summary_md(path, f, S, A)
     fprintf(fid, '| metric | arm | x | y | z |\n|---|---|---|---|---|\n');
     for arm = 'AB'
         D = A.det.(arm);
-        fprintf(fid, '| descent peak [nm] | %c | %.1f | %.1f | %.1f |\n', arm, D.desc_peak*1e3);
+        fprintf(fid, '| descent peak [nm] | %s | %.1f | %.1f | %.1f |\n', arm_label(arm), D.desc_peak*1e3);
         fprintf(fid, '| osc A_e [nm] | %c | %.2f | %.2f | %.2f |\n',      arm, D.A_e*1e3);
         fprintf(fid, '| osc phase [deg] | %c | %.2f | %.2f | %.2f |\n',   arm, D.phi_deg);
         fprintf(fid, '| osc rms_res [nm] | %c | %.2f | %.2f | %.2f |\n',  arm, D.rms_res*1e3);
         fprintf(fid, '| trough bias [nm] | %c | %.2f | %.2f | %.2f |\n',  arm, D.trough_bias*1e3);
     end
-    fprintf(fid, '\n## det v2 (ensemble det reference)\n\n');
-    fprintf(fid, ['Arm A v2 metrics carry the ensemble extraction residual ', ...
+    fprintf(fid, '\n## det (ensemble-det reference)\n\n');
+    fprintf(fid, ['a=a_true v2 metrics carry the ensemble extraction residual ', ...
                   '(sigma/sqrt(Ns) per point) unlike the exact det-run reference ', ...
-                  'above; for arm B v2 is the ONLY valid det reference (det run ', ...
+                  'above; for a=â v2 is the ONLY valid det reference (det run ', ...
                   'invalid per the Round-1 finding).\n\n']);
     fprintf(fid, '| metric | arm | x | y | z |\n|---|---|---|---|---|\n');
     for arm = 'AB'
-        D = A.det_v2.(arm);
-        fprintf(fid, '| descent peak [nm] | %c | %.1f | %.1f | %.1f |\n', arm, D.desc_peak*1e3);
+        D = A.det_ens.(arm);
+        fprintf(fid, '| descent peak [nm] | %s | %.1f | %.1f | %.1f |\n', arm_label(arm), D.desc_peak*1e3);
         fprintf(fid, '| osc A_e [nm] | %c | %.2f | %.2f | %.2f |\n',      arm, D.A_e*1e3);
         fprintf(fid, '| osc phase [deg] | %c | %.2f | %.2f | %.2f |\n',   arm, D.phi_deg);
         fprintf(fid, '| osc rms_res [nm] | %c | %.2f | %.2f | %.2f |\n',  arm, D.rms_res*1e3);
         fprintf(fid, '| trough bias [nm] | %c | %.2f | %.2f | %.2f |\n',  arm, D.trough_bias*1e3);
     end
-    fprintf(fid, '\n## ram (noise-free det reference — superseded, kept for comparison)\n\n');
     ax_name = 'xyz';
-    write_ram_table(fid, A.ram, ax_name);
-    fprintf(fid, '\n## ram v2 (ensemble det reference)\n\n');
+    fprintf(fid, '\n## ram (ensemble-det reference)\n\n');
     defl = @(n) (1 - sqrt(max(1 - 1/n, 0))) * 100;  % self-subtraction deflation [%]
-    fprintf(fid, ['Seed-mean of ram_v2 at every t is zero by construction ', ...
+    fprintf(fid, ['Seed-mean of ram at every t is zero by construction ', ...
                   '(sample-mean centering); rectification bias lives inside det_traj. ', ...
                   'x-axis is direct (exempt from deflation; det_x = 0 by symmetry). ', ...
                   'z-axis sd carries the self-subtraction deflation sqrt(1-1/Ns): ', ...
-                  'arm A -%.1f%% (Ns=%d), arm B -%.1f%% (Ns=%d). ', ...
+                  'a=a_true -%.1f%% (Ns=%d), a=â -%.1f%% (Ns=%d). ', ...
                   'Paired z ratios carry a residual factor ', ...
                   'sqrt((1-1/Ns_B)/(1-1/Ns_A)) when the two arms have unequal ', ...
                   'surviving seeds (~0.5%% at 100 vs 50); stated as a caveat, ', ...
                   'no correction applied.\n\n'], ...
             defl(A.noisy_det.A.n_seeds), A.noisy_det.A.n_seeds, ...
             defl(A.noisy_det.B.n_seeds), A.noisy_det.B.n_seeds);
-    write_ram_table(fid, A.ram_v2, ax_name);
-    wsel = {'osc', 'gon', 'goff'};
-    cmp = cell(1, numel(wsel));
-    for k = 1:numel(wsel)
-        wi = find(strcmp(A.ram.wins, wsel{k}));
-        cmp{k} = sprintf('%s %.2f -> %.2f', wsel{k}, ...
-                         A.ram.ratio.mean(wi, 3), A.ram_v2.ratio.mean(wi, 3));
-    end
-    fprintf(fid, '\n- headline z ratio (old -> v2): %s\n', strjoin(cmp, ', '));
-    fprintf(fid, '\n## thermal-theory validation (ram v2)\n\n');
+    write_ram_table(fid, A.ram, ax_name);
+    fprintf(fid, '\n## thermal-theory validation\n\n');
     T = A.thermal;
     fprintf(fid, ['sigma2_th_i(t) = C_dx*4kBT*a_pd,i(t) + C_n_fb*sigma2_n_i (theory along ', ...
                   'desired trajectory; a_pd = a_nom/C_i(h_bar_d), Step 0a Task 4). ', ...
@@ -895,7 +864,7 @@ function write_summary_md(path, f, S, A)
     fprintf(fid, '| window | arm | measured [nm^2] | theory [nm^2] | ratio |\n|---|---|---|---|---|\n');
     for k = 1:numel(T.wx)
         for arm = 'AB'
-            fprintf(fid, '| %s | %c | %.1f +/- %.1f | %.1f | %.3f |\n', T.wx{k}, arm, ...
+            fprintf(fid, '| %s | %s | %.1f +/- %.1f | %.1f | %.3f |\n', T.wx{k}, arm_label(arm), ...
                     T.(arm).x_meas_nm2(k), T.(arm).x_meas_sem(k), ...
                     T.(arm).x_theory_nm2(k), T.(arm).x_ratio(k));
         end
@@ -904,37 +873,27 @@ function write_summary_md(path, f, S, A)
     fprintf(fid, '| window | arm | norm var |\n|---|---|---|\n');
     for k = 1:numel(T.wz)
         for arm = 'AB'
-            fprintf(fid, '| %s | %c | %.3f +/- %.3f |\n', T.wz{k}, arm, ...
+            fprintf(fid, '| %s | %s | %.3f +/- %.3f |\n', T.wz{k}, arm_label(arm), ...
                     T.(arm).z_normvar(k), T.(arm).z_normvar_sem(k));
         end
     end
     fprintf(fid, ['\n_theory describes the thermal+noise baseline; arm-â excess ', ...
                   'above 1 is estimation-induced (cf. paired ratios); quasi-static ', ...
                   'approximation weakest at gate-on @5 Hz_\n']);
-    fprintf(fid, '\n## ram rectification bias mu (seed mean over window)\n\n');
-    fprintf(fid, '| window | axis | mu_A [nm] | mu_B [nm] |\n|---|---|---|---|\n');
-    for w = 1:numel(A.ram.wins)
-        for ax = 1:3
-            muA = mean(squeeze(A.ram.A.mu(w, :, ax)), 'omitnan') * 1e3;
-            muB = mean(squeeze(A.ram.B.mu(w, :, ax)), 'omitnan') * 1e3;
-            fprintf(fid, '| %s | %c | %.3f | %.3f |\n', ...
-                    A.ram.wins{w}, ax_name(ax), muA, muB);
-        end
-    end
     fprintf(fid, '\n## tail window (hold at h_bar bottom; observation only, z axis)\n\n');
     fprintf(fid, '| arm | det e mean [nm] | det e std [nm] | ram sd [nm] (seed mean) |\n|---|---|---|---|\n');
     for arm = 'AB'
-        fprintf(fid, '| %c | %.2f | %.2f | %.2f |\n', arm, ...
+        fprintf(fid, '| %s | %.2f | %.2f | %.2f |\n', arm_label(arm), ...
                 A.tail.(arm).e_mean_z*1e3, A.tail.(arm).e_std_z*1e3, ...
                 A.tail.(arm).ram_sd_z*1e3);
     end
     fprintf(fid, '\n## validation\n\n');
-    fprintf(fid, '- arm A det anchor: max|e_det| (osc, z) = %.3f nm -> %s (soft gate < 1 nm)\n', ...
+    fprintf(fid, '- a=a_true det anchor: max|e_det| (osc, z) = %.3f nm -> %s (soft gate < 1 nm)\n', ...
             A.anchor.det_max_osc_um*1e3, passstr(A.anchor.det_pass));
-    fprintf(fid, '- arm A normalized ram std (per seed): %s -> %s (soft gate 1 +- 0.15)\n', ...
+    fprintf(fid, '- a=a_true normalized ram std (per seed): %s -> %s (soft gate 1 +- 0.15)\n', ...
             mat2str(round(A.anchor.norm_std, 3)), passstr(A.anchor.norm_pass));
-    fprintf(fid, '- arm A normalized ram std v2 (ensemble det, per seed): %s\n', ...
-            mat2str(round(A.anchor.norm_std_v2, 3)));
+    fprintf(fid, '- a=a_true normalized ram std v2 (ensemble det, per seed): %s\n', ...
+            mat2str(round(A.anchor.norm_std_ens, 3)));
     idx_pair = find(~A.ram.A.diverged & ~A.ram.B.diverged, 1);
     if isempty(idx_pair)
         fprintf(fid, '- traj-figure seed: none (no paired non-diverged seed)\n');
@@ -954,7 +913,7 @@ function write_summary_md(path, f, S, A)
             A.ram.pm_rel_diff_z*100, passstr(A.flags.pm_crosscheck));
     fprintf(fid, '- diverged runs: A %s / B %s\n', ...
             mat2str(A.ram.A.diverged), mat2str(A.ram.B.diverged));
-    fprintf(fid, '\n## arm B gain estimation\n\n');
+    fprintf(fid, '\n## a=â gain estimation\n\n');
     fprintf(fid, '- a_hat ensemble-mean rel-err (desc) [%%]: %s\n', ...
             fmt_err3(A.ahat.rel_err_desc, A.ahat.rel_sem_desc));
     fprintf(fid, '- a_hat ensemble-mean rel-err (osc) [%%]: %s\n', ...
@@ -964,7 +923,7 @@ function write_summary_md(path, f, S, A)
     fprintf(fid, '- a_hat ensemble-mean rel-err (gate-off, peak) [%%]: %s\n', ...
             fmt_err3(A.ahat.rel_err_goff, A.ahat.rel_sem_goff));
     % A3: per-window a_hat ram std table (one row per window, x and z columns)
-    win_stds = {'desc', 'osc', 'gon', 'goff'};
+    win_stds = {'desc', 'osc', 'near', 'far'};
     std_flds  = {'ram_std_desc', 'ram_std_osc', 'ram_std_gon', 'ram_std_goff'};
     fprintf(fid, '\n### a_hat ram std (seed mean +/- SEM) [um/pN]\n\n');
     fprintf(fid, '| window | x | z |\n|---|---|---|\n');
@@ -987,14 +946,14 @@ function write_summary_md(path, f, S, A)
     else
         defl_ahat = NaN;
     end
-    fprintf(fid, ['\n_Note: a_hat ram std (and ram v2 sd above) are measured ', ...
+    fprintf(fid, ['\n_Note: a_hat ram std (and ram sd above) are measured ', ...
                   'against the %d-seed ensemble mean; self-subtraction deflates ', ...
                   'std by sqrt(1-1/Ns) = -%.1f%% at Ns=%d._\n'], ...
             A.ahat.n_seeds, defl_ahat, A.ahat.n_seeds);
 
     % A1: Q55 dynamic check section
     ax_name_q = 'xyz';
-    fprintf(fid, '\n## A1: a_true gain ram vs Q55 closed forms (arm A, %d seeds)\n\n', ...
+    fprintf(fid, '\n## A1: a_true gain ram vs Q55 closed forms (a=a_true, %d seeds)\n\n', ...
             A.q55.Ns);
     fprintf(fid, ['Level: Var(a_ram) vs C_dx*(a*K_h/R)^2*4kBT*a_z; ', ...
                   'Increment (= Q55): Var(diff a_ram) vs [2/(1+lc)]*(a*K_h/R)^2*4kBT*a_z. ', ...
@@ -1042,6 +1001,13 @@ function s = passstr(b)
 end
 
 
+function s = arm_label(arm)
+%ARM_LABEL map the internal arm char to the display label.
+%   'A' = controller fed the true gain; 'B' = controller fed the estimate.
+    if arm == 'A'; s = 'a_true'; else; s = 'â'; end
+end
+
+
 function s = ternary_str(cond, a, b)
 %TERNARY_STR return string a if cond is true, else b.
     if cond; s = a; else; s = b; end
@@ -1083,8 +1049,8 @@ function make_figs(S, A, f, out_dir)
     RAM_YLIM = [-150 150];               % [nm] cross-frequency lock for fig_traj_ram
     % Round-2 locked style (design §12.6 + sample-gate revision): role colors
     COL_DES   = [0 0.6 0];               % Desired / a_pd / theory
-    COL_TRUE2 = [0.8 0 0];              % a_true (arm A)
-    COL_HAT2  = [0 0.2 0.9];            % â (arm B)
+    COL_TRUE2 = [0.8 0 0];              % a_true (a=a_true)
+    COL_HAT2  = [0 0.2 0.9];            % â (a=â)
     COL_MEAS3 = [0.45 0.55 0.95 0.22]; % Measured a_xm (light blue, thicker + more transparent)
     FS2 = 18; LFS2 = 14; AXLW2 = 2.0;  % fonts + bold box/ticks
     so_ref = S.runs.A.det.simOut;
@@ -1116,9 +1082,9 @@ function make_figs(S, A, f, out_dir)
 
     % ---- fig_det_err: det error overlay, z only (asymmetric det reference) ----
     % User-approved asymmetric references: the a_true arm uses the NOISE-FREE
-    % det run (valid for arm A — crossval-validated, exact, zero extraction
+    % det run (valid for a=a_true — crossval-validated, exact, zero extraction
     % residual), while the â arm uses the 20-seed ENSEMBLE det (the noise-free
-    % run is invalid for arm B: Guard 2 latched, y2 off). The red curve
+    % run is invalid for a=â: Guard 2 latched, y2 off). The red curve
     % therefore carries the ensemble extraction residual (~+-5.6 nm).
     errA = A.e_det.A(:, 3) * 1e3;                                % [nm]
     errB = (pd_al(:, 3) - A.noisy_det.B.det_traj(:, 3)) * 1e3;   % [nm]
