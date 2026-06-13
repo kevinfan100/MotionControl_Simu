@@ -105,8 +105,12 @@ function A = per_freq_analysis(runs, cfg, f)
 
     % --- adaptation (b): windows derived from cfg ---
     t_osc0    = cfg.t_hold + cfg.t_descend_override;
-    t_osc1    = t_osc0 + cfg.n_cycles / cfg.frequency;
-    t_discard = 1 / cfg.frequency;   % per-cycle discard: drop 1st osc cycle (design §12.2)
+    osc_dur   = cfg.n_cycles / cfg.frequency;
+    t_osc1    = t_osc0 + osc_dur;
+    % per-cycle discard: drop 1st osc cycle (design §12.2), but cap at half the
+    % osc phase so a single-cycle trajectory (e.g. 0.5 Hz, 1 cycle) keeps a
+    % non-empty W.osc — multi-cycle cases (osc_dur >= 2/f) are unchanged.
+    t_discard = min(1 / cfg.frequency, 0.5 * osc_dur);
 
     % --- adaptation (c): gate-mask threshold ---
     H_BAR_GATE = 1.5;  % matches ctrl_const.h_bar_safe (design §3)
