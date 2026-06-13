@@ -74,19 +74,20 @@ gate 定義以此為準。逐部分的決定紀錄在 [DECISIONS.md](DECISIONS.m
 
 ## 5. 三段式流程與狀態
 
-> **⏩ 從這裡接續（2026-06-11, HEAD = `pack(7)`）**
-> 部分 1–6 全部 DONE（部分 5/6 走讀簽收待最後確認，不影響接續）。controller_6state.m
-> 是**完整 EKF + Q/R**。git 全乾淨,6 個 gate 檔(part1–6)全 PASS。**下一步 = 部分 7
-> 閉迴路等價**:把 standalone h50 閉迴路對母 repo golden baseline 做 bit-exact 比對
-> (part 5 E2 已見數字逐位元相同的苗頭)。新 session 開頭一句:「讀
-> standalone/PACKAGING_PLAN.md,做部分 7」即可無縫接上。逐部分細節見
+> **⏩ 從這裡接續（2026-06-11, HEAD = `pack(8)`）**
+> 部分 1–7 全部 DONE（走讀簽收陸續補確認，不影響接續）。controller_6state.m 是**完整
+> EKF + Q/R**，已對母 repo 證明 rounding-floor 等價（h50/h10 ~3 ulps；唯一差異 = 近壁
+> h̄<1.5 的 a_hat，L2 邊界）。git 全乾淨,7 個 gate 檔(part1–7)全 PASS。**下一步 = 部分 8
+> 驗證層**:寫 verify_standalone（三場景 PASS 門檻）+ main_run（入口）+ make_figures +
+> README（框架圖/notation 表/三個「不是 bug」預警/envelope 聲明，講解文字由使用者改寫定稿）。
+> 新 session 開頭一句:「讀 standalone/PACKAGING_PLAN.md,做部分 8」即可接上。逐部分細節見
 > [DECISIONS.md](DECISIONS.md)。
 
 | 段 | 內容 | 狀態 |
 |---|---|---|
 | 第 0 段 | 本文件 + DECISIONS.md + 分支建立 | **DONE 2026-06-10** |
 | 第 1 段 | 母 repo 前置：D6 遷移 → verify h50 gate → golden baseline → spec anchors → merge | **DONE 2026-06-11**（等價 gate 答案卷 = golden_post_d6.mat） |
-| 第 2 段 | 8 部分 cycle（見下方逐部分進度） | **進行中（5/8）** |
+| 第 2 段 | 8 部分 cycle（見下方逐部分進度） | **進行中（7/8）** |
 | 收尾 | standalone/ 搬出成獨立 repo（剪臍帶），母 repo 留 pointer | TODO |
 
 **第 2 段逐部分進度**（commit / gate 檔）:
@@ -99,8 +100,8 @@ gate 定義以此為準。逐部分的決定紀錄在 [DECISIONS.md](DECISIONS.m
 | 4 | 控制律 | **DONE + 簽收** | pack(5) | gates_part4（D2 live；D1 snapshot） |
 | 5 | EKF 遞迴 | **DONE + 簽收** | pack(6) | gates_part5（E1 DARE, E2 h50, E3 envelope） |
 | 6 | Q/R 驗證輪 | **DONE**（走讀簽收待確認；不改 code） | pack(7) | gates_part6（F1/F2/F4/F5 + F3；F2/F5 ground truth） |
-| 7 | 閉迴路等價 | **NEXT** | — | h50 bit-exact vs 母 repo golden（part 5 E2 已見苗頭） |
-| 8 | 驗證層 | TODO | — | verify 三場景 + README + figures |
+| 7 | 閉迴路等價 | **DONE**（走讀簽收待確認） | pack(8) | gates_part7（H1 h50/H2 h10 rounding-floor equiv；H3 ramp L2 邊界） |
+| 8 | 驗證層 | **NEXT** | — | verify 三場景 + README + figures + envelope 聲明 |
 
 **重要**:部分 5+6 的 code 在 pack(6) 一起落地(EKF 與 Q/R 執行上不可分,見 DECISIONS
 「部分 5 前置決定」)。**部分 6 不再寫 code**,只驗 Q/R 內容物。
