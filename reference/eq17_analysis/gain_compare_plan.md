@@ -1,10 +1,10 @@
-# Gain Oracle A/B Experiment Implementation Plan
+# Gain Compare A/B Experiment Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement the gain-oracle A/B experiment per `reference/eq17_analysis/gain_oracle_ab_design.md` — compare 6-state controller performance with oracle vs EKF-estimated motion gain, det/ram decomposition, aggressive gate-crossing trajectory, {1,2,5} Hz sweep.
+**Goal:** Implement the gain-compare A/B experiment per `reference/eq17_analysis/gain_compare_design.md` — compare 6-state controller performance with use_true_gain vs EKF-estimated motion gain, det/ram decomposition, aggressive gate-crossing trajectory, {1,2,5} Hz sweep.
 
-**Architecture:** Two backward-compatible modifications (6-state controller gains an optional `a_ctrl_override` 6th argument + `suppress_xD` support; pure-MATLAB driver gains `opts.gain_oracle` + `a_true_out` logging), plus two new scripts (runner `compare_gain_oracle_6state.m`, analyzer `analyze_gain_oracle_6state.m`) and one unit test. Runner and analyzer are separate files so results can be re-analyzed without re-running.
+**Architecture:** Two backward-compatible modifications (6-state controller gains an optional `a_ctrl_override` 6th argument + `suppress_xD` support; pure-MATLAB driver gains `opts.use_true_gain` + `a_true_out` logging), plus two new scripts (runner `compare_gain_6state.m`, analyzer `analyze_gain_6state.m`) and one unit test. Runner and analyzer are separate files so results can be re-analyzed without re-running.
 
 **Tech Stack:** MATLAB R2025b, pure-MATLAB dual-track path (`run_pure_simulation`), Bash batch execution (`/Applications/MATLAB_R2025b.app/bin/matlab -batch`). Worktree: `/Users/kevin/Code/MotionControl_Simu-motion-test`, branch `test/motion-test`.
 
@@ -27,7 +27,7 @@ Verified during design (recorded here so the executor doesn't re-derive):
 - [ ] **Step 0.1: Confirm worktree state**
 
 Run: `git -C /Users/kevin/Code/MotionControl_Simu-motion-test status --porcelain && git -C /Users/kevin/Code/MotionControl_Simu-motion-test log --oneline -1`
-Expected: clean tree, HEAD = `8255c70 docs(eq17): gain-oracle A/B experiment design ...`
+Expected: clean tree, HEAD = `8255c70 docs(eq17): gain-compare A/B experiment design ...`
 
 ---
 
@@ -35,7 +35,7 @@ Expected: clean tree, HEAD = `8255c70 docs(eq17): gain-oracle A/B experiment des
 
 **Files:**
 - Create: `test_script/unit_tests/verify_eq17_unit_gain_override_6state.m`
-- Modify: `reference/eq17_analysis/gain_oracle_ab_design.md` (§4.4 filename `test_gain_override_6state.m` → `verify_eq17_unit_gain_override_6state.m`, project naming convention)
+- Modify: `reference/eq17_analysis/gain_compare_design.md` (§4.4 filename `test_gain_override_6state.m` → `verify_eq17_unit_gain_override_6state.m`, project naming convention)
 
 - [ ] **Step 1.1: Write the unit test**
 
@@ -43,8 +43,8 @@ Expected: clean tree, HEAD = `8255c70 docs(eq17): gain-oracle A/B experiment des
 function verify_eq17_unit_gain_override_6state()
 %VERIFY_EQ17_UNIT_GAIN_OVERRIDE_6STATE Unit tests for the optional
 %   a_ctrl_override (6th arg) + ctrl_const.suppress_xD support in
-%   motion_control_law_eq17_6state (gain-oracle A/B experiment, see
-%   reference/eq17_analysis/gain_oracle_ab_design.md §4.1).
+%   motion_control_law_eq17_6state (gain-compare A/B experiment, see
+%   reference/eq17_analysis/gain_compare_design.md §4.1).
 %
 %   T1: backward-compat — 5-arg call vs 6-arg call with [] give
 %       bit-identical f_d and a_hat over 40 steps.
@@ -197,12 +197,12 @@ end
 Run: `MB="/Applications/MATLAB_R2025b.app/bin/matlab"; "$MB" -batch "cd('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/unit_tests'); verify_eq17_unit_gain_override_6state"`
 Expected: FAIL — `Too many input arguments` at the first 6-arg call (controller signature has 5 inputs), or missing `diag.a_ctrl_used` field.
 
-- [ ] **Step 1.3: Update spec §4.4 filename** in `reference/eq17_analysis/gain_oracle_ab_design.md`: replace `test_script/unit_tests/test_gain_override_6state.m` with `test_script/unit_tests/verify_eq17_unit_gain_override_6state.m` (both in §4.4 heading and §11 acceptance table).
+- [ ] **Step 1.3: Update spec §4.4 filename** in `reference/eq17_analysis/gain_compare_design.md`: replace `test_script/unit_tests/test_gain_override_6state.m` with `test_script/unit_tests/verify_eq17_unit_gain_override_6state.m` (both in §4.4 heading and §11 acceptance table).
 
 - [ ] **Step 1.4: Commit (test red)**
 
 ```bash
-git add test_script/unit_tests/verify_eq17_unit_gain_override_6state.m reference/eq17_analysis/gain_oracle_ab_design.md
+git add test_script/unit_tests/verify_eq17_unit_gain_override_6state.m reference/eq17_analysis/gain_compare_design.md
 git commit -m "test(eq17): failing unit test for 6-state a_ctrl_override + suppress_xD
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
@@ -227,7 +227,7 @@ Immediately after the help block (before the open-loop bypass section):
 
 ```matlab
     % ------------------------------------------------------------------
-    % Optional gain override (gain-oracle A/B experiment): when non-empty,
+    % Optional gain override (gain-compare A/B experiment): when non-empty,
     % the CONTROL LAW uses a_ctrl_override (and its history) instead of the
     % EKF a_hat. The EKF itself is untouched (slot 5 still estimated).
     % ------------------------------------------------------------------
@@ -271,7 +271,7 @@ In section 0L first-call diag (after `diag.sigma2_dxr_hat = sigma2_dxr_hat;`, li
 
 ```matlab
     if has_override
-        a_ctrl = a_ctrl_override;        % oracle (or externally supplied) gain
+        a_ctrl = a_ctrl_override;        % use_true_gain (or externally supplied) gain
     else
         a_ctrl = a_hat;                  % normal mode: EKF posterior[k-1]
     end
@@ -350,7 +350,7 @@ Expected: `OVERALL: PASS` (tracking std < 40 nm, a_hat bias/rel-std < 5%, |δx_D
 git add model/controller/motion_control_law_eq17_6state.m
 git commit -m "feat(eq17): 6-state a_ctrl_override (6th arg) + suppress_xD support
 
-Control law can take an externally supplied gain (oracle A/B experiment)
+Control law can take an externally supplied gain (use_true_gain A/B experiment)
 with its own history buffers; EKF untouched. suppress_xD zeroes the -x_D
 term in the law only. Backward-compatible (bit-identical without either).
 
@@ -359,7 +359,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 3: Driver changes (`opts.gain_oracle` + `a_true_out`)
+### Task 3: Driver changes (`opts.use_true_gain` + `a_true_out`)
 
 **Files:**
 - Modify: `model/dual_track/run_pure_simulation.m`
@@ -367,20 +367,20 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - [ ] **Step 3.1: opts default** (after line 58 `collect_diag` default):
 
 ```matlab
-    % Gain-oracle A/B: feed true time-varying gain to the 6-state control law
-    if ~isfield(opts, 'gain_oracle'); opts.gain_oracle = false;              end
+    % Gain-use_true_gain A/B: feed true time-varying gain to the 6-state control law
+    if ~isfield(opts, 'use_true_gain'); opts.use_true_gain = false;              end
 ```
 
 - [ ] **Step 3.2: Guard after dispatch flag** (after line 165 `is_6state = ...`):
 
 ```matlab
-    if opts.gain_oracle && ~is_6state
-        error('run_pure_simulation:gainOracleUnsupported', ...
-              'opts.gain_oracle=true requires config.eq17_variant=''6state''.');
+    if opts.use_true_gain && ~is_6state
+        error('run_pure_simulation:useTrueGainUnsupported', ...
+              'opts.use_true_gain=true requires config.eq17_variant=''6state''.');
     end
 ```
 
-- [ ] **Step 3.3: Oracle constants + log allocation** (in section 7, next to `p_true_out` allocation, line 234):
+- [ ] **Step 3.3: True-gain constants + log allocation** (in section 7, next to `p_true_out` allocation, line 234):
 
 ```matlab
     a_true_out = zeros(N, 3);    % ground-truth gain at controller-call position [um/pN]
@@ -389,7 +389,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 and before the loop (after section 6 init):
 
 ```matlab
-    % Gain-oracle support: a_true at the PRE-integration p_curr (the position
+    % Gain-use_true_gain support: a_true at the PRE-integration p_curr (the position
     % the controller acts on at step k; p_true_out logs post-integration).
     a_nom_drv   = P.common.Ts / P.common.gamma_N;
     wall_on_drv = isfield(P, 'wall') && P.wall.enable_wall_effect > 0.5;
@@ -401,7 +401,7 @@ In the `opts.collect_diag` allocation block add:
         diag_log.a_ctrl_used       = zeros(N, 3);
 ```
 
-- [ ] **Step 3.4: Per-step oracle gain + dispatch** — insert between step (c) and (d) in the loop:
+- [ ] **Step 3.4: Per-step use_true_gain gain + dispatch** — insert between step (c) and (d) in the loop:
 
 ```matlab
         % --- (c2) Ground-truth gain at current (pre-integration) position
@@ -412,7 +412,7 @@ In the `opts.collect_diag` allocation block add:
         else
             a_true_k = a_nom_drv * ones(3, 1);
         end
-        if opts.gain_oracle
+        if opts.use_true_gain
             a_override_k = a_true_k;
         else
             a_override_k = [];
@@ -435,22 +435,22 @@ Change the two 6-state dispatch calls (lines 283-287) to pass the 6th argument:
 
 - [ ] **Step 3.5: Logging** — in section (j) add `a_true_out(k, :) = a_true_k.';` and in the collect_diag block add `diag_log.a_ctrl_used(k, :) = diag_k.a_ctrl_used.';`. In section 9 pack add `simOut.a_true_out = a_true_out;`.
 
-- [ ] **Step 3.6: Smoke verify (oracle wiring end-to-end)**
+- [ ] **Step 3.6: Smoke verify (use_true_gain wiring end-to-end)**
 
 Run:
 ```bash
 "$MB" -batch "cd('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); \
 addpath('../../model','../../model/config','../../model/wall_effect','../../model/thermal_force','../../model/trajectory','../../model/controller','../../model/dual_track'); \
 c = user_config(); c.eq17_variant='6state'; c.trajectory_type='positioning'; c.h_init=50; c.h_bottom=50; c.amplitude=0; c.T_sim=0.3; c.ctrl_enable=true; c.thermal_enable=true; c.meas_noise_enable=true; c.lambda_c=0.7; c.a_pd=0.05; c.a_cov=0.05; c.meas_noise_std=[0.00062;0.00057;0.00331]; \
-oA = run_pure_simulation(c, struct('seed',1,'collect_diag',true,'gain_oracle',true)); \
-assert(max(abs(oA.diag.a_ctrl_used(:) - oA.a_true_out(:))) == 0, 'arm A wiring'); \
+oA = run_pure_simulation(c, struct('seed',1,'collect_diag',true,'use_true_gain',true)); \
+assert(max(abs(oA.diag.a_ctrl_used(:) - oA.a_true_out(:))) == 0, 'a=a_true wiring'); \
 oB = run_pure_simulation(c, struct('seed',1,'collect_diag',true)); \
-assert(max(abs(oB.diag.a_ctrl_used(2:end,:) - oB.diag.a_hat(1:end-1,:))) == 0, 'arm B lag-1'); \
+assert(max(abs(oB.diag.a_ctrl_used(2:end,:) - oB.diag.a_hat(1:end-1,:))) == 0, 'a=â lag-1'); \
 c7 = c; c7 = rmfield(c7,'eq17_variant'); ok = false; \
-try, run_pure_simulation(c7, struct('gain_oracle',true)); catch, ok = true; end; assert(ok, '7-state guard'); \
+try, run_pure_simulation(c7, struct('use_true_gain',true)); catch, ok = true; end; assert(ok, '7-state guard'); \
 disp('SMOKE PASS')"
 ```
-Expected: `SMOKE PASS` (arm A wiring exact, arm B one-step-lag exact, 7-state guard errors).
+Expected: `SMOKE PASS` (a=a_true wiring exact, a=â one-step-lag exact, 7-state guard errors).
 
 - [ ] **Step 3.7: checkcode + commit**
 
@@ -458,38 +458,38 @@ Run: `"$MB" -batch "r = checkcode('/Users/kevin/Code/MotionControl_Simu-motion-t
 
 ```bash
 git add model/dual_track/run_pure_simulation.m
-git commit -m "feat(eq17): driver gain_oracle mode + a_true_out / a_ctrl_used logging
+git commit -m "feat(eq17): driver use_true_gain mode + a_true_out / a_ctrl_used logging
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 4: Runner `compare_gain_oracle_6state.m` (run matrix + Layer 0 + save)
+### Task 4: Runner `compare_gain_6state.m` (run matrix + Layer 0 + save)
 
 **Files:**
-- Create: `test_script/integration/compare_gain_oracle_6state.m`
+- Create: `test_script/integration/compare_gain_6state.m`
 
 - [ ] **Step 4.1: Write the runner**
 
 ```matlab
-function results = compare_gain_oracle_6state(freqs, opts)
-%COMPARE_GAIN_ORACLE_6STATE Run the gain-oracle A/B matrix (design doc
-%   reference/eq17_analysis/gain_oracle_ab_design.md §2-§3, §7 Layer 0).
+function results = compare_gain_6state(freqs, opts)
+%COMPARE_GAIN_6STATE Run the gain-compare A/B matrix (design doc
+%   reference/eq17_analysis/gain_compare_design.md §2-§3, §7 Layer 0).
 %
-%   results = compare_gain_oracle_6state()            % freqs = [1 2 5]
-%   results = compare_gain_oracle_6state(freqs, opts)
+%   results = compare_gain_6state()            % freqs = [1 2 5]
+%   results = compare_gain_6state(freqs, opts)
 %
 %   Per frequency: 2 arms x (1 det run + numel(seeds) noisy runs), all
-%   collect_diag. Arm A = gain_oracle (true time-varying gain in the
-%   control law), arm B = EKF gain. Both arms suppress_xD. Layer 0
+%   collect_diag. a=a_true = use_true_gain (true time-varying gain in the
+%   control law), a=â = EKF gain. Both arms suppress_xD. Layer 0
 %   assertions run before saving. Output:
-%       test_results/gain_oracle_ab/f<f>Hz/runs.mat
+%       test_results/gain_compare/f<f>Hz/runs.mat
 %
 %   opts: seeds (1:5), T_sim (7.0), verbose (true), out_root, smoke (false;
 %         true -> T_sim=2.0 + seeds=1 for fast end-to-end checks).
 %
-%   See also: analyze_gain_oracle_6state, run_pure_simulation
+%   See also: analyze_gain_6state, run_pure_simulation
 
     if nargin < 1 || isempty(freqs); freqs = [1 2 5]; end
     if nargin < 2; opts = struct(); end
@@ -510,7 +510,7 @@ function results = compare_gain_oracle_6state(freqs, opts)
             fullfile(project_root, 'model', 'controller'), ...
             fullfile(project_root, 'model', 'dual_track'), script_dir);
     if ~isfield(opts, 'out_root')
-        opts.out_root = fullfile(project_root, 'test_results', 'gain_oracle_ab');
+        opts.out_root = fullfile(project_root, 'test_results', 'gain_compare');
     end
 
     results = struct('freq', {}, 'out_dir', {}, 'layer0', {}, 'n_diverged', {});
@@ -525,19 +525,19 @@ function results = compare_gain_oracle_6state(freqs, opts)
                h_min_actual, t_crit);
 
         if opts.verbose
-            fprintf('[compare_gain_oracle:%gHz] T_sim=%.1fs seeds=%s\n', ...
+            fprintf('[compare_gain_6state:%gHz] T_sim=%.1fs seeds=%s\n', ...
                     f, cfg.T_sim, mat2str(opts.seeds));
         end
 
         % --- run matrix ---
         runs = struct();
         for arm = 'AB'
-            oracle = (arm == 'A');
+            use_true_gain = (arm == 'A');
             cfg_det = cfg;
             cfg_det.thermal_enable = false; cfg_det.meas_noise_enable = false;
-            runs.(arm).det = run_one(cfg_det, 0, oracle);
+            runs.(arm).det = run_one(cfg_det, 0, use_true_gain);
             for s = 1:numel(opts.seeds)
-                runs.(arm).noisy(s) = run_one(cfg, opts.seeds(s), oracle);
+                runs.(arm).noisy(s) = run_one(cfg, opts.seeds(s), use_true_gain);
             end
         end
 
@@ -583,11 +583,11 @@ function cfg = build_config(f, opts)
 end
 
 
-function rec = run_one(cfg, seed, oracle)
+function rec = run_one(cfg, seed, use_true_gain)
 %RUN_ONE Single run wrapped in try/catch (crash = diverged, design §7.3).
     ro = struct('seed', seed, 'verbose', false, 'collect_diag', true, ...
-                'gain_oracle', oracle);
-    rec = struct('seed', seed, 'oracle', oracle, 'diverged', false, ...
+                'use_true_gain', use_true_gain);
+    rec = struct('seed', seed, 'use_true_gain', use_true_gain, 'diverged', false, ...
                  'diverge_reason', '', 'simOut', []);
     try
         rec.simOut = run_pure_simulation(cfg, ro);
@@ -620,11 +620,11 @@ function layer0 = layer0_checks(runs, opts)
                    'Layer0: p_d_out differs (arm %c seed %d)', arm, r.seed);
             if arm == 'A'
                 assert(max(abs(r.simOut.diag.a_ctrl_used(:) - r.simOut.a_true_out(:))) == 0, ...
-                       'Layer0: arm A a_ctrl_used ~= a_true_out (seed %d)', r.seed);
+                       'Layer0: a=a_true a_ctrl_used ~= a_true_out (seed %d)', r.seed);
             else
                 d = abs(r.simOut.diag.a_ctrl_used(2:end, :) - r.simOut.diag.a_hat(1:end-1, :));
                 assert(max(d(:)) == 0, ...
-                       'Layer0: arm B a_ctrl_used ~= a_hat posterior[k-1] (seed %d)', r.seed);
+                       'Layer0: a=â a_ctrl_used ~= a_hat posterior[k-1] (seed %d)', r.seed);
             end
         end
     end
@@ -654,48 +654,48 @@ end
 
 - [ ] **Step 4.2: checkcode**
 
-Run: `"$MB" -batch "r = checkcode('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration/compare_gain_oracle_6state.m'); if isempty(r), disp('CLEAN'), else, disp(r), error('issues'), end"`
+Run: `"$MB" -batch "r = checkcode('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration/compare_gain_6state.m'); if isempty(r), disp('CLEAN'), else, disp(r), error('issues'), end"`
 
 - [ ] **Step 4.3: Smoke run (1 freq, smoke mode)**
 
-Run: `"$MB" -batch "cd('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); r = compare_gain_oracle_6state(2, struct('smoke', true)); disp(r)"`
-Expected: pre-flight safe, `Layer 0: PASS`, `runs.mat` saved under `test_results/gain_oracle_ab/f2Hz/`, diverged count reported (arm B may legitimately flag diverged near h̄=1.2 — that is a result, not a failure; only Layer-0 assertion errors fail this step).
+Run: `"$MB" -batch "cd('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); r = compare_gain_6state(2, struct('smoke', true)); disp(r)"`
+Expected: pre-flight safe, `Layer 0: PASS`, `runs.mat` saved under `test_results/gain_compare/f2Hz/`, diverged count reported (a=â may legitimately flag diverged near h̄=1.2 — that is a result, not a failure; only Layer-0 assertion errors fail this step).
 
 Known deviation from design §7.3: a hard CRASH (wall contact inside `run_pure_simulation`) loses the partial waveform — capturing it would require driver-internal try/catch (too invasive). Runs flagged via the |e| > 0.5 μm threshold DO retain their full waveform; true crashes occur at wall contact where the simulation is invalid anyway. Recorded in the run record as `diverge_reason = 'crash: ...'`.
 
 - [ ] **Step 4.4: Commit**
 
 ```bash
-git add test_script/integration/compare_gain_oracle_6state.m
-git commit -m "feat(eq17): gain-oracle A/B runner (matrix + Layer-0 assertions)
+git add test_script/integration/compare_gain_6state.m
+git commit -m "feat(eq17): gain-compare A/B runner (matrix + Layer-0 assertions)
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 5: Analyzer `analyze_gain_oracle_6state.m` (det/ram + anchors + summary)
+### Task 5: Analyzer `analyze_gain_6state.m` (det/ram + anchors + summary)
 
 **Files:**
-- Create: `test_script/integration/analyze_gain_oracle_6state.m`
+- Create: `test_script/integration/analyze_gain_6state.m`
 
 - [ ] **Step 5.1: Write the analyzer** (analysis core + summary; figures in Task 6 extend this file)
 
 ```matlab
-function analysis = analyze_gain_oracle_6state(freqs, opts)
-%ANALYZE_GAIN_ORACLE_6STATE det/ram analysis of compare_gain_oracle_6state
+function analysis = analyze_gain_6state(freqs, opts)
+%ANALYZE_GAIN_6STATE det/ram analysis of compare_gain_6state
 %   output (design doc §6-§8). Loads runs.mat per frequency, computes det
 %   metrics, ram window statistics, paired A/B ratios, p_m cross-check,
 %   theory anchor, a_hat decomposition; writes summary.md (+ figures,
 %   make_figs). Re-runnable without re-simulating.
 %
-%   analysis = analyze_gain_oracle_6state()             % freqs = [1 2 5]
-%   analysis = analyze_gain_oracle_6state(freqs, opts)
+%   analysis = analyze_gain_6state()             % freqs = [1 2 5]
+%   analysis = analyze_gain_6state(freqs, opts)
 %
-%   opts: out_root (test_results/gain_oracle_ab), save_fig (true),
+%   opts: out_root (test_results/gain_compare), save_fig (true),
 %         verbose (true).
 %
-%   See also: compare_gain_oracle_6state
+%   See also: compare_gain_6state
 
     if nargin < 1 || isempty(freqs); freqs = [1 2 5]; end
     if nargin < 2; opts = struct(); end
@@ -705,7 +705,7 @@ function analysis = analyze_gain_oracle_6state(freqs, opts)
     [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
     project_root = fileparts(fileparts(script_dir));
     if ~isfield(opts, 'out_root')
-        opts.out_root = fullfile(project_root, 'test_results', 'gain_oracle_ab');
+        opts.out_root = fullfile(project_root, 'test_results', 'gain_compare');
     end
 
     analysis = struct('freq', {}, 'det', {}, 'ram', {}, 'anchor', {}, ...
@@ -749,8 +749,8 @@ function A = per_freq_analysis(runs, cfg, f)
     W.osc  = (t_e >= 2.5  & t_e < 6.5);
     W.tail = (t_e >= 6.5);
     h_bar_d = (pd_al * [0; 0; 1]) / 2.25;           % w_hat=[0;0;1], pz=0 (osc_aggr)
-    W.gon  = W.osc & (h_bar_d < 1.5);
-    W.goff = W.osc & (h_bar_d >= 1.5);
+    W.near  = W.osc & (h_bar_d < 1.5);
+    W.far = W.osc & (h_bar_d >= 1.5);
 
     % --- det metrics per arm (design §6.1) ---
     for arm = 'AB'
@@ -761,7 +761,7 @@ function A = per_freq_analysis(runs, cfg, f)
     A.det = D;
 
     % --- ram metrics per arm (design §6.2) + p_m cross-check (§6.3) ---
-    wins = {'desc', 'osc', 'gon', 'goff'};
+    wins = {'desc', 'osc', 'near', 'far'};
     for arm = 'AB'
         e_det  = A.e_det.(arm);
         em_det = get_em(runs.(arm).det.simOut);     % = e_det (noise-free)
@@ -802,10 +802,10 @@ function A = per_freq_analysis(runs, cfg, f)
     % --- stationarity per cycle (design §6.2 / Layer 2) ---
     A.stationarity = cycle_stationarity(runs, A.e_det, get_e, W, f);
 
-    % --- theory anchor on arm A (design §7.5) ---
+    % --- theory anchor on a=a_true (design §7.5) ---
     A.anchor = theory_anchor(runs.A, A.e_det.A, get_e, W, cfg, Ts);
 
-    % --- a_hat decomposition, arm B (design §6.4) ---
+    % --- a_hat decomposition, a=â (design §6.4) ---
     A.ahat = ahat_analysis(runs.B, W);
 
     % --- flags ---
@@ -873,12 +873,12 @@ end
 
 
 function anc = theory_anchor(runsA, e_detA, get_e, W, cfg, Ts)
-%THEORY_ANCHOR design §7.4-7.5: arm A det ~ 0 and normalized ram ~ 1.
+%THEORY_ANCHOR design §7.4-7.5: a=a_true det ~ 0 and normalized ram ~ 1.
     lc = cfg.lambda_c;
     kBT = 1.3806503e-5 * 310.15;
     C_dx = 2 + 1 / (1 - lc^2);                       % 3.9608 at lc=0.7
     sigma2_nz = cfg.meas_noise_std(3)^2;
-    % envelope from arm A det run's a_true (z axis), aligned to e[k]
+    % envelope from a=a_true det run's a_true (z axis), aligned to e[k]
     a_true_z = runsA.det.simOut.a_true_out(2:end, 3);
     sigma_th = sqrt(C_dx * 4 * kBT * a_true_z + (1-lc)/(1+lc) * sigma2_nz);
     anc.sigma_th = sigma_th;
@@ -933,7 +933,7 @@ end
 
 function write_summary_md(path, f, S, A)
     fid = fopen(path, 'w');
-    fprintf(fid, '# gain_oracle_ab : %g Hz\n\n', f);
+    fprintf(fid, '# gain_compare : %g Hz\n\n', f);
     fprintf(fid, 'osc_aggr (h 50 -> 2.7 um, h_bar_min 1.2, A=2.5 um), %d seeds x %.1fs, suppress_xD both arms.\n\n', ...
             numel(S.opts.seeds), S.cfg.T_sim);
     fprintf(fid, '## det (e_det = p_d - p_true, noise-free run)\n\n');
@@ -956,15 +956,15 @@ function write_summary_md(path, f, S, A)
                 A.ram.ratio.rng(w, 3, 1), A.ram.ratio.rng(w, 3, 2));
     end
     fprintf(fid, '\n## validation\n\n');
-    fprintf(fid, '- arm A det anchor: max|e_det| (osc, z) = %.3f nm -> %s (soft gate < 1 nm)\n', ...
+    fprintf(fid, '- a=a_true det anchor: max|e_det| (osc, z) = %.3f nm -> %s (soft gate < 1 nm)\n', ...
             A.anchor.det_max_osc_um*1e3, passstr(A.anchor.det_pass));
-    fprintf(fid, '- arm A normalized ram std (per seed): %s -> %s (soft gate 1 +- 0.15)\n', ...
+    fprintf(fid, '- a=a_true normalized ram std (per seed): %s -> %s (soft gate 1 +- 0.15)\n', ...
             mat2str(round(A.anchor.norm_std, 3)), passstr(A.anchor.norm_pass));
     fprintf(fid, '- stationarity (half-diff): A %.1f%% / B %.1f%%\n', ...
             A.stationarity.A.half_rel_diff*100, A.stationarity.B.half_rel_diff*100);
     fprintf(fid, '- diverged runs: A %s / B %s\n', ...
             mat2str(A.ram.A.diverged), mat2str(A.ram.B.diverged));
-    fprintf(fid, '\n## arm B gain estimation\n\n');
+    fprintf(fid, '\n## a=â gain estimation\n\n');
     fprintf(fid, '- a_hat ensemble-mean rel-err (osc) [%%]: %s\n', mat2str(round(A.ahat.rel_err_osc, 2)));
     fprintf(fid, '- gate duty cycle (osc): %s\n', mat2str(round(A.ahat.gate_duty_osc, 3)));
     fclose(fid);
@@ -987,24 +987,24 @@ end
 
 - [ ] **Step 5.2: checkcode**
 
-Run: `"$MB" -batch "r = checkcode('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration/analyze_gain_oracle_6state.m'); if isempty(r), disp('CLEAN'), else, disp(r), error('issues'), end"`
+Run: `"$MB" -batch "r = checkcode('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration/analyze_gain_6state.m'); if isempty(r), disp('CLEAN'), else, disp(r), error('issues'), end"`
 
 - [ ] **Step 5.3: Full-length single-seed verification run (analysis needs real windows)**
 
 Run:
 ```bash
 "$MB" -batch "cd('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); \
-compare_gain_oracle_6state(2, struct('seeds', 1, 'T_sim', 7.0)); \
-a = analyze_gain_oracle_6state(2); \
+compare_gain_6state(2, struct('seeds', 1, 'T_sim', 7.0)); \
+a = analyze_gain_6state(2); \
 fprintf('anchor det %.4f nm, norm_std %s\n', a(1).anchor.det_max_osc_um*1e3, mat2str(a(1).anchor.norm_std, 3))"
 ```
-Expected: completes without error; summary.md written under `test_results/gain_oracle_ab/f2Hz/`; **arm A det anchor < 1 nm** (if not, STOP — debug wiring per design §7.4 before continuing); normalized ram std printed (single seed, indicative only).
+Expected: completes without error; summary.md written under `test_results/gain_compare/f2Hz/`; **a=a_true det anchor < 1 nm** (if not, STOP — debug wiring per design §7.4 before continuing); normalized ram std printed (single seed, indicative only).
 
 - [ ] **Step 5.4: Commit**
 
 ```bash
-git add test_script/integration/analyze_gain_oracle_6state.m
-git commit -m "feat(eq17): gain-oracle A/B analyzer (det/ram, anchors, summary)
+git add test_script/integration/analyze_gain_6state.m
+git commit -m "feat(eq17): gain-compare A/B analyzer (det/ram, anchors, summary)
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
@@ -1014,9 +1014,9 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ### Task 6: Figures (EXP/thesis style + A/B colors)
 
 **Files:**
-- Modify: `test_script/integration/analyze_gain_oracle_6state.m` (replace the two stubs)
+- Modify: `test_script/integration/analyze_gain_6state.m` (replace the two stubs)
 
-Style constants (design §8): True/theory green `[0 0.6 0]`, arm B red `[0.8 0 0]`, arm A blue-purple `[0.45 0.30 0.75]`, grid off, tiledlayout compact, stats-in-title, legend northoutside, FS 18 / LFS 14 / LW 2 (mirror `make_eq17_6state_figures.m`). Sweep palette for overview: `[0.10 0.30 0.85; 0.95 0.55 0.10; 0.55 0.20 0.65]` (1/2/5 Hz).
+Style constants (design §8): True/theory green `[0 0.6 0]`, a=â red `[0.8 0 0]`, a=a_true blue-purple `[0.45 0.30 0.75]`, grid off, tiledlayout compact, stats-in-title, legend northoutside, FS 18 / LFS 14 / LW 2 (mirror `make_eq17_6state_figures.m`). Sweep palette for overview: `[0.10 0.30 0.85; 0.95 0.55 0.10; 0.55 0.20 0.65]` (1/2/5 Hz).
 
 - [ ] **Step 6.1: Replace `make_figs` stub**
 
@@ -1028,7 +1028,7 @@ function make_figs(S, A, f, out_dir)
     so_ref = S.runs.A.det.simOut;
     t_e = so_ref.tout(2:end);
 
-    % ---- fig1: gain tracking (z, x), a_true vs arm B ensemble mean ----
+    % ---- fig1: gain tracking (z, x), a_true vs a=â ensemble mean ----
     f1 = figure('Position', [80 80 1100 720], 'Color', 'w', 'NumberTitle', 'off');
     tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
     cols = [3 1]; lbl = {'a_z', 'a_x'};
@@ -1051,8 +1051,8 @@ function make_figs(S, A, f, out_dir)
     yl = [-1.2, 1.2] * max(1e-3, max(abs(A.e_det.B(:, 3)))) * 1e3;
     patch([0.5 1.5 1.5 0.5], yl([1 1 2 2]), [0.95 0.95 0.80], ...
           'EdgeColor', 'none', 'DisplayName', 'descent');
-    plot(t_e, A.e_det.A(:, 3) * 1e3, '-', 'Color', COL_A, 'LineWidth', LW, 'DisplayName', 'arm A (oracle)');
-    plot(t_e, A.e_det.B(:, 3) * 1e3, '-', 'Color', COL_B, 'LineWidth', LW, 'DisplayName', 'arm B (estimated)');
+    plot(t_e, A.e_det.A(:, 3) * 1e3, '-', 'Color', COL_A, 'LineWidth', LW, 'DisplayName', 'a=a_true (use_true_gain)');
+    plot(t_e, A.e_det.B(:, 3) * 1e3, '-', 'Color', COL_B, 'LineWidth', LW, 'DisplayName', 'a=â (estimated)');
     title(sprintf('e_{det,z}:  A_e  A %.2f / B %.2f nm,  \\phi  A %.1f / B %.1f deg', ...
           A.det.A.A_e(3)*1e3, A.det.B.A_e(3)*1e3, A.det.A.phi_deg(3), A.det.B.phi_deg(3)), ...
           'FontSize', FS, 'FontWeight', 'bold');
@@ -1077,12 +1077,12 @@ function make_figs(S, A, f, out_dir)
     end
     title(sprintf('ram std (z), %g Hz — B/A paired ratio annotated', f), ...
           'FontSize', FS, 'FontWeight', 'bold');
-    legend({'arm A (oracle)', 'arm B (estimated)'}, 'Location', 'northoutside', ...
+    legend({'a=a_true (use_true_gain)', 'a=â (estimated)'}, 'Location', 'northoutside', ...
            'Orientation', 'horizontal');
     grid off;
     exportgraphics(f3, fullfile(out_dir, 'fig3_ram_std.png'), 'Resolution', 150);
 
-    % ---- fig4: theory anchor — arm A normalized ram per cycle ----
+    % ---- fig4: theory anchor — a=a_true normalized ram per cycle ----
     f4 = figure('Position', [80 80 900 420], 'Color', 'w', 'NumberTitle', 'off');
     hold on;
     yline(1.0, '-',  'Color', COL_TRUE, 'LineWidth', 2);
@@ -1090,7 +1090,7 @@ function make_figs(S, A, f, out_dir)
     plot(A.anchor.norm_std, 'o', 'Color', COL_A, 'MarkerFaceColor', COL_A, 'MarkerSize', 8);
     xlabel('seed', 'FontSize', FS, 'FontWeight', 'bold');
     ylabel('std(ram_z / \sigma_{th})', 'FontSize', FS, 'FontWeight', 'bold');
-    title(sprintf('arm A theory anchor (osc window): %s', passstr(A.anchor.norm_pass)), ...
+    title(sprintf('a=a_true theory anchor (osc window): %s', passstr(A.anchor.norm_pass)), ...
           'FontSize', FS, 'FontWeight', 'bold');
     ylim([0.6 1.4]); grid off; set(gca, 'FontSize', LFS);
     exportgraphics(f4, fullfile(out_dir, 'fig4_theory_anchor.png'), 'Resolution', 150);
@@ -1130,15 +1130,15 @@ end
 
 - [ ] **Step 6.3: checkcode + render check on existing f2Hz data**
 
-Run: `"$MB" -batch "r = checkcode('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration/analyze_gain_oracle_6state.m'); if isempty(r), disp('CLEAN'), else, disp(r), error('issues'), end"`
-Then: `"$MB" -batch "cd('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); analyze_gain_oracle_6state(2);" && ls /Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_oracle_ab/f2Hz/`
+Run: `"$MB" -batch "r = checkcode('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration/analyze_gain_6state.m'); if isempty(r), disp('CLEAN'), else, disp(r), error('issues'), end"`
+Then: `"$MB" -batch "cd('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); analyze_gain_6state(2);" && ls /Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_compare/f2Hz/`
 Expected: `fig1_gain_tracking.png fig2_det_error.png fig3_ram_std.png fig4_theory_anchor.png` exist alongside `summary.md`.
 
 - [ ] **Step 6.4: Commit**
 
 ```bash
-git add test_script/integration/analyze_gain_oracle_6state.m
-git commit -m "feat(eq17): gain-oracle A/B figures (EXP style, A/B colors, freq overview)
+git add test_script/integration/analyze_gain_6state.m
+git commit -m "feat(eq17): gain-compare A/B figures (EXP style, A/B colors, freq overview)
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
@@ -1149,15 +1149,15 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 - [ ] **Step 7.1: Full matrix run** (3 freqs × 12 runs; expect ~10-30 min total)
 
-Run: `"$MB" -batch "cd('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); compare_gain_oracle_6state(); analyze_gain_oracle_6state();" 2>&1 | tee "$CLAUDE_JOB_DIR/tmp/gain_oracle_run.log"` (or run in background and monitor)
-Expected: Layer 0 PASS at all 3 frequencies; arm A det anchor < 1 nm at all 3; summaries + figures written; arm B divergences (if any) reported per run, not aborting the batch.
+Run: `"$MB" -batch "cd('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); compare_gain_6state(); analyze_gain_6state();" 2>&1 | tee "$CLAUDE_JOB_DIR/tmp/gain_compare_run.log"` (or run in background and monitor)
+Expected: Layer 0 PASS at all 3 frequencies; a=a_true det anchor < 1 nm at all 3; summaries + figures written; a=â divergences (if any) reported per run, not aborting the batch.
 
 - [ ] **Step 7.2: Validation review (executor)**
-- arm A normalized ram std within 1 ± 0.15 at 1 Hz and 2 Hz (5 Hz may exceed — quasi-static weakest there; document if so).
+- a=a_true normalized ram std within 1 ± 0.15 at 1 Hz and 2 Hz (5 Hz may exceed — quasi-static weakest there; document if so).
 - p_m cross-check: `ram.B.sd_pm` vs `ram.B.sd` rel diff < 2% (z, osc window) — spot-check from analysis.mat.
-- stationarity flags; gate duty cycle sane (gon window duty > 0.5).
+- stationarity flags; gate duty cycle sane (near window duty > 0.5).
 
-- [ ] **Step 7.3: Present results to user** — summary tables + figures + flags; **merge back to feat/eq17-6state is a separate user decision** (design §10: requires unit tests + h50 regression + Layer 0/1 + user review). Findings doc (`gain_oracle_ab_findings.md`) is written after the user has reviewed results.
+- [ ] **Step 7.3: Present results to user** — summary tables + figures + flags; **merge back to feat/eq17-6state is a separate user decision** (design §10: requires unit tests + h50 regression + Layer 0/1 + user review). Findings doc (`gain_compare_findings.md`) is written after the user has reviewed results.
 
 ---
 

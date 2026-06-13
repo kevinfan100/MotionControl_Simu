@@ -1,17 +1,17 @@
-# Gain Oracle A/B Round 2 Implementation Plan
+# Gain Compare A/B Round 2 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement design doc §12 (`reference/eq17_analysis/gain_oracle_ab_design.md`): gate-free (h̄_safe=1) new scenario at {1,5,10} Hz × 100 seeds, analyzer upgrades (per-cycle discard, SEM, x-direct ram, A1 Q55 dynamic check, A3 desc-window â stats), two new figures (gain compare, motion var), and the locked figure restyle — then sample-render for user approval and run the production batch.
+**Goal:** Implement design doc §12 (`reference/eq17_analysis/gain_compare_design.md`): gate-free (h̄_safe=1) new scenario at {1,5,10} Hz × 100 seeds, analyzer upgrades (per-cycle discard, SEM, x-direct ram, A1 Q55 dynamic check, A3 desc-window â stats), two new figures (gain compare, motion var), and the locked figure restyle — then sample-render for user approval and run the production batch.
 
-**Architecture:** All changes are additive on branch `test/motion-test`. One driver plumbing line (`h_bar_safe`), runner defaults update (`compare_gain_oracle_6state.m`), and the bulk in `analyze_gain_oracle_6state.m` (windows, stats, two new figs, restyle). The controller is NOT touched this round. Production data goes to `test_results/gain_oracle_ab_nogate/` (gitignored); existing `gain_oracle_ab/` 20-seed data is read-only input for sample renders.
+**Architecture:** All changes are additive on branch `test/motion-test`. One driver plumbing line (`h_bar_safe`), runner defaults update (`compare_gain_6state.m`), and the bulk in `analyze_gain_6state.m` (windows, stats, two new figs, restyle). The controller is NOT touched this round. Production data goes to `test_results/gain_compare/` (gitignored); existing `gain_compare/` 20-seed data is read-only input for sample renders.
 
 **Tech Stack:** MATLAB R2025b via `Bash -batch` only (`/Applications/MATLAB_R2025b.app/bin/matlab`). Never touch the user's interactive MATLAB/MCP session (it lives on the main checkout). All paths below are relative to the worktree root `/Users/kevin/Code/MotionControl_Simu-motion-test`.
 
 **Hard constraints (from project rules / locked decisions):**
 - `fig_det_err` block in `make_figs` is FROZEN — do not modify it in any task.
 - Figure style per design §12.6 (FS=18, axes `LineWidth` 2.0, `Box on`, `grid off`, natural ticks, `Time (sec)`, stats-in-title, legend names `Desired` / `a_{true}` / `â`).
-- Role colors everywhere: Desired/theory/a_pd = green `[0 0.6 0]`; a_true (arm A) = red `[0.8 0 0]`; â (arm B) = blue `[0 0.2 0.9]`; Measured a_xm = light blue `[0.45 0.55 0.95 0.30]`.
+- Role colors everywhere: Desired/theory/a_pd = green `[0 0.6 0]`; a_true (a=a_true) = red `[0.8 0 0]`; â (a=â) = blue `[0 0.2 0.9]`; Measured a_xm = light blue `[0.45 0.55 0.95 0.30]`.
 - ram overlay layering: â blue LW 2.5 drawn FIRST (base), a_true red LW 1.0 on top (locked mockup `fig_mockup/fig_traj_ram_mock_v3a_colorswap.png`).
 - `checkcode` must report 0 issues on every modified/created .m file.
 - Commit after each task (format `<type>(eq17): <subject>`).
@@ -31,7 +31,7 @@ Create `test_script/unit_tests/verify_eq17_unit_hbar_safe_plumbing.m`:
 ```matlab
 function verify_eq17_unit_hbar_safe_plumbing()
 %VERIFY_EQ17_UNIT_HBAR_SAFE_PLUMBING config.h_bar_safe -> ctrl_const plumbing
-%   (gain_oracle_ab_design.md §12.1). Positioning hold at h_bar = 1.3
+%   (gain_compare_design.md §12.1). Positioning hold at h_bar = 1.3
 %   (inside the default gate band [1, 1.5)):
 %   T1: default (no config field)  -> G3 fires (gate_active true somewhere).
 %   T2: config.h_bar_safe = 1      -> G3 never fires on any axis.
@@ -128,7 +128,7 @@ git commit -m "feat(eq17): config.h_bar_safe plumbing for gate-free runs + unit 
 ### Task 2: Runner Round-2 defaults + gate-free Layer-0 assertion
 
 **Files:**
-- Modify: `test_script/integration/compare_gain_oracle_6state.m`
+- Modify: `test_script/integration/compare_gain_6state.m`
 
 - [ ] **Step 1: Update defaults and config builder**
 
@@ -156,13 +156,13 @@ with:
 Replace the default out_root:
 
 ```matlab
-        opts.out_root = fullfile(project_root, 'test_results', 'gain_oracle_ab');
+        opts.out_root = fullfile(project_root, 'test_results', 'gain_compare');
 ```
 
 with:
 
 ```matlab
-        opts.out_root = fullfile(project_root, 'test_results', 'gain_oracle_ab_nogate');
+        opts.out_root = fullfile(project_root, 'test_results', 'gain_compare');
 ```
 
 In `build_config`, replace `cfg.n_cycles  = 5 * f;` with:
@@ -177,7 +177,7 @@ and append after `cfg.suppress_xD = true;`:
     cfg.h_bar_safe = opts.h_bar_safe;   % Round 2: 1 -> G3 unreachable (trough h_bar=1.2)
 ```
 
-(`build_config(f, opts)` already receives `opts`.) Update the function help header: defaults `freqs = [1 5 10]`, `seeds 1:100`, `T_sim 4.0`, output `gain_oracle_ab_nogate/`; note that Round-1 gated runs are reproduced with `compare_gain_oracle_6state([1 2 5], struct('seeds',1:20,'T_sim',7.0,'n_cyc_per_s',5,'h_bar_safe',1.5,'out_root',<...>/gain_oracle_ab))`.
+(`build_config(f, opts)` already receives `opts`.) Update the function help header: defaults `freqs = [1 5 10]`, `seeds 1:100`, `T_sim 4.0`, output `gain_compare/`; note that Round-1 gated runs are reproduced with `compare_gain_6state([1 2 5], struct('seeds',1:20,'T_sim',7.0,'n_cyc_per_s',5,'h_bar_safe',1.5,'out_root',<...>/gain_compare))`.
 
 - [ ] **Step 2: Add gate-free Layer-0 assertion**
 
@@ -201,15 +201,15 @@ Do NOT hardcode `2.25`: fetch R once before the loop via `R_phys = runs.A.det.si
 - [ ] **Step 3: Smoke run (isolated output) to validate end-to-end**
 
 ```bash
-/Applications/MATLAB_R2025b.app/bin/matlab -batch "addpath('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); compare_gain_oracle_6state(5, struct('smoke', true))"
+/Applications/MATLAB_R2025b.app/bin/matlab -batch "addpath('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); compare_gain_6state(5, struct('smoke', true))"
 ```
-Expected: `Layer 0: PASS`, saved under `test_results/gain_oracle_ab_nogate/f5Hz-smoke/`. Verify the smoke dir is NOT `f5Hz/`.
+Expected: `Layer 0: PASS`, saved under `test_results/gain_compare/f5Hz-smoke/`. Verify the smoke dir is NOT `f5Hz/`.
 
 - [ ] **Step 4: checkcode + commit**
 
 ```bash
-/Applications/MATLAB_R2025b.app/bin/matlab -batch "checkcode('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration/compare_gain_oracle_6state.m')"
-git add test_script/integration/compare_gain_oracle_6state.m
+/Applications/MATLAB_R2025b.app/bin/matlab -batch "checkcode('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration/compare_gain_6state.m')"
+git add test_script/integration/compare_gain_6state.m
 git commit -m "feat(eq17): round-2 runner defaults (gate-free, 100 seeds, {1,5,10} Hz) + layer0 gate assert"
 ```
 
@@ -218,7 +218,7 @@ git commit -m "feat(eq17): round-2 runner defaults (gate-free, 100 seeds, {1,5,1
 ### Task 3: Analyzer — data_root, per-cycle discard, SEM, x-direct ram
 
 **Files:**
-- Modify: `test_script/integration/analyze_gain_oracle_6state.m`
+- Modify: `test_script/integration/analyze_gain_6state.m`
 
 All edits in this task touch existing functions; later tasks add new ones. Keep `fig_det_err` untouched.
 
@@ -241,7 +241,7 @@ and after `out_root` resolution add:
     end
 ```
 
-with `out_root` default changed to `gain_oracle_ab_nogate`. In the per-frequency loop, load from `data_root`, write to `out_root`:
+with `out_root` default changed to `gain_compare`. In the per-frequency loop, load from `data_root`, write to `out_root`:
 
 ```matlab
         in_dir  = fullfile(opts.data_root, sprintf('f%gHz', f));
@@ -369,11 +369,11 @@ In `thermal_theory_check`, x-axis switches to direct e and the deflation correct
 ```matlab
     rel_s = (a_stack - a_true) ./ a_true * 100;          % [N-1 x 3 x Ns]
     ah.rel_err_osc   = squeeze(mean(mean(rel_s(W.osc,  :, :), 1), 3)).';
-    ah.rel_err_gon   = squeeze(mean(mean(rel_s(W.gon,  :, :), 1), 3)).';
-    ah.rel_err_goff  = squeeze(mean(mean(rel_s(W.goff, :, :), 1), 3)).';
+    ah.rel_err_gon   = squeeze(mean(mean(rel_s(W.near,  :, :), 1), 3)).';
+    ah.rel_err_goff  = squeeze(mean(mean(rel_s(W.far, :, :), 1), 3)).';
     ah.rel_sem_osc   = squeeze(std(mean(rel_s(W.osc,  :, :), 1), 0, 3)).' / sqrt(numel(ok));
-    ah.rel_sem_gon   = squeeze(std(mean(rel_s(W.gon,  :, :), 1), 0, 3)).' / sqrt(numel(ok));
-    ah.rel_sem_goff  = squeeze(std(mean(rel_s(W.goff, :, :), 1), 0, 3)).' / sqrt(numel(ok));
+    ah.rel_sem_gon   = squeeze(std(mean(rel_s(W.near,  :, :), 1), 0, 3)).' / sqrt(numel(ok));
+    ah.rel_sem_goff  = squeeze(std(mean(rel_s(W.far, :, :), 1), 0, 3)).' / sqrt(numel(ok));
 ```
 (keep `ah.ens_mean` as-is; note `mean over seeds of per-seed window mean` equals the old ens-mean number, so values are unchanged — only ± appears. Keep the NaN-fill branch in sync with the new fields.)
 
@@ -381,15 +381,15 @@ In `thermal_theory_check`, x-axis switches to direct e and the deflation correct
 
 - [ ] **Step 4.5: Graceful arm-B det-run divergence (PROBE FINDING 2026-06-11)**
 
-A full-length gate-free probe (`gain_oracle_ab_nogate_probe/`, 1 seed/freq) showed arm B's
+A full-length gate-free probe (`gain_compare_probe/`, 1 seed/freq) showed a=â's
 no-noise det run DIVERGES at ALL frequencies under h̄_safe=1 (|e|max 1.0–3.7 μm), and arm-B
 noisy runs diverge at 5/10 Hz (1 Hz survives). Root cause sketch: in the no-noise run Guard 2
 un-latches when deterministic δx_r content lifts σ̂²_δxr above threshold → y₂ ingests garbage
 a_xm → â corrupted; previously G3 re-protected near wall, now nothing does. This is a legitimate
 experimental outcome (design §9.1: divergence is a result), so the analyzer must DEGRADE, not die:
 
-1. `per_freq_analysis` C3 assert: keep HARD for arm A (oracle arm must never diverge —
-   that would be a real infrastructure bug); for arm B set `b_det_ok = false` + console
+1. `per_freq_analysis` C3 assert: keep HARD for a=a_true (use_true_gain arm must never diverge —
+   that would be a real infrastructure bug); for a=â set `b_det_ok = false` + console
    warning instead of asserting.
 2. When `~b_det_ok`: `A.e_det.B = nan(size(A.e_det.A));` BEFORE det metrics / v1 ram —
    NaN then propagates naturally through det_metrics (guard the sine fit: `X\ew` with NaN
@@ -397,11 +397,11 @@ experimental outcome (design §9.1: divergence is a result), so the analyzer mus
 3. `cycle_stationarity`: treat NaN `half_rel_diff` as n/a → `stationary = true` (cannot
    evaluate), so `collect_flags` does not spuriously FLAG.
 4. summary.md: when `~b_det_ok`, print a prominent line in the header block:
-   `ARM B DET RUN DIVERGED (<reason>) — v1/B det metrics are NaN; ensemble-det (v2) path unaffected.`
+   `a=� DET RUN DIVERGED (<reason>) — v1/B det metrics are NaN; ensemble-det (v2) path unaffected.`
    and label the B crossval numbers as not meaningful.
 5. Layer-0 / runner side needs NO change (diverged runs already skipped there).
 
-Task 4 additionally REPLACES the two remaining det-run dependencies for arm B (see Task 4
+Task 4 additionally REPLACES the two remaining det-run dependencies for a=â (see Task 4
 Step 0). Production expectation (Task 9): at 5/10 Hz the B side may have few or zero surviving
 seeds — all B-side stats then print NaN and the headline conclusion is "gate-free B unstable
 at f ≥ 5 Hz"; the run is still a SUCCESS.
@@ -409,15 +409,15 @@ at f ≥ 5 Hz"; the run is still a SUCCESS.
 - [ ] **Step 5: Re-run analyzer on existing f2Hz data (regression-style check)**
 
 ```bash
-/Applications/MATLAB_R2025b.app/bin/matlab -batch "addpath('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); analyze_gain_oracle_6state(2, struct('data_root', '/Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_oracle_ab', 'out_root', '/Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_oracle_ab/round2_dev', 'save_fig', false))"
+/Applications/MATLAB_R2025b.app/bin/matlab -batch "addpath('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); analyze_gain_6state(2, struct('data_root', '/Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_compare', 'out_root', '/Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_compare/round2_dev', 'save_fig', false))"
 ```
 Expected: completes; `round2_dev/f2Hz/summary.md` exists; spot-check (read the file): (i) ram v2 table has `± SEM`; (ii) x-direct values within ~3% of the old ensemble-ref values (deflation restored ≈ +2.6% at Ns=20, plus the det-residual leak removal); (iii) z values unchanged vs production summary except window-boundary effects from `t_discard = 0.5` (was 1.0 @2 Hz — osc window now longer, small shifts expected and acceptable in dev output).
 
 - [ ] **Step 6: checkcode + commit**
 
 ```bash
-/Applications/MATLAB_R2025b.app/bin/matlab -batch "checkcode('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration/analyze_gain_oracle_6state.m')"
-git add test_script/integration/analyze_gain_oracle_6state.m
+/Applications/MATLAB_R2025b.app/bin/matlab -batch "checkcode('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration/analyze_gain_6state.m')"
+git add test_script/integration/analyze_gain_6state.m
 git commit -m "feat(eq17): analyzer round-2 core - data_root, per-cycle discard, SEM, x-direct ram"
 ```
 
@@ -426,7 +426,7 @@ git commit -m "feat(eq17): analyzer round-2 core - data_root, per-cycle discard,
 ### Task 4: Analyzer — A1 Q55 dynamic check + A3 desc-window â stats
 
 **Files:**
-- Modify: `test_script/integration/analyze_gain_oracle_6state.m`
+- Modify: `test_script/integration/analyze_gain_6state.m`
 
 - [ ] **Step 0: De-couple remaining arm-B det-run dependencies (PROBE FINDING, cont.)**
 
@@ -434,7 +434,7 @@ git commit -m "feat(eq17): analyzer round-2 core - data_root, per-cycle discard,
 `runs.(arm).det.simOut.a_true_out` — switch BOTH arms to the a_pd skeleton (`A.gain.a_pd`,
 Step 1 below; pass it in as an argument). This also aligns the windowed tables with
 fig_motion_var's theory semantics ("along the desired trajectory"); update the summary
-header text accordingly. Arm A values shift negligibly (its det ≈ desired).
+header text accordingly. a=a_true values shift negligibly (its det ≈ desired).
 (b) `ahat_analysis` currently uses `runsB.det.simOut.a_true_out` as the rel-err reference —
 replace with the ensemble mean of `a_true_out` over the OK arm-B noisy seeds (each noisy
 run logs a_true_out). If no OK seeds, the existing C2 NaN branch covers it.
@@ -501,7 +501,7 @@ end
 Call from `per_freq_analysis` (after `A.ahat = ...`):
 
 ```matlab
-    A.q55 = q55_dynamic_check(runs.A, W, {'osc', 'gon', 'goff'}, A.gain, ...
+    A.q55 = q55_dynamic_check(runs.A, W, {'osc', 'near', 'far'}, A.gain, ...
                               cfg.lambda_c, kBT, R_phys);
 ```
 
@@ -514,8 +514,8 @@ In `ahat_analysis` add (next to the other windows; signature already has `W`):
     ah.rel_sem_desc = squeeze(std(mean(rel_s(W.desc, :, :), 1), 0, 3)).' / sqrt(numel(ok));
     sdw = @(wmask) reshape(std(dev(wmask, :, :), 0, 1), 3, []);
     ah.ram_std_desc = sdw(W.desc);
-    ah.ram_std_gon  = sdw(W.gon);
-    ah.ram_std_goff = sdw(W.goff);
+    ah.ram_std_gon  = sdw(W.near);
+    ah.ram_std_goff = sdw(W.far);
 ```
 (`dev = a_stack - ah.ens_mean;` already exists; keep the all-diverged NaN branch in sync.)
 
@@ -526,7 +526,7 @@ In `write_summary_md`:
 (b) New section after thermal validation:
 
 ```matlab
-    fprintf(fid, '\n## A1: a_true gain ram vs Q55 closed forms (arm A, %d seeds)\n\n', A.q55.Ns);
+    fprintf(fid, '\n## A1: a_true gain ram vs Q55 closed forms (a=a_true, %d seeds)\n\n', A.q55.Ns);
     fprintf(fid, ['Level: Var(a_ram) vs C_dx*(a*K_h/R)^2*4kBT*a_z; ', ...
                   'Increment (= Q55): Var(diff a_ram) vs [2/(1+lc)]*(a*K_h/R)^2*4kBT*a_z. ', ...
                   'Theory pointwise along a_pd, window-averaged; meas /(1-1/Ns).\n\n']);
@@ -542,10 +542,10 @@ In `write_summary_md`:
 
 - [ ] **Step 5: Re-run dev analysis (same command as Task 3 Step 5), checkcode, commit**
 
-Expected: A1 section present; osc-window incr ratio plausibly O(1) far from wall (gon may deviate — that is the experiment's finding, not a bug; do not "fix" it).
+Expected: A1 section present; osc-window incr ratio plausibly O(1) far from wall (near may deviate — that is the experiment's finding, not a bug; do not "fix" it).
 
 ```bash
-git add test_script/integration/analyze_gain_oracle_6state.m
+git add test_script/integration/analyze_gain_6state.m
 git commit -m "feat(eq17): A1 Q55 dynamic check + A3 desc-window a_hat stats"
 ```
 
@@ -554,7 +554,7 @@ git commit -m "feat(eq17): A1 Q55 dynamic check + A3 desc-window a_hat stats"
 ### Task 5: Restyle fig_traj_det + fig_traj_ram (fig_det_err FROZEN)
 
 **Files:**
-- Modify: `test_script/integration/analyze_gain_oracle_6state.m` (`make_figs` only)
+- Modify: `test_script/integration/analyze_gain_6state.m` (`make_figs` only)
 
 - [ ] **Step 1: Replace the style block and the two figure sections**
 
@@ -563,8 +563,8 @@ New shared constants at the top of `make_figs` (replace the existing ones; `fig_
 ```matlab
     % Round-2 locked style (design §12.6): role colors + reference fonts
     COL_DES   = [0 0.6 0];                % Desired / a_pd / theory
-    COL_TRUE2 = [0.8 0 0];                % a_true (arm A)
-    COL_HAT2  = [0 0.2 0.9];              % a_hat  (arm B)
+    COL_TRUE2 = [0.8 0 0];                % a_true (a=a_true)
+    COL_HAT2  = [0 0.2 0.9];              % a_hat  (a=â)
     FS2 = 18; LFS2 = 14; AXLW2 = 2.0;     % fonts + bold box/ticks
     T_END = ceil(t_e(end));
 ```
@@ -633,12 +633,12 @@ Note: fixed `RAM_YLIM = [-150 150]` is kept (cross-frequency lock); the fixed `Y
 - [ ] **Step 2: Render from existing f2Hz data, eyeball, checkcode, commit**
 
 ```bash
-/Applications/MATLAB_R2025b.app/bin/matlab -batch "addpath('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); analyze_gain_oracle_6state(2, struct('data_root', '/Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_oracle_ab', 'out_root', '/Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_oracle_ab/round2_dev'))"
+/Applications/MATLAB_R2025b.app/bin/matlab -batch "addpath('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); analyze_gain_6state(2, struct('data_root', '/Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_compare', 'out_root', '/Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_compare/round2_dev'))"
 ```
 Read the produced PNGs (controller agent does this visually): layering = blue thick under red thin; titles carry stats; box/ticks bold; `fig_det_err.png` byte-comparable behavior (regenerated but visually identical to production style of Round 1).
 
 ```bash
-git add test_script/integration/analyze_gain_oracle_6state.m
+git add test_script/integration/analyze_gain_6state.m
 git commit -m "feat(eq17): round-2 figure restyle (stats-in-title, role colors, locked ram layering)"
 ```
 
@@ -647,7 +647,7 @@ git commit -m "feat(eq17): round-2 figure restyle (stats-in-title, role colors, 
 ### Task 6: New figure — fig_gain_compare
 
 **Files:**
-- Modify: `test_script/integration/analyze_gain_oracle_6state.m`
+- Modify: `test_script/integration/analyze_gain_6state.m`
 
 - [ ] **Step 1: Data prep in per_freq_analysis**
 
@@ -655,9 +655,9 @@ After the A1 block (Task 4) add:
 
 ```matlab
     % --- fig_gain_compare data (design §12.4): arms per user decision ---
-    % a_true ensemble = ARM A (gain under near-perfect control);
-    % a_hat ensemble  = ARM B (production estimate, = A.ahat.ens_mean);
-    % a_xm raw layer  = ARM B, traj-figure seed.
+    % a_true ensemble = a=a_true (gain under near-perfect control);
+    % a_hat ensemble  = a=� (production estimate, = A.ahat.ens_mean);
+    % a_xm raw layer  = a=�, traj-figure seed.
     nzA = runs.A.noisy;  okA = find(~[nzA.diverged]);
     st = [];
     for s = okA
@@ -713,7 +713,7 @@ After the A1 block (Task 4) add:
 - [ ] **Step 3: Render on f2Hz dev output, eyeball, checkcode, commit**
 
 ```bash
-git add test_script/integration/analyze_gain_oracle_6state.m
+git add test_script/integration/analyze_gain_6state.m
 git commit -m "feat(eq17): fig_gain_compare (a_xm/a_pd/a_true/a_hat overlay)"
 ```
 
@@ -722,7 +722,7 @@ git commit -m "feat(eq17): fig_gain_compare (a_xm/a_pd/a_true/a_hat overlay)"
 ### Task 7: New figure — fig_motion_var
 
 **Files:**
-- Modify: `test_script/integration/analyze_gain_oracle_6state.m`
+- Modify: `test_script/integration/analyze_gain_6state.m`
 
 - [ ] **Step 1: Pointwise variance data in per_freq_analysis**
 
@@ -787,10 +787,10 @@ Theory curve (once, after `A.gain.a_pd` exists):
 
 `W_osc_fig`: make_figs has no `W`; store the osc mask in the analysis struct in `per_freq_analysis` (`A.W_osc = W.osc;` — logical [N-1 x 1], negligible size) and use `W_osc_fig = A.W_osc;`.
 
-- [ ] **Step 3: Render on f2Hz dev output, eyeball (curves should hug theory for arm A; ~14%-level scatter at Ns=20 is expected and stays in the figure — NO smoothing), checkcode, commit**
+- [ ] **Step 3: Render on f2Hz dev output, eyeball (curves should hug theory for a=a_true; ~14%-level scatter at Ns=20 is expected and stays in the figure — NO smoothing), checkcode, commit**
 
 ```bash
-git add test_script/integration/analyze_gain_oracle_6state.m
+git add test_script/integration/analyze_gain_6state.m
 git commit -m "feat(eq17): fig_motion_var (a_pd theory vs pointwise ensemble variance)"
 ```
 
@@ -803,13 +803,13 @@ git commit -m "feat(eq17): fig_motion_var (a_pd theory vs pointwise ensemble var
 - [ ] **Step 1: Clean dev folder, produce the canonical sample set from existing 20-seed f2Hz data**
 
 ```bash
-rm -rf /Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_oracle_ab/round2_dev
-/Applications/MATLAB_R2025b.app/bin/matlab -batch "addpath('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); analyze_gain_oracle_6state(2, struct('data_root', '/Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_oracle_ab', 'out_root', '/Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_oracle_ab/round2_samples'))"
+rm -rf /Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_compare/round2_dev
+/Applications/MATLAB_R2025b.app/bin/matlab -batch "addpath('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); analyze_gain_6state(2, struct('data_root', '/Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_compare', 'out_root', '/Users/kevin/Code/MotionControl_Simu-motion-test/test_results/gain_compare/round2_samples'))"
 ```
 
 - [ ] **Step 2: Controller agent visually inspects all 5 PNGs + summary.md, then STOPS and presents to the user.** Iterate on style details (title contents, line choices) per user feedback by editing `make_figs` and re-rendering. **Do not proceed to Task 9 without explicit user approval** (design §12.7 acceptance #8).
 
-Note: sample data is gated Round-1 data (h̄_safe=1.5, 20 seeds, T=7 s) — gate-duty and A1 gon numbers in the sample summary are NOT Round-2 results; the sample validates style and pipeline only.
+Note: sample data is gated Round-1 data (h̄_safe=1.5, 20 seeds, T=7 s) — gate-duty and A1 near numbers in the sample summary are NOT Round-2 results; the sample validates style and pipeline only.
 
 ---
 
@@ -828,9 +828,9 @@ Plus the h50 gate (same invocation as Round 1, `run_eq17_6state_all` h50 scenari
 - [ ] **Step 2: Production run (background, ~45–60 min)**
 
 ```bash
-/Applications/MATLAB_R2025b.app/bin/matlab -batch "addpath('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); compare_gain_oracle_6state([1 5 10], struct()); analyze_gain_oracle_6state([1 5 10], struct())"
+/Applications/MATLAB_R2025b.app/bin/matlab -batch "addpath('/Users/kevin/Code/MotionControl_Simu-motion-test/test_script/integration'); compare_gain_6state([1 5 10], struct()); analyze_gain_6state([1 5 10], struct())"
 ```
-(defaults now encode the Round-2 matrix; run via Bash `run_in_background`). Watch for: diverged-run reports (legitimate results — near-wall gate-free â may diverge; they are findings), Layer-0 PASS per frequency, three `f*Hz/` folders under `gain_oracle_ab_nogate/` each with runs.mat + analysis.mat + summary.md + 5 figs.
+(defaults now encode the Round-2 matrix; run via Bash `run_in_background`). Watch for: diverged-run reports (legitimate results — near-wall gate-free â may diverge; they are findings), Layer-0 PASS per frequency, three `f*Hz/` folders under `gain_compare/` each with runs.mat + analysis.mat + summary.md + 5 figs.
 
 - [ ] **Step 3: Results digest for the user**
 

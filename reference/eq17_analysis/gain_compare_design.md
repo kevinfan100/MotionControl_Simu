@@ -1,4 +1,4 @@
-# Gain Oracle A/B 對比實驗設計（eq17-6state）
+# Gain Compare A/B 對比實驗設計（eq17-6state）
 
 Date: 2026-06-10（Round 1）/ 2026-06-11（Round 2，§12）
 Branch: `test/motion-test`（自 feat/eq17-6state @ d6f95cc 分出，獨立 worktree）
@@ -10,11 +10,11 @@ Status: Round 1（§1–11）已實作完成並跑完 20-seed 生產批（部分
 
 評估 6-state（RevisedControl_Vpersonal）控制器**本身**的控制能力，把 motion gain 估測品質的影響獨立出來量化：
 
-> 同一條激進軌跡下，控制律拿到「正確的時變 gain」（oracle）vs「EKF 估測的 gain」，
+> 同一條激進軌跡下，控制律拿到「正確的時變 gain」（true-gain control）vs「EKF 估測的 gain」，
 > 控制結果（追蹤誤差）的 deterministic 分量與 random 分量各差多少？
 
-- **Arm A（oracle）**＝估測完美時的性能上界，同時兼任分析 pipeline 的理論「對答案」錨點。
-- **Arm B（estimated）**＝現役控制器原樣，代表目前端到端水準。
+- **a=a_true（true-gain control）**＝估測完美時的性能上界，同時兼任分析 pipeline 的理論「對答案」錨點。
+- **a=â（estimated）**＝現役控制器原樣，代表目前端到端水準。
 - A、B 的差距 = gain 估測誤差對控制的實際代價（det：系統性落後；ram：隨機誤差放大倍率）。
 
 ## 2. 實驗矩陣
@@ -23,8 +23,8 @@ Status: Round 1（§1–11）已實作完成並跑完 20-seed 生產批（部分
 
 | | det run（噪聲全關）| ram runs（噪聲全開）|
 |---|---|---|
-| Arm A（oracle gain）| 1 run | seeds 1:5 |
-| Arm B（EKF gain）| 1 run | seeds 1:5 |
+| a=a_true（true gain）| 1 run | seeds 1:5 |
+| a=â（EKF gain）| 1 run | seeds 1:5 |
 
 - 合計 3 × 12 = 36 runs，全走 `run_pure_simulation`（pure-MATLAB），全部 `collect_diag = true`。
 - 「噪聲全關」= `thermal_enable = false` 且 `meas_noise_enable = false`（模擬僅有的兩個隨機源）。det run 完全確定性，1 次即可、無 seed。
@@ -42,10 +42,10 @@ Status: Round 1（§1–11）已實作完成並跑完 20-seed 生產批（部分
 
 | | 控制律中的 gain（含過去項 Σ a[k−i]·f_d[k−i]）| EKF |
 |---|---|---|
-| Arm A | oracle `a_true[k]`（driver 每步從 p_curr 算）| 照常跑（slot 5 照估，但不進控制律）|
-| Arm B | EKF 估測 `â[k]`（現役行為）| 照常跑 |
+| a=a_true | true-gain control `a_true[k]`（driver 每步從 p_curr 算）| 照常跑（slot 5 照估，但不進控制律）|
+| a=â | EKF 估測 `â[k]`（現役行為）| 照常跑 |
 
-oracle 定義：`a_true,i[k] = a_nom / C_i(h̄_true[k])`，`a_nom = Ts/γ_N`，h̄_true 從**無噪聲真實位置** p_curr 算；x/y 用 C_∥、z 用 C_⊥。這是模擬特權（無延遲、無噪聲的真值），實機不可得，故為上界。
+true-gain control 定義：`a_true,i[k] = a_nom / C_i(h̄_true[k])`，`a_nom = Ts/γ_N`，h̄_true 從**無噪聲真實位置** p_curr 算；x/y 用 C_∥、z 用 C_⊥。這是模擬特權（無延遲、無噪聲的真值），實機不可得，故為上界。
 
 ## 3. 軌跡（`osc_aggr`，激進版）
 
@@ -83,16 +83,16 @@ z 軸 gain 動態範圍約 6×（h̄=22 的 ≈a_nom → h̄=1.2 的 a_nom/C_⊥
 
 ### 4.2 `model/dual_track/run_pure_simulation.m`
 
-- 新增 `opts.gain_oracle`（預設 false）。true 時每步從 p_curr 算 `a_true_k`（公式同 §2），以第 6 引數傳入 6-state 控制器（僅 6-state 路徑支援；7-state 路徑遇 gain_oracle=true 直接 error）。
+- 新增 `opts.use_true_gain`（預設 false）。true 時每步從 p_curr 算 `a_true_k`（公式同 §2），以第 6 引數傳入 6-state 控制器（僅 6-state 路徑支援；7-state 路徑遇 use_true_gain=true 直接 error）。
 - 無論模式，**每步都算並記錄 `simOut.a_true_out` [N×3]**（分析直接用，免去事後重算）。
   - **記錄點定義**：`a_true_out[k]` 在**積分前**的 p_curr（= 控制器在 step k 看到的真實位置）計算，與 `a_ctrl_used[k]` 精確同點；注意 `p_true_out[k]` 是積分後（t_k+Ts）的位置，兩者差一個樣本，屬既有 driver 慣例。
 - `diag_log` 新增 `a_ctrl_used` [N×3]。
 
-### 4.3 新增 `test_script/integration/compare_gain_oracle_6state.m`
+### 4.3 新增 `test_script/integration/compare_gain_6state.m`
 
 單一入口：跑 §2 實驗矩陣 → Layer 0 assertions → det/ram 分析（§6）→ 出圖（§8）→ 寫 summary。
-輸出至 `test_results/gain_oracle_ab/f<freq>Hz/`（gitignored），含 runs.mat、analysis.mat、summary.md、figs。
-跨頻率總覽輸出至 `test_results/gain_oracle_ab/overview/`。
+輸出至 `test_results/gain_compare/f<freq>Hz/`（gitignored），含 runs.mat、analysis.mat、summary.md、figs。
+跨頻率總覽輸出至 `test_results/gain_compare/overview/`。
 
 ### 4.4 新增 `test_script/unit_tests/verify_eq17_unit_gain_override_6state.m`
 
@@ -113,7 +113,7 @@ z 軸 gain 動態範圍約 6×（h̄=22 的 ≈a_nom → h̄=1.2 的 a_nom/C_⊥
 | `p_d_out` | driver | 誤差基準；12 runs 必須逐點相同 |
 | `p_true_out` | driver（無噪聲真值探針）| **主路誤差** e = p_d − p_true |
 | `p_m_out` | driver | 副路誤差 + 實機預演 |
-| `a_true_out` | driver（新增）| 理論基準 / arm A 輸入 |
+| `a_true_out` | driver（新增）| 理論基準 / a=a_true 輸入 |
 | `diag.a_ctrl_used` | controller（新增）| 接線驗證 |
 | `diag.a_hat`, `diag.x_D_hat`, `diag.gate_active`, `diag.h_bar`, `f_d_out` | 既有 | 估測品質、診斷 |
 
@@ -163,7 +163,7 @@ gate 子窗 mask（確定性，不用 per-seed 的 diag.gate_active）：
 | 窗內 mean / std 分離 | μ_s(w) = mean(ram_s(w))（噪聲整流 bias，單獨成欄）；sd_s(w) = std(ram_s(w)) |
 | 跨 seed 彙整 | mean ± [min, max]（5 seeds）|
 | **A/B ratio（核心輸出）** | ratio_s(w) = sd_B_s(w)/sd_A_s(w)，**同 seed 配對相除**（common random numbers 紅利），報 mean ± range |
-| 平穩性 | W_osc 內每 cycle 一個 std，前後半差 < 20% 為平穩；有趨勢（如 arm B 慢性漂移）標記單列討論 |
+| 平穩性 | W_osc 內每 cycle 一個 std，前後半差 < 20% 為平穩；有趨勢（如 a=â 慢性漂移）標記單列討論 |
 
 ### 6.3 p_m 副路（cross-check + 實機預演）
 
@@ -176,7 +176,7 @@ std_phys_from_pm = sqrt( std(ram_m)² − σ_n² )
 
 驗證：副路還原值與主路（p_true）的相對差 < 2%（soft，z 軸）；超出 = 噪聲注入或時序 bug（Layer 0 的延伸檢查）。z 軸修正量級 ~1%，x/y 可忽略。
 
-### 6.4 a_hat 的同款拆解（arm B 專屬）
+### 6.4 a_hat 的同款拆解（a=â 專屬）
 
 - 系統性：以 **ensemble mean**（5 seeds 的 a_hat 平均曲線）為主對照 a_true；det run 的 a_hat 降為輔助。
   - 原因（與 e 的處理唯一不對稱處）：det run 無噪聲 → σ²_δxr → 0 → Guard 2 全程觸發 → y₂ 關閉，a_hat 走 y₁-only 路徑，與 noisy 平均行為結構不同。
@@ -192,14 +192,14 @@ ram 的 Welch PSD（A/B 頻段分解，銜接 paper Fig.13 式分析）。
 **Layer 0 — 資料完整性（不過不進分析）**
 1. 12 runs（同頻率）`p_d_out` 逐點相等（assert max|Δp_d| = 0）。
 2. 接線斷言（注意時序）：
-   - arm A：`a_ctrl_used[k] ≡ a_true_out[k]`（同記錄點，精確相等）。
-   - arm B：`a_ctrl_used[k] ≡ â_post[k−1]`（控制律用的是進入 step k 時的 persistent 值 = 上一步 posterior；`diag.a_hat[k]` 是本步 posterior，**差一步是正確行為**，斷言按此寫）。
+   - a=a_true：`a_ctrl_used[k] ≡ a_true_out[k]`（同記錄點，精確相等）。
+   - a=â：`a_ctrl_used[k] ≡ â_post[k−1]`（控制律用的是進入 step k 時的 persistent 值 = 上一步 posterior；`diag.a_hat[k]` 是本步 posterior，**差一步是正確行為**，斷言按此寫）。
 3. 發散偵測：h̄_true ≤ 1.001（撞牆）或 |e| > 0.5 μm → 該 run 標 diverged，剔除統計、報告單列。
    - 撞牆時 `calc_correction_functions`（要求 h̄ > 1）會直接 error 中斷模擬：跑批層以 try/catch 包住單一 run，error = diverged（保留已跑出的部分波形供診斷），不讓單一 run 中斷整批。
 
-**Layer 1 — 物理錨點（arm A 對答案）**
-4. arm A det：完美 gain + 無噪聲 ≈ paper 2023 Eq.18 理想閉迴路，e_det 應 ≈ 0。soft gate：W_osc 內 |e_det| 與 A_e < 1 nm；超出即先除錯再談結果。殘餘量 = Eq.17 延遲補償結構極限（本身就是「控制本事」的量測）。
-5. arm A ram vs 理論包絡（V1 閉式，review findings §7.2）：
+**Layer 1 — 物理錨點（a=a_true 對答案）**
+4. a=a_true det：完美 gain + 無噪聲 ≈ paper 2023 Eq.18 理想閉迴路，e_det 應 ≈ 0。soft gate：W_osc 內 |e_det| 與 A_e < 1 nm；超出即先除錯再談結果。殘餘量 = Eq.17 延遲補償結構極限（本身就是「控制本事」的量測）。
+5. a=a_true ram vs 理論包絡（V1 閉式，review findings §7.2）：
 
 ```
 σ²_th,i(t) = C_δx·4k_B·T·a_true,i(t) + (1−λ_c)/(1+λ_c)·σ²_n,i
@@ -216,13 +216,13 @@ z_s[k] = ram_s[k]/σ_th(t_k)；soft gate：std(z_s(W_osc)) ∈ 1 ± 0.15
 
 ## 8. 報告與繪圖
 
-風格：沿用 `make_eq17_6state_figures` 的 EXP/thesis style（role colors、grid off、tiledlayout compact、stats-in-title、legend northoutside）。色彩語意擴充：**True/理論 = 綠、arm B = 紅（沿用 "Estimated"）、arm A = 藍紫**；跨頻率總覽借 `learn_variance/plot_style.m` 三級 sweep palette（藍/橙/紫 = 1/2/5 Hz）。
+風格：沿用 `make_eq17_6state_figures` 的 EXP/thesis style（role colors、grid off、tiledlayout compact、stats-in-title、legend northoutside）。色彩語意擴充：**True/理論 = 綠、a=â = 紅（沿用 "Estimated"）、a=a_true = 藍紫**；跨頻率總覽借 `learn_variance/plot_style.m` 三級 sweep palette（藍/橙/紫 = 1/2/5 Hz）。
 
 每頻率一組：
-1. `fig1_gain_tracking`：a_true vs arm B 的 â（z、x 兩列，套現有 fig1 模板）
+1. `fig1_gain_tracking`：a_true vs a=â 的 â（z、x 兩列，套現有 fig1 模板）
 2. `fig2_det_error`：e_det^A vs e_det^B 疊圖（z 軸，descent/osc 分段 shading）
 3. `fig3_ram_std`：分窗 std bar（A vs B，per axis）+ paired ratio 標註
-4. `fig4_theory_anchor`：arm A normalized ram（z_s）vs 1 ± 0.15 帶
+4. `fig4_theory_anchor`：a=a_true normalized ram（z_s）vs 1 ± 0.15 帶
 跨頻率：
 5. `fig5_freq_overview`：A/B ratio vs frequency（分窗、z 軸為主）
 
@@ -233,13 +233,13 @@ summary.md 主表（每頻率，per axis [x y z]）：
 | det | descent peak、A_e、φ、rms_res、trough bias —— A、B 並列 |
 | ram | 各窗 sd mean ± range（A、B）、paired ratio mean ± range、μ（整流 bias）|
 | 驗證 | Layer 0/1/2 各項 PASS/FLAG、gate duty cycle、diverged run 清單 |
-| 估測 | arm B：â ensemble-mean rel-err（trough/peak）、â ram std |
+| 估測 | a=â：â ensemble-mean rel-err（trough/peak）、â ram std |
 
 ## 9. 風險與 caveats
 
-1. **arm B 在 h̄ = 1.2 可能漂移甚至發散**（已知 near-wall 脆弱區；LF drift audit 的 gate-latched 失錨機制）——這是實驗結果不是實驗失敗；發散偵測保護整批統計。
-2. **arm A 的 EKF model mismatch**：F_e Row 3 推導假設控制用 â；oracle 模式下該假設破。suppress_xD 後 x̂_D 不進迴路，影響只剩診斷信號的解讀（slot 4/5 估計值會偏，屬預期）。
-3. **arm B det run 的 Guard 2 行為**（§6.4）——a_hat 系統性分析以 ensemble mean 為主。
+1. **a=â 在 h̄ = 1.2 可能漂移甚至發散**（已知 near-wall 脆弱區；LF drift audit 的 gate-latched 失錨機制）——這是實驗結果不是實驗失敗；發散偵測保護整批統計。
+2. **a=a_true 的 EKF model mismatch**：F_e Row 3 推導假設控制用 â；true-gain control 模式下該假設破。suppress_xD 後 x̂_D 不進迴路，影響只剩診斷信號的解讀（slot 4/5 估計值會偏，屬預期）。
+3. **a=â det run 的 Guard 2 行為**（§6.4）——a_hat 系統性分析以 ensemble mean 為主。
 4. **quasi-static 理論包絡在 5 Hz 最弱**——Layer 1 是 soft gate 不是 hard gate。
 5. **h_min override 僅限本 scenario**——不動全域預設，避免影響既有 harness。
 
@@ -257,7 +257,7 @@ summary.md 主表（每頻率，per axis [x y z]）：
 | 1 | 向後相容 | 無 override / 無 suppress_xD 時 controller 輸出 bit-identical；`run_eq17_6state_all` h50 PASS 數字不變 |
 | 2 | unit test | `verify_eq17_unit_gain_override_6state` 全 PASS |
 | 3 | Layer 0 | 36 runs assertions 全過（diverged 屬合法結果，單列）|
-| 4 | Layer 1 | arm A det < 1 nm（soft）；arm A normalized ram ∈ 1 ± 0.15（soft）；超出須有書面解釋。5 Hz 預期 FLAG（<2 nm）：近壁 quasi-static 近似殘差隨頻率增長，不影響 stochastic anchor（Layer 1 ram 檢查仍 PASS）。 |
+| 4 | Layer 1 | a=a_true det < 1 nm（soft）；a=a_true normalized ram ∈ 1 ± 0.15（soft）；超出須有書面解釋。5 Hz 預期 FLAG（<2 nm）：近壁 quasi-static 近似殘差隨頻率增長，不影響 stochastic anchor（Layer 1 ram 檢查仍 PASS）。 |
 
 ---
 
@@ -267,7 +267,7 @@ summary.md 主表（每頻率，per axis [x y z]）：
 
 Round 1 執行中經使用者質疑後修正的設計，git 歷史 905a1d8 / c6f17f4 / e5d4060 / 2a3c131：
 
-1. **det 萃取改 ensemble 法**：noise-free det run 對 arm B 無效（無噪聲下 Guard 2 latch → y₂ 關 → â 走 y₁-only 路徑，與 noisy 行為結構不同；crossval 實證 z 系統差 26–28 nm rms @2/5Hz）。det := 跨 seed 逐時刻平均。**不對稱參考（使用者核准）**：arm A 用 noise-free run（對 A 有效且精確）、arm B 用 ensemble。§6.1 的 det run 表、§8 圖組對 arm B 部分被此取代。
+1. **det 萃取改 ensemble 法**：noise-free det run 對 a=â 無效（無噪聲下 Guard 2 latch → y₂ 關 → â 走 y₁-only 路徑，與 noisy 行為結構不同；crossval 實證 z 系統差 26–28 nm rms @2/5Hz）。det := 跨 seed 逐時刻平均。**不對稱參考（使用者核准）**：a=a_true 用 noise-free run（對 A 有效且精確）、a=â 用 ensemble。§6.1 的 det run 表、§8 圖組對 a=â 部分被此取代。
 2. **ram v2**：以 ensemble det 為參考重算（v1 的 ratio 1.6–1.7 是 det 洩漏 artifact；v2 headline：osc ≈ 1.0，超額僅 gate-on）。自減緊縮以 /(1−1/Ns) 精確補償。
 3. **seeds 5 → 20**（Round 1 生產批實際為 20）。
 4. **圖組重做**：§8 的 fig1–fig5 退役，改為 fig_traj_det / fig_traj_ram / fig_det_err 三張（git 12f6994 起）。
@@ -275,7 +275,7 @@ Round 1 執行中經使用者質疑後修正的設計，git 歷史 905a1d8 / c6f
 
 ### 12.1 Round 2 模擬配置（單一配置：B′ gate-free）
 
-只跑一組配置，輸出 `test_results/gain_oracle_ab_nogate/f<freq>Hz/`（不覆蓋既有資料）：
+只跑一組配置，輸出 `test_results/gain_compare/f<freq>Hz/`（不覆蓋既有資料）：
 
 | 項目 | Round 1 值 | Round 2 值 |
 |---|---|---|
@@ -301,18 +301,18 @@ W_desc  = [0.5, 1.5] s
 discard = [1.5, 1.5 + 1/f] s          （第 1 週期暫態）
 W_osc   = [1.5 + 1/f, 3.5] s          （1 Hz: 1 cycle；5 Hz: 9；10 Hz: 19）
 W_tail  = [3.5, 4.0] s                 （hold at h̄ = 1.2，觀察用）
-gate 子窗 mask：照 §6 用 h̄_d < 1.5 幾何定義（gate-free 下仍是有意義的「近壁/遠壁」分窗，沿用名稱 gon/goff）
+gate 子窗 mask：照 §6 用 h̄_d < 1.5 幾何定義（gate-free 下仍是有意義的「近壁/遠壁」分窗，沿用名稱 near/far）
 ```
 
 ### 12.3 分析升級（既有 pipeline 上的四項）
 
 1. **A2 — SEM 誤差棒**：所有跨 seed 彙整統計從 `mean [min, max]` 升級為 `mean ± SEM [min, max]`（SEM = 跨 seed std/√N）；paired ratio 同樣逐 seed 配對後報 mean ± SEM。
 2. **x_ram 直取**：det_x ≡ 0（鏡射對稱，Round 1 雙重實證）→ x 軸 ram 直接用 x 本身，不做 ensemble 減法、無 deflation 修正；z 軸照 ensemble 法。
-3. **A1 — Q55 閉式近壁動態首驗**：用 arm A 的 a_true stack（100 seeds）做逐 seed ram = a_true_s − mean_s(a_true)，分窗驗**兩個量**（eq17_6state_review_findings.md §8.1 三層鏈）：
+3. **A1 — Q55 閉式近壁動態首驗**：用 a=a_true 的 a_true stack（100 seeds）做逐 seed ram = a_true_s − mean_s(a_true)，分窗驗**兩個量**（eq17_6state_review_findings.md §8.1 三層鏈）：
    - **Level**：Var(a_ram) vs 閉式 `C_δx·(a·K_h/R)²·σ²_δh`（鏈 A+B）
    - **Increment（= Q55 本體）**：Var(δa_ram)（一步差分）vs 閉式 `[2/(1+λ_c)]·(a·K_h/R)²·σ²_δh`（鏈 C，C_δx 與 (1−ρ₁) 對消）
    - σ²_δh = 4k_B·T·a（per-step thermal kick）；理論逐點算（a、K_h 沿 h̄_d）再窗內平均。輸出 ratio 表進 summary。先前僅 h=50 靜態驗過（emp/closed = 0.998–1.001）。
-4. **A3 — desc 窗 â 統計**：summary 的 arm B gain estimation 區塊補 desc 窗（â ensemble-mean rel-err + â ram std），與 osc/gon/goff 並列。
+4. **A3 — desc 窗 â 統計**：summary 的 a=â gain estimation 區塊補 desc 窗（â ensemble-mean rel-err + â ram std），與 osc/near/far 並列。
 
 ### 12.4 新圖 1 — 三層 gain 對比（`fig_gain_compare`）
 
@@ -334,7 +334,7 @@ x/z 兩列，每列三條曲線：
 
 ```
 理論：σ²_th,i(t) = C_δx·4k_B·T·a_pd,i(t) + C_n_fb·σ²_n,i      （沿期望軌跡，確定性）
-實測 ×2：arm A、arm B 的逐時刻 ensemble var
+實測 ×2：a=a_true、a=â 的逐時刻 ensemble var
   z 軸：var_s over seeds of ram_v2(t_k)，× 1/(1−1/N) deflation 補償
   x 軸：var over seeds of x(t_k)（直取，無補償）
 ```
