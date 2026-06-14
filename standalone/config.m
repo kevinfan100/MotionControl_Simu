@@ -10,15 +10,12 @@ function [params, cfg] = config(scenario, overrides)
 %               fields (any subset; empty values ignored):
 %                   .lambda_c .a_pd .a_cov   controller / IIR poles
 %                   .meas_noise .thermal     logical on/off
-%                   .T_sim                   run length [sec]; for the ramp
-%                                            it also auto-fits the descent
-%                                            rate so the ramp still ends at
-%                                            h_bottom exactly at T_sim
 %               Scenario GEOMETRY (h_init / h_bottom / h_min / trajectory
-%               type) is fixed by the scenario name and is NOT overridable
-%               here. Overrides are applied to the scalar tunables BEFORE
-%               the params builder, so the RNG contract below (exactly two
-%               randi draws, fixed order) is unaffected.
+%               type) and TIMING (T_sim, t_hold) are fixed by the scenario
+%               name and are NOT overridable here. Overrides are applied to
+%               the scalar tunables BEFORE the params builder, so the RNG
+%               contract below (exactly two randi draws, fixed order) is
+%               unaffected.
 %
 %   This file is THE place a human edits. It replaces the mother repo's
 %   user_config + calc_simulation_params chain with fully explicit values
@@ -95,15 +92,13 @@ function [params, cfg] = config(scenario, overrides)
     % Apply main_run overrides (PACKAGING_PLAN 9a) to the scalar tunables
     % only -- this happens BEFORE the params builder, so the two randi
     % draws below stay in the same place and order (RNG contract intact).
-    % T_sim is written into sc so it flows into both cfg.T_sim (run length)
-    % and params.common.T_sim (ramp descent rate auto-fits).
+    % Scenario geometry AND timing are not overridable here (see header).
     % ------------------------------------------------------------------
     if isfield(overrides, 'lambda_c')   && ~isempty(overrides.lambda_c);   lambda_c      = overrides.lambda_c;             end
     if isfield(overrides, 'a_pd')       && ~isempty(overrides.a_pd);       a_pd          = overrides.a_pd;                 end
     if isfield(overrides, 'a_cov')      && ~isempty(overrides.a_cov);      a_cov         = overrides.a_cov;                end
     if isfield(overrides, 'meas_noise') && ~isempty(overrides.meas_noise); meas_noise_on = logical(overrides.meas_noise); end
     if isfield(overrides, 'thermal')    && ~isempty(overrides.thermal);    thermal_on    = logical(overrides.thermal);     end
-    if isfield(overrides, 'T_sim')      && ~isempty(overrides.T_sim);      sc.T_sim      = overrides.T_sim;                end
 
     % ==================================================================
     % params builder -- block order REPLICATES calc_simulation_params

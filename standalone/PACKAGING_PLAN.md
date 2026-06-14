@@ -74,11 +74,13 @@ gate 定義以此為準。逐部分的決定紀錄在 [DECISIONS.md](DECISIONS.m
 
 ## 5. 三段式流程與狀態
 
-> **⏩ 從這裡接續（2026-06-14, HEAD = `pack(9a)`, 待 push）— 8 部分全部 DONE + §9a DONE**
-> **§9a（main_run 腳本化 + 8 旋鈕設定區塊 + config overrides + .mat 存檔）已實作並驗證
-> （checkcode 0 / verify_9a 8/8 / main_run 端到端 / gates_part4 regression / reviewer 無 BLOCKER），
-> 走讀簽收待使用者確認。下一步 = §9c 使用者主導討論：(1) 軌跡怎麼設定 (2) 最後輸出的圖 →
-> 然後 §9b 交付結構 + §9d 剪臍帶。**
+> **⏩ 從這裡接續（2026-06-14, HEAD = `pack(9a2)`, 待 push）— 8 部分全部 DONE + §9a DONE**
+> **§9a（main_run 腳本化 + config overrides + .mat 存檔）已實作並驗證。最終露出 6 旋鈕：
+> scenario / lambda_c / a_pd / a_cov / meas_noise / thermal（+3 輕量 assert）；seed 自動隨機
+> 內部化（run_simulation，記 out.meta.seed）；T_sim 移除（軌跡時間歸 §9c）；meas_noise_std 留 config。
+> 驗證：checkcode 0 / verify_9a·9a2 各 8/8 / main_run 端到端隨機 seed / gates_part4 regression /
+> reviewer 兩輪無 BLOCKER。走讀簽收待使用者確認。下一步 = §9c 使用者主導討論：(1) 軌跡怎麼設定
+> (2) 最後輸出的圖 → 然後 §9b 交付結構 + §9d 剪臍帶。**
 > 部分 1–7 全部 DONE（走讀簽收陸續補確認，不影響接續）。controller_6state.m 是**完整
 > EKF + Q/R**，已對母 repo 證明 rounding-floor 等價（h50/h10 ~3 ulps；唯一差異 = 近壁
 > h̄<1.5 的 a_hat，L2 邊界）。git 全乾淨,7 個 gate 檔(part1–7)全 PASS。**下一步 = 部分 8
@@ -226,12 +228,20 @@ P(5,5) 修正 / mean-reverting gain）、6-state observability rank test、Simul
 
 ### 9a. main_run 改「腳本 + 頂部設定區塊」（使用者要求：在 code 裡改、不用指令）— **DONE 2026-06-14（走讀簽收待確認）**
 
-實作摘要（commit `pack(9a)`）：main_run 改 SCRIPT + 8 旋鈕；config 加選用 `overrides` 第二參數
-（在 params builder 前套用，RNG 合約不動）；run_simulation 加 `opts.overrides` 轉傳；T_sim 走
-config override（同時影響 cfg.T_sim 與 ramp 降速）；seed=[] → `rng('shuffle')` 隨機並印出；
-每跑存 `out`+`settings` 到 `.mat`（save 在畫圖前）。驗證全過（verify_9a 8/8、main_run 端到端、
-gates_part4 regression、reviewer 無 BLOCKER、八 invariant CONFIRMED）。詳見 DECISIONS.md。
-原始設計如下：
+實作摘要（commits `pack(9a)` + `pack(9a2)`，最終狀態）：main_run 改 SCRIPT；config 加選用
+`overrides` 第二參數（在 params builder 前套用 → RNG 合約「恰兩個 randi、順序不變」不動）；
+run_simulation 加 `opts.overrides` 轉傳。**最終露出 6 個旋鈕**：scenario / lambda_c / a_pd /
+a_cov / meas_noise / thermal（main_run 加 3 個輕量 assert 守 λc∈(0,1)、a_pd·a_cov∈(0,1]）。
+**seed 不是旋鈕**：run_simulation 沒給 seed 時 `rng('shuffle')` 自動隨機並記在 out.meta.seed
+（main_run 印出 + 寫進 .mat 檔名）；重現某次跑用 `run_simulation(scn, struct('seed',N))`。
+**T_sim 不是旋鈕**：軌跡時間由 scenario 固定（歸 §9c）。每跑存 `out`+`settings` 到 `.mat`
+（save 在畫圖前，畫圖失敗不丟結果）。驗證全過（verify_9a/9a2 各 8/8、main_run 端到端隨機 seed、
+gates_part4 regression、reviewer 兩輪無 BLOCKER、invariant 全 CONFIRMED）。詳見 DECISIONS.md。
+
+> ⚠ 下方「原始設計」是 9a 初稿,其中 `seed`／`T_sim` 兩旋鈕已於 9a2 移除（seed 自動隨機內部化、
+> T_sim 由 scenario 固定），其餘設計不變。**以上「實作摘要」為準。**
+
+原始設計如下（部分 supersede，見上）：
 
 
 main_run 改成 SCRIPT，頂部一個「模擬設定」區塊，使用者改值按 Run，不打指令、不進 config。

@@ -5,17 +5,17 @@ function out = run_simulation(scenario, opts)
 %   out = run_simulation(scenario, opts)
 %
 %   scenario : 'h50' | 'h10' | 'ramp2p7'   (see config.m)
-%   opts     : .seed (default 42), .verbose (default false),
+%   opts     : .seed (default [] = auto-random, picked via rng('shuffle')
+%               and recorded in out.meta.seed; pass an integer to reproduce
+%               a specific run), .verbose (default false),
 %              .ctrl_enable_override (default [] = use config value),
 %              .overrides (default struct() = none; forwarded to config as
 %               its 2nd arg -- the main_run settings block uses this to set
-%               lambda_c / a_pd / a_cov / meas_noise / thermal / T_sim),
+%               lambda_c / a_pd / a_cov / meas_noise / thermal),
 %              .T_sim (default [] = scenario value; gate scripts use
-%               shorter runs -- note the ramp rate is set by the
-%               SCENARIO T_sim in config.m, so a shorter opts.T_sim
-%               truncates the descent rather than rescaling it. Prefer
-%               opts.overrides.T_sim, which auto-fits the ramp; if both are
-%               given opts.T_sim wins for the loop length.)
+%               shorter runs -- note the ramp rate is set by the SCENARIO
+%               T_sim in config.m, so a shorter opts.T_sim truncates the
+%               descent rather than rescaling it)
 %
 %   Two-rate structure (mirrors the mother repo / Simulink model):
 %       1600 Hz  discrete: trajectory, controller, thermal sample,
@@ -45,7 +45,10 @@ function out = run_simulation(scenario, opts)
 
     if nargin < 1 || isempty(scenario); scenario = 'h50'; end
     if nargin < 2 || isempty(opts); opts = struct(); end
-    if ~isfield(opts, 'seed');    opts.seed    = 42;    end
+    if ~isfield(opts, 'seed') || isempty(opts.seed)
+        rng('shuffle');                 % time-based, only to PICK a seed
+        opts.seed = randi(2^31 - 1);    % auto-random; recorded in out.meta.seed
+    end
     if ~isfield(opts, 'verbose'); opts.verbose = false; end
     if ~isfield(opts, 'ctrl_enable_override'); opts.ctrl_enable_override = []; end
     if ~isfield(opts, 'overrides'); opts.overrides = struct(); end

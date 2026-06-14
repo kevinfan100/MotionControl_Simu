@@ -6,6 +6,10 @@
 %   tracking summary is printed, the two verification figures are saved, and
 %   `out` is written to a .mat file.
 %
+%   The RNG seed is auto-random each run and printed/saved (out.meta.seed).
+%   To reproduce a specific run, call run_simulation directly with its seed:
+%       out = run_simulation('h50', struct('seed', 123456789));
+%
 %   For the quantitative 3-scenario PASS gate use verify_standalone; for the
 %   per-part fidelity gates run test/gates_part1..7.
 %
@@ -15,48 +19,43 @@
 %  SIMULATION SETTINGS  --  edit these, then press Run
 % ----------------------------------------------------------------------
 scenario   = 'h50';   % 'h50' | 'h10' | 'ramp2p7'      (scenario geometry)
-seed       = [];      % [] = random (printed below); or a fixed integer
-T_sim      = [];      % [] = scenario default [sec]; or a number of seconds
 lambda_c   = 0.7;     % closed-loop pole          (0 < lambda_c < 1)
-a_pd       = 0.05;    % IIR mean-EWMA pole        (measurement chain)
-a_cov      = 0.05;    % IIR variance-EWMA pole    (measurement chain)
+a_pd       = 0.05;    % IIR mean-EWMA pole        (0 < a_pd <= 1)
+a_cov      = 0.05;    % IIR variance-EWMA pole    (0 < a_cov <= 1)
 meas_noise = true;    % sensor measurement noise  (on/off)
 thermal    = true;    % thermal (Brownian) force  (on/off)
 % ----------------------------------------------------------------------
 %  Not exposed here (edit config.m if you must): physical constants
-%  (R / gamma_N / Ts / kBT), sensor delay d = 2, wall orientation, t_hold,
-%  per-axis measurement-noise std, and the scenario geometry (h_init /
-%  h_bottom). Trajectory shape and the output figures are revisited in a
-%  later packaging step (PACKAGING_PLAN 9c).
+%  (R / gamma_N / Ts / kBT), sensor delay d = 2, wall orientation, the
+%  scenario geometry (h_init / h_bottom) and timing (T_sim / t_hold), and
+%  the per-axis measurement-noise std. The RNG seed is auto-random each run
+%  (printed and saved below). Trajectory shape and the output figures are
+%  revisited in a later packaging step (PACKAGING_PLAN 9c).
 % ======================================================================
 
-% --- resolve a random seed if none was given (reproducible once printed) ---
-if isempty(seed)
-    rng('shuffle');               % time-based, only to PICK the seed
-    seed = randi(2^31 - 1);
-end
-seed = double(seed);              % accept an integer literal; reject junk early
-assert(isscalar(seed) && isreal(seed) && seed >= 0 && seed == floor(seed), ...
-       'main_run:badSeed', 'seed must be [] or a nonnegative integer.');
+% --- validate the user-facing tunables (a clear error beats a silent diverge)
+assert(lambda_c > 0 && lambda_c < 1, 'main_run:lambda_c', 'lambda_c must be in (0,1).');
+assert(a_pd  > 0 && a_pd  <= 1, 'main_run:a_pd',  'a_pd must be in (0,1].');
+assert(a_cov > 0 && a_cov <= 1, 'main_run:a_cov', 'a_cov must be in (0,1].');
 
 % --- add package folders to the path ---
 here = fileparts(mfilename('fullpath'));
 addpath(here, fullfile(here, 'physics'), fullfile(here, 'sim'), fullfile(here, 'test'));
 
-% --- collect the settings into config overrides (geometry stays in config) ---
+% --- collect the settings into config overrides (geometry/timing stay in config) ---
 overrides = struct('lambda_c', lambda_c, 'a_pd', a_pd, 'a_cov', a_cov, ...
                    'meas_noise', meas_noise, 'thermal', thermal);
-if ~isempty(T_sim); overrides.T_sim = T_sim; end
+opts = struct('overrides', overrides);   % no seed -> run_simulation auto-randomizes
 
-opts = struct('seed', seed, 'overrides', overrides);
-
-fprintf(['[main_run] scenario=%s  seed=%d  lambda_c=%.3g  a_pd=%.3g  ' ...
-         'a_cov=%.3g  meas_noise=%d  thermal=%d\n'], ...
-        scenario, seed, lambda_c, a_pd, a_cov, meas_noise, thermal);
+fprintf(['[main_run] scenario=%s  lambda_c=%.3g  a_pd=%.3g  a_cov=%.3g  ' ...
+         'meas_noise=%d  thermal=%d\n'], ...
+        scenario, lambda_c, a_pd, a_cov, meas_noise, thermal);
 
 % --- run the closed loop ---
-out = run_simulation(scenario, opts);
-fprintf('[main_run] T_sim = %.3g s  (%d steps)\n', out.meta.T_run, numel(out.tout));
+out  = run_simulation(scenario, opts);
+seed = out.meta.seed;                     % the auto-random seed actually used
+fprintf('[main_run] seed=%d  T_sim=%.3g s  (%d steps)\n', ...
+        seed, out.meta.T_run, numel(out.tout));
 
 % --- physics ground-truth gain from the noise-free probe ---
 p = out.meta.params;
@@ -76,7 +75,9 @@ if ~exist(out_dir, 'dir'); mkdir(out_dir); end
 
 % --- save the run FIRST, so a later plotting error cannot lose the result
 %     (this is the gap 9a closes: results used to vanish after the run).
-%     The .mat name is scenario+seed, so a fixed-seed re-run overwrites it.
+%     The .mat name is scenario+seed; with the auto-random seed each run
+%     leaves a distinct file (overwrite only if run_simulation is called
+%     directly with a repeated seed).
 settings = struct('scenario', scenario, 'seed', seed, 'T_sim', out.meta.T_run, ...
                   'lambda_c', lambda_c, 'a_pd', a_pd, 'a_cov', a_cov, ...
                   'meas_noise', meas_noise, 'thermal', thermal);

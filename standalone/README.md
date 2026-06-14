@@ -55,19 +55,20 @@ values and press Run (no command-line arguments):
 ```matlab
 % --- in main_run.m, the SIMULATION SETTINGS block ---
 scenario   = 'h50';   % 'h50' | 'h10' | 'ramp2p7'
-seed       = [];      % [] = random (printed); or a fixed integer
-T_sim      = [];      % [] = scenario default [sec]; or a number
-lambda_c   = 0.7;     % closed-loop pole
-a_pd       = 0.05;    % IIR mean-EWMA pole
-a_cov      = 0.05;    % IIR variance-EWMA pole
+lambda_c   = 0.7;     % closed-loop pole          (0 < lambda_c < 1)
+a_pd       = 0.05;    % IIR mean-EWMA pole        (0 < a_pd <= 1)
+a_cov      = 0.05;    % IIR variance-EWMA pole    (0 < a_cov <= 1)
 meas_noise = true;    % sensor noise on/off
 thermal    = true;    % thermal force on/off
 ```
 
 Running it prints a tracking summary, saves the two figures, leaves the
 result struct `out` in the workspace, and writes `out` to a `.mat` file.
-Scenario geometry (h_init / h_bottom) and the unexposed constants live in
-`config.m`.
+The RNG seed is **auto-random each run** and printed/saved
+(`out.meta.seed`); to reproduce a specific run, call
+`run_simulation('h50', struct('seed', N))` with the printed seed. Scenario
+geometry (h_init / h_bottom), timing (T_sim / t_hold), and the unexposed
+constants live in `config.m`.
 
 ```matlab
 verify_standalone        % all 3 scenarios; h50 carries the quantitative PASS gate
