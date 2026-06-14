@@ -74,8 +74,11 @@ gate 定義以此為準。逐部分的決定紀錄在 [DECISIONS.md](DECISIONS.m
 
 ## 5. 三段式流程與狀態
 
-> **⏩ 從這裡接續（2026-06-14, HEAD = `pack(9)`, 已 push origin）— 8 部分全部 DONE**
-> **下一步 = §9a main_run 改腳本+設定區塊（清單已定案見 §9）→ §9c 軌跡/圖討論 → §9d 剪臍帶。**
+> **⏩ 從這裡接續（2026-06-14, HEAD = `pack(9a)`, 待 push）— 8 部分全部 DONE + §9a DONE**
+> **§9a（main_run 腳本化 + 8 旋鈕設定區塊 + config overrides + .mat 存檔）已實作並驗證
+> （checkcode 0 / verify_9a 8/8 / main_run 端到端 / gates_part4 regression / reviewer 無 BLOCKER），
+> 走讀簽收待使用者確認。下一步 = §9c 使用者主導討論：(1) 軌跡怎麼設定 (2) 最後輸出的圖 →
+> 然後 §9b 交付結構 + §9d 剪臍帶。**
 > 部分 1–7 全部 DONE（走讀簽收陸續補確認，不影響接續）。controller_6state.m 是**完整
 > EKF + Q/R**，已對母 repo 證明 rounding-floor 等價（h50/h10 ~3 ulps；唯一差異 = 近壁
 > h̄<1.5 的 a_hat，L2 邊界）。git 全乾淨,7 個 gate 檔(part1–7)全 PASS。**下一步 = 部分 8
@@ -221,7 +224,15 @@ P(5,5) 修正 / mean-reverting gain）、6-state observability rank test、Simul
 
 8 部分全部 DONE（pack(0)–pack(9)，已 push origin）。剩餘工作分三塊，**尚未實作**：
 
-### 9a. main_run 改「腳本 + 頂部設定區塊」（使用者要求：在 code 裡改、不用指令）
+### 9a. main_run 改「腳本 + 頂部設定區塊」（使用者要求：在 code 裡改、不用指令）— **DONE 2026-06-14（走讀簽收待確認）**
+
+實作摘要（commit `pack(9a)`）：main_run 改 SCRIPT + 8 旋鈕；config 加選用 `overrides` 第二參數
+（在 params builder 前套用，RNG 合約不動）；run_simulation 加 `opts.overrides` 轉傳；T_sim 走
+config override（同時影響 cfg.T_sim 與 ramp 降速）；seed=[] → `rng('shuffle')` 隨機並印出；
+每跑存 `out`+`settings` 到 `.mat`（save 在畫圖前）。驗證全過（verify_9a 8/8、main_run 端到端、
+gates_part4 regression、reviewer 無 BLOCKER、八 invariant CONFIRMED）。詳見 DECISIONS.md。
+原始設計如下：
+
 
 main_run 改成 SCRIPT，頂部一個「模擬設定」區塊，使用者改值按 Run，不打指令、不進 config。
 config.m 仍是完整參數定義 + 預設；main_run 頂部的覆蓋值透過「config 多接受一個 overrides 參數」

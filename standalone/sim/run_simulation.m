@@ -7,10 +7,15 @@ function out = run_simulation(scenario, opts)
 %   scenario : 'h50' | 'h10' | 'ramp2p7'   (see config.m)
 %   opts     : .seed (default 42), .verbose (default false),
 %              .ctrl_enable_override (default [] = use config value),
+%              .overrides (default struct() = none; forwarded to config as
+%               its 2nd arg -- the main_run settings block uses this to set
+%               lambda_c / a_pd / a_cov / meas_noise / thermal / T_sim),
 %              .T_sim (default [] = scenario value; gate scripts use
 %               shorter runs -- note the ramp rate is set by the
 %               SCENARIO T_sim in config.m, so a shorter opts.T_sim
-%               truncates the descent rather than rescaling it)
+%               truncates the descent rather than rescaling it. Prefer
+%               opts.overrides.T_sim, which auto-fits the ramp; if both are
+%               given opts.T_sim wins for the loop length.)
 %
 %   Two-rate structure (mirrors the mother repo / Simulink model):
 %       1600 Hz  discrete: trajectory, controller, thermal sample,
@@ -43,6 +48,7 @@ function out = run_simulation(scenario, opts)
     if ~isfield(opts, 'seed');    opts.seed    = 42;    end
     if ~isfield(opts, 'verbose'); opts.verbose = false; end
     if ~isfield(opts, 'ctrl_enable_override'); opts.ctrl_enable_override = []; end
+    if ~isfield(opts, 'overrides'); opts.overrides = struct(); end
     if ~isfield(opts, 'T_sim');   opts.T_sim   = [];    end
 
     % ------------------------------------------------------------------
@@ -55,7 +61,7 @@ function out = run_simulation(scenario, opts)
     % ------------------------------------------------------------------
     % 2. Build params (explicit, no presets)
     % ------------------------------------------------------------------
-    [params, cfg] = config(scenario);
+    [params, cfg] = config(scenario, opts.overrides);
     if ~isempty(opts.ctrl_enable_override)
         params.ctrl.enable = double(opts.ctrl_enable_override);
     end

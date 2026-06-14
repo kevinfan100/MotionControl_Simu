@@ -49,10 +49,27 @@ in real time the position-dependent mobility a_x(h)?
 
 ## 2. How to run
 
-```matlab
-main_run                 % h50 positioning, seed 42, prints tracking, saves 2 figures
-main_run('ramp2p7')      % ramp 50 -> 2.7 um (h_bar 22 -> 1.2)
+`main_run.m` is a **script with a settings block at the top** — edit the
+values and press Run (no command-line arguments):
 
+```matlab
+% --- in main_run.m, the SIMULATION SETTINGS block ---
+scenario   = 'h50';   % 'h50' | 'h10' | 'ramp2p7'
+seed       = [];      % [] = random (printed); or a fixed integer
+T_sim      = [];      % [] = scenario default [sec]; or a number
+lambda_c   = 0.7;     % closed-loop pole
+a_pd       = 0.05;    % IIR mean-EWMA pole
+a_cov      = 0.05;    % IIR variance-EWMA pole
+meas_noise = true;    % sensor noise on/off
+thermal    = true;    % thermal force on/off
+```
+
+Running it prints a tracking summary, saves the two figures, leaves the
+result struct `out` in the workspace, and writes `out` to a `.mat` file.
+Scenario geometry (h_init / h_bottom) and the unexposed constants live in
+`config.m`.
+
+```matlab
 verify_standalone        % all 3 scenarios; h50 carries the quantitative PASS gate
 verify_standalone('h50') % single scenario
 
