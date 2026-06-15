@@ -4,7 +4,7 @@ function out = run_simulation(scenario, opts)
 %   out = run_simulation(scenario)
 %   out = run_simulation(scenario, opts)
 %
-%   scenario : 'h50' | 'h10' | 'ramp2p7'   (see config.m)
+%   scenario : 'h50' | 'h10' | 'osc1hz'   (see config.m)
 %   opts     : .seed (default [] = auto-random, picked via rng('shuffle')
 %               and recorded in out.meta.seed; pass an integer to reproduce
 %               a specific run), .verbose (default false),

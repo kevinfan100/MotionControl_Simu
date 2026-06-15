@@ -5,9 +5,9 @@ function gates_part2()
 %       G1  config() params vs calc_simulation_params field-by-field,
 %           INCLUDING the two randi-derived seeds (meas_noise_seed,
 %           thermal.seed) under the same rng precondition -- proves the
-%           RNG consumption order is replicated. (h50 + ramp2p7)
+%           RNG consumption order is replicated. (h50 + h10 + osc1hz)
 %       G2  trajectory_ref vs trajectory_generator bit-exact over the
-%           full time grid (positioning + ramp), same params fed to both.
+%           full time grid (positioning + osc), same params fed to both.
 %       G3  OPEN-LOOP full simulation bit-exact: standalone run_simulation
 %           vs mother run_pure_simulation, ctrl off, same seed. Compares
 %           p_m / p_true / F_th / p_d / f_d time series (max|diff| = 0).
@@ -15,8 +15,8 @@ function gates_part2()
 %           cross-wiring), then restored.
 %
 %   Theory gates:
-%       T1  ramp trajectory shape: p_d starts at p0, h(t) slope
-%           -(h_init-h_bottom)/T_sim, monotone, reaches h_bottom.
+%       T1  osc trajectory shape: 4-phase hold -> cosine descent -> 1 Hz
+%           osc (trough h_bottom, peak h_bottom+2A) -> hold.
 %       T2  open-loop Brownian increments of p_true vs closed form
 %           4*kBT*Ts/(gamma*c_axis) (first 1600 steps, h_bar ~ const).
 %       T3  measurement-noise injection: std(p_m - p_true) vs
@@ -44,14 +44,15 @@ function gates_part2()
     addpath(mo_dirs{:});
 
     % ================= G1: params equality (incl. derived seeds) =========
-    for sc = {{'h50', 'positioning', 50, 50, 5, 1.5*2.25}, ...
-              {'h10', 'positioning', 10, 10, 5, 1.5*2.25}, ...
-              {'ramp2p7', 'ramp_descent', 50, 1.2*2.25, 20, 1.2*2.25}}
+    osc_g1 = struct('amplitude', 2.5, 'frequency', 1, 'n_cycles', 2, 't_descend', 1.0);
+    for sc = {{'h50', 'positioning', 50, 50, 4, 1.5*2.25, []}, ...
+              {'h10', 'positioning', 10, 10, 4, 1.5*2.25, []}, ...
+              {'osc1hz', 'osc', 50, 1.2*2.25, 4, 1.2*2.25, osc_g1}}
         s = sc{1};
         rng(1);
         params_sa = config(s{1});
         rng(1);
-        cm = local_mother_config(s{2}, s{3}, s{4}, s{5}, s{6});
+        cm = local_mother_config(s{2}, s{3}, s{4}, s{5}, s{6}, s{7});
         Pm = calc_simulation_params(cm);
         Pm = Pm.Value;
 
@@ -79,10 +80,10 @@ function gates_part2()
                    'G1 %s: common.T_sim mismatch', s{1});
         end
     end
-    fprintf('G1 PASS  config() == calc_simulation_params (h50 + h10 + ramp2p7, incl. both randi seeds)\n');
+    fprintf('G1 PASS  config() == calc_simulation_params (h50 + h10 + osc1hz, incl. both randi seeds)\n');
 
     % ================= G2: trajectory bit-exact =================
-    for scn = {'h50', 'h10', 'ramp2p7'}
+    for scn = {'h50', 'h10', 'osc1hz'}
         rng(2); params_sa = config(scn{1});
         Ts = params_sa.common.Ts;
         N = round(params_sa.common.T_sim / Ts) + 1;
@@ -94,7 +95,7 @@ function gates_part2()
         for k = 1:N, [pd_o(:, k), do_(:, k)] = trajectory_generator((k-1)*Ts, params_sa); end
         assert(isequal(pd_n, pd_o) && isequal(dn, do_), 'G2 %s mismatch', scn{1});
     end
-    fprintf('G2 PASS  trajectory_ref bit-exact (positioning + ramp, full grid)\n');
+    fprintf('G2 PASS  trajectory_ref bit-exact (positioning + osc, full grid)\n');
 
     % ================= G3: open-loop full-sim bit-exact =================
     % Symmetric path isolation: each side runs with ONLY its own dirs on
@@ -105,7 +106,7 @@ function gates_part2()
     addpath(mo_dirs{:});
 
     rmpath(sa_dirs{:});
-    cm = local_mother_config('positioning', 50, 50, 5, 1.5*2.25);
+    cm = local_mother_config('positioning', 50, 50, 4, 1.5*2.25);
     cm.ctrl_enable = false;
     out_mo = run_pure_simulation(cm, struct('seed', seed_g3));
     addpath(sa_dirs{:});
@@ -116,23 +117,26 @@ function gates_part2()
     end
     fprintf('G3 PASS  open-loop full sim bit-exact vs mother (h50, seed %d, all series)\n', seed_g3);
 
-    % ================= T1: ramp trajectory shape =================
-    % (trajectory_ref returns p_d[k+1], so the first sample is h(0+Ts),
-    %  one step below h_init -- the asserts below use that semantics)
-    rng(3); params_sa = config('ramp2p7');
+    % ================= T1: osc trajectory shape =================
+    % 4-phase: hold @ h_init -> cosine descent -> 1 Hz osc (trough h_bottom,
+    % peak h_bottom + 2A) -> hold @ h_bottom. (trajectory_ref returns
+    % p_d[k+1]; the first sample h(Ts) is still inside the hold phase.)
+    rng(3); params_sa = config('osc1hz');
     Ts = params_sa.common.Ts;
     N = round(params_sa.common.T_sim / Ts) + 1;
     clear trajectory_ref;
     pd = zeros(3, N);
     for k = 1:N, pd(:, k) = trajectory_ref((k-1)*Ts, params_sa); end
-    h = pd(3, :);                                       % w_hat = [0;0;1], pz = 0
-    rate = (50 - 2.7) / params_sa.common.T_sim;
-    assert(abs(h(1) - (50 - rate*Ts)) < 1e-12, 'T1 first sample');
-    assert(all(diff(h) <= 1e-12), 'T1 monotone');
-    assert(abs(h(end) - 2.7) < 1e-9, 'T1 endpoint h_bottom');
-    mid = round(N/2);
-    assert(abs((h(mid) - h(1))/((mid-1)*Ts) + rate) < 1e-9, 'T1 slope');
-    fprintf('T1 PASS  ramp shape (slope %.4g um/s, endpoint h = 2.7 um)\n', -rate);
+    h  = pd(3, :);                                      % w_hat = [0;0;1], pz = 0
+    A  = params_sa.traj.amplitude; hb = params_sa.traj.h_bottom;
+    hi = params_sa.traj.h_init;
+    n_osc0 = round((params_sa.traj.t_hold + params_sa.traj.t_descend_override) / Ts);
+    h_osc  = h(n_osc0+1:end);
+    assert(abs(h(1) - hi) < 1e-12, 'T1 hold at h_init (%.4f)', h(1));
+    assert(abs(min(h) - hb) < 0.05, 'T1 trough h_bottom (min %.4f)', min(h));
+    assert(abs(max(h_osc) - (hb + 2*A)) < 0.05, 'T1 osc peak h_bottom+2A (%.4f)', max(h_osc));
+    assert(abs(h(end) - hb) < 1e-6, 'T1 final hold h_bottom (%.4f)', h(end));
+    fprintf('T1 PASS  osc shape (hold %.0f, trough %.2f, osc peak %.2f um)\n', hi, hb, hb+2*A);
 
     % ================= T2: open-loop Brownian increments =================
     rng(4); params_sa = config('h50');                  % match out_sa's scenario
@@ -158,9 +162,12 @@ function gates_part2()
 end
 
 
-function cm = local_mother_config(traj_type, h_init, h_bottom, T_sim, h_min)
+function cm = local_mother_config(traj_type, h_init, h_bottom, T_sim, h_min, osc)
 %LOCAL_MOTHER_CONFIG  Mother-repo config matching standalone config.m
-%   (mirrors verify_eq17_6state section 2 + explicit h_min).
+%   (mirrors verify_eq17_6state section 2 + explicit h_min). Optional osc
+%   struct (.amplitude/.frequency/.n_cycles/.t_descend) sets the oscillation
+%   params for the osc1hz pairing; omit it for positioning (then amplitude=0
+%   and frequency/n_cycles inherit user_config, matching config.m parity).
     cm = user_config();
     cm.h_init            = h_init;
     cm.h_bottom          = h_bottom;
@@ -176,6 +183,10 @@ function cm = local_mother_config(traj_type, h_init, h_bottom, T_sim, h_min)
     cm.a_cov             = 0.05;
     cm.meas_noise_std    = [0.00062; 0.00057; 0.00331];
     cm.eq17_variant      = '6state';
+    if nargin >= 6 && ~isempty(osc)
+        cm.amplitude = osc.amplitude; cm.frequency = osc.frequency;
+        cm.n_cycles  = osc.n_cycles;  cm.t_descend_override = osc.t_descend;
+    end
 end
 
 

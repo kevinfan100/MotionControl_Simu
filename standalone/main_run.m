@@ -18,7 +18,7 @@
 % ======================================================================
 %  SIMULATION SETTINGS  --  edit these, then press Run
 % ----------------------------------------------------------------------
-scenario   = 'h50';   % 'h50' | 'h10' | 'ramp2p7'      (scenario geometry)
+scenario   = 'h50';   % 'h50' | 'h10' | 'osc1hz'       (scenario / trajectory)
 lambda_c   = 0.7;     % closed-loop pole          (0 < lambda_c < 1)
 a_pd       = 0.05;    % IIR mean-EWMA pole        (0 < a_pd <= 1)
 a_cov      = 0.05;    % IIR variance-EWMA pole    (0 < a_cov <= 1)

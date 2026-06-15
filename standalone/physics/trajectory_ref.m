@@ -4,10 +4,11 @@ function [p_d, del_pd] = trajectory_ref(t, params)
 %   [p_d, del_pd] = trajectory_ref(t, params)
 %
 %   Supported trajectory types (params.traj.trajectory_type):
+%       1 = oscillation   (4-phase: hold -> cosine descent -> cosine osc
+%                          with h_bottom as trough -> hold; the osc1hz
+%                          scenario, re-added in packaging 9c)
 %       2 = positioning   (hold at h_init for the whole run)
 %       3 = ramp_descent  (linear descent h_init -> h_bottom over T_sim)
-%   The mother repo's oscillation type (1) is outside the package scenario
-%   set and intentionally not carried over (errors out if requested).
 %
 %   Outputs:
 %       p_d    - Desired position p_d[k+1] [3x1, um, world coords]
@@ -22,9 +23,11 @@ function [p_d, del_pd] = trajectory_ref(t, params)
 %       params.common.p0 / Ts / T_sim
 %       params.wall.w_hat / pz
 %       params.traj.t_hold / h_init / h_bottom / trajectory_type
+%       params.traj.amplitude / frequency / n_cycles / t_descend_override
+%                                            (oscillation type 1 only)
 %
 %   Source: verbatim subset of model/trajectory/trajectory_generator.m
-%   (packaging part 2; types 2/3 logic unchanged, type 1 removed).
+%   (types 1/2/3 logic unchanged; osc re-added in packaging 9c).
 
     persistent p_d_prev
 
@@ -72,8 +75,41 @@ function [p_d, del_pd] = trajectory_ref(t, params)
         return;
     end
 
-    error('trajectory_ref:unsupportedType', ...
-          ['trajectory_type %g not in package scope (2 = positioning, ' ...
-           '3 = ramp_descent; oscillation lives in the mother repo).'], ...
-          trajectory_type);
+    % Oscillation mode (type 1): 4-phase hold -> cosine descent -> cosine
+    % oscillation (h_bottom as trough) -> hold. Faithful port of the mother
+    % trajectory_generator.m phases 1-4.
+    t_hold    = params.traj.t_hold;
+    amplitude = params.traj.amplitude;
+    frequency = params.traj.frequency;
+    n_cycles  = params.traj.n_cycles;
+    if isfield(params.traj, 't_descend_override') && params.traj.t_descend_override > 0
+        t_descend = params.traj.t_descend_override;
+    else
+        t_descend = 1 / frequency;
+    end
+    T_osc = n_cycles / frequency;
+
+    t1 = t_hold;              % end of hold
+    t2 = t1 + t_descend;     % end of descent
+    t3 = t2 + T_osc;         % end of oscillation
+    t_next = t + Ts;         % one-step-ahead, same as the other modes
+
+    if t_next <= t1
+        h = h_init;                                              % Phase 1: hold
+    elseif t_next <= t2
+        t_desc = t_next - t1;                                    % Phase 2: descend
+        h = h_bottom + (h_init - h_bottom) * (1 + cos(pi * t_desc / t_descend)) / 2;
+    elseif t_next <= t3
+        t_osc = t_next - t2;                                     % Phase 3: osc
+        h = (h_bottom + amplitude) - amplitude * cos(2 * pi * frequency * t_osc);
+    else
+        h = h_bottom;                                            % Phase 4: hold
+    end
+    p_d = (pz + h) * w_hat;
+
+    if isempty(p_d_prev)
+        p_d_prev = p0;
+    end
+    del_pd = p_d - p_d_prev;
+    p_d_prev = p_d;
 end

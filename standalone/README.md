@@ -54,7 +54,7 @@ values and press Run (no command-line arguments):
 
 ```matlab
 % --- in main_run.m, the SIMULATION SETTINGS block ---
-scenario   = 'h50';   % 'h50' | 'h10' | 'ramp2p7'
+scenario   = 'h50';   % 'h50' | 'h10' | 'osc1hz'
 lambda_c   = 0.7;     % closed-loop pole          (0 < lambda_c < 1)
 a_pd       = 0.05;    % IIR mean-EWMA pole        (0 < a_pd <= 1)
 a_cov      = 0.05;    % IIR variance-EWMA pole    (0 < a_cov <= 1)
@@ -185,12 +185,15 @@ Headline results:
 - **Physics layer** bit-exact vs the source functions (`gates_part1`).
 - **Open-loop full sim** bit-exact vs production (`gates_part2`, max|diff|=0).
 - **Closed-loop h50 / h10** reproduce the production controller to
-  **floating-point rounding precision** — ~3 ulps over an 8000-step run,
+  **floating-point rounding precision** — ~3 ulps over a 6400-step (4 s) run,
   9 orders of magnitude below the ~30 nm tracking precision
-  (`gates_part7`, rel < 1e-12). It is **not** bit-exact: the package is a
-  clean re-implementation (loop fusion, inlined constants, guards removed),
-  and mathematically-identical refactors differ by ~1 ulp/step in IEEE-754
-  association; the contractive closed loop does not amplify it.
+  (`gates_part7`, rel < 1e-12). The dynamic **osc1hz** run is rounding-floor
+  identical too, up to the first near-wall (h_bar < 1.5) entry; past that the
+  package and production deliberately diverge (see the near-wall note below).
+  It is **not** bit-exact: the package is a clean re-implementation (loop
+  fusion, inlined constants, guards removed), and mathematically-identical
+  refactors differ by ~1 ulp/step in IEEE-754 association; the contractive
+  closed loop does not amplify it.
 - **Q55 / C_dpmr / C_n** validated against closed-form and ground-truth
   Monte-Carlo (`gates_part6`).
 
@@ -207,11 +210,14 @@ Headline results:
 This package removes the production controller's near-wall guards
 (G1/G2/G3) for simplicity. The only place its behavior diverges from the
 production controller is therefore the near-wall a_hat: `gates_part7` H3
-reports it (a_hat_z observed to differ by ~38% only where h_bar < 1.5,
-while tracking stays at 30 nm and the filter stays numerically stable;
-H3 asserts the safe-segment equivalence, stability, and bounded tracking
-— the 38% is the descriptive near-wall figure). Everywhere else the two
-agree to rounding precision.
+runs the dynamic **osc1hz** scenario (1 Hz oscillation whose trough reaches
+h_bar = 1.2) and shows the two are bit-identical to rounding precision until
+the descent first crosses h_bar = 1.5, after which the production controller
+gates its second measurement and the package does not — so a_hat_z diverges
+(by ~100% near the troughs) while tracking stays at ~30 nm and the filter
+stays numerically stable. H3 asserts the pre-divergence equivalence,
+stability, and bounded tracking; the divergence is the descriptive near-wall
+figure. Everywhere else the two agree to rounding precision.
 
 ---
 
@@ -246,4 +252,12 @@ variance, 3.16) are **different constants** — see `gates_part6` F2 vs F5.
 - Tilted wall (theta/phi ≠ 0): the thermal anisotropy formula is exact
   only for the default wall normal [0;0;1].
 - d is hardcoded to 2 (the C_dpmr/C_n/IF constants are derived for d=2).
-- Oscillation trajectory (paper Fig.10-style) is not in the scenario set.
+- The osc1hz scenario is fixed at 1 Hz (the motion-test "osc_aggr"
+  trajectory); other frequencies/amplitudes live in config.m, not exposed
+  as a run knob.
+- osc1hz's trough sits on the L2 floor (h_bar = 1.2) with no guard, and the
+  plant integration errors if the *true* position is ever driven below
+  h_bar = 1 (a ~15-sigma excursion on the ~30 nm tracking std; not observed
+  across the mother repo's 200-seed 1 Hz study, but theoretically possible
+  on a pathological random seed). gamma_inv is kept verbatim (no clamp) to
+  preserve the bit-exact physics equivalence.

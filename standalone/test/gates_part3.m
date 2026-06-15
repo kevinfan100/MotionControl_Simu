@@ -7,10 +7,10 @@ function gates_part3()
 %   C1  Constants dual-source: C_dpmr / C_n full a_pd closed form
 %       transcribed here independently == mother build_eq17_6state_constants
 %       output (bit-exact) == reference values 3.1610 / 1.1093.
-%   C2  d=2 delay-chain k-table (deferred from part 2): on a ramp run the
-%       controller's logged delta_x_m_z (z = wall normal, the ONLY axis the
-%       ramp moves -- so both the pd and p_m delay buffers are exercised)
-%       must satisfy, exactly for k >= 4,
+%   C2  d=2 delay-chain k-table (deferred from part 2): on a moving (osc)
+%       run the controller's logged delta_x_m_z (z = wall normal, the axis
+%       the trajectory moves -- so both the pd and p_m delay buffers are
+%       exercised) must satisfy, exactly for k >= 4,
 %           ekf_out(k,1) == p_d_out(k-2,3) - p_m_out(k-3,3)
 %       LOG-ROW COORDINATES NOTE: p_d_out row j stores the sample-j
 %       reference pd[j], but p_m_out row j stores the measurement produced
@@ -85,11 +85,11 @@ function gates_part3()
     return;
 
     % ----- retired probe-dependent sections below (kept for the record) -----
-    out = run_simulation('ramp2p7', struct('seed', 9, 'T_sim', 3)); %#ok<UNRCH>
+    out = run_simulation('osc1hz', struct('seed', 9, 'T_sim', 3)); %#ok<UNRCH>
     N = numel(out.tout);
 
     % k = 1: init return -- delta_x_m probe = 0, prefill visible in slot 2
-    rng(9); params9 = config('ramp2p7');            % same params as the run
+    rng(9); params9 = config('osc1hz');             % same params as the run
     Ts9 = params9.common.Ts; a_nom9 = Ts9 / params9.common.gamma_N;
     hb0 = params9.traj.h_init / params9.common.R;
     [~, cpe0] = wall_corrections(hb0);

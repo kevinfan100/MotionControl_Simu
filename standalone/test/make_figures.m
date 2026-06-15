@@ -12,7 +12,7 @@ function make_figures(out, a_true, scenario, out_dir)
 %   Inputs:
 %       out      - run_simulation output (ekf_out = [a_x a_y a_z h_bar])
 %       a_true   - [N x3] physics ground-truth gain [x y z] (um/pN)
-%       scenario - 'h50' | 'h10' | 'ramp2p7'
+%       scenario - 'h50' | 'h10' | 'osc1hz'
 %       out_dir  - output directory (created if missing)
 %
 %   Note: the standalone controller has no diag output (decision 6), so
@@ -34,7 +34,7 @@ function make_figures(out, a_true, scenario, out_dir)
     n_warm = round(out.meta.params.traj.t_hold / Ts);
     idx = false(numel(t), 1); idx(n_warm+1:end) = true;
     t0 = t(find(idx, 1, 'first')); t1 = max(t);
-    is_ramp = strcmpi(scenario, 'ramp2p7');
+    is_dynamic = strcmpi(scenario, 'osc1hz');   % time-varying a_true framing
     a_hat = out.ekf_out(:, 1:3);
 
     % ================= FIG 1 : gain estimation (a_x, a_z) =================
@@ -49,7 +49,7 @@ function make_figures(out, a_true, scenario, out_dir)
         plot(t(idx), a_hat(idx, c),  '-', 'Color', COL_OUT, 'LineWidth', LO, 'DisplayName', 'Estimated');
         rel = (a_hat(idx, c) - a_true(idx, c)) ./ a_true(idx, c);
         b = 100 * mean(rel); sd = 100 * std(rel);
-        if is_ramp
+        if is_dynamic
             title(sprintf('%s:   mean rel-err %+.2f%%     std %.2f%%', lbl{r}, b, sd), ...
                   'FontSize', FS, 'FontWeight', 'bold');
             lo = min(a_true(idx, c)) * 0.70; hi = max(a_true(idx, c)) * 1.15;

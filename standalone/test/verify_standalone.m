@@ -2,14 +2,14 @@ function results = verify_standalone(scenario, opts)
 %VERIFY_STANDALONE  Headline 3-scenario verification of the 6-state package.
 %
 %   results = verify_standalone()            % runs all three scenarios
-%   results = verify_standalone(scenario)    % 'h50' | 'h10' | 'ramp2p7' | 'all'
+%   results = verify_standalone(scenario)    % 'h50' | 'h10' | 'osc1hz' | 'all'
 %   results = verify_standalone(scenario, opts)
 %
 %   Self-contained (standalone only, no mother repo). For each scenario it
 %   runs the closed loop, computes the physics ground-truth gain a_true
 %   from the noise-free position probe, and reports tracking std + a_hat
 %   bias / rel-std vs a_true. h50 carries the quantitative PASS gate; h10
-%   and ramp2p7 are descriptive (near-wall a_hat legitimately exceeds the
+%   and osc1hz are descriptive (near-wall a_hat legitimately exceeds the
 %   h50-calibrated thresholds -- the documented L2 limitation).
 %
 %   PASS gate (h50, aggregate over seeds):
@@ -17,7 +17,7 @@ function results = verify_standalone(scenario, opts)
 %       a_hat bias    < bias_thresh_pct (default 5 %)
 %       a_hat rel-std < relstd_thresh_pct (default 5 %)
 %
-%   opts (all optional): seeds (default 1:5 for h50, 1:3 for h10/ramp),
+%   opts (all optional): seeds (default 1:5 for h50, 1:3 for h10/osc),
 %       trk_thresh_nm, bias_thresh_pct, relstd_thresh_pct, make_figs (true),
 %       fig_dir (default <standalone>/test_results).
 %
@@ -38,7 +38,7 @@ function results = verify_standalone(scenario, opts)
     if isempty(opts.fig_dir); opts.fig_dir = fullfile(sa_root, 'test_results'); end
 
     if strcmpi(scenario, 'all')
-        scen_list = {'h50', 'h10', 'ramp2p7'};
+        scen_list = {'h50', 'h10', 'osc1hz'};
     else
         scen_list = {lower(scenario)};
     end

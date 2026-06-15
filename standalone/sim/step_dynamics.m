@@ -23,7 +23,7 @@ function p_next = step_dynamics(p, F_total, params, Ts)
 %   with the same ode4 algorithm; RMS error vs the 1 us reference
 %   < 1e-10 validated for f <= 1 Hz, A <= 10 um, h_bar >= 2 (dual-track
 %   design doc). The package's near-wall tail (1.2 < h_bar < 2) is
-%   exercised by the ramp scenario gates; no separate 1 us reference
+%   exercised by the osc1hz scenario gates; no separate 1 us reference
 %   comparison exists there.
 %
 %   Source: verbatim from model/dual_track/step_dynamics.m (packaging

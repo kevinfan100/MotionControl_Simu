@@ -4,7 +4,7 @@ function [params, cfg] = config(scenario, overrides)
 %   [params, cfg] = config(scenario)
 %   [params, cfg] = config(scenario, overrides)
 %
-%   scenario  : 'h50' (default) | 'h10' | 'ramp2p7'
+%   scenario  : 'h50' (default) | 'h10' | 'osc1hz'
 %   overrides : optional struct of non-rippling tunable overrides from the
 %               main_run settings block (PACKAGING_PLAN.md 9a). Recognised
 %               fields (any subset; empty values ignored):
@@ -63,17 +63,27 @@ function [params, cfg] = config(scenario, overrides)
     switch lower(scenario)
         case 'h50'
             sc = struct('traj_type', 2, 'h_init', 50, 'h_bottom', 50, ...
-                        'h_min', 1.5 * R, 'T_sim', 5);
+                        'h_min', 1.5 * R, 'T_sim', 4, ...
+                        'amplitude', 0, 'frequency', 1, 'n_cycles', 3, 't_descend', 0);
         case 'h10'
             sc = struct('traj_type', 2, 'h_init', 10, 'h_bottom', 10, ...
-                        'h_min', 1.5 * R, 'T_sim', 5);
-        case 'ramp2p7'
-            % Package envelope boundary: h_bottom = 1.2*R = 2.7 um (h_bar 1.2)
-            sc = struct('traj_type', 3, 'h_init', 50, 'h_bottom', 1.2 * R, ...
-                        'h_min', 1.2 * R, 'T_sim', 20);
+                        'h_min', 1.5 * R, 'T_sim', 4, ...
+                        'amplitude', 0, 'frequency', 1, 'n_cycles', 3, 't_descend', 0);
+        case 'osc1hz'
+            % motion-test 1 Hz oscillation (gain_compare "osc_aggr"):
+            % hold 0.5 s -> cosine descend 1.0 s -> 1 Hz osc (2 cycles) -> hold.
+            % Trough h_bottom = 1.2*R = 2.7 um (h_bar 1.2); amplitude 2.5 um
+            % -> osc h_bar in [1.2, 3.42] (crosses the wall region). The package
+            % has NO guards, so near the trough a_hat degrades (L2 limitation).
+            % h_min == h_bottom (trough sits on the L2 floor, no margin); the
+            % plant errors only if the TRUE position falls below h_bar=1 (~15
+            % sigma; see README sec 8).
+            sc = struct('traj_type', 1, 'h_init', 50, 'h_bottom', 1.2 * R, ...
+                        'h_min', 1.2 * R, 'T_sim', 4, ...
+                        'amplitude', 2.5, 'frequency', 1, 'n_cycles', 2, 't_descend', 1.0);
         otherwise
             error('config:badScenario', ...
-                  'Unknown scenario "%s" (use h50 | h10 | ramp2p7).', scenario);
+                  'Unknown scenario "%s" (use h50 | h10 | osc1hz).', scenario);
     end
 
     % ------------------------------------------------------------------
@@ -118,14 +128,14 @@ function [params, cfg] = config(scenario, overrides)
     params.wall.v_hat = [sin(theta); -cos(theta); 0];
     params.wall.enable_wall_effect = 1;
 
-    % --- traj (calc_traj_params; types: 2 = positioning, 3 = ramp_descent) ---
-    params.traj.t_hold    = 0.5;       % [sec]
+    % --- traj (calc_traj_params; types: 1 = osc, 2 = positioning, 3 = ramp) ---
+    params.traj.t_hold    = 0.5;          % [sec] initial hold / EKF warm-up
     params.traj.h_init    = sc.h_init;
     params.traj.h_bottom  = sc.h_bottom;
-    params.traj.amplitude = 0;         % [um] (osc-only; unused for types 2/3)
-    params.traj.frequency = 1;         % [Hz]  (osc-only; unused for types 2/3)
-    params.traj.n_cycles  = 3;         %       (osc-only; unused for types 2/3)
-    params.traj.t_descend_override = 0; %      (osc-only; kept for struct parity)
+    params.traj.amplitude = sc.amplitude; % [um] osc half-swing (trough->mid)
+    params.traj.frequency = sc.frequency; % [Hz] osc frequency
+    params.traj.n_cycles  = sc.n_cycles;  %      osc cycle count
+    params.traj.t_descend_override = sc.t_descend; % [sec] osc descent (0=unused)
     params.traj.trajectory_type = sc.traj_type;
 
     % --- common + initial position (calc_initial_position) ---

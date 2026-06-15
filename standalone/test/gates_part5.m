@@ -7,13 +7,13 @@ function gates_part5()
 %       (residual < 1e-11 -- the unit-eigenvalue Jordan slots with zero Q
 %       converge ~1/k, so the residual floor is above machine eps),
 %       posterior PSD, and PD of the a-priori advance F*P*F' + Q.
-%   E2  Closed-loop h50 with the LIVE EKF, 5 seeds x 5 s (the mother
+%   E2  Closed-loop h50 with the LIVE EKF, 5 seeds x 4 s (the mother
 %       repo's own verification thresholds -- valid here because the
 %       mother's guards never trigger at h50, so guard removal is a no-op
 %       in this scenario): tracking std < 40 nm; aggregate a_hat bias vs
 %       physics ground truth < 5 percent; aggregate rel-std < 5 percent.
-%   E3  L2 envelope (ramp 50 -> 2.7 um, h_bar = 1.2, full 20 s, NO
-%       guards): numerically stable (all finite), tracking < 40 nm,
+%   E3  L2 envelope (osc1hz: 1 Hz oscillation, trough h_bar = 1.2, NO
+%       guards): numerically stable (all finite), tracking std < 40 nm,
 %       a_hat > 0 throughout. Near-wall a_hat ACCURACY is deliberately
 %       not asserted -- the documented L2 limitation.
 %
@@ -111,16 +111,16 @@ function gates_part5()
              'bias [%.2f %.2f %.2f] pct, rel-std [%.2f %.2f %.2f] pct\n'], ...
             trk_m, ab_m, as_m);
 
-    % ================= E3: L2 envelope (ramp to h_bar = 1.2, no guards) ====
-    out = run_simulation('ramp2p7', struct('seed', 1));
+    % ============ E3: L2 envelope (osc1hz, trough h_bar = 1.2, no guards) ===
+    out = run_simulation('osc1hz', struct('seed', 1));
     N = numel(out.tout); idx = (n_warm+1):N;
     assert(all(isfinite(out.p_m_out(:))) && all(isfinite(out.ekf_out(:))), 'E3 non-finite');
     trk3 = std(out.p_d_out(idx,:) - out.p_m_out(idx,:), 0, 1) * 1e3;
-    assert(all(trk3 < 40), 'E3 tracking %s nm', mat2str(trk3,4));
+    assert(all(trk3 < 40), 'E3 tracking std %s nm', mat2str(trk3,4));
     assert(all(out.ekf_out(idx,1:3) > 0, 'all'), 'E3 a_hat went non-positive');
     assert(abs(out.ekf_out(end,4) - 1.2) < 0.15, 'E3 final h_bar %.3f', out.ekf_out(end,4));
-    fprintf(['E3 PASS  ramp to h_bar = 1.2 (20 s, NO guards): stable, tracking ' ...
-             '[%.1f %.1f %.1f] nm, a_hat positive throughout\n'], trk3);
+    fprintf(['E3 PASS  osc1hz (1 Hz, trough h_bar = 1.2, NO guards): stable, ' ...
+             'tracking std [%.1f %.1f %.1f] nm, a_hat positive throughout\n'], trk3);
 
     fprintf('\n=== gates_part5: ALL PASS (E1 DARE, E2 h50 live EKF, E3 L2 envelope) ===\n');
 end
