@@ -26,7 +26,7 @@ function make_figures(out, a_true, scenario, out_dir)
 
     COL_REF = [0 0.6 0];      % green : True
     COL_OUT = [0.8 0 0];      % red   : Estimated
-    COL_ERR = [0 0.2 0.8];    % blue  : Error
+    COL_ERR = [0 0.2 0.9];    % blue  : Error  (project family-2 shade)
     FS = 18; LFS = 14; LW = 2.0; LR = 3.0; LO = 2.0;
 
     t = out.tout;
@@ -38,7 +38,7 @@ function make_figures(out, a_true, scenario, out_dir)
     a_hat = out.ekf_out(:, 1:3);
 
     % ================= FIG 1 : gain estimation (a_x, a_z) =================
-    f1 = figure('Position', [80 80 1100 720], 'Color', 'w', ...
+    f1 = figure('Position', [80 80 1100 720], 'Color', 'w', 'Visible', 'off', ...
                 'Name', sprintf('6-state %s : gain', scenario), 'NumberTitle', 'off');
     tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
     cols = [1 3]; lbl = {'a_x', 'a_z'};
@@ -63,7 +63,7 @@ function make_figures(out, a_true, scenario, out_dir)
         if r == 2, xlabel('Time (sec)', 'FontSize', FS, 'FontWeight', 'bold'); end
         if r == 1
             legend('Location', 'northoutside', 'Orientation', 'horizontal', ...
-                   'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'off');
+                   'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
         end
         set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', LW, 'Box', 'on'); grid off;
     end
@@ -72,7 +72,7 @@ function make_figures(out, a_true, scenario, out_dir)
 
     % ================= FIG 2 : tracking error (x, y, z) =================
     err = (out.p_m_out - out.p_d_out) * 1e3;     % nm
-    f2 = figure('Position', [80 80 1100 920], 'Color', 'w', ...
+    f2 = figure('Position', [80 80 1100 920], 'Color', 'w', 'Visible', 'off', ...
                 'Name', sprintf('6-state %s : tracking', scenario), 'NumberTitle', 'off');
     tiledlayout(3, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
     ymax = max(max(abs(err(idx, :)))); axn = {'x', 'y', 'z'};
