@@ -98,7 +98,7 @@ function simOut = run_pure_simulation(config, opts)
     % ------------------------------------------------------------------
     clear motion_control_law motion_control_law_23state ...
           motion_control_law_eq6 motion_control_law_eq17 motion_control_law_eq17_core ...
-          motion_control_law_eq17_6state ...
+          motion_control_law_eq17_6state motion_control_law_eq17_5state ...
           trajectory_generator calc_thermal_force;
 
     % ------------------------------------------------------------------
@@ -181,15 +181,19 @@ function simOut = run_pure_simulation(config, opts)
     if isfield(config, 'iir_warmup_mode') && ~isempty(config.iir_warmup_mode)
         eq17_opts.iir_warmup_mode = config.iir_warmup_mode;
     end
-    % ---- Dispatch A1: 6-state (Vpersonal) vs 7-state (eq17_core) ----
+    % ---- Dispatch A1: 6-state / 5-state (Vpersonal) vs 7-state (eq17_core) ----
     is_6state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '6state');
-    if opts.use_true_gain && ~is_6state
+    is_5state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '5state');
+    is_vpersonal = is_6state || is_5state;   % share prefill defaults + constants builder
+    if opts.use_true_gain && ~is_vpersonal
         error('run_pure_simulation:useTrueGainUnsupported', ...
-              'opts.use_true_gain=true requires config.eq17_variant=''6state''.');
+              'opts.use_true_gain=true requires config.eq17_variant=''6state'' or ''5state''.');
     end
-    if is_6state
+    if is_vpersonal
         % Prefill three-pillar defaults (override 7-state warmup defaults
-        % unless the caller explicitly set them).
+        % unless the caller explicitly set them). The 5-state controller
+        % reuses build_eq17_6state_constants (offline scalars are
+        % dimension-agnostic; only the EKF state dimension differs).
         if ~isfield(config, 't_warmup_kf') || isempty(config.t_warmup_kf)
             eq17_opts.t_warmup_kf = 0;
         end
@@ -329,8 +333,16 @@ function simOut = run_pure_simulation(config, opts)
             a_override_k = [];
         end
 
-        % --- (d) Controller + EKF  (dispatch A1: 6-state vs 7-state)
-        if is_6state
+        % --- (d) Controller + EKF  (dispatch A1: 5-state / 6-state vs 7-state)
+        if is_5state
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_5state( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            else
+                [f_d_k, ekf_k] = motion_control_law_eq17_5state( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            end
+        elseif is_6state
             if opts.collect_diag
                 [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_6state( ...
                                     del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
