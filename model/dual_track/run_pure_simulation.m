@@ -181,6 +181,16 @@ function simOut = run_pure_simulation(config, opts)
     if isfield(config, 'iir_warmup_mode') && ~isempty(config.iir_warmup_mode)
         eq17_opts.iir_warmup_mode = config.iir_warmup_mode;
     end
+    % a_m LPF study (am_lpf_r22_design.md): post-LPF on a_xm -> a_m_det + R22
+    % rescale. 6-state and 5-state (Vpersonal) both consume it via
+    % build_eq17_6state_constants; 7-state and other paths leave
+    % config.use_am_lpf unset (no-op).
+    if isfield(config, 'use_am_lpf') && ~isempty(config.use_am_lpf)
+        eq17_opts.use_am_lpf = config.use_am_lpf;
+    end
+    if isfield(config, 'a_det') && ~isempty(config.a_det)
+        eq17_opts.a_det = config.a_det;
+    end
     % ---- Dispatch A1: 6-state / 5-state (Vpersonal) vs 7-state (eq17_core) ----
     is_6state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '6state');
     is_5state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '5state');

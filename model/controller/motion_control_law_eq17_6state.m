@@ -91,6 +91,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     persistent P_per_axis          % cell{3} of 6x6 covariance
     persistent dx_bar_m            % 3x1 IIR LP mean of delta_x_m [um]
     persistent sigma2_dxr_hat      % 3x1 EWMA variance of dx_r    [um^2]
+    persistent a_m_det             % 3x1 post-LPF of a_xm (a_m_det) [um/pN]
     persistent pd_km1 pd_km2       % trajectory delay buffers
     persistent f_d_km1 f_d_km2     % past control buffers (for Sigma f_d[k-i])
     persistent a_hat_km1 a_hat_km2          % past gain estimates a_hat[k-i] (active law + Q33)
@@ -102,7 +103,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     persistent initialized
     persistent lambda_c d_delay Ts kBT R_radius gamma_N_p
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_per_axis var_da_inc_factor
-    persistent t_warmup_kf h_bar_safe R_OFF
+    persistent t_warmup_kf h_bar_safe R_OFF use_am_lpf a_det amlpf_var_factor
     persistent sigma2_n_s a_x_init enable_wall w_hat_n pz_wall
 
     % ------------------------------------------------------------------
@@ -130,6 +131,22 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         h_bar_safe      = ctrl_const.h_bar_safe;
         a_cov           = ctrl_const.a_cov;
         a_pd            = ctrl_const.a_pd;
+        % a_m_det LPF (am_lpf_r22_design.md); fallback to baseline if absent
+        if isfield(ctrl_const, 'use_am_lpf') && ~isempty(ctrl_const.use_am_lpf)
+            use_am_lpf = ctrl_const.use_am_lpf;
+        else
+            use_am_lpf = false;
+        end
+        if isfield(ctrl_const, 'a_det') && ~isempty(ctrl_const.a_det)
+            a_det = ctrl_const.a_det;
+        else
+            a_det = 0.005;
+        end
+        if isfield(ctrl_const, 'amlpf_var_factor') && ~isempty(ctrl_const.amlpf_var_factor)
+            amlpf_var_factor = ctrl_const.amlpf_var_factor;
+        else
+            amlpf_var_factor = 1;
+        end
         % var(delta_a_ram) closed-form increment factor 2/(1+lc) (replaces i.i.d. 2x)
         if isfield(ctrl_const, 'var_da_increment_factor') && ~isempty(ctrl_const.var_da_increment_factor)
             var_da_inc_factor = ctrl_const.var_da_increment_factor;
@@ -193,7 +210,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
             Q_ss(3, 3) = Q33_ss;
             Q_ss(5, 5) = var_da_init;                      % Q55 = var(delta_a_ram)
             IF_ss  = if_eff_eval(IF_abc, C_dpmr, C_n, kBT, a_init_ax, sigma2_n_s(ax));
-            R22_ss = K_var * IF_ss * (a_init_ax + xi_per_axis(ax))^2 ...
+            R22_ss = amlpf_var_factor * K_var * IF_ss * (a_init_ax + xi_per_axis(ax))^2 ...
                      + d_delay * var_da_init;
             R_ss = [sigma2_n_s(ax), 0; 0, R22_ss];
             P_per_axis{ax} = solve_dare_kf_local(F_e_ss, H_ss, Q_ss, R_ss);
@@ -212,6 +229,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
             sigma2_dxr_hat = zeros(3, 1);
             warmup_count   = 2;
         end
+        a_m_det = a_x_init;   % a_m_det LPF init (EWMA preserves mean = a_xm init)
 
         % --- 0I. Delay buffers ---
         pd_km1  = pd;
@@ -304,6 +322,14 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     dx_r = delta_x_m - dx_bar_m_new;
     sigma2_dxr_hat_new = (1 - a_cov) * sigma2_dxr_hat + a_cov * dx_r.^2;
     a_xm = (sigma2_dxr_hat_new - C_n * sigma2_n_s) / (C_dpmr * 4 * kBT);   % 3x1 [um/pN]
+    % a_m_det LPF: post-EWMA(a_det) on a_xm; a_meas is what enters the KF y_2.
+    % use_am_lpf=false -> a_meas=a_xm (baseline, bit-identical).
+    a_m_det_new = (1 - a_det) * a_m_det + a_det * a_xm;   % 3x1 [um/pN]
+    if use_am_lpf
+        a_meas = a_m_det_new;
+    else
+        a_meas = a_xm;
+    end
 
     % ------------------------------------------------------------------
     % [2] Warmup gate (legacy mode only; prefill -> warmup_count=0 skips this)
@@ -319,6 +345,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         end
         dx_bar_m       = dx_bar_m_new;
         sigma2_dxr_hat = sigma2_dxr_hat_new;
+        a_m_det        = a_m_det_new;
         pd_km2 = pd_km1; pd_km1 = pd;
         f_d_km2 = f_d_km1; f_d_km1 = f_d;
         a_hat_km2 = a_hat_km1; a_hat_km1 = a_hat;        % a_hat unchanged during warmup
@@ -404,7 +431,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
         R11_i = sigma2_n_s(ax);
         % IF_eff exact per-step (R22_derivation S4-S6) from current a_hat (time-varying)
         IF_eff_i = if_eff_eval(IF_abc, C_dpmr, C_n, kBT, a_hat_i, sigma2_n_s(ax));
-        R2_intrinsic_i = K_var * IF_eff_i * (a_hat_i + xi_per_axis(ax))^2;
+        R2_intrinsic_i = amlpf_var_factor * K_var * IF_eff_i * (a_hat_i + xi_per_axis(ax))^2;
         % R22 delay term = sum_{i=1}^d var(delta_a_ram[k-i])  (r_2 = n_a - sum
         % delta_a_ram[k-i], Vpersonal p.3). Per-step buffered (not d*current),
         % matching the Q33 randgain treatment.
@@ -474,7 +501,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
             R_use = sigma2_n_s(ax);
         else
             H_use = H_full;
-            y_use = [delta_x_m(ax); a_xm(ax)];
+            y_use = [delta_x_m(ax); a_meas(ax)];
             R_use = R_per_axis{ax};
         end
 
@@ -519,6 +546,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, 
     var_da_ram_km2 = var_da_ram_km1; var_da_ram_km1 = var_da_ram;
     dx_bar_m = dx_bar_m_new;
     sigma2_dxr_hat = sigma2_dxr_hat_new;
+    a_m_det = a_m_det_new;
     k_step = k_step + 1;
 
     % ------------------------------------------------------------------

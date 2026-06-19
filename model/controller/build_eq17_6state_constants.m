@@ -25,6 +25,8 @@ function ctrl_const = build_eq17_6state_constants(opts)
 %       opts.t_warmup_kf  - KF warmup time [sec]                (default 0, prefill)
 %       opts.h_bar_safe   - safe h_bar threshold (Guard 3)      (default 1.5)
 %       opts.iir_warmup_mode - 'prefill' (default) | 'legacy'
+%       opts.use_am_lpf   - post-LPF on a_xm -> a_m_det before KF  (default false)
+%       opts.a_det        - EWMA weight for the a_m_det LPF        (default 0.005)
 %       (no IF_eff_calibrated override: IF_eff is computed exactly per-step in
 %        the controller from IF_abc below.)
 %
@@ -84,6 +86,8 @@ function ctrl_const = build_eq17_6state_constants(opts)
     t_warmup_kf = get_opt(opts, 't_warmup_kf', 0);     % prefill default: no G1
     h_bar_safe  = get_opt(opts, 'h_bar_safe', 1.5);
     iir_warmup_mode = get_opt(opts, 'iir_warmup_mode', 'prefill');
+    use_am_lpf = get_opt(opts, 'use_am_lpf', false);   % post-LPF on a_xm -> a_m_det
+    a_det      = get_opt(opts, 'a_det', 0.005);        % EWMA weight for a_m_det
 
     if d ~= round(d) || d < 0
         error('build_eq17_6state_constants:invalidDelay', ...
@@ -115,6 +119,23 @@ function ctrl_const = build_eq17_6state_constants(opts)
     %    R22_derivation.pdf S3.)
     % ------------------------------------------------------------
     K_var = 2 * a_cov / (2 - a_cov);
+
+    % ------------------------------------------------------------
+    % a_m_det LPF: post-EWMA(a_det) on a_xm before the KF
+    %   (am_lpf_r22_design.md). a_m_det[k]=(1-a_det)a_m_det[k-1]+a_det a_xm[k].
+    %   R22_intrinsic scales by amlpf_var_factor = [a_det/(2-a_det)]*IF2, with
+    %   IF2 = 1 + 2 s2/(1-s2), s2 = (1-a_det)(1-a_cov) -- the AR(1) approx of
+    %   rho_axm(tau) ~ (1-a_cov)^tau (P3 V-ii validates; a-dependent fallback in
+    %   design.md S3.3). use_am_lpf=false -> factor 1 (baseline, bit-identical).
+    % ------------------------------------------------------------
+    if use_am_lpf
+        K_var2 = a_det / (2 - a_det);
+        s2     = (1 - a_det) * (1 - a_cov);
+        IF2    = 1 + 2 * s2 / (1 - s2);
+        amlpf_var_factor = K_var2 * IF2;
+    else
+        amlpf_var_factor = 1;
+    end
 
     % ------------------------------------------------------------
     % var_da_increment_factor: closed-form factor for Var(delta_a_ram).
@@ -172,6 +193,9 @@ function ctrl_const = build_eq17_6state_constants(opts)
     ctrl_const.C_n             = C_n;
     ctrl_const.K_var           = K_var;
     ctrl_const.R22_prefactor   = K_var;             % alias (matches 7-state naming)
+    ctrl_const.use_am_lpf      = use_am_lpf;
+    ctrl_const.a_det           = a_det;
+    ctrl_const.amlpf_var_factor = amlpf_var_factor;
     ctrl_const.var_da_increment_factor = var_da_increment_factor;  % 2/(1+lc) closed form
     ctrl_const.IF_abc          = [IF_abc_A; IF_abc_B; IF_abc_C];  % s-weighted autocorr sums for exact per-step IF_eff
     ctrl_const.xi_per_axis     = xi_per_axis;
