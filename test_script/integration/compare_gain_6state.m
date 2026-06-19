@@ -22,6 +22,10 @@ function results = compare_gain_6state(freqs, opts)
 %       test_results/gain_compare/f<f>Hz-smoke/runs.mat  (smoke mode)
 %
 %   opts fields:
+%     variant      ('6state') - EKF variant: '6state' | '5state'. Sets
+%                              cfg.eq17_variant; run_pure_simulation dispatches
+%                              the matching controller. (Function name keeps the
+%                              _6state suffix for back-compat.)
 %     seeds        (1:100)  - RNG seeds for noisy runs
 %     T_sim        (4.0)    - simulation duration [s]
 %     n_cyc_per_s  (2)      - oscillation cycles per second of osc phase
@@ -50,6 +54,12 @@ function results = compare_gain_6state(freqs, opts)
     if ~isfield(opts, 't_descend');   opts.t_descend = 1.0;   end   % descent duration [s] (decoupled from 1/f)
     if ~isfield(opts, 'verbose'); opts.verbose = true; end
     if ~isfield(opts, 'smoke');   opts.smoke = false;  end
+    if ~isfield(opts, 'use_am_lpf'); opts.use_am_lpf = false; end   % a_m_det LPF study
+    if ~isfield(opts, 'a_det');      opts.a_det = 0.005;      end   % LPF EWMA weight
+    if ~isfield(opts, 'variant');    opts.variant = '6state'; end   % EKF variant: '6state'|'5state'
+    assert(any(strcmpi(opts.variant, {'5state', '6state'})), ...
+           'compare_gain_6state:badVariant', ...
+           'opts.variant must be ''5state'' or ''6state''; got ''%s''.', opts.variant);
     if opts.smoke
         opts.T_sim = 2.0; opts.seeds = 1;
     end
@@ -131,7 +141,7 @@ end
 function cfg = build_config(f, opts)
 %BUILD_CONFIG osc_aggr scenario (design doc §3) at frequency f.
     cfg = user_config();
-    cfg.eq17_variant   = '6state';
+    cfg.eq17_variant   = opts.variant;   % '6state' (default) | '5state'
     cfg.trajectory_type = 'osc';
     cfg.h_init   = 50;            % [um] h_bar ~ 22
     cfg.h_bottom = 2.7;           % [um] h_bar = 1.2 (below gate 1.5)
@@ -160,6 +170,8 @@ function cfg = build_config(f, opts)
     cfg.meas_noise_std = [0.00062; 0.00057; 0.00331];   % [um]
     cfg.suppress_xD = true;       % both arms (design §2)
     cfg.h_bar_safe = opts.h_bar_safe;   % Round 2: 1 -> G3 unreachable (trough h_bar = 1.2)
+    cfg.use_am_lpf = opts.use_am_lpf;   % a_m_det LPF study (am_lpf_r22_design.md)
+    cfg.a_det      = opts.a_det;
 end
 
 
