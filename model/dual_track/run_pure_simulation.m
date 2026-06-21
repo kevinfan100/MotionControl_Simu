@@ -99,6 +99,7 @@ function simOut = run_pure_simulation(config, opts)
     clear motion_control_law motion_control_law_23state ...
           motion_control_law_eq6 motion_control_law_eq17 motion_control_law_eq17_core ...
           motion_control_law_eq17_6state motion_control_law_eq17_5state ...
+          motion_control_law_eq17_4state ...
           trajectory_generator calc_thermal_force;
 
     % ------------------------------------------------------------------
@@ -191,10 +192,11 @@ function simOut = run_pure_simulation(config, opts)
     if isfield(config, 'a_det') && ~isempty(config.a_det)
         eq17_opts.a_det = config.a_det;
     end
-    % ---- Dispatch A1: 6-state / 5-state (Vpersonal) vs 7-state (eq17_core) ----
+    % ---- Dispatch A1: 6-state / 5-state / 4-state (Vpersonal) vs 7-state (eq17_core) ----
     is_6state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '6state');
     is_5state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '5state');
-    is_vpersonal = is_6state || is_5state;   % share prefill defaults + constants builder
+    is_4state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state');
+    is_vpersonal = is_6state || is_5state || is_4state;   % share prefill defaults + constants builder
     if opts.use_true_gain && ~is_vpersonal
         error('run_pure_simulation:useTrueGainUnsupported', ...
               'opts.use_true_gain=true requires config.eq17_variant=''6state'' or ''5state''.');
@@ -343,8 +345,16 @@ function simOut = run_pure_simulation(config, opts)
             a_override_k = [];
         end
 
-        % --- (d) Controller + EKF  (dispatch A1: 5-state / 6-state vs 7-state)
-        if is_5state
+        % --- (d) Controller + EKF  (dispatch A1: 4-state / 5-state / 6-state vs 7-state)
+        if is_4state
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_4state( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            else
+                [f_d_k, ekf_k] = motion_control_law_eq17_4state( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            end
+        elseif is_5state
             if opts.collect_diag
                 [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_5state( ...
                                     del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
