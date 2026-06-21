@@ -1,0 +1,138 @@
+% ======================================================
+% Compile: xelatex pm_to_axm_derivation.tex
+% Path:    reference/eq17_analysis/derivation/pm_to_axm_derivation.tex
+% Purpose: Self-contained derivation of how the position-error measurement
+%          delta_x_m is processed into the gain measurement a_xm, and the
+%          noise statistics R(2,2) = Var(a_xm) that the EKF needs for its y_2
+%          channel. Aligned to the project's 4-state controller (gain rate
+%          delta_a_x fed forward from the desired trajectory; disturbance
+%          uncompensated), so the per-axis state is x = [delta_x_1, delta_x_2,
+%          delta_x_3, a_x].
+% Style:   matches 6state_derivation_xd.tex / 4state_del_hd.tex (run-in
+%          headers, flush-left eqs, underbrace naming, fbox key results,
+%          monochrome). Layout loosened for readability.
+% Notation: aligned 1:1 to the controller code (motion_control_law_eq17_*.m):
+%          delta_x_m = delta_x_m, dx_bar_m = \overline{delta x}_m (LP mean),
+%          dx_r = delta_x_r (residual), sigma2_dxr_hat = \hat\sigma^2_{delta x_r}.
+% Sources: 4state_del_hd.tex (control law, closed-loop error, output eq, H, c),
+%          Cdpmr_Cn_derivation.tex (H_T/H_n, F_T/F_N, C_dpmr/C_n closed forms),
+%          R22_derivation.tex (K_var, IF, Var(sigma-hat^2)). Full a_pd form.
+% ======================================================
+\documentclass[11pt,a4paper]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.4cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+
+% --- Loosened layout (airier than the 6-state source) ---
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.95em}
+\linespread{1.13}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+\setlength{\abovedisplayshortskip}{6pt}
+\setlength{\belowdisplayshortskip}{6pt}
+
+% --- Shortcuts ---
+\newcommand{\lc}{\lambda_c}
+\newcommand{\dxr}{\delta x_r}                 % residual  (code: dx_r)
+\newcommand{\dxbm}{\overline{\delta x}_m}     % LP mean   (code: dx_bar_m)
+\newcommand{\shsq}{\hat\sigma^2_{\dxr}}        % variance estimate (code: sigma2_dxr_hat)
+% Bold-underlined run-in section header, with extra space above (looser)
+\newcommand{\hd}[1]{\par\bigskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.6ex}}
+
+\begin{document}
+
+\begin{center}
+{\large\bfseries Derivation of the Gain Measurement $a_{xm}$ and its Noise Statistics ($\delta x_m \to a_{xm}$)}
+\end{center}
+
+%% ===================== Measurement =====================
+\hd{Measurement} (\textit{d}-step delay)
+\[ \delta x_m[k] = \delta x[k-d] + n_x[k], \qquad d = 2, \]
+where $\delta x[k] = x_d[k] - x[k]$ is the tracking error, $n_x[k] \sim \mathcal{N}(0,\sigma_n^2)$ is the sensor noise, and $\lc$ ($0 \le \lc < 1$) is the closed-loop pole.
+
+%% ===================== Closed-loop error =====================
+\hd{Closed-loop error}
+\textit{Control objective}: $\;\delta x[k+1] = \lc\,\delta x[k]$.
+
+\textit{Control law} (4-state; the gain rate is fed forward, the disturbance is not compensated):
+\[ f_{dx}[k] = \hat a_x^{-1}[k]\Big\{ \Delta x_d^{d}[k] + (1-\lc)\Big[\delta x_m[k] - \textstyle\sum_{i=1}^{d}\hat a_x[k-i]\,f_{dx}[k-i]\Big] \Big\}, \]
+with $\Delta x_d^{d}[k] = \Delta x_d[k] + (1-\lc)\sum_{i=1}^{d}\Delta x_d[k-i]$ the (delay-compensated) desired-trajectory feedforward. Under this law, and dropping the gain-estimation and disturbance terms (which are higher order), the closed-loop error becomes
+\[ \delta x[k+1] = \lc\,\delta x[k] - \delta x_T^{d}[k] - (1-\lc)\,n_x[k], \]
+\[ \delta x_T^{d}[k] = \delta x_T[k] + (1-\lc)\textstyle\sum_{i=1}^{d}\delta x_T[k-i], \qquad \delta x_T[k] := a_x[k]\,f_T[k] \;\;(\text{white},\;\sigma^2_{\delta x_T} = 4k_BT\,a_x). \]
+
+\textit{Solving this recursion in the $z$-domain} gives two noise channels:
+\[ \delta x(z^{-1}) = -\,H_T(z^{-1})\,\delta x_T(z^{-1}) \;-\; H_n(z^{-1})\,n_x(z^{-1}), \]
+\[ H_T(z^{-1}) = z^{-1}\frac{1+(1-\lc)z^{-1}+(1-\lc)z^{-2}}{1-\lc z^{-1}}, \qquad H_n(z^{-1}) = z^{-1}\frac{1-\lc}{1-\lc z^{-1}}. \]
+
+%% ===================== IIR mean removal =====================
+\hd{IIR mean removal}
+\textit{Low-pass (EWMA) mean and high-pass residual}:
+\[ \dxbm[k] = (1-a_{pd})\,\dxbm[k-1] + a_{pd}\,\delta x_m[k], \qquad H_{LP}(z^{-1}) = \frac{a_{pd}}{1-(1-a_{pd})z^{-1}}, \]
+\[ \dxr[k] = \delta x_m[k] - \dxbm[k], \qquad H_{HP}(z^{-1}) = 1 - H_{LP}(z^{-1}) = \frac{(1-a_{pd})\bigl(1-z^{-1}\bigr)}{1-(1-a_{pd})z^{-1}}. \]
+Since $H_{HP}(z{=}1)=0$, the residual $\dxr$ is exactly zero-mean.
+
+\textit{Channel decomposition} (substitute $\delta x_m = \delta x[k-d] + n_x$, independent $\delta x_T \perp n_x$):
+\begin{empheq}[box=\fbox]{equation*}
+\dxr(z^{-1}) = -\,F_T(z^{-1})\,\delta x_T(z^{-1}) + F_N(z^{-1})\,n_x(z^{-1})
+\end{empheq}
+\[ F_T = H_{HP}\,z^{-d}\,H_T, \qquad F_N = H_{HP}\bigl[\,1 - z^{-d}H_n\,\bigr] = (1-z^{-1})\,z^{3}\,F_T. \]
+
+\textit{Residual variance} (by Parseval, residues at the poles $z=1-a_{pd}$ and $z=\lc$; $D := 1-(1-a_{pd})\lc$):
+\begin{empheq}[box=\fbox]{equation*}
+\sigma^2_{\dxr} = C_{\mathrm{dpmr}}(\lc,a_{pd})\,\sigma^2_{\delta x_T} + C_n(\lc,a_{pd})\,\sigma_n^2
+\end{empheq}
+\[ C_{\mathrm{dpmr}} = (1-a_{pd})^2\!\left[\,\frac{2(1-a_{pd})(1-\lc)}{D} + \frac{2}{2-a_{pd}}\cdot\frac{1}{(1+\lc)\,D}\,\right], \]
+\[ C_n = \frac{2(1-a_{pd})^2}{2-a_{pd}}\!\left[\,1 + \frac{(1-a_{pd})^2 a_{pd}(1-\lc)}{D} + \frac{(1-\lc)^2}{(1+\lc)\,D}\,\right] \qquad (\text{full } a_{pd}\text{ closed form}). \]
+
+%% ===================== Variance estimate -> gain measurement =====================
+\hd{Variance estimate and gain measurement}
+\textit{EWMA variance of the residual}:
+\[ \shsq[k] = (1-a_{cov})\,\shsq[k-1] + a_{cov}\,\dxr^2[k], \qquad H_E(z^{-1}) = \frac{a_{cov}}{1-(1-a_{cov})z^{-1}}. \]
+Because $H_{HP}(z{=}1)=0$ (zero-mean residual) and $H_E(z{=}1)=1$, the estimate is unbiased:
+\[ \mathbb{E}[\shsq] = \sigma^2_{\dxr} = C_{\mathrm{dpmr}}\,4k_BT\,a_x + C_n\,\sigma_n^2. \]
+
+\textit{Linear inversion} (linear in $\shsq$, not a square root --- the variance is itself \emph{linear} in $a_x$):
+\begin{empheq}[box=\fbox]{equation*}
+a_{xm}[k] = \frac{\shsq[k] - C_n\,\sigma_n^2}{C_{\mathrm{dpmr}}\cdot 4k_BT}, \qquad \mathbb{E}[a_{xm}] = a_x.
+\end{empheq}
+
+%% ===================== Measurement noise R(2,2) =====================
+\hd{Measurement noise $R(2,2) = \mathrm{Var}(a_{xm})$}
+\textit{Variance scaling}. $a_{xm}$ is an affine map of $\shsq$ (slope $m = C_{\mathrm{dpmr}}4k_BT$, offset $C_n\sigma_n^2$), so the variance scales by $1/m^2$ (this also converts the units, $\mu\text{m}^4 \to (\mu\text{m}/\text{pN})^2$):
+\[ R(2,2) = \mathrm{Var}(a_{xm}) = \frac{\mathrm{Var}(\shsq)}{(C_{\mathrm{dpmr}}\cdot 4k_BT)^2}. \]
+
+\textit{Variance of the EWMA estimate} (three independent layers):
+\[ \mathrm{Var}(\shsq) = K_{\mathrm{var}}\;\sigma^4_{\dxr}\;\mathrm{IF}, \qquad K_{\mathrm{var}} = \frac{2a_{cov}}{2-a_{cov}}, \]
+where $K_{\mathrm{var}}$ combines Isserlis' fourth moment ($\mathrm{Var}(X^2)=2\sigma^4$ for Gaussian $X$) with the EWMA variance gain $a_{cov}/(2-a_{cov})$, and $\mathrm{IF}$ is the color-inflation factor: $\dxr$ inherits the poles $1-a_{pd}$ and $\lc$, so it is autocorrelated and so is $\dxr^2$,
+\[ \mathrm{IF} = 1 + 2\!\sum_{\tau\ge1}\rho^2_{\dxr}(\tau)\,s^{\tau}, \quad s = 1-a_{cov}. \]
+The square $\rho^2$ comes from Isserlis at lag $\tau$: $\mathrm{Cov}(\dxr^2[k],\dxr^2[k{+}\tau]) = 2\,\mathrm{Cov}(\dxr[k],\dxr[k{+}\tau])^2 = 2\rho^2_{\dxr}(\tau)\,\sigma^4_{\dxr}$. The autocorrelation decays as $\rho_{\dxr}(\tau)\big|_{\tau\ge3} = c_\alpha(1-a_{pd})^{\tau} + c_\beta\,\lc^{\tau}$.
+
+\textit{Result}. Substituting $\sigma^2_{\dxr} = C_{\mathrm{dpmr}}4k_BT\,a_x + C_n\sigma_n^2$ gives $\sigma^4_{\dxr}/(C_{\mathrm{dpmr}}4k_BT)^2 = (a_x+\xi)^2$, hence
+\begin{empheq}[box=\fbox]{equation*}
+R(2,2) = K_{\mathrm{var}}\;\mathrm{IF}\;(a_x + \xi)^2, \qquad \xi = \frac{C_n}{C_{\mathrm{dpmr}}}\cdot\frac{\sigma_n^2}{4k_BT}.
+\end{empheq}
+The relative noise $\sigma(a_{xm})/a_x \approx \sqrt{K_{\mathrm{var}}\,\mathrm{IF}}$ (thermal-dominated, $\xi \ll a_x$) is an irreducible finite-sample (chi-squared) floor, set by the EWMA window $N_{\mathrm{eff}}\approx 1/a_{cov}$.
+
+%% ===================== Delay term -> KF measurement =====================
+\hd{Delay term and KF measurement}
+\textit{Gain model} (4-state; the gain rate $\delta a_x$ is fed forward from the desired trajectory, $\delta a_{ram}$ is the random part):
+\[ a_x[k+1] = a_x[k] + \delta a_x[k] + \delta a_{ram}[k], \]
+\[ \delta a_x[k] = a'_x[k]\,\Delta h_d[k]\;(\text{known, fed forward}), \qquad \delta a_{ram}[k] = a'_x[k]\,\Delta x_{ram}[k]. \]
+The gain measurement reflects the gain $d$ steps earlier; expanding $a_x[k-d]$ and separating the known fed-forward part,
+\[ y_2[k] = a_{xm}[k] = a_x[k-d] + n_a[k] = a_x[k] - \textstyle\sum_{i=1}^{d}\delta a_x[k-i] + \underbrace{\Big\{ n_a[k] - \textstyle\sum_{i=1}^{d}\delta a_{ram}[k-i] \Big\}}_{r_2[k]}. \]
+Since $\sum_{i=1}^{d}\delta a_x[k-i]$ is known, it is moved to a known correction $\mathbf c[k]$, and the state keeps only $a_x$:
+\[ \mathbf H = \begin{bmatrix} 1 & 0 & 0 & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix}, \qquad \mathbf c[k] = \begin{bmatrix} 0 \\ \sum_{i=1}^{d}\delta a_x[k-i] \end{bmatrix}, \qquad \mathbf y[k] = \mathbf H\,\mathbf x[k] - \mathbf c[k] + \mathbf r[k]. \]
+
+\textit{Effective measurement variance} (the intrinsic IIR noise $n_a$ and the past random gain increments are independent):
+\[ R(2,2)_{\text{eff}} = \underbrace{R(2,2)}_{=\,\mathrm{Var}(n_a)} + \sum_{i=1}^{d}\mathrm{Var}\bigl(\delta a_{ram}[k-i]\bigr), \qquad \mathrm{Var}(\delta a_{ram}) = \frac{2}{1+\lc}\Big(\frac{a_x K_h}{R}\Big)^{2}\sigma^2_{\delta h}, \]
+with $K_h = (1/c)\,(dc/d\bar h)$ the wall sensitivity, $R$ the probe radius, and $\sigma^2_{\delta h} = 4k_BT\,a_{\perp}$ the wall-normal thermal step variance. The random-gain term $\delta x_{\delta af}^{d}$ (the contribution of $\delta a_{ram}$ to $\delta x$) is second order and is omitted from the $C_{\mathrm{dpmr}}$ derivation above.
+
+\end{document}
