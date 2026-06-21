@@ -1,20 +1,11 @@
 % ======================================================
 % Compile: xelatex 5state_derivation.tex
 % Path:    reference/eq17_analysis/derivation/5state_derivation.tex
-% Purpose: Derivation of the 5-state (disturbance-state-removed) variant of the
-%          eq17 controller + closed-loop EKF, presented in the same flow/style
-%          as 6state_derivation_xd.tex (the RevisedControl_Vpersonal baseline).
-%          This is a DERIVATION (no source PDF): the 5-state form is obtained
-%          from the 6-state by dropping the combined disturbance state
-%          delta_x_D^{d} (6-state slot 4) and its control-law compensation.
-%          It is verified line-by-line against the implementation
-%          model/controller/motion_control_law_eq17_5state.m (see the
-%          companion verification report).
-% Styling (matches 6state_derivation_xd.tex): monochrome; \fbox on the key
-%          results (implementable control effort, the motion-error result,
-%          F_e); plain black for noise terms.
-% Divergences from the 6-state are flagged with a short italic remark
-% "(5-state: ...)" at the point where they occur.
+% Standalone derivation of the 5-state eq17 controller + closed-loop EKF.
+% Built on RevisedControl_Vpersonal with the disturbance STATE removed:
+% delta_x_D stays in the plant but is uncompensated (modelled as 0 by the EKF),
+% so the augmented per-axis state is x = [delta_x_1, delta_x_2, delta_x_3, a_x, delta_a_x].
+% Style mirrors 6state_derivation_xd (monochrome, \fbox on key results, terse).
 % ======================================================
 \documentclass[11pt,a4paper]{ctexart}
 
@@ -28,7 +19,6 @@
 \usepackage{array,booktabs}
 \usepackage{titlesec}
 
-% --- Tight layout ---
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0.3em}
 \setlength{\abovedisplayskip}{4pt}
@@ -36,19 +26,51 @@
 \setlength{\abovedisplayshortskip}{2pt}
 \setlength{\belowdisplayshortskip}{2pt}
 
-% --- Shortcuts ---
 \newcommand{\lc}{\lambda_c}
 \newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
-% Short italic divergence remark
-\newcommand{\rmk}[1]{\par\vspace{0.1ex}{\small\itshape #1}\par\vspace{0.1ex}}
 
 \begin{document}
 
-\noindent\textbf{5-state EKF controller (disturbance state removed).}
-The combined disturbance state $\delta x_D^{d}$ of the 6-state baseline is dropped, so the augmented per-axis state is $\mathbf{x} = [\,\delta x_1,\ \delta x_2,\ \delta x_3,\ a_x,\ \delta a_x\,]^{\mathsf T}$. Plant, Measurement, Control objective and the \emph{ideal} control effort are identical to the 6-state baseline (\texttt{6state\_derivation\_xd.tex}) and are not reprinted; the divergences appear only in the \emph{implementable} law and everything downstream of it.
+\hd{Equation of motion}
+\[ x[k+1] = x[k] + a_x[k]\{f_{dx}[k] + f_T[k]\} + \delta x_D[k], \]
+
+\hd{Motion error}
+\[ \delta x[k+1] = \delta x[k] + \Delta x_d[k] - a_x[k]\{f_{dx}[k] + f_T[k]\} - \delta x_D[k], \]
+
+$\delta x[k] = x_d[k] - x[k]$, $x_d[k]$ is the desired motion trajectory, $\delta x_D[k]$ is the motion error caused by the disturbance, and $\Delta x_d[k] = x_d[k+1] - x_d[k]$ is the desired motion step size.
+
+\hd{Measurement} (\textit{d}-step delay)
+\[ \delta x_m[k] = \delta x[k-d] + n_x[k], \]
+
+\noindent\underline{\textbf{Control objective}}: $\;\delta x[k+1] = \lc \cdot \delta x[k];\quad 0 \le \lc < 1$
+
+\medskip
+\textit{Ideal control effort (no measurement delay)}:
+\[ \bar f_{dx}[k] = a_x^{-1}[k]\{\Delta x_d[k] + (1-\lc)\,\bm{\delta x[k]} - \delta x_D[k]\} \]
+
+\textit{Motion error}:
+\[ \delta x[k+1] = \delta x[k] + \Delta x_d[k] - a_x[k]\{\bar f_{dx}[k] + f_T[k]\} - \delta x_D[k] = \lc \cdot \delta x[k] - a_x[k] f_T[k] \]
+
+\textit{d-step measurement delay}:
+\[ \bm{\delta x[k]} = \delta x[k-d] + \sum_{i=1}^{d}\Delta x_d[k-i] - \sum_{i=1}^{d} a_x[k-i]\{f_{dx}[k-i] + f_T[k-i]\} - \sum_{i=1}^{d}\delta x_D[k-i] \]
+
+\textit{Ideal control effort (with d-step measurement delay)}:
+\[
+\begin{aligned}
+\bar{\bar f}_{dx}[k] = a_x^{-1}[k]\Big\{
+& \underbrace{\Big[\Delta x_d[k] + (1-\lc)\textstyle\sum_{i=1}^{d}\Delta x_d[k-i]\Big]}_{\Delta x_d^{d}[k]}
++ (1-\lc)\Big[\delta x[k-d] - \textstyle\sum_{i=1}^{d} a_x[k-i] f_{dx}[k-i]\Big] \\
+& - \underbrace{\Big[\delta x_D[k] + (1-\lc)\textstyle\sum_{i=1}^{d}\delta x_D[k-i]\Big]}_{\delta x_D^{d}[k]}
+\Big\}
+\end{aligned}
+\]
+
+\textit{Motion error}:
+\[
+\delta x[k+1] = \lc \cdot \delta x[k] - \underbrace{\Big\{ a_x[k] f_T[k] + (1-\lc)\textstyle\sum_{i=1}^{d} a_x[k-i] f_T[k-i] \Big\}}_{\delta x_T^{d}[k]}
+\]
 
 \hd{Implementable control effort}
-\rmk{(5-state: the $-\,\delta\hat x_D^{d}[k]$ term of the 6-state law is absent --- the disturbance state is removed, so there is nothing to subtract.)}
 \begin{empheq}[box=\fbox]{equation*}
 f_{dx}[k] = \hat a_x^{-1}[k]\Big\{ \Delta x_d^{d}[k] + (1-\lc)\Big[\delta x_m[k] - \textstyle\sum_{i=1}^{d}\hat a_x[k-i] f_{dx}[k-i]\Big] \Big\}
 \end{empheq}
@@ -56,15 +78,12 @@ f_{dx}[k] = \hat a_x^{-1}[k]\Big\{ \Delta x_d^{d}[k] + (1-\lc)\Big[\delta x_m[k]
 \hd{Motion error}
 \[ \delta x[k+1] = \lc \cdot \delta x[k] - a_x[k]\big[ f_{dx}[k] - \bar{\bar f}_{dx}[k] \big] - \delta x_T^{d}[k] \]
 
-\[ a_x[k]\,\bar{\bar f}_{dx}[k] = \Big\{ \Delta x_d^{d}[k] + (1-\lc)\Big[\delta x[k-d] - \textstyle\sum_{i=1}^{d} a_x[k-i] f_{dx}[k-i]\Big] - \delta x_D^{d}[k] \Big\} \]
+\[ a_x[k]\,\bar{\bar f}_{dx}[k] = \Delta x_d^{d}[k] + (1-\lc)\Big[\delta x[k-d] - \textstyle\sum_{i=1}^{d} a_x[k-i] f_{dx}[k-i]\Big] - \delta x_D^{d}[k] \]
 
 \[
-\begin{aligned}
-a_x[k]\, f_{dx}[k] ={}& \big(1 + e_{a_x}[k]\,\hat a_x^{-1}[k]\big)\Big\{ \Delta x_d^{d}[k] \\
-&+ (1-\lc)\Big[\big(\delta x[k-d] + n_x[k]\big) - \textstyle\sum_{i=1}^{d}\hat a_x[k-i] f_{dx}[k-i]\Big] \Big\}
-\end{aligned}
+a_x[k]\, f_{dx}[k] = \big(1 + e_{a_x}[k]\,\hat a_x^{-1}[k]\big)\Big\{ \Delta x_d^{d}[k]
++ (1-\lc)\Big[\big(\delta x[k-d] + n_x[k]\big) - \textstyle\sum_{i=1}^{d}\hat a_x[k-i] f_{dx}[k-i]\Big] \Big\}
 \]
-\rmk{(5-state: no $\delta\hat x_D^{d}$ in the brace $\Rightarrow$ the difference leaves the uncompensated $\delta x_D^{d}[k]$ below, where the 6-state had $e_{\delta x_D^{d}}[k]$.)}
 
 \[
 \begin{aligned}
@@ -73,17 +92,12 @@ a_x[k]\, f_{dx}[k] - a_x[k]\,\bar{\bar f}_{dx}[k] ={}& e_{a_x}[k]\, f_{dx}[k] + 
 \end{aligned}
 \]
 
-\medskip
-\textit{Parameter model}:
-\[ a_x[k] = a_{x_{det}}[k] + a_{x_{ram}}[k]; \quad a_{x_{ram}}[k] \approx a'_x[k]\, x_{ram}[k] \]
-
+\hd{Parameter model}
+\[ a_x[k] = a_{x_{det}}[k] + a_{x_{ram}}[k]; \qquad a_{x_{ram}}[k] \approx a'_x[k]\, x_{ram}[k] \]
 \[
-\begin{aligned}
-a_x[k+1] &= \bm{a_{x_{det}}[k+1]} + a_{x_{ram}}[k+1] \\
-&= \underbrace{\Big\{ \bm{a_{x_{det}}[k]} + a_{x_{ram}}[k] \Big\}}_{a_x[k]} + \bm{\delta a[k]} + \underbrace{\Big\{ a_{x_{ram}}[k+1] - a_{x_{ram}}[k] \Big\}}_{\delta a_{ram}[k]}
-\end{aligned}
+a_x[k+1] = \underbrace{\big\{ a_{x_{det}}[k] + a_{x_{ram}}[k] \big\}}_{a_x[k]} + \delta a[k]
++ \underbrace{\big\{ a_{x_{ram}}[k+1] - a_{x_{ram}}[k] \big\}}_{\delta a_{ram}[k]}
 \]
-
 \[ \begin{cases} a_x[k+1] = a_x[k] + \delta a_x[k] + \delta a_{ram}[k] \\ \delta a_x[k+1] = \delta a_x[k] \end{cases} \]
 
 \textit{Parameter estimator}:
@@ -96,26 +110,24 @@ a_x[k+1] &= \bm{a_{x_{det}}[k+1]} + a_{x_{ram}}[k+1] \\
 \[ \begin{cases} e_{a_x}[k+1] = e_{a_x}[k] + e_{\delta a_x}[k] + \delta a_{ram}[k] \\ e_{\delta a_x}[k+1] = e_{\delta a_x}[k] \end{cases} \]
 
 \newpage
-%% ===================== PAGE 3 =====================
 \[ a_x[k-i] - \hat a_x[k-i] \approx e_{a_x}[k] - i\cdot e_{\delta a_x}[k] - \sum_{j=1}^{i}\delta a_{ram}[k-j] \]
 
 \[
 \begin{aligned}
 a_x[k]\, f_{dx}[k] - a_x[k]\,\bar{\bar f}_{dx}[k] \approx{}&
 e_{a_x}[k]\,\underbrace{\Big\{ f_{dx}[k] + (1-\lc)\textstyle\sum_{i=1}^{d} f_{dx}[k-i] \Big\}}_{F_{dx}[k]} \\
-&- e_{\delta a_x}[k]\,\underbrace{\Big\{ (1-\lc)\textstyle\sum_{i=1}^{d} i\cdot f_{dx}[k-i] \Big\}}_{dF_{dx}[k]} \\
-&- \underbrace{\Big\{ (1-\lc)\textstyle\sum_{i=1}^{d} (d+1-i)\cdot f_{dx}[k-i]\,\delta a_{ram}[k-i] \Big\}}_{\delta x_{\delta af}^{d}[k]} \\
+&- e_{\delta a_x}[k]\,\underbrace{\Big\{ (1-\lc)\textstyle\sum_{i=1}^{d} i\, f_{dx}[k-i] \Big\}}_{dF_{dx}[k]} \\
+&- \underbrace{\Big\{ (1-\lc)\textstyle\sum_{i=1}^{d} (d+1-i)\, f_{dx}[k-i]\,\delta a_{ram}[k-i] \Big\}}_{\delta x_{\delta af}^{d}[k]} \\
 &+ \delta x_D^{d}[k] + (1-\lc) n_x[k]
 \end{aligned}
 \]
 
-\rmk{(5-state: $\delta x_D^{d}[k]$ is the uncompensated disturbance, not an estimation error; the EKF models it as $0$ ($\delta x_D\approx0$) and the state equation below drops it.)}
 \begin{empheq}[box=\fbox]{align*}
 \delta x[k+1] ={}& \lc \cdot \delta x[k] - F_{dx}[k]\cdot e_{a_x}[k] + dF_{dx}[k]\cdot e_{\delta a_x}[k] - \delta x_D^{d}[k] \\
 &- \underbrace{\Big\{ \delta x_T^{d}[k] - \delta x_{\delta af}^{d}[k] + (1-\lc) n_x[k] \Big\}}_{\varepsilon[k]}
 \end{empheq}
 
-\hd{State equation} \;{\small\itshape (EKF model: $\delta x_D^{d}\!\equiv\!0$, state removed)}
+\hd{State equation} \;{\small ($\delta x_D^{d}\!\equiv\!0$: disturbance not modelled)}
 \[
 \begin{aligned}
 \delta x_1[k+1] &= \delta x_2[k] \\
@@ -129,30 +141,16 @@ a_x[k+1] &= a_x[k] + \delta a_x[k] + \delta a_{ram}[k] \\
 \hd{Output equation}
 \[
 \begin{cases}
-y_1[k] = \delta x_m[k] = \delta x_1[k] + \underbrace{n_x[k]}_{r_1[k]} \\[2.0ex]
+y_1[k] = \delta x_m[k] = \delta x_1[k] + \underbrace{n_x[k]}_{r_1[k]} \\[1.8ex]
 y_2[k] = \underbrace{a_x[k-d] + n_a[k]}_{a_{xm}[k]} \approx a_x[k] - d\cdot \delta a_x[k] + \underbrace{\Big\{ n_a[k] - \textstyle\sum_{i=1}^{d}\delta a_{ram}[k-i] \Big\}}_{r_2[k]}
 \end{cases}
 \]
-
-\[ \mathbf{H} = \begin{bmatrix} 1 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 1 & -d \end{bmatrix} \]
-\[ \mathbf{y}[k] = \mathbf{H}\mathbf{x}[k] + \mathbf{r}[k] \]
+\[ \mathbf{H} = \begin{bmatrix} 1 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 1 & -d \end{bmatrix}, \qquad \mathbf{y}[k] = \mathbf{H}\mathbf{x}[k] + \mathbf{r}[k] \]
 
 \newpage
-%% ===================== PAGE 4 =====================
 \hd{Closed-loop Estimator}
-\rmk{(5-state: the $\delta\hat x_D^{d}$ update line is removed; the gain rows for $\hat a_x,\,\delta\hat a_x$ shift up to $\ell_{4\bullet},\,\ell_{5\bullet}$.)}
-\[ e_{\delta x_1}[k] = \delta x_1[k] - \delta \hat x_1[k] \]
-\[ e_{a_x}[k] = a_x[k] - \hat a_x[k] \]
-\[ e_{\delta a_x}[k] = \delta a_x[k] - \delta \hat a_x[k] \]
-\[ e_{y_1}[k] = y_1[k] - \hat y_1[k] = \delta x_m[k] - \delta \hat x_1[k] = e_{\delta x_1}[k] + \underbrace{n_x[k]}_{r_1[k]} \]
-\[
-\begin{aligned}
-e_{y_2}[k] &= y_2[k] - \hat y_2[k] = a_{xm}[k] - \hat a_x[k] + d\cdot \delta \hat a_x[k] \\
-&= e_{a_x}[k] - d\cdot e_{\delta a_x}[k] + \underbrace{\Big\{ n_a[k] - \textstyle\sum_{i=1}^{d}\delta a_{ram}[k-i] \Big\}}_{r_2[k]}
-\end{aligned}
-\]
-
-\medskip
+\[ e_{\delta x_1}[k] = \delta x_1[k] - \delta \hat x_1[k], \quad e_{a_x}[k] = a_x[k] - \hat a_x[k], \quad e_{\delta a_x}[k] = \delta a_x[k] - \delta \hat a_x[k] \]
+\[ e_{y_1}[k] = y_1[k] - \hat y_1[k] = e_{\delta x_1}[k] + n_x[k], \qquad e_{y_2}[k] = y_2[k] - \hat y_2[k] = e_{a_x}[k] - d\cdot e_{\delta a_x}[k] + r_2[k] \]
 \[
 \begin{aligned}
 \delta \hat x_1[k+1] &= \delta \hat x_2[k] + \ell_{11}[k]\, e_{y_1}[k] + \ell_{12}[k]\, e_{y_2}[k] \\
@@ -166,19 +164,16 @@ e_{y_2}[k] &= y_2[k] - \hat y_2[k] = a_{xm}[k] - \hat a_x[k] + d\cdot \delta \ha
 \hd{Error dynamics}
 \[
 \begin{aligned}
-e_{\delta x_1}[k+1] &= e_{\delta x_2}[k] - \ell_{11}[k]\, e_{\delta x_1}[k] - \ell_{12}[k]\, e_{a_x}[k] + \ell_{12}[k]\cdot d\cdot e_{\delta a_x}[k] \\
-e_{\delta x_2}[k+1] &= e_{\delta x_3}[k] - \ell_{21}[k]\, e_{\delta x_1}[k] - \ell_{22}[k]\, e_{a_x}[k] + \ell_{22}[k]\cdot d\cdot e_{\delta a_x}[k] \\
+e_{\delta x_1}[k+1] &= e_{\delta x_2}[k] - \ell_{11}[k]\, e_{\delta x_1}[k] - \ell_{12}[k]\, e_{a_x}[k] + \ell_{12}[k]\, d\, e_{\delta a_x}[k] \\
+e_{\delta x_2}[k+1] &= e_{\delta x_3}[k] - \ell_{21}[k]\, e_{\delta x_1}[k] - \ell_{22}[k]\, e_{a_x}[k] + \ell_{22}[k]\, d\, e_{\delta a_x}[k] \\
 e_{\delta x_3}[k+1] &= \lc \cdot e_{\delta x_3}[k] - F_{dx}[k]\cdot e_{a_x}[k] + dF_{dx}[k]\cdot e_{\delta a_x}[k] \\
-&\quad - \ell_{31}[k]\, e_{\delta x_1}[k] - \ell_{32}[k]\, e_{a_x}[k] + \ell_{32}[k]\cdot d\cdot e_{\delta a_x}[k] - \underbrace{\varepsilon[k]}_{q_3[k]} \\
-e_{a_x}[k+1] &= e_{a_x}[k] + e_{\delta a_x}[k] - \ell_{41}[k]\, e_{\delta x_1}[k] - \ell_{42}[k]\, e_{a_x}[k] + \ell_{42}[k]\cdot d\cdot e_{\delta a_x}[k] + \underbrace{\delta a_{ram}[k]}_{q_4[k]} \\
-e_{\delta a_x}[k+1] &= e_{\delta a_x}[k] - \ell_{51}[k]\, e_{\delta x_1}[k] - \ell_{52}[k]\, e_{a_x}[k] + \ell_{52}[k]\cdot d\cdot e_{\delta a_x}[k]
+&\quad - \ell_{31}[k]\, e_{\delta x_1}[k] - \ell_{32}[k]\, e_{a_x}[k] + \ell_{32}[k]\, d\, e_{\delta a_x}[k] - \underbrace{\varepsilon[k]}_{q_3[k]} \\
+e_{a_x}[k+1] &= e_{a_x}[k] + e_{\delta a_x}[k] - \ell_{41}[k]\, e_{\delta x_1}[k] - \ell_{42}[k]\, e_{a_x}[k] + \ell_{42}[k]\, d\, e_{\delta a_x}[k] + \underbrace{\delta a_{ram}[k]}_{q_4[k]} \\
+e_{\delta a_x}[k+1] &= e_{\delta a_x}[k] - \ell_{51}[k]\, e_{\delta x_1}[k] - \ell_{52}[k]\, e_{a_x}[k] + \ell_{52}[k]\, d\, e_{\delta a_x}[k]
 \end{aligned}
 \]
-\rmk{(5-state: the 6-state's $e_{\delta x_D^{d}}$ line is gone, and the $-\,e_{\delta x_D^{d}}[k]$ term that sat in the $e_{\delta x_3}$ row is dropped with the disturbance state. Process noise: $q_3=\varepsilon$, $q_4=\delta a_{ram}$.)}
 
 \newpage
-%% ===================== PAGE 5 =====================
-\rmk{(5-state: $5\times5$. Row 3 loses the 6-state col-4 entry $-1$ that coupled $\delta x_D^{d}\!\to\!\delta x_3$; the gain states $a_x,\,\delta a_x$ occupy cols 4,5.)}
 \begin{empheq}[box=\fbox]{equation*}
 \mathbf{F}_e[k] =
 \begin{bmatrix}
@@ -190,11 +185,8 @@ e_{\delta a_x}[k+1] &= e_{\delta a_x}[k] - \ell_{51}[k]\, e_{\delta x_1}[k] - \e
 \end{bmatrix}
 \end{empheq}
 
-\[
-F_{dx}[k] = f_{dx}[k] + (1-\lc)\sum_{i=1}^{d} f_{dx}[k-i], \qquad
-dF_{dx}[k] = (1-\lc)\sum_{i=1}^{d} i\cdot f_{dx}[k-i]
-\]
+\[ F_{dx}[k] = f_{dx}[k] + (1-\lc)\sum_{i=1}^{d} f_{dx}[k-i], \qquad dF_{dx}[k] = (1-\lc)\sum_{i=1}^{d} i\, f_{dx}[k-i] \]
 
-\[ \mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k] - \mathbf{L}[k]\,\mathbf{H}\,\mathbf{e}[k] + \mathbf{q}[k] - \mathbf{L}\,\mathbf{r}[k] \]
+\[ \mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k] - \mathbf{L}[k]\,\mathbf{H}\,\mathbf{e}[k] + \mathbf{q}[k] - \mathbf{L}[k]\,\mathbf{r}[k] \]
 
 \end{document}
