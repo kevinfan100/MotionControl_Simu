@@ -1,0 +1,145 @@
+% ======================================================
+% Compile: xelatex 4state_del_hd.tex
+% Path:    reference/eq17_analysis/derivation/4state_del_hd.tex
+% Purpose: Derivation of the 4-state variant of the eq17 controller + EKF.
+%          Built on the 5-state (disturbance state removed). The gain-RATE
+%          state delta_a_x is no longer estimated: it is fed forward from the
+%          known desired trajectory via the gain height-sensitivity,
+%          delta_a_x[k] = a'_x[k] * Delta_h_d[k]. State shrinks to
+%          x = [delta_x_1, delta_x_2, delta_x_3, a_x] (4-state).
+%          Plant / Measurement / Ideal control effort / disturbance removal
+%          are identical to 6state_derivation_xd.tex and 5state_derivation.tex
+%          and are NOT reprinted here.
+% Style: matches the sibling derivations (ctexart, xelatex, monochrome, \fbox
+%        on key results, tight spacing, minimal prose).
+% Notation reuse: a' (=da_x/dh, already in the parameter model), delta_a_x
+%        (now KNOWN feedforward, not a state), delta_a_ram, e_{a_x}, F_dx, eps.
+%        Only new symbol: Delta_h_d (desired-trajectory height increment).
+% ======================================================
+\documentclass[11pt,a4paper]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+\newcommand{\rmk}[1]{\par\vspace{0.1ex}{\small\itshape #1}\par\vspace{0.1ex}}
+
+\begin{document}
+
+\noindent\textbf{4-state EKF controller (gain rate fed forward from the desired trajectory).}
+Built on the 5-state (disturbance state removed). The gain rate $\delta a_x$ is no longer an estimated state: it is computed from the known desired trajectory through the gain height-sensitivity, $\delta a_x[k] = a'_x[k]\,\Delta h_d[k]$. The augmented per-axis state shrinks to $\mathbf{x} = [\,\delta x_1,\ \delta x_2,\ \delta x_3,\ a_x\,]^{\mathsf T}$. Plant, Measurement, Control objective, Ideal control effort, and the disturbance removal are identical to the 6-state baseline (\texttt{6state\_derivation\_xd.tex}) / 5-state and are not reprinted; only the gain dynamics and everything downstream change.
+
+\hd{Implementable control effort}
+\begin{empheq}[box=\fbox]{equation*}
+f_{dx}[k] = \hat a_x^{-1}[k]\Big\{ \Delta x_d^{d}[k] + (1-\lc)\Big[\delta x_m[k] - \textstyle\sum_{i=1}^{d}\hat a_x[k-i] f_{dx}[k-i]\Big] \Big\}
+\end{empheq}
+
+\hd{Parameter model}
+\[ a_x[k] = a_{x_{det}}[k] + a_{x_{ram}}[k]; \qquad a_{x_{ram}}[k] \approx a'_x[k]\, x_{ram}[k] \]
+\[ a_x[k+1] = a_x[k] + \delta a_x[k] + \delta a_{ram}[k] \]
+\rmk{(4-state: $\delta a_x$ is no longer estimated --- it is the known feedforward below. The rate state is dropped; only the single gain state $a_x$ remains.)}
+\[
+\delta a_x[k] = a_{x_{det}}[k+1] - a_{x_{det}}[k] = a'_x[k]\,\Delta h_d[k]\ \ (\text{known}),
+\qquad
+\delta a_{ram}[k] = a'_x[k]\,\Delta x_{ram}[k]\ \ (\text{random})
+\]
+where $\Delta h_d[k] = h_d[k+1]-h_d[k]$ is the desired-trajectory height increment and the sensitivity is evaluated on the \emph{desired} trajectory: $a'_x = \mathrm{d}a_x/\mathrm{d}h = -a_{x_{det}}\,K_h(\bar h_d)/R$ with $a_{x_{det}} = a_{nom}/c(\bar h_d)$, so $\delta a_x[k] = -a_{x_{det}}[k]\,K_h(\bar h_d[k])\,\Delta\bar h_d[k]$. The multiplier is the \emph{exogenous} $a_{x_{det}}$, \textbf{not} the estimate $\hat a_x$ --- this keeps the feedforward free of an estimate$\,\to\,$Q$\,\to\,$estimate bias loop. The random increment $\delta a_{ram} = a'_x\,\Delta x_{ram}$ shares the same $a'_x$.
+\rmk{(Approximation: $a_{x_{det}}$ uses the \emph{desired} height $\bar h_d$, not the true height. The residual $a_{x_{det},\mathrm{true}}-a_{nom}/c(\bar h_d)\approx a'_x\,\delta x$ is second order (tracking error $\times$ gain slope); benign away from the wall, but grows near it where $a'_x\propto a_x K_h$ is large.)}
+
+\textit{Parameter estimator}:
+\[ \hat a_x[k+1] = \hat a_x[k] + \delta a_x[k] \qquad(\text{+ measurement correction; }\delta a_x\text{ fed forward}) \]
+
+\textit{Parameter estimation error}: \quad $e_{a_x}[k] = a_x[k] - \hat a_x[k]$ \quad(no $e_{\delta a_x}$ --- the rate is known)
+
+\textit{Estimation error dynamics (open loop)}:
+\begin{empheq}[box=\fbox]{equation*}
+e_{a_x}[k+1] = e_{a_x}[k] + \delta a_{ram}[k]
+\end{empheq}
+\rmk{($\delta a_x$ enters both $a_x$ and $\hat a_x$ $\Rightarrow$ it cancels in the error. The gain error no longer carries the deterministic trajectory variation, so it does not lag during fast motion; only the random $\delta a_{ram}$ drives it.)}
+
+\hd{Motion error}
+\[ a_x[k-i] - \hat a_x[k-i] \approx e_{a_x}[k] - \sum_{j=1}^{i}\delta a_{ram}[k-j] \]
+\rmk{(vs 5-state: the $-\,i\,e_{\delta a_x}$ rate-error term is gone, since $\delta a_x$ is known.)}
+\begin{empheq}[box=\fbox]{align*}
+\delta x[k+1] ={}& \lc \cdot \delta x[k] - F_{dx}[k]\cdot e_{a_x}[k] - \delta x_D^{d}[k] \\
+&- \underbrace{\Big\{ \delta x_T^{d}[k] - \delta x_{\delta af}^{d}[k] + (1-\lc) n_x[k] \Big\}}_{\varepsilon[k]}
+\end{empheq}
+\rmk{(vs 5-state: the $+\,dF_{dx}\,e_{\delta a_x}$ coupling vanishes; $\varepsilon$ unchanged. $\delta x_D^{d}$ stays uncompensated and is modelled as $0$ by the EKF.)}
+where $F_{dx}[k] = f_{dx}[k] + (1-\lc)\sum_{i=1}^{d} f_{dx}[k-i]$.
+
+\hd{State equation} \;{\small\itshape (EKF model: $\delta x_D^{d}\!\equiv\!0$; $\delta a_x$ known feedforward)}
+\[
+\begin{aligned}
+\delta x_1[k+1] &= \delta x_2[k] \\
+\delta x_2[k+1] &= \delta x_3[k] \\
+\delta x_3[k+1] &= \lc \cdot \delta x_3[k] - F_{dx}[k]\cdot e_{a_x}[k] - \varepsilon[k] \\
+a_x[k+1] &= a_x[k] + \delta a_x[k] + \delta a_{ram}[k]
+\end{aligned}
+\]
+
+\hd{Output equation}
+\[
+\begin{cases}
+y_1[k] = \delta x_m[k] = \delta x_1[k] + \underbrace{n_x[k]}_{r_1[k]} \\[1.6ex]
+y_2[k] = a_{xm}[k] = a_x[k-d] + n_a[k]
+\end{cases}
+\]
+\rmk{(4-state: $a_{xm}$ is unchanged. Because $\delta a_x$ is known, the $d$-step gain drift goes into the measurement \emph{prediction}, not into $\mathbf H$:)}
+\[
+\hat y_2[k] = \hat a_x[k] - \sum_{i=1}^{d}\delta a_x[k-i],
+\qquad
+e_{y_2}[k] = y_2[k]-\hat y_2[k] = e_{a_x}[k] + \underbrace{\Big(n_a[k]-\textstyle\sum_{i=1}^{d}\delta a_{ram}[k-i]\Big)}_{r_2[k]}
+\]
+\[ \mathbf{H} = \begin{bmatrix} 1 & 0 & 0 & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix} \]
+
+\hd{Closed-loop Estimator}
+\[ e_{\delta x_1}[k] = \delta x_1[k] - \delta \hat x_1[k], \qquad e_{a_x}[k] = a_x[k] - \hat a_x[k] \]
+\[ e_{y_1}[k] = \delta x_m[k] - \delta \hat x_1[k] = e_{\delta x_1}[k] + \underbrace{n_x[k]}_{r_1[k]}, \qquad e_{y_2}[k] = e_{a_x}[k] + r_2[k] \]
+\[
+\begin{aligned}
+\delta \hat x_1[k+1] &= \delta \hat x_2[k] + \ell_{11}[k]\, e_{y_1}[k] + \ell_{12}[k]\, e_{y_2}[k] \\
+\delta \hat x_2[k+1] &= \delta \hat x_3[k] + \ell_{21}[k]\, e_{y_1}[k] + \ell_{22}[k]\, e_{y_2}[k] \\
+\delta \hat x_3[k+1] &= \lc \cdot \delta \hat x_3[k] + \ell_{31}[k]\, e_{y_1}[k] + \ell_{32}[k]\, e_{y_2}[k] \\
+\hat a_x[k+1] &= \hat a_x[k] + \delta a_x[k] + \ell_{41}[k]\, e_{y_1}[k] + \ell_{42}[k]\, e_{y_2}[k]
+\end{aligned}
+\]
+
+\hd{Error dynamics}
+\[
+\begin{aligned}
+e_{\delta x_1}[k+1] &= e_{\delta x_2}[k] - \ell_{11}[k]\, e_{\delta x_1}[k] - \ell_{12}[k]\, e_{a_x}[k] \\
+e_{\delta x_2}[k+1] &= e_{\delta x_3}[k] - \ell_{21}[k]\, e_{\delta x_1}[k] - \ell_{22}[k]\, e_{a_x}[k] \\
+e_{\delta x_3}[k+1] &= \lc \cdot e_{\delta x_3}[k] - F_{dx}[k]\cdot e_{a_x}[k] - \ell_{31}[k]\, e_{\delta x_1}[k] - \ell_{32}[k]\, e_{a_x}[k] - \underbrace{\varepsilon[k]}_{q_3[k]} \\
+e_{a_x}[k+1] &= e_{a_x}[k] - \ell_{41}[k]\, e_{\delta x_1}[k] - \ell_{42}[k]\, e_{a_x}[k] + \underbrace{\delta a_{ram}[k]}_{q_4[k]}
+\end{aligned}
+\]
+\rmk{(4-state: no $e_{\delta a_x}$ row, and no $\pm\,\ell\,d\,e_{\delta a_x}$ terms --- $\mathbf H$'s second row is clean $[0\,0\,0\,1]$.)}
+
+\hd{$\mathbf{F}_e[k]$ \;(4$\times$4)}
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 \\
+0 & 0 & 1 & 0 \\
+0 & 0 & \lc & -F_{dx}[k] \\
+0 & 0 & 0 & 1
+\end{bmatrix}
+\end{empheq}
+\[ \mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k] - \mathbf{L}[k]\,\mathbf{H}\,\mathbf{e}[k] + \mathbf{q}[k] - \mathbf{L}\,\mathbf{r}[k] \]
+
+\end{document}

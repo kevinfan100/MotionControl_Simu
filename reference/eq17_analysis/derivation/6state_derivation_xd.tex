@@ -1,0 +1,232 @@
+% ======================================================
+% Compile: xelatex 6state_derivation_xd.tex
+% Path:    reference/eq17_analysis/derivation/6state_derivation_xd.tex
+% Purpose: Faithful 1:1 LaTeX transcription of the 5-page baseline derivation
+%          reference/eq17_analysis/RevisedConrol＿Vpersonal.pdf
+%          (eq17 6-state controller + closed-loop EKF; the structural SSOT
+%          per kf_canonical_spec.md). Monochrome styling: the source's
+%          yellow-highlighted key results are rendered with \boxed; the
+%          source's orange noise terms are rendered plain black.
+% Notes on the original:
+%   - The page-1 thermal accumulation underbrace and the page-2 carry-over
+%     term are the same quantity, written here as \delta x_T^{d}[k]
+%     (subscript T = thermal), consistent across both pages.
+%   - The source labels read "Paramter ..." (typo); transcribed as
+%     "Parameter ..." for the clean editable baseline.
+% ======================================================
+\documentclass[11pt,a4paper]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+
+% --- Tight layout ---
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+
+% --- Shortcuts ---
+\newcommand{\lc}{\lambda_c}
+% Bold-underlined run-in section header (mimics the source headings)
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+
+\begin{document}
+
+%% ===================== PAGE 1 =====================
+\hd{Equation of motion}
+\[ x[k+1] = x[k] + a_x[k]\{f_{dx}[k] + f_T[k]\} + \delta x_D[k], \]
+
+\hd{Motion error}
+\[ \delta x[k+1] = \delta x[k] + \Delta x_d[k] - a_x[k]\{f_{dx}[k] + f_T[k]\} - \delta x_D[k], \]
+
+$\delta x[k] = x_d[k] - x[k]$, $x_d[k]$ is the desired motion trajectory, $\delta x_D[k]$ is the motion error caused by the disturbance, and $\Delta x_d[k] = x_d[k+1] - x_d[k]$ is the desired motion step size.
+
+\hd{Measurement} (\textit{d}-step delay)
+\[ \delta x_m[k] = \delta x[k-d] + n_x[k], \]
+
+\noindent\underline{\textbf{Control objective}}: $\;\delta x[k+1] = \lc \cdot \delta x[k];\quad 0 \le \lc < 1$
+
+\medskip
+\textit{Ideal control effort (no measurement delay)}:
+\[ \bar f_{dx}[k] = a_x^{-1}[k]\{\Delta x_d[k] + (1-\lc)\,\bm{\delta x[k]} - \delta x_D[k]\} \]
+
+\textit{Motion error}:
+\[ \delta x[k+1] = \delta x[k] + \Delta x_d[k] - a_x[k]\{\bar f_{dx}[k] + f_T[k]\} - \delta x_D[k] = \lc \cdot \delta x[k] - a_x[k] f_T[k] \]
+
+\textit{d-step measurement delay}:
+\[ \bm{\delta x[k]} = \delta x[k-d] + \sum_{i=1}^{d}\Delta x_d[k-i] - \sum_{i=1}^{d} a_x[k-i]\{f_{dx}[k-i] + f_T[k-i]\} - \sum_{i=1}^{d}\delta x_D[k-i] \]
+
+\textit{Ideal control effort (with d-step measurement delay)}:
+\[
+\begin{aligned}
+\bar{\bar f}_{dx}[k] = a_x^{-1}[k]\bigg\{
+& \underbrace{\Big[\Delta x_d[k] + (1-\lc)\textstyle\sum_{i=1}^{d}\Delta x_d[k-i]\Big]}_{\Delta x_d^{d}[k]}
++ (1-\lc)\Big[\delta x[k-d] - \textstyle\sum_{i=1}^{d} a_x[k-i] f_{dx}[k-i]\Big] \\[0.5ex]
+& - \underbrace{\Big[\delta x_D[k] + (1-\lc)\textstyle\sum_{i=1}^{d}\delta x_D[k-i]\Big]}_{\delta x_D^{d}[k]}
+\bigg\}
+\end{aligned}
+\]
+
+\textit{Motion error}:
+\[
+\begin{aligned}
+\delta x[k+1] &= \delta x[k] + \Delta x_d[k] - a_x[k]\{\bar{\bar f}_{dx}[k] + f_T[k]\} - \delta x_D[k] \\[0.5ex]
+&= \lc \cdot \delta x[k] - \underbrace{\Big\{ a_x[k] f_T[k] + (1-\lc)\textstyle\sum_{i=1}^{d} a_x[k-i] f_T[k-i] \Big\}}_{\delta x_T^{d}[k]}
+\end{aligned}
+\]
+
+\newpage
+%% ===================== PAGE 2 =====================
+\hd{Implementable control effort}
+\begin{empheq}[box=\fbox]{equation*}
+f_{dx}[k] = \hat a_x^{-1}[k]\Big\{ \Delta x_d^{d}[k] + (1-\lc)\Big[\delta x_m[k] - \textstyle\sum_{i=1}^{d}\hat a_x[k-i] f_{dx}[k-i]\Big] - \delta \hat x_D^{d}[k] \Big\}
+\end{empheq}
+
+\hd{Motion error}
+\[ \delta x[k+1] = \lc \cdot \delta x[k] - a_x[k]\big[ f_{dx}[k] - \bar{\bar f}_{dx}[k] \big] - \delta x_T^{d}[k] \]
+
+\[ a_x[k]\,\bar{\bar f}_{dx}[k] = \Big\{ \Delta x_d^{d}[k] + (1-\lc)\Big[\delta x[k-d] - \textstyle\sum_{i=1}^{d} a_x[k-i] f_{dx}[k-i]\Big] - \delta x_D^{d}[k] \Big\} \]
+
+\[
+\begin{aligned}
+a_x[k]\, f_{dx}[k] ={}& \big(1 + e_{a_x}[k]\,\hat a_x^{-1}[k]\big)\Big\{ \Delta x_d^{d}[k] \\
+&+ (1-\lc)\Big[\big(\delta x[k-d] + n_x[k]\big) - \textstyle\sum_{i=1}^{d}\hat a_x[k-i] f_{dx}[k-i]\Big] - \delta \hat x_D^{d}[k] \Big\}
+\end{aligned}
+\]
+
+\[
+\begin{aligned}
+a_x[k]\, f_{dx}[k] - a_x[k]\,\bar{\bar f}_{dx}[k] ={}& e_{a_x}[k]\, f_{dx}[k] + (1-\lc) n_x[k] \\
+&+ (1-\lc)\textstyle\sum_{i=1}^{d}\big(a_x[k-i] - \hat a_x[k-i]\big) f_{dx}[k-i] + e_{\delta x_D^{d}}[k]
+\end{aligned}
+\]
+
+\medskip
+\textit{Parameter model}:
+\[ a_x[k] = a_{x_{det}}[k] + a_{x_{ram}}[k]; \quad a_{x_{ram}}[k] \approx a'_x[k]\, x_{ram}[k] \]
+
+\[
+\begin{aligned}
+a_x[k+1] &= \bm{a_{x_{det}}[k+1]} + a_{x_{ram}}[k+1] \\
+&= \underbrace{\Big\{ \bm{a_{x_{det}}[k]} + a_{x_{ram}}[k] \Big\}}_{a_x[k]} + \bm{\delta a[k]} + \underbrace{\Big\{ a_{x_{ram}}[k+1] - a_{x_{ram}}[k] \Big\}}_{\delta a_{ram}[k]}
+\end{aligned}
+\]
+
+\[ \begin{cases} a_x[k+1] = a_x[k] + \delta a_x[k] + \delta a_{ram}[k] \\ \delta a_x[k+1] = \delta a_x[k] \end{cases} \]
+
+\textit{Parameter estimator}:
+\[ \begin{cases} \hat a_x[k+1] = \hat a_x[k] + \delta \hat a_x[k] \\ \delta \hat a_x[k+1] = \delta \hat a_x[k] \end{cases} \]
+
+\textit{Parameter estimation error}:
+\[ \begin{cases} e_{a_x}[k] = a_x[k] - \hat a_x[k] \\ e_{\delta a_x}[k] = \delta a_x[k] - \delta \hat a_x[k] \end{cases} \]
+
+\textit{Estimation error dynamics}:
+\[ \begin{cases} e_{a_x}[k+1] = e_{a_x}[k] + e_{\delta a_x}[k] + \delta a_{ram}[k] \\ e_{\delta a_x}[k+1] = e_{\delta a_x}[k] \end{cases} \]
+
+\newpage
+%% ===================== PAGE 3 =====================
+\[ a_x[k-i] - \hat a_x[k-i] \approx e_{a_x}[k] - i\cdot e_{\delta a_x}[k] - \sum_{j=1}^{i}\delta a_{ram}[k-j] \]
+
+\[
+\begin{aligned}
+a_x[k]\, f_{dx}[k] - a_x[k]\,\bar{\bar f}_{dx}[k] \approx{}&
+e_{a_x}[k]\,\underbrace{\Big\{ f_{dx}[k] + (1-\lc)\textstyle\sum_{i=1}^{d} f_{dx}[k-i] \Big\}}_{F_{dx}[k]} \\
+&- e_{\delta a_x}[k]\,\underbrace{\Big\{ (1-\lc)\textstyle\sum_{i=1}^{d} i\cdot f_{dx}[k-i] \Big\}}_{dF_{dx}[k]} \\
+&- \underbrace{\Big\{ (1-\lc)\textstyle\sum_{i=1}^{d} (d+1-i)\cdot f_{dx}[k-i]\,\delta a_{ram}[k-i] \Big\}}_{\delta x_{\delta af}^{d}[k]} \\
+&+ e_{\delta x_D^{d}}[k] + (1-\lc) n_x[k]
+\end{aligned}
+\]
+
+\begin{empheq}[box=\fbox]{align*}
+\delta x[k+1] ={}& \lc \cdot \delta x[k] - F_{dx}[k]\cdot e_{a_x}[k] + dF_{dx}[k]\cdot e_{\delta a_x}[k] - e_{\delta x_D^{d}}[k] \\
+&- \underbrace{\Big\{ \delta x_T^{d}[k] - \delta x_{\delta af}^{d}[k] + (1-\lc) n_x[k] \Big\}}_{\varepsilon[k]}
+\end{empheq}
+
+\hd{State equation}
+\[
+\begin{aligned}
+\delta x_1[k+1] &= \delta x_2[k] \\
+\delta x_2[k+1] &= \delta x_3[k] \\
+\delta x_3[k+1] &= \lc \cdot \delta x_3[k] - F_{dx}[k]\cdot e_{a_x}[k] + dF_{dx}[k]\cdot e_{\delta a_x}[k] - e_{\delta x_D^{d}}[k] - \varepsilon[k] \\
+\delta x_D^{d}[k+1] &= \delta x_D^{d}[k] \\
+a_x[k+1] &= a_x[k] + \delta a_x[k] + \delta a_{ram}[k] \\
+\delta a_x[k+1] &= \delta a_x[k]
+\end{aligned}
+\]
+
+\hd{Output equation}
+\[
+\begin{cases}
+y_1[k] = \delta x_m[k] = \delta x_1[k] + \underbrace{n_x[k]}_{r_1[k]} \\[2.0ex]
+y_2[k] = \underbrace{a_x[k-d] + n_a[k]}_{a_{xm}[k]} \approx a_x[k] - d\cdot \delta a_x[k] + \underbrace{\Big\{ n_a[k] - \textstyle\sum_{i=1}^{d}\delta a_{ram}[k-i] \Big\}}_{r_2[k]}
+\end{cases}
+\]
+
+\[ \mathbf{H} = \begin{bmatrix} 1 & 0 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 0 & 1 & -d \end{bmatrix} \]
+\[ \mathbf{y}[k] = \mathbf{H}\mathbf{x}[k] + \mathbf{r}[k] \]
+
+\newpage
+%% ===================== PAGE 4 =====================
+\hd{Closed-loop Estimator}
+\[ e_{\delta x_1}[k] = \delta x_1[k] - \delta \hat x_1[k] \]
+\[ e_{a_x}[k] = a_x[k] - \hat a_x[k] \]
+\[ e_{\delta a_x}[k] = \delta a_x[k] - \delta \hat a_x[k] \]
+\[ e_{y_1}[k] = y_1[k] - \hat y_1[k] = \delta x_m[k] - \delta \hat x_1[k] = e_{\delta x_1}[k] + \underbrace{n_x[k]}_{r_1[k]} \]
+\[
+\begin{aligned}
+e_{y_2}[k] &= y_2[k] - \hat y_2[k] = a_{xm}[k] - \hat a_x[k] + d\cdot \delta \hat a_x[k] \\
+&= e_{a_x}[k] - d\cdot e_{\delta a_x}[k] + \underbrace{\Big\{ n_a[k] - \textstyle\sum_{i=1}^{d}\delta a_{ram}[k-i] \Big\}}_{r_2[k]}
+\end{aligned}
+\]
+
+\medskip
+\[
+\begin{aligned}
+\delta \hat x_1[k+1] &= \delta \hat x_2[k] + \ell_{11}[k]\, e_{y_1}[k] + \ell_{12}[k]\, e_{y_2}[k] \\
+\delta \hat x_2[k+1] &= \delta \hat x_3[k] + \ell_{21}[k]\, e_{y_1}[k] + \ell_{22}[k]\, e_{y_2}[k] \\
+\delta \hat x_3[k+1] &= \lc \cdot \delta \hat x_3[k] + \ell_{31}[k]\, e_{y_1}[k] + \ell_{32}[k]\, e_{y_2}[k] \\
+\delta \hat x_D^{d}[k+1] &= \delta \hat x_D^{d}[k] + \ell_{41}[k]\, e_{y_1}[k] + \ell_{42}[k]\, e_{y_2}[k] \\
+\hat a_x[k+1] &= \hat a_x[k] + \delta \hat a_x[k] + \ell_{51}[k]\, e_{y_1}[k] + \ell_{52}[k]\, e_{y_2}[k] \\
+\delta \hat a_x[k+1] &= \delta \hat a_x[k] + \ell_{61}[k]\, e_{y_1}[k] + \ell_{62}[k]\, e_{y_2}[k]
+\end{aligned}
+\]
+
+\hd{Error dynamics}
+\[
+\begin{aligned}
+e_{\delta x_1}[k+1] &= e_{\delta x_2}[k] - \ell_{11}[k]\, e_{\delta x_1}[k] - \ell_{12}[k]\, e_{a_x}[k] + \ell_{12}[k]\cdot d\cdot e_{\delta a_x}[k] \\
+e_{\delta x_2}[k+1] &= e_{\delta x_3}[k] - \ell_{21}[k]\, e_{\delta x_1}[k] - \ell_{22}[k]\, e_{a_x}[k] + \ell_{22}[k]\cdot d\cdot e_{\delta a_x}[k] \\
+e_{\delta x_3}[k+1] &= \lc \cdot e_{\delta x_3}[k] - F_{dx}[k]\cdot e_{a_x}[k] + dF_{dx}[k]\cdot e_{\delta a_x}[k] - e_{\delta x_D^{d}}[k] \\
+&\quad - \ell_{31}[k]\, e_{\delta x_1}[k] - \ell_{32}[k]\, e_{a_x}[k] + \ell_{32}[k]\cdot d\cdot e_{\delta a_x}[k] - \underbrace{\varepsilon[k]}_{q_3[k]} \\
+e_{\delta x_D^{d}}[k+1] &= e_{\delta x_D^{d}}[k] - \ell_{41}[k]\, e_{\delta x_1}[k] - \ell_{42}[k]\, e_{a_x}[k] + \ell_{42}[k]\cdot d\cdot e_{\delta a_x}[k] \\
+e_{a_x}[k+1] &= e_{a_x}[k] + e_{\delta a_x}[k] - \ell_{51}[k]\, e_{\delta x_1}[k] - \ell_{52}[k]\, e_{a_x}[k] + \ell_{52}[k]\cdot d\cdot e_{\delta a_x}[k] + \underbrace{\delta a_{ram}[k]}_{q_5[k]} \\
+e_{\delta a_x}[k+1] &= e_{\delta a_x}[k] - \ell_{61}[k]\, e_{\delta x_1}[k] - \ell_{62}[k]\, e_{a_x}[k] + \ell_{62}[k]\cdot d\cdot e_{\delta a_x}[k]
+\end{aligned}
+\]
+
+\newpage
+%% ===================== PAGE 5 =====================
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 0 & \lc & -1 & -F_{dx}[k] & dF_{dx}[k] \\
+0 & 0 & 0 & 1 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 & 1 \\
+0 & 0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\end{empheq}
+
+\[ \mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k] - \mathbf{L}[k]\,\mathbf{H}\,\mathbf{e}[k] + \mathbf{q}[k] - \mathbf{L}\,\mathbf{r}[k] \]
+
+\end{document}
