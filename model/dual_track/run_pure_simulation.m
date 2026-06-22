@@ -99,7 +99,7 @@ function simOut = run_pure_simulation(config, opts)
     clear motion_control_law motion_control_law_23state ...
           motion_control_law_eq6 motion_control_law_eq17 motion_control_law_eq17_core ...
           motion_control_law_eq17_6state motion_control_law_eq17_5state ...
-          motion_control_law_eq17_4state ...
+          motion_control_law_eq17_4state motion_control_law_eq17_gscalar ...
           trajectory_generator calc_thermal_force;
 
     % ------------------------------------------------------------------
@@ -196,10 +196,11 @@ function simOut = run_pure_simulation(config, opts)
     is_6state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '6state');
     is_5state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '5state');
     is_4state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state');
-    is_vpersonal = is_6state || is_5state || is_4state;   % share prefill defaults + constants builder
+    is_gscalar = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, 'gscalar');
+    is_vpersonal = is_6state || is_5state || is_4state || is_gscalar;   % share prefill defaults + constants builder
     if opts.use_true_gain && ~is_vpersonal
         error('run_pure_simulation:useTrueGainUnsupported', ...
-              'opts.use_true_gain=true requires config.eq17_variant=''6state'' or ''5state''.');
+              'opts.use_true_gain=true requires config.eq17_variant=''6state'', ''5state'', ''4state'' or ''gscalar''.');
     end
     if is_vpersonal
         % Prefill three-pillar defaults (override 7-state warmup defaults
@@ -226,6 +227,17 @@ function simOut = run_pure_simulation(config, opts)
     % x_D in slot 4; only the term −x̂_D/â_x is zeroed in Eq.17 force law).
     if isfield(config, 'suppress_xD') && ~isempty(config.suppress_xD)
         ctrl_const.suppress_xD = logical(config.suppress_xD);
+    end
+
+    % gscalar-only knobs: forgetting factor + h_bar source for a_det.
+    if isfield(config, 'beta_s') && ~isempty(config.beta_s)
+        ctrl_const.beta_s = config.beta_s;
+    end
+    if isfield(config, 'use_hbar_meas_for_adet') && ~isempty(config.use_hbar_meas_for_adet)
+        ctrl_const.use_hbar_meas_for_adet = logical(config.use_hbar_meas_for_adet);
+    end
+    if isfield(config, 's_I_prior') && ~isempty(config.s_I_prior)
+        ctrl_const.s_I_prior = config.s_I_prior;
     end
 
     % ------------------------------------------------------------------
@@ -309,6 +321,8 @@ function simOut = run_pure_simulation(config, opts)
         diag_log.delta_x_hat_1     = zeros(N, 3);
         diag_log.P_dx1             = zeros(N, 3);
         diag_log.a_ctrl_used       = zeros(N, 3);
+        diag_log.s_hat             = zeros(N, 1);   % gscalar: scalar gain estimate
+        diag_log.var_s             = zeros(N, 1);   % gscalar: Var(s_hat) = 1/I_g
     end
 
     % ------------------------------------------------------------------
@@ -368,6 +382,14 @@ function simOut = run_pure_simulation(config, opts)
                                     del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
             else
                 [f_d_k, ekf_k] = motion_control_law_eq17_6state( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            end
+        elseif is_gscalar
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_gscalar( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            else
+                [f_d_k, ekf_k] = motion_control_law_eq17_gscalar( ...
                                     del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
             end
         else
@@ -437,6 +459,8 @@ function simOut = run_pure_simulation(config, opts)
             diag_log.delta_x_hat_1(k, :)     = diag_k.delta_x_hat_1.';
             diag_log.P_dx1(k, :)             = diag_k.P_dx1.';
             diag_log.a_ctrl_used(k, :)       = diag_k.a_ctrl_used.';
+            if isfield(diag_k, 's_hat'); diag_log.s_hat(k) = diag_k.s_hat; end
+            if isfield(diag_k, 'var_s'); diag_log.var_s(k) = diag_k.var_s; end
         end
 
         % --- (k) Update unit-delay for next step's controller input
