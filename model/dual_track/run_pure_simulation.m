@@ -229,6 +229,19 @@ function simOut = run_pure_simulation(config, opts)
         ctrl_const.suppress_xD = logical(config.suppress_xD);
     end
 
+    % 4-state de-blur: use a' shape to remove the a_xm variance-window h-blur
+    % (motion_control_law_eq17_4state). Default off -> bit-identical to baseline.
+    if isfield(config, 'use_deblur') && ~isempty(config.use_deblur)
+        ctrl_const.use_deblur = logical(config.use_deblur);
+    end
+
+    % Override the gain process-noise increment factor (Q44 / var_da_ram scale).
+    % With a' fed forward the deterministic gain swing is known, so the residual
+    % gain process noise can be shrunk (toward 0) to stop a_hat wandering.
+    if isfield(config, 'var_da_increment_factor') && ~isempty(config.var_da_increment_factor)
+        ctrl_const.var_da_increment_factor = config.var_da_increment_factor;
+    end
+
     % gscalar-only knobs: forgetting factor + h_bar source for a_det.
     if isfield(config, 'beta_s') && ~isempty(config.beta_s)
         ctrl_const.beta_s = config.beta_s;

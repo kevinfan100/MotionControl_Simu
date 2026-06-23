@@ -79,6 +79,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     persistent P_per_axis          % cell{3} of 4x4 covariance
     persistent dx_bar_m            % 3x1 IIR LP mean of delta_x_m [um]
     persistent sigma2_dxr_hat      % 3x1 EWMA variance of dx_r    [um^2]
+    persistent kappa_hat           % 3x1 EWMA of de-blurred kappa = a_true/a_det [-]
     persistent a_m_det             % 3x1 post-LPF of a_xm (a_m_det) [um/pN]
     persistent pd_km1 pd_km2       % trajectory delay buffers (also give h_bar_d history)
     persistent f_d_km1 f_d_km2     % past control buffers (for Sigma f_d[k-i])
@@ -90,7 +91,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     persistent initialized
     persistent lambda_c d_delay Ts kBT R_radius gamma_N_p a_nom_p
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_per_axis var_da_inc_factor
-    persistent t_warmup_kf h_bar_safe R_OFF use_am_lpf a_det_lp amlpf_var_factor
+    persistent t_warmup_kf h_bar_safe R_OFF use_am_lpf a_det_lp amlpf_var_factor use_deblur
     persistent sigma2_n_s a_x_init enable_wall w_hat_n pz_wall
 
     % ------------------------------------------------------------------
@@ -138,6 +139,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
             var_da_inc_factor = ctrl_const.var_da_increment_factor;
         else
             var_da_inc_factor = 2 / (1 + lambda_c);     % closed-form fallback
+        end
+        if isfield(ctrl_const, 'use_deblur') && ~isempty(ctrl_const.use_deblur)
+            use_deblur = ctrl_const.use_deblur;
+        else
+            use_deblur = false;
         end
         % NOTE: ctrl_const.suppress_xD is ignored (no disturbance term exists).
 
@@ -208,6 +214,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
             sigma2_dxr_hat = zeros(3, 1);
             warmup_count   = 2;
         end
+        kappa_hat = ones(3, 1);
         a_m_det = a_x_init;
 
         % --- 0I. Delay buffers ---
@@ -285,8 +292,10 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     if d_delay == 2
         a_det_km2 = local_a_x_det(pd_km2, w_hat_n, pz_wall, R_radius, enable_wall, a_nom_p);
         sum_da_ff = a_det_k - a_det_km2; % 3x1
+        a_det_kmd = a_det_km2;           % gain d-steps ago (de-blur normalization)
     else
         sum_da_ff = a_det_k - a_det_km1; % d=1
+        a_det_kmd = a_det_km1;
     end
 
     % ------------------------------------------------------------------
@@ -309,9 +318,26 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     dx_r = delta_x_m - dx_bar_m_new;
     sigma2_dxr_hat_new = (1 - a_cov) * sigma2_dxr_hat + a_cov * dx_r.^2;
     a_xm = (sigma2_dxr_hat_new - C_n * sigma2_n_s) / (C_dpmr * 4 * kBT);   % 3x1 [um/pN]
+
+    % --- de-blur (uses a' shape): normalize each squared residual by the KNOWN
+    %     gain d-steps ago (a_det_kmd, the gain that generated dx_r), EWMA the
+    %     shape-removed ratio kappa = a_true/a_det, then reconstruct at a_det_k.
+    %     Removes the variance-window h-blur AND the d-step delay in one step
+    %     (so no separate sum_da_ff correction is applied in the de-blur path).
+    if use_deblur
+        n_kappa       = (dx_r.^2 - C_n * sigma2_n_s) ./ (C_dpmr * 4 * kBT * a_det_kmd);
+        kappa_hat_new = (1 - a_cov) * kappa_hat + a_cov * n_kappa;          % E = kappa (~1)
+        a_xm_db       = kappa_hat_new .* a_det_k;                           % E = a_true[k]
+    else
+        kappa_hat_new = kappa_hat;
+        a_xm_db       = a_xm;
+    end
+
     a_m_det_new = (1 - a_det_lp) * a_m_det + a_det_lp * a_xm;   % 3x1 [um/pN]
     if use_am_lpf
         a_meas = a_m_det_new;
+    elseif use_deblur
+        a_meas = a_xm_db;
     else
         a_meas = a_xm;
     end
@@ -330,6 +356,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         end
         dx_bar_m       = dx_bar_m_new;
         sigma2_dxr_hat = sigma2_dxr_hat_new;
+        kappa_hat      = kappa_hat_new;
         a_m_det        = a_m_det_new;
         pd_km2 = pd_km1; pd_km1 = pd;
         f_d_km2 = f_d_km1; f_d_km1 = f_d;
@@ -455,7 +482,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
 
         % --- Measurement: y_2 corrected by the KNOWN d-step gain drift so that
         %     the corrected a_xm directly measures a_x[k] (H row 2 = [0 0 0 1]). ---
-        a_meas_corr = a_meas(ax) + sum_da_ff(ax);    % a_xm + Sum_i delta_a_x[k-i]
+        if use_deblur
+            a_meas_corr = a_meas(ax);                    % de-blur already aligned to a_x[k]
+        else
+            a_meas_corr = a_meas(ax) + sum_da_ff(ax);    % a_xm + Sum_i delta_a_x[k-i]
+        end
 
         if gate_off(ax)
             H_use = H_y1;
@@ -507,6 +538,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     var_da_ram_km2 = var_da_ram_km1; var_da_ram_km1 = var_da_ram;
     dx_bar_m = dx_bar_m_new;
     sigma2_dxr_hat = sigma2_dxr_hat_new;
+    kappa_hat = kappa_hat_new;
     a_m_det = a_m_det_new;
     k_step = k_step + 1;
 
