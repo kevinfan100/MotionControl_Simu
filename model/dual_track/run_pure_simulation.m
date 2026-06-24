@@ -242,6 +242,24 @@ function simOut = run_pure_simulation(config, opts)
         ctrl_const.var_da_increment_factor = config.var_da_increment_factor;
     end
 
+    % 4-state principled Q44: a' feed-forward of the deviation-induced gain change
+    % (-a'*Delta(dxhat3)) + residual Q44 = a'^2*2(1-lc)*P33 (4state_del_hd Remark).
+    if isfield(config, 'use_aprime_ff') && ~isempty(config.use_aprime_ff)
+        ctrl_const.use_aprime_ff = logical(config.use_aprime_ff);
+    end
+
+    % 4-state bounded-variance cap: Q44 = Var(a_x_ram)^2/R22 (caps the random-walk
+    % gain wander at the true bounded gain fluctuation). Q44-only, no F_e change.
+    if isfield(config, 'use_q44_cap') && ~isempty(config.use_q44_cap)
+        ctrl_const.use_q44_cap = logical(config.use_q44_cap);
+    end
+
+    % 4-state AR(1) reverting gain: F_e(4,4)=lc + predict reverts to a_det +
+    % Q44 = (3-2lc^2)(a*K_h/R)^2 sigma2_dh (the structural "put the spring back").
+    if isfield(config, 'use_q44_ar1') && ~isempty(config.use_q44_ar1)
+        ctrl_const.use_q44_ar1 = logical(config.use_q44_ar1);
+    end
+
     % gscalar-only knobs: forgetting factor + h_bar source for a_det.
     if isfield(config, 'beta_s') && ~isempty(config.beta_s)
         ctrl_const.beta_s = config.beta_s;

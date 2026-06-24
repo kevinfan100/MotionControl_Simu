@@ -8,7 +8,9 @@
 % so the augmented per-axis state is x = [delta_x_1, delta_x_2, delta_x_3, a_x].
 % Style mirrors 6state_derivation_xd (monochrome, \fbox on key results, terse).
 % ======================================================
-\documentclass[11pt,a4paper]{ctexart}
+% fontset=none: this derivation has no CJK text, so do not load Chinese fonts
+% (this Windows box lacks KaiTi/FangSong); output is identical, compiles anywhere.
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
 
 \usepackage[fleqn]{amsmath}
 \usepackage{amssymb,bm}
@@ -110,6 +112,17 @@ $\Delta h_d[k] = h_d[k+1] - h_d[k]$ (desired-trajectory height increment).
 \textit{Parameter estimation error}: \quad $e_{a_x}[k] = a_x[k] - \hat a_x[k]$
 
 \textit{Estimation error dynamics}: \quad $e_{a_x}[k+1] = e_{a_x}[k] + \delta a_{ram}[k]$
+
+\medskip
+\textit{Remark --- $x_{ram}$ is the filtered state, so $q_4$ is small.}\;
+With $h = h_d - \delta x$ and negligible deterministic tracking error (the feed-forward
+and pole $\lc$ make $\delta x$ purely thermal; cf.\ the $z$ tracking-variance figure),
+$x_{ram} = -\delta x = -\delta x_3$ is estimated by the filter. Then
+$\delta a_{ram} = -a'_x\,\Delta\delta x$ is observable, and feeding its predictable part forward,
+\[ \hat a_x[k+1] = \hat a_x[k] + \delta a_x[k] - a'_x\,\Delta\delta\hat x_3[k], \]
+leaves only the residual $q_4 = -a'_x\,\Delta e_{\delta x_3}[k]$, with
+$\mathrm{Var}(q_4) = a'^2_x\,\mathrm{Var}(\Delta e_{\delta x_3}) \ll \mathrm{Var}(\delta a_{ram})$.
+(The induced $a_x$--$\delta x_3$ coupling in $\mathbf F_e$ row 4 is deferred.)
 
 \newpage
 \[ a_x[k-i] - \hat a_x[k-i] \approx e_{a_x}[k] - \sum_{j=1}^{i}\delta a_{ram}[k-j] \]

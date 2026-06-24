@@ -91,7 +91,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     persistent initialized
     persistent lambda_c d_delay Ts kBT R_radius gamma_N_p a_nom_p
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_per_axis var_da_inc_factor
-    persistent t_warmup_kf h_bar_safe R_OFF use_am_lpf a_det_lp amlpf_var_factor use_deblur
+    persistent t_warmup_kf h_bar_safe R_OFF use_am_lpf a_det_lp amlpf_var_factor use_deblur use_aprime_ff use_q44_cap use_q44_ar1
     persistent sigma2_n_s a_x_init enable_wall w_hat_n pz_wall
 
     % ------------------------------------------------------------------
@@ -144,6 +144,21 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
             use_deblur = ctrl_const.use_deblur;
         else
             use_deblur = false;
+        end
+        if isfield(ctrl_const, 'use_aprime_ff') && ~isempty(ctrl_const.use_aprime_ff)
+            use_aprime_ff = ctrl_const.use_aprime_ff;
+        else
+            use_aprime_ff = false;
+        end
+        if isfield(ctrl_const, 'use_q44_cap') && ~isempty(ctrl_const.use_q44_cap)
+            use_q44_cap = ctrl_const.use_q44_cap;
+        else
+            use_q44_cap = false;
+        end
+        if isfield(ctrl_const, 'use_q44_ar1') && ~isempty(ctrl_const.use_q44_ar1)
+            use_q44_ar1 = ctrl_const.use_q44_ar1;
+        else
+            use_q44_ar1 = false;
         end
         % NOTE: ctrl_const.suppress_xD is ignored (no disturbance term exists).
 
@@ -403,7 +418,29 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     t_now = (k_step - 1) * Ts;
     for ax = 1:3
         a_hat_i = a_hat(ax);
-        var_da_ram(ax) = var_da_inc_factor * (a_hat_i * K_h_axis(ax) / R_radius)^2 * sigma2_dh;
+        if use_q44_cap
+            % Bounded-variance cap (4state_del_hd locate). The true gain
+            % fluctuation a_x_ram is BOUNDED: Var(a_x_ram) = (a*K_h/R)^2*C_dx*sigma2_dh,
+            % C_dx = 2+1/(1-lc^2). Setting Q44 = Var(a_x_ram)^2 / R22 makes the
+            % random-walk steady state P_a = sqrt(Q44*R22) ~ Var(a_x_ram), so the
+            % gain estimate does not wander beyond the true bounded fluctuation.
+            C_dx_i    = 2 + 1 / (1 - lambda_c^2);
+            Var_axram = (a_hat_i * K_h_axis(ax) / R_radius)^2 * C_dx_i * sigma2_dh;
+            IF_cap    = if_eff_eval(IF_abc, C_dpmr, C_n, kBT, a_hat_i, sigma2_n_s(ax));
+            R22_int   = amlpf_var_factor * K_var * IF_cap * (a_hat_i + xi_per_axis(ax))^2;
+            var_da_ram(ax) = Var_axram^2 / R22_int;
+        elseif use_q44_ar1
+            % AR(1) reverting gain (F_e(4,4)=lc, predict reverts to a_det). Q44 is
+            % the AR(1) innovation variance a'^2*Var(eps) = (3-2lc^2)(a*K_h/R)^2 sigma2_dh;
+            % the F_e reversion (not a small Q) bounds the steady state to Var(a_x_ram).
+            var_da_ram(ax) = (3 - 2*lambda_c^2) * (a_hat_i * K_h_axis(ax) / R_radius)^2 * sigma2_dh;
+        elseif use_aprime_ff
+            % (experimental, falsified) residual Q44 from the a'-feed-forward.
+            var_da_ram(ax) = (a_hat_i * K_h_axis(ax) / R_radius)^2 ...
+                             * 2 * one_minus_lc * P_per_axis{ax}(3, 3);
+        else
+            var_da_ram(ax) = var_da_inc_factor * (a_hat_i * K_h_axis(ax) / R_radius)^2 * sigma2_dh;
+        end
 
         if d_delay == 2
             Q33_thermal  = 4 * kBT * (a_hat_i + one_minus_lc^2 * (a_hat_km1(ax) + a_hat_km2(ax)));
@@ -466,17 +503,34 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         end
         % 4-state F_e has no delta_a_x column, so dF_dx = (1-lc)*F_2 does not
         % appear; only F_1 (-> F_dx) is needed.
-        F_e = build_F_e_4state(lambda_c, f_d(ax), F_1_i);
+        if use_q44_ar1
+            F_e = build_F_e_4state(lambda_c, f_d(ax), F_1_i, lambda_c);   % AR(1): F_e(4,4)=lc
+        else
+            F_e = build_F_e_4state(lambda_c, f_d(ax), F_1_i);
+        end
 
         x_curr = x_e_per_axis(:, ax);
         P_curr = P_per_axis{ax};
 
         % --- Predict: deterministic map. Slot 4 (a_x) advances by the KNOWN
         %     feedforward increment da_x_pred (replaces the 5-state rate state). ---
+        if use_aprime_ff
+            % feed forward the predictable deviation-induced gain change:
+            % -a'*Delta(dxhat3) = a'*(1-lc)*dxhat3,  a' = -a_hat*K_h/R.
+            da_ram_pred_i = (a_hat(ax) * K_h_axis(ax) / R_radius) * (lambda_c - 1) * x_curr(3);
+        else
+            da_ram_pred_i = 0;
+        end
+        if use_q44_ar1
+            % AR(1) reverting gain: a_x reverts to a_det with pole lc.
+            x4_pred = lambda_c * x_curr(4) + (1 - lambda_c) * a_det_k(ax) + da_x_pred(ax);
+        else
+            x4_pred = x_curr(4) + da_x_pred(ax) + da_ram_pred_i;
+        end
         x_pred = [x_curr(2); ...
                   x_curr(3); ...
                   lambda_c * x_curr(3); ...
-                  x_curr(4) + da_x_pred(ax)];
+                  x4_pred];
         P_pred = F_e * P_curr * F_e' + Q_per_axis{ax};
         P_pred = 0.5 * (P_pred + P_pred');
 
@@ -587,19 +641,19 @@ end
 
 %% =================== Local Helpers ===================
 
-function F_e = build_F_e_4state(lambda_c, f_d_i, F_1_i)
+function F_e = build_F_e_4state(lambda_c, f_d_i, F_1_i, a_pole)
 %BUILD_F_E_4STATE  4x4 error-dynamics matrix (per axis), rate state removed.
 %   Row 3 = [0 0 lc -F_dx]   (cols: 1=dx1 2=dx2 3=dx3 4=a_x)
 %       F_dx = f_d[k] + (1-lc)*F_1,   F_1 = sum_{i=1..d} f_d[k-i].
-%   The 5-state's col-5 dF_dx (= (1-lc)*F_2) coupling is gone with the rate
-%   state; the a_x row is a pure integrator [0 0 0 1] (its known feedforward
-%   increment enters the predict mean, not F_e).
+%   The a_x row diagonal a_pole defaults to 1 (random walk; feedforward increment
+%   enters the predict mean). Set a_pole=lc for the AR(1) reverting-gain model.
+    if nargin < 4 || isempty(a_pole); a_pole = 1; end
     one_minus_lc = 1 - lambda_c;
     Fe3_a = -f_d_i - one_minus_lc * F_1_i;     % col 4 (a_x): -F_dx
     F_e = [0 1 0        0; ...
            0 0 1        0; ...
            0 0 lambda_c Fe3_a; ...
-           0 0 0        1];
+           0 0 0        a_pole];
 end
 
 
