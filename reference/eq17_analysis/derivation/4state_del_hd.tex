@@ -155,8 +155,16 @@ y_2[k] = \underbrace{a_x[k-d] + n_a[k]}_{a_{xm}[k]} = a_x[k] - \textstyle\sum_{i
 
 \newpage
 \hd{Closed-loop Estimator}
-\[ e_{\delta x_1}[k] = \delta x_1[k] - \delta \hat x_1[k], \qquad e_{a_x}[k] = a_x[k] - \hat a_x[k] \]
-\[ e_{y_1}[k] = y_1[k] - \hat y_1[k] = e_{\delta x_1}[k] + n_x[k], \qquad e_{y_2}[k] = y_2[k] - \hat y_2[k] = e_{a_x}[k] + r_2[k] \]
+\[ e_{\delta x_1}[k] = \delta x_1[k] - \delta \hat x_1[k] \]
+\[ e_{a_x}[k] = a_x[k] - \hat a_x[k] \]
+\[ e_{y_1}[k] = y_1[k] - \hat y_1[k] = \delta x_m[k] - \delta \hat x_1[k] = e_{\delta x_1}[k] + \underbrace{n_x[k]}_{r_1[k]} \]
+\[
+\begin{aligned}
+e_{y_2}[k] &= y_2[k] - \hat y_2[k] = a_{xm}[k] - \Big(\hat a_x[k] - \textstyle\sum_{i=1}^{d}\delta a_x[k-i]\Big) \\
+&= \Big(a_x[k] - \textstyle\sum_{i=1}^{d}\delta a_x[k-i] + r_2[k]\Big) - \hat a_x[k] + \textstyle\sum_{i=1}^{d}\delta a_x[k-i] \\
+&= e_{a_x}[k] + \underbrace{\Big\{ n_a[k] - \textstyle\sum_{i=1}^{d}\delta a_{ram}[k-i] \Big\}}_{r_2[k]}
+\end{aligned}
+\]
 \[
 \begin{aligned}
 \delta \hat x_1[k+1] &= \delta \hat x_2[k] + \ell_{11}[k]\, e_{y_1}[k] + \ell_{12}[k]\, e_{y_2}[k] \\
