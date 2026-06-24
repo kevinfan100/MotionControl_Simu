@@ -98,40 +98,29 @@ a_x[k]\, f_{dx}[k] - a_x[k]\,\bar{\bar f}_{dx}[k] ={}& e_{a_x}[k]\, f_{dx}[k] + 
 
 \hd{Parameter model}
 \[ a_x[k] = a_{x_{det}}[k] + a_{x_{ram}}[k]; \qquad a_{x_{ram}}[k] \approx a'_x[k]\, x_{ram}[k] \]
-\[ a_x[k+1] = a_x[k] + \delta a_x[k] + \delta a_{ram}[k] \]
+\[ a_x[k+1] = a_x[k] + \Delta a_x[k] + \Delta a_{ram}[k] \]
 \[
-\delta a_x[k] = a_{x_{det}}[k+1] - a_{x_{det}}[k] = a'_x[k]\,\Delta h_d[k],
+\Delta a_x[k] = a_{x_{det}}[k+1] - a_{x_{det}}[k] = a'_x[k]\,\Delta h_d[k],
 \qquad
-\delta a_{ram}[k] = a'_x[k]\,\Delta x_{ram}[k]
+\Delta a_{ram}[k] = a'_x[k]\,\Delta x_{ram}[k]
 \]
 $\Delta h_d[k] = h_d[k+1] - h_d[k]$ (desired-trajectory height increment).
 
 \medskip
-\textit{Parameter estimator}: \quad $\hat a_x[k+1] = \hat a_x[k] + \delta a_x[k]$
+\textit{Parameter estimator}: \quad $\hat a_x[k+1] = \hat a_x[k] + \Delta a_x[k]$
 
 \textit{Parameter estimation error}: \quad $e_{a_x}[k] = a_x[k] - \hat a_x[k]$
 
-\textit{Estimation error dynamics}: \quad $e_{a_x}[k+1] = e_{a_x}[k] + \delta a_{ram}[k]$
-
-\medskip
-\textit{Remark --- $x_{ram}$ is the filtered state, so $q_4$ is small.}\;
-With $h = h_d - \delta x$ and negligible deterministic tracking error (the feed-forward
-and pole $\lc$ make $\delta x$ purely thermal; cf.\ the $z$ tracking-variance figure),
-$x_{ram} = -\delta x = -\delta x_3$ is estimated by the filter. Then
-$\delta a_{ram} = -a'_x\,\Delta\delta x$ is observable, and feeding its predictable part forward,
-\[ \hat a_x[k+1] = \hat a_x[k] + \delta a_x[k] - a'_x\,\Delta\delta\hat x_3[k], \]
-leaves only the residual $q_4 = -a'_x\,\Delta e_{\delta x_3}[k]$, with
-$\mathrm{Var}(q_4) = a'^2_x\,\mathrm{Var}(\Delta e_{\delta x_3}) \ll \mathrm{Var}(\delta a_{ram})$.
-(The induced $a_x$--$\delta x_3$ coupling in $\mathbf F_e$ row 4 is deferred.)
+\textit{Estimation error dynamics}: \quad $e_{a_x}[k+1] = e_{a_x}[k] + \Delta a_{ram}[k]$
 
 \newpage
-\[ a_x[k-i] - \hat a_x[k-i] \approx e_{a_x}[k] - \sum_{j=1}^{i}\delta a_{ram}[k-j] \]
+\[ a_x[k-i] - \hat a_x[k-i] \approx e_{a_x}[k] - \sum_{j=1}^{i}\Delta a_{ram}[k-j] \]
 
 \[
 \begin{aligned}
 a_x[k]\, f_{dx}[k] - a_x[k]\,\bar{\bar f}_{dx}[k] \approx{}&
 e_{a_x}[k]\,\underbrace{\Big\{ f_{dx}[k] + (1-\lc)\textstyle\sum_{i=1}^{d} f_{dx}[k-i] \Big\}}_{F_{dx}[k]} \\
-&- \underbrace{\Big\{ (1-\lc)\textstyle\sum_{i=1}^{d} (d+1-i)\, f_{dx}[k-i]\,\delta a_{ram}[k-i] \Big\}}_{\delta x_{\delta af}^{d}[k]} \\
+&- \underbrace{\Big\{ (1-\lc)\textstyle\sum_{i=1}^{d} (d+1-i)\, f_{dx}[k-i]\,\Delta a_{ram}[k-i] \Big\}}_{\delta x_{\delta af}^{d}[k]} \\
 &+ \delta x_D^{d}[k] + (1-\lc) n_x[k]
 \end{aligned}
 \]
@@ -147,7 +136,7 @@ e_{a_x}[k]\,\underbrace{\Big\{ f_{dx}[k] + (1-\lc)\textstyle\sum_{i=1}^{d} f_{dx
 \delta x_1[k+1] &= \delta x_2[k] \\
 \delta x_2[k+1] &= \delta x_3[k] \\
 \delta x_3[k+1] &= \lc \cdot \delta x_3[k] - F_{dx}[k]\cdot e_{a_x}[k] - \varepsilon[k] \\
-a_x[k+1] &= a_x[k] + \delta a_x[k] + \delta a_{ram}[k]
+a_x[k+1] &= a_x[k] + \Delta a_x[k] + \Delta a_{ram}[k]
 \end{aligned}
 \]
 
@@ -155,13 +144,13 @@ a_x[k+1] &= a_x[k] + \delta a_x[k] + \delta a_{ram}[k]
 \[
 \begin{cases}
 y_1[k] = \delta x_m[k] = \delta x_1[k] + \underbrace{n_x[k]}_{r_1[k]} \\[1.8ex]
-y_2[k] = \underbrace{a_x[k-d] + n_a[k]}_{a_{xm}[k]} = a_x[k] - \textstyle\sum_{i=1}^{d}\delta a_x[k-i] + \underbrace{\Big\{ n_a[k] - \textstyle\sum_{i=1}^{d}\delta a_{ram}[k-i] \Big\}}_{r_2[k]}
+y_2[k] = \underbrace{a_x[k-d] + n_a[k]}_{a_{xm}[k]} = a_x[k] - \textstyle\sum_{i=1}^{d}\Delta a_x[k-i] + \underbrace{\Big\{ n_a[k] - \textstyle\sum_{i=1}^{d}\Delta a_{ram}[k-i] \Big\}}_{r_2[k]}
 \end{cases}
 \]
 \[
 \mathbf{H} = \begin{bmatrix} 1 & 0 & 0 & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix},
 \qquad
-\mathbf{c}[k] = \begin{bmatrix} 0 \\ \textstyle\sum_{i=1}^{d}\delta a_x[k-i] \end{bmatrix}\ (\text{known}),
+\mathbf{c}[k] = \begin{bmatrix} 0 \\ \textstyle\sum_{i=1}^{d}\Delta a_x[k-i] \end{bmatrix}\ (\text{known}),
 \qquad
 \mathbf{y}[k] = \mathbf{H}\mathbf{x}[k] - \mathbf{c}[k] + \mathbf{r}[k]
 \]
@@ -175,7 +164,7 @@ y_2[k] = \underbrace{a_x[k-d] + n_a[k]}_{a_{xm}[k]} = a_x[k] - \textstyle\sum_{i
 \delta \hat x_1[k+1] &= \delta \hat x_2[k] + \ell_{11}[k]\, e_{y_1}[k] + \ell_{12}[k]\, e_{y_2}[k] \\
 \delta \hat x_2[k+1] &= \delta \hat x_3[k] + \ell_{21}[k]\, e_{y_1}[k] + \ell_{22}[k]\, e_{y_2}[k] \\
 \delta \hat x_3[k+1] &= \lc \cdot \delta \hat x_3[k] + \ell_{31}[k]\, e_{y_1}[k] + \ell_{32}[k]\, e_{y_2}[k] \\
-\hat a_x[k+1] &= \hat a_x[k] + \delta a_x[k] + \ell_{41}[k]\, e_{y_1}[k] + \ell_{42}[k]\, e_{y_2}[k]
+\hat a_x[k+1] &= \hat a_x[k] + \Delta a_x[k] + \ell_{41}[k]\, e_{y_1}[k] + \ell_{42}[k]\, e_{y_2}[k]
 \end{aligned}
 \]
 
@@ -185,7 +174,7 @@ y_2[k] = \underbrace{a_x[k-d] + n_a[k]}_{a_{xm}[k]} = a_x[k] - \textstyle\sum_{i
 e_{\delta x_1}[k+1] &= e_{\delta x_2}[k] - \ell_{11}[k]\, e_{\delta x_1}[k] - \ell_{12}[k]\, e_{a_x}[k] \\
 e_{\delta x_2}[k+1] &= e_{\delta x_3}[k] - \ell_{21}[k]\, e_{\delta x_1}[k] - \ell_{22}[k]\, e_{a_x}[k] \\
 e_{\delta x_3}[k+1] &= \lc \cdot e_{\delta x_3}[k] - F_{dx}[k]\cdot e_{a_x}[k] - \ell_{31}[k]\, e_{\delta x_1}[k] - \ell_{32}[k]\, e_{a_x}[k] - \underbrace{\varepsilon[k]}_{q_3[k]} \\
-e_{a_x}[k+1] &= e_{a_x}[k] - \ell_{41}[k]\, e_{\delta x_1}[k] - \ell_{42}[k]\, e_{a_x}[k] + \underbrace{\delta a_{ram}[k]}_{q_4[k]}
+e_{a_x}[k+1] &= e_{a_x}[k] - \ell_{41}[k]\, e_{\delta x_1}[k] - \ell_{42}[k]\, e_{a_x}[k] + \underbrace{\Delta a_{ram}[k]}_{q_4[k]}
 \end{aligned}
 \]
 
@@ -205,14 +194,65 @@ e_{a_x}[k+1] &= e_{a_x}[k] - \ell_{41}[k]\, e_{\delta x_1}[k] - \ell_{42}[k]\, e
 \[ \mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k] - \mathbf{L}[k]\,\mathbf{H}\,\mathbf{e}[k] + \mathbf{q}[k] - \mathbf{L}[k]\,\mathbf{r}[k] \]
 
 \newpage
-\hd{Verification (1\,Hz, near wall)}
-4-state vs 5-state, per-axis EKF, seed ensemble; near-wall 1\,Hz oscillation ($h_{init}=50\,\mu$m, trough $\bar h = 1.2$).
+\hd{Gain fluctuation variance $\mathrm{Var}(\Delta a_{ram})$}
+\textbf{Assumption} ($x = x_{det}+x_{ram}$, perfect tracking $x_{det}=x_d$): $\;\delta x = x_d - x = -x_{ram}$ (zero-mean), $\;x_{ram} = -\delta x$.
+\[ a'_x := \frac{d a_x}{d h} = -\frac{a_x K_h}{R}, \qquad K_h = \frac{1}{c}\frac{dc}{d\bar h}\ (\text{wall sensitivity}), \qquad a_{x_{ram}} = a'_x\, x_{ram}, \quad x_{ram} = -\delta x \]
 
-\medskip
-\noindent\begin{minipage}{\linewidth}\centering
-\includegraphics[width=0.78\textwidth]{figures/fig3_trajectory_osc1hz.png}\\[0.4ex]
-{\small\itshape Desired $p_d$ and actual $p_{true}$ ($z$).}
-\end{minipage}
+\textbf{Closed-loop tracking variance} (thermal-driven, $\hat a_x = a_x$):
+\[ \mathrm{Var}(x_{ram}) = \mathrm{Var}(\delta x) = C_{\delta x}\,\sigma^2_{\delta h}, \qquad C_{\delta x} = 2 + \frac{1}{1-\lc^2}, \qquad \sigma^2_{\delta h} := 4 k_B T\, a_x \]
+
+\textbf{Increment of a stationary signal} ($\rho_1 = \mathrm{Cov}(x_{ram}[k{+}1],x_{ram}[k])/\mathrm{Var}(x_{ram})$, lag-1 autocorr):
+\[ \mathrm{Var}(\Delta x_{ram}) = 2\,\mathrm{Var}(x_{ram}) - 2\,\mathrm{Cov}\big(x_{ram}[k{+}1],x_{ram}[k]\big) = 2(1-\rho_1)\,\mathrm{Var}(x_{ram}) \]
+\[ \rho_1 = \lc + \frac{2(1-\lc)}{C_{\delta x}} \;\Rightarrow\; 1-\rho_1 = \frac{1}{(1+\lc)\,C_{\delta x}} \]
+
+\textbf{Gain increment} $\Delta a_{ram} = a'_x\,\Delta x_{ram}$ \quad($C_{\delta x}$ and $(1-\rho_1)$ cancel):
+\[ \mathrm{Var}(\Delta a_{ram}) = a'^2_x\,\mathrm{Var}(\Delta x_{ram}) = a'^2_x\cdot \underbrace{2(1-\rho_1)\,C_{\delta x}}_{=\,2/(1+\lc)}\,\sigma^2_{\delta h} \]
+\begin{empheq}[box=\fbox]{equation*}
+\mathrm{Var}(\Delta a_{ram}) = \frac{2}{1+\lc}\,a'^2_x\,\sigma^2_{\delta h}
+\end{empheq}
+
+\textbf{Impl.}: $K_h,\ \sigma^2_{\delta h}=4k_BT\,a_\perp$ evaluated at $\bar h_{\mathrm{meas}}$ (measured, $p_m$); gain $a_x\to\hat a_x$ (estimate).
+
+\newpage
+\hd{Correction --- $a_{x_{ram}}$ is first-order autoregressive (AR(1)), not a random walk}
+
+\textbf{True-signal dynamics} (no estimate; $x_{ram}=-\delta x$, $\delta x[k+1]=\lc\,\delta x[k]-\varepsilon[k]$):
+\[ a_{x_{ram}}[k+1] = -a'_x\,\delta x[k+1] = -a'_x\big(\lc\,\delta x[k]-\varepsilon[k]\big) = \lc\, a_{x_{ram}}[k] + a'_x\,\varepsilon[k] \]
+\[ \Delta a_{ram}[k] = a_{x_{ram}}[k+1]-a_{x_{ram}}[k] = \underbrace{(\lc-1)\,a_{x_{ram}}[k]}_{\text{reversion}} + \underbrace{a'_x\,\varepsilon[k]}_{\text{white}} \]
+
+\textbf{True gain state} ($a_x = a_{x_{det}} + a_{x_{ram}}$, $a_{x_{det}}[k+1]=a_{x_{det}}[k]+\Delta a_x[k]$):
+\[
+\begin{aligned}
+a_x[k+1] &= \big(a_{x_{det}}[k]+\Delta a_x[k]\big) + \big(\lc\,a_{x_{ram}}[k]+a'_x\,\varepsilon[k]\big) \\
+&= \big(a_{x_{det}}[k]+\Delta a_x[k]\big) + \lc\big(a_x[k]-a_{x_{det}}[k]\big) + a'_x\,\varepsilon[k] \\
+&= \underbrace{\lc\, a_x[k]}_{\mathbf F_e(4,4)=\lc} + \underbrace{(1-\lc)\,a_{x_{det}}[k] + \Delta a_x[k]}_{\text{known input}} + \underbrace{a'_x\,\varepsilon[k]}_{q_4[k]}
+\end{aligned}
+\]
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf F_e(4,4) = \lc
+\end{empheq}
+
+\textbf{Estimator} (predict reverts to $a_{x_{det}}$):
+\[ \hat a_x[k+1] = \lc\,\hat a_x[k] + (1-\lc)\,a_{x_{det}}[k] + \Delta a_x[k] + \ell_{4\cdot}[k]\,e_y[k] \]
+\[
+\begin{aligned}
+e_{a_x}[k+1] &= a_x[k+1] - \hat a_x[k+1] \\
+&= \lc\big(a_x[k]-\hat a_x[k]\big) + a'_x\,\varepsilon[k] - \ell_{4\cdot}[k]\,e_y[k] \\
+&= \lc\, e_{a_x}[k] + a'_x\,\varepsilon[k] - \ell_{4\cdot}[k]\,e_y[k]
+\end{aligned}
+\]
+
+\textbf{Process noise} (white driver $w_4=a'_x\varepsilon$; $\mathrm{Var}(\varepsilon)=(1-\lc^2)\,\mathrm{Var}(\delta x)$ since $\delta x$ is AR(1)):
+\[ q_4 = \mathrm{Var}(w_4) = a'^2_x\,\mathrm{Var}(\varepsilon) = a'^2_x\,(1-\lc^2)\,\mathrm{Var}(\delta x) = (1-\lc^2)\,C_{\delta x}\,a'^2_x\,\sigma^2_{\delta h} \]
+\begin{empheq}[box=\fbox]{equation*}
+q_4 = a'^2_x\,\mathrm{Var}(\varepsilon) = (3-2\lc^2)\,a'^2_x\,\sigma^2_{\delta h}
+\end{empheq}
+
+\textbf{Impl.}: predict and $q_4$ use $\hat a_x$ with $a'_x$ at $\bar h_{\mathrm{meas}}$ ($p_m$); reversion target $a_{x_{det}}$ from $p_d$.
+
+\newpage
+\hd{Verification (1\,Hz, near wall)}
+Per-axis EKF, seed ensemble; near-wall 1\,Hz oscillation ($h_{init}=50\,\mu$m, trough $\bar h = 1.2$).
 
 \medskip
 \noindent\begin{minipage}{\linewidth}\centering
@@ -222,8 +262,8 @@ e_{a_x}[k+1] &= e_{a_x}[k] - \ell_{41}[k]\, e_{\delta x_1}[k] - \ell_{42}[k]\, e
 
 \medskip
 \noindent\begin{minipage}{\linewidth}\centering
-\includegraphics[width=0.82\textwidth]{figures/fig_track_var_osc1hz.png}\\[0.4ex]
-{\small\itshape $z$ tracking-error variance (across seeds), 4-state / 5-state, and the closed-loop theory $C_{\delta x}\,4k_BT\,a_z$ ($C_{\delta x}=2+1/(1-\lambda_c^2)$).}
+\includegraphics[width=0.82\textwidth]{figures/fig_q44_orig_vs_ar1_z.png}\\[0.4ex]
+{\small\itshape $a_z$: original random-walk $Q_{44}$ ($\mathbf F_e(4,4)=1$) vs AR(1) reverting gain ($\mathbf F_e(4,4)=\lc$); middle tile, estimation error; bottom, $\bar h$. Near-wall $|\hat a_z-a_z|$: $9.4\%\!\to\!0.4\%$.}
 \end{minipage}
 
 \end{document}
