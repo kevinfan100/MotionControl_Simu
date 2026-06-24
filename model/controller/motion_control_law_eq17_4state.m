@@ -84,7 +84,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     persistent pd_km1 pd_km2       % trajectory delay buffers (also give h_bar_d history)
     persistent f_d_km1 f_d_km2     % past control buffers (for Sigma f_d[k-i])
     persistent a_hat_km1 a_hat_km2          % past gain estimates a_hat[k-i] (active law + Q33)
-    persistent var_da_ram_km1 var_da_ram_km2 % past var(delta_a_ram[k-i]) (Q33/R22)
+    persistent var_da_inc_km1 var_da_inc_km2 % past increment var(delta_a_ram[k-i]) (Q33/R22)
     persistent a_ctrl_km1 a_ctrl_km2   % control-law gain history (= a_hat history unless override)
     persistent warmup_count k_step
 
@@ -239,7 +239,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         f_d_km2 = zeros(3, 1);
         a_hat_km1 = a_x_init;             a_hat_km2 = a_x_init;
         a_ctrl_km1 = a_x_init;            a_ctrl_km2 = a_x_init;
-        var_da_ram_km1 = var_da_init_vec; var_da_ram_km2 = var_da_init_vec;
+        var_da_inc_km1 = var_da_init_vec; var_da_inc_km2 = var_da_init_vec;
 
         % --- 0K. Misc ---
         k_step = 1;
@@ -414,7 +414,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     R_per_axis = cell(3, 1);
     gate_off   = false(3, 1);
     G_flags    = false(3, 3);
-    var_da_ram = zeros(3, 1);
+    var_da_ram = zeros(3, 1);   % Q44 driver (mode-dependent: RW / AR(1) / cap)
+    var_da_inc = zeros(3, 1);   % true increment var Var(delta_a_ram), for Q33/R22
     t_now = (k_step - 1) * Ts;
     for ax = 1:3
         a_hat_i = a_hat(ax);
@@ -441,14 +442,17 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         else
             var_da_ram(ax) = var_da_inc_factor * (a_hat_i * K_h_axis(ax) / R_radius)^2 * sigma2_dh;
         end
+        % True gain increment variance (always), for the Q33/R22 delay terms which
+        % are functions of the REAL increment delta_a_ram, not the Q44 driver.
+        var_da_inc(ax) = var_da_inc_factor * (a_hat_i * K_h_axis(ax) / R_radius)^2 * sigma2_dh;
 
         if d_delay == 2
             Q33_thermal  = 4 * kBT * (a_hat_i + one_minus_lc^2 * (a_hat_km1(ax) + a_hat_km2(ax)));
-            Q33_randgain = one_minus_lc^2 * ( 4 * f_d_km1(ax)^2 * var_da_ram_km1(ax) ...
-                                            + 1 * f_d_km2(ax)^2 * var_da_ram_km2(ax) );
+            Q33_randgain = one_minus_lc^2 * ( 4 * f_d_km1(ax)^2 * var_da_inc_km1(ax) ...
+                                            + 1 * f_d_km2(ax)^2 * var_da_inc_km2(ax) );
         else
             Q33_thermal  = 4 * kBT * (a_hat_i + one_minus_lc^2 * a_hat_km1(ax));
-            Q33_randgain = one_minus_lc^2 * (f_d_km1(ax)^2 * var_da_ram_km1(ax));
+            Q33_randgain = one_minus_lc^2 * (f_d_km1(ax)^2 * var_da_inc_km1(ax));
         end
         Q33_nx = one_minus_lc^2 * sigma2_n_s(ax);
 
@@ -461,9 +465,9 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         IF_eff_i = if_eff_eval(IF_abc, C_dpmr, C_n, kBT, a_hat_i, sigma2_n_s(ax));
         R2_intrinsic_i = amlpf_var_factor * K_var * IF_eff_i * (a_hat_i + xi_per_axis(ax))^2;
         if d_delay == 2
-            R22_delay_i = var_da_ram_km1(ax) + var_da_ram_km2(ax);
+            R22_delay_i = var_da_inc_km1(ax) + var_da_inc_km2(ax);
         else
-            R22_delay_i = var_da_ram_km1(ax);
+            R22_delay_i = var_da_inc_km1(ax);
         end
         R2_eff_i = R2_intrinsic_i + R22_delay_i;
 
@@ -589,7 +593,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     f_d_km2 = f_d_km1; f_d_km1 = f_d;
     a_hat_km2 = a_hat_km1; a_hat_km1 = a_hat;            % a_hat[k] used this step
     a_ctrl_km2 = a_ctrl_km1; a_ctrl_km1 = a_ctrl;
-    var_da_ram_km2 = var_da_ram_km1; var_da_ram_km1 = var_da_ram;
+    var_da_inc_km2 = var_da_inc_km1; var_da_inc_km1 = var_da_inc;
     dx_bar_m = dx_bar_m_new;
     sigma2_dxr_hat = sigma2_dxr_hat_new;
     kappa_hat = kappa_hat_new;
