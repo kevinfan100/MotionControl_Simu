@@ -1,0 +1,261 @@
+% ======================================================
+% Compile: xelatex 5state_est_aprime.tex
+% Path:    reference/eq17_analysis/derivation/5state_est_aprime.tex
+% Standalone derivation of the 5-state eq17 controller that ESTIMATES the gain
+% slope a'_x as an augmented state (general / unknown wall effect).
+%
+% Built on 4state_del_hd: the 4-state feeds the gain RATE forward from a KNOWN
+% wall model (delta_a_x = a'_x*Delta_h_d, with a'_x looked up from c(h_bar)).
+% Here a'_x is promoted from a known constant to an ESTIMATED state with a
+% random-walk model a'_x[k+1] = a'_x[k] + w_a'[k], so the per-axis state is
+%     x = [delta_x_1, delta_x_2, delta_x_3, a_x, a'_x].
+% The gain still advances as a_x[k+1] = a_x[k] + a'_x[k]*Delta_h_d[k] + da_ram,
+% but the slope multiplying the KNOWN height increment Delta_h_d is now learned
+% from a_xm -> the controller no longer needs the wall model c(h_bar).
+% a'_x couples to the rest of the state only through the height motion, so it is
+% observable only while the trajectory moves in height (Delta_h_d != 0).
+%
+% Style mirrors 4state_del_hd / 5state_derivation (monochrome, \fbox, terse).
+% ======================================================
+\documentclass[11pt,a4paper]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+
+\begin{document}
+
+\hd{Equation of motion}
+\[ x[k+1] = x[k] + a_x[k]\{f_{dx}[k] + f_T[k]\} + \delta x_D[k], \]
+
+\hd{Motion error}
+\[ \delta x[k+1] = \delta x[k] + \Delta x_d[k] - a_x[k]\{f_{dx}[k] + f_T[k]\} - \delta x_D[k], \]
+
+$\delta x[k] = x_d[k] - x[k]$, $x_d[k]$ is the desired motion trajectory, $\delta x_D[k]$ is the motion error caused by the disturbance, and $\Delta x_d[k] = x_d[k+1] - x_d[k]$ is the desired motion step size.
+
+\hd{Measurement} (\textit{d}-step delay)
+\[ \delta x_m[k] = \delta x[k-d] + n_x[k], \]
+
+\noindent\underline{\textbf{Control objective}}: $\;\delta x[k+1] = \lc \cdot \delta x[k];\quad 0 \le \lc < 1$
+
+\medskip
+\textit{Ideal control effort (no measurement delay)}:
+\[ \bar f_{dx}[k] = a_x^{-1}[k]\{\Delta x_d[k] + (1-\lc)\,\bm{\delta x[k]} - \delta x_D[k]\} \]
+
+\textit{Motion error}:
+\[ \delta x[k+1] = \delta x[k] + \Delta x_d[k] - a_x[k]\{\bar f_{dx}[k] + f_T[k]\} - \delta x_D[k] = \lc \cdot \delta x[k] - a_x[k] f_T[k] \]
+
+\textit{d-step measurement delay}:
+\[ \bm{\delta x[k]} = \delta x[k-d] + \sum_{i=1}^{d}\Delta x_d[k-i] - \sum_{i=1}^{d} a_x[k-i]\{f_{dx}[k-i] + f_T[k-i]\} - \sum_{i=1}^{d}\delta x_D[k-i] \]
+
+\textit{Ideal control effort (with d-step measurement delay)}:
+\[
+\begin{aligned}
+\bar{\bar f}_{dx}[k] = a_x^{-1}[k]\Big\{
+& \underbrace{\Big[\Delta x_d[k] + (1-\lc)\textstyle\sum_{i=1}^{d}\Delta x_d[k-i]\Big]}_{\Delta x_d^{d}[k]}
++ (1-\lc)\Big[\delta x[k-d] - \textstyle\sum_{i=1}^{d} a_x[k-i] f_{dx}[k-i]\Big] \\
+& - \underbrace{\Big[\delta x_D[k] + (1-\lc)\textstyle\sum_{i=1}^{d}\delta x_D[k-i]\Big]}_{\delta x_D^{d}[k]}
+\Big\}
+\end{aligned}
+\]
+
+\textit{Motion error}:
+\[
+\delta x[k+1] = \lc \cdot \delta x[k] - \underbrace{\Big\{ a_x[k] f_T[k] + (1-\lc)\textstyle\sum_{i=1}^{d} a_x[k-i] f_T[k-i] \Big\}}_{\delta x_T^{d}[k]}
+\]
+
+\hd{Implementable control effort} \;{\small (unchanged in form; $\hat a_x$ is now propagated by the estimated slope $\hat a'_x$, below)}
+\begin{empheq}[box=\fbox]{equation*}
+f_{dx}[k] = \hat a_x^{-1}[k]\Big\{ \Delta x_d^{d}[k] + (1-\lc)\Big[\delta x_m[k] - \textstyle\sum_{i=1}^{d}\hat a_x[k-i] f_{dx}[k-i]\Big] \Big\}
+\end{empheq}
+
+\hd{Motion error}
+\[ \delta x[k+1] = \lc \cdot \delta x[k] - a_x[k]\big[ f_{dx}[k] - \bar{\bar f}_{dx}[k] \big] - \delta x_T^{d}[k] \]
+
+\[ a_x[k]\,\bar{\bar f}_{dx}[k] = \Delta x_d^{d}[k] + (1-\lc)\Big[\delta x[k-d] - \textstyle\sum_{i=1}^{d} a_x[k-i] f_{dx}[k-i]\Big] - \delta x_D^{d}[k] \]
+
+\[
+a_x[k]\, f_{dx}[k] = \big(1 + e_{a_x}[k]\,\hat a_x^{-1}[k]\big)\Big\{ \Delta x_d^{d}[k]
++ (1-\lc)\Big[\big(\delta x[k-d] + n_x[k]\big) - \textstyle\sum_{i=1}^{d}\hat a_x[k-i] f_{dx}[k-i]\Big] \Big\}
+\]
+
+\[
+\begin{aligned}
+a_x[k]\, f_{dx}[k] - a_x[k]\,\bar{\bar f}_{dx}[k] ={}& e_{a_x}[k]\, f_{dx}[k] + (1-\lc) n_x[k] \\
+&+ (1-\lc)\textstyle\sum_{i=1}^{d}\big(a_x[k-i] - \hat a_x[k-i]\big) f_{dx}[k-i] + \delta x_D^{d}[k]
+\end{aligned}
+\]
+
+\hd{Parameter model} \;{\small (gain slope $a'_x$ promoted to an estimated state --- no wall model $c(\bar h)$)}
+\[ a_x[k] = a_{x_{det}}[k] + a_{x_{ram}}[k]; \qquad a_{x_{ram}}[k] \approx a'_x[k]\, x_{ram}[k] \]
+\[
+a_x[k+1] = a_x[k] + \delta a_x[k] + \delta a_{ram}[k],
+\qquad
+\delta a_x[k] = a'_x[k]\,\Delta h_d[k],
+\qquad
+\delta a_{ram}[k] = a'_x[k]\,\Delta x_{ram}[k]
+\]
+$\Delta h_d[k] = h_d[k+1] - h_d[k]$ (desired-trajectory height increment, \textit{known}).
+
+\medskip
+The 4-state takes $a'_x$ from the known wall model. Here $a'_x$ is \textit{unknown}: it is modelled as a slowly-varying state and learned from $a_{xm}$:
+\begin{empheq}[box=\fbox]{equation*}
+\begin{cases}
+a_x[k+1]  = a_x[k] + a'_x[k]\,\Delta h_d[k] + \delta a_{ram}[k] \\
+a'_x[k+1] = a'_x[k] + w_{a'}[k]
+\end{cases}
+\end{empheq}
+
+\textit{Parameter estimator}:
+\[ \begin{cases} \hat a_x[k+1] = \hat a_x[k] + \hat a'_x[k]\,\Delta h_d[k] \\ \hat a'_x[k+1] = \hat a'_x[k] \end{cases} \]
+
+\textit{Parameter estimation error}: \quad $e_{a_x}[k] = a_x[k] - \hat a_x[k], \qquad e_{a'}[k] = a'_x[k] - \hat a'_x[k]$
+
+\textit{Estimation error dynamics}:
+\[ \begin{cases} e_{a_x}[k+1] = e_{a_x}[k] + \Delta h_d[k]\, e_{a'}[k] + \delta a_{ram}[k] \\ e_{a'}[k+1]  = e_{a'}[k] + w_{a'}[k] \end{cases} \]
+
+\newpage
+\textit{(slope $e_{a'}$ taken constant over the short delay window; $h_d[k]-h_d[k-i]=\sum_{j=1}^{i}\Delta h_d[k-j]$)}
+\[ a_x[k-i] - \hat a_x[k-i] \approx e_{a_x}[k] - \big(h_d[k]-h_d[k-i]\big)\, e_{a'}[k] - \sum_{j=1}^{i}\delta a_{ram}[k-j] \]
+
+\[
+\begin{aligned}
+a_x[k]\, f_{dx}[k] - a_x[k]\,\bar{\bar f}_{dx}[k] \approx{}&
+e_{a_x}[k]\,\underbrace{\Big\{ f_{dx}[k] + (1-\lc)\textstyle\sum_{i=1}^{d} f_{dx}[k-i] \Big\}}_{F_{dx}[k]} \\
+&- e_{a'}[k]\,\underbrace{\Big\{ (1-\lc)\textstyle\sum_{i=1}^{d} \big(h_d[k]-h_d[k-i]\big)\, f_{dx}[k-i] \Big\}}_{dF_{dx}^{h}[k]} \\
+&- \underbrace{\Big\{ (1-\lc)\textstyle\sum_{i=1}^{d} (d+1-i)\, f_{dx}[k-i]\,\delta a_{ram}[k-i] \Big\}}_{\delta x_{\delta af}^{d}[k]} \\
+&+ \delta x_D^{d}[k] + (1-\lc) n_x[k]
+\end{aligned}
+\]
+
+\begin{empheq}[box=\fbox]{align*}
+\delta x[k+1] ={}& \lc \cdot \delta x[k] - F_{dx}[k]\cdot e_{a_x}[k] + dF_{dx}^{h}[k]\cdot e_{a'}[k] - \delta x_D^{d}[k] \\
+&- \underbrace{\Big\{ \delta x_T^{d}[k] - \delta x_{\delta af}^{d}[k] + (1-\lc) n_x[k] \Big\}}_{\varepsilon[k]}
+\end{empheq}
+
+\hd{State equation} \;{\small ($\delta x_D^{d}\!\equiv\!0$: disturbance not modelled)}
+\[
+\begin{aligned}
+\delta x_1[k+1] &= \delta x_2[k] \\
+\delta x_2[k+1] &= \delta x_3[k] \\
+\delta x_3[k+1] &= \lc \cdot \delta x_3[k] - F_{dx}[k]\cdot e_{a_x}[k] + dF_{dx}^{h}[k]\cdot e_{a'}[k] - \varepsilon[k] \\
+a_x[k+1] &= a_x[k] + a'_x[k]\,\Delta h_d[k] + \delta a_{ram}[k] \\
+a'_x[k+1] &= a'_x[k] + w_{a'}[k]
+\end{aligned}
+\]
+
+\hd{Output equation} \;{\small ($a_x[k-d]=a_x[k]-\sum_{i=1}^{d}\big(a'_x[k-i]\Delta h_d[k-i]+\delta a_{ram}[k-i]\big)$; slope const $\Rightarrow$ deterministic part $\approx(h_d[k]-h_d[k-d])\,a'_x[k]$)}
+\[
+\begin{cases}
+y_1[k] = \delta x_m[k] = \delta x_1[k] + \underbrace{n_x[k]}_{r_1[k]} \\[1.8ex]
+y_2[k] = \underbrace{a_x[k-d] + n_a[k]}_{a_{xm}[k]} \approx a_x[k] - \underbrace{\big(h_d[k]-h_d[k-d]\big)}_{\Delta H_d[k]\ (\text{known})}\, a'_x[k] + \underbrace{\Big\{ n_a[k] - \textstyle\sum_{i=1}^{d}\delta a_{ram}[k-i] \Big\}}_{r_2[k]}
+\end{cases}
+\]
+\[
+\mathbf{H}[k] = \begin{bmatrix} 1 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 1 & -\Delta H_d[k] \end{bmatrix},
+\qquad \Delta H_d[k] = h_d[k]-h_d[k-d],
+\qquad \mathbf{y}[k] = \mathbf{H}[k]\,\mathbf{x}[k] + \mathbf{r}[k]
+\]
+
+\newpage
+\hd{Closed-loop Estimator}
+\[ e_{\delta x_1}[k] = \delta x_1[k] - \delta \hat x_1[k] \]
+\[ e_{a_x}[k] = a_x[k] - \hat a_x[k] \]
+\[ e_{a'}[k] = a'_x[k] - \hat a'_x[k] \]
+\[ e_{y_1}[k] = y_1[k] - \hat y_1[k] = \delta x_m[k] - \delta \hat x_1[k] = e_{\delta x_1}[k] + \underbrace{n_x[k]}_{r_1[k]} \]
+\[
+\begin{aligned}
+e_{y_2}[k] &= y_2[k] - \hat y_2[k] = a_{xm}[k] - \hat a_x[k] + \Delta H_d[k]\, \hat a'_x[k] \\
+&= e_{a_x}[k] - \Delta H_d[k]\, e_{a'}[k] + \underbrace{\Big\{ n_a[k] - \textstyle\sum_{i=1}^{d}\delta a_{ram}[k-i] \Big\}}_{r_2[k]}
+\end{aligned}
+\]
+\[
+\begin{aligned}
+\delta \hat x_1[k+1] &= \delta \hat x_2[k] + \ell_{11}[k]\, e_{y_1}[k] + \ell_{12}[k]\, e_{y_2}[k] \\
+\delta \hat x_2[k+1] &= \delta \hat x_3[k] + \ell_{21}[k]\, e_{y_1}[k] + \ell_{22}[k]\, e_{y_2}[k] \\
+\delta \hat x_3[k+1] &= \lc \cdot \delta \hat x_3[k] + \ell_{31}[k]\, e_{y_1}[k] + \ell_{32}[k]\, e_{y_2}[k] \\
+\hat a_x[k+1] &= \hat a_x[k] + \hat a'_x[k]\,\Delta h_d[k] + \ell_{41}[k]\, e_{y_1}[k] + \ell_{42}[k]\, e_{y_2}[k] \\
+\hat a'_x[k+1] &= \hat a'_x[k] + \ell_{51}[k]\, e_{y_1}[k] + \ell_{52}[k]\, e_{y_2}[k]
+\end{aligned}
+\]
+
+\hd{Error dynamics}
+\[
+\begin{aligned}
+e_{\delta x_1}[k+1] &= e_{\delta x_2}[k] - \ell_{11}[k]\, e_{\delta x_1}[k] - \ell_{12}[k]\, e_{a_x}[k] + \ell_{12}[k]\,\Delta H_d[k]\, e_{a'}[k] \\
+e_{\delta x_2}[k+1] &= e_{\delta x_3}[k] - \ell_{21}[k]\, e_{\delta x_1}[k] - \ell_{22}[k]\, e_{a_x}[k] + \ell_{22}[k]\,\Delta H_d[k]\, e_{a'}[k] \\
+e_{\delta x_3}[k+1] &= \lc \cdot e_{\delta x_3}[k] - F_{dx}[k]\, e_{a_x}[k] + dF_{dx}^{h}[k]\, e_{a'}[k] \\
+&\quad - \ell_{31}[k]\, e_{\delta x_1}[k] - \ell_{32}[k]\, e_{a_x}[k] + \ell_{32}[k]\,\Delta H_d[k]\, e_{a'}[k] - \underbrace{\varepsilon[k]}_{q_3[k]} \\
+e_{a_x}[k+1] &= e_{a_x}[k] + \Delta h_d[k]\, e_{a'}[k] - \ell_{41}[k]\, e_{\delta x_1}[k] - \ell_{42}[k]\, e_{a_x}[k] + \ell_{42}[k]\,\Delta H_d[k]\, e_{a'}[k] + \underbrace{\delta a_{ram}[k]}_{q_4[k]} \\
+e_{a'}[k+1] &= e_{a'}[k] - \ell_{51}[k]\, e_{\delta x_1}[k] - \ell_{52}[k]\, e_{a_x}[k] + \ell_{52}[k]\,\Delta H_d[k]\, e_{a'}[k] + \underbrace{w_{a'}[k]}_{q_5[k]}
+\end{aligned}
+\]
+
+\newpage
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lc & -F_{dx}[k] & dF_{dx}^{h}[k] \\
+0 & 0 & 0 & 1 & \Delta h_d[k] \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\end{empheq}
+
+\[ F_{dx}[k] = f_{dx}[k] + (1-\lc)\sum_{i=1}^{d} f_{dx}[k-i], \qquad dF_{dx}^{h}[k] = (1-\lc)\sum_{i=1}^{d} \big(h_d[k]-h_d[k-i]\big)\, f_{dx}[k-i] \]
+
+\[ \mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k] - \mathbf{L}[k]\,\mathbf{H}[k]\,\mathbf{e}[k] + \mathbf{q}[k] - \mathbf{L}[k]\,\mathbf{r}[k] \]
+
+\medskip
+\textit{Process noise} (nonzero on rows 3--5): $\varepsilon[k]$ (lumped thermal\,/\,measurement, zero-mean), $\delta a_{ram}[k]=a'_x\,\Delta x_{ram}[k]$, and $w_{a'}[k]$. $q_4=\delta a_{ram}$ sets the $a_x$ random-walk drive; $q_5=w_{a'}$ sets the $a'_x$ drive (the estimator bandwidth on the slope). With $a'_x$ now carrying the deterministic gain change, $q_4$ no longer needs to absorb it.
+
+\newpage
+\hd{Remarks --- observability of $a'_x$}
+The slope $a'_x$ couples to the rest of the state \textbf{only through the known height motion}:
+\[
+\mathbf{F}_e(4,5)=\Delta h_d[k]\ \text{(prediction path)}, \qquad
+\mathbf{H}(2,5)=-\Delta H_d[k]\ \text{(measurement path)},
+\]
+and both vanish when the desired trajectory holds its height ($\Delta h_d=0\Rightarrow\Delta H_d=0$). Hence:
+\begin{itemize}[leftmargin=1.4em,itemsep=1pt]
+\item \textbf{$a'_x$ is structurally unobservable during a height hold}; it is identified only while $\Delta h_d\neq 0$. This is intrinsic, not a filter artifact: a slope can only be read from the gain sampled at two or more heights. ($a_x$ itself, by contrast, is observable from $a_{xm}$ at a single fixed height.)
+\item Conditioning improves with the height span covered and with slower motion (longer dwell averages down the $a_{xm}$ noise floor), so estimability is strongest under a slow, wide height sweep and weakest under fast oscillation.
+\item $a_{xm}$ is the \textbf{only} feedback channel for $a'_x$. Its marginal variance $\mathrm{Var}(a_{xm})$ is a function of the instantaneous gain alone and carries \textbf{no} slope information; the slope lives in the correlation between $a_{xm}[k]$ and $h_d[k]$. No auxiliary measurement is required or helpful.
+\item $a_{xm}$ carries a near-wall dynamic bias (the $C_{dpmr}$ closed form degrades when $\hat a_x\neq a_x$); since this bias is height-dependent it manifests as an \textit{apparent} slope. Separating the true $a'_x$ from this channel artifact is the central difficulty of the near-wall regime.
+\end{itemize}
+
+\hd{Relation to the 4-/5-state variants}
+\begin{center}\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+variant & gain-rate model & $\mathbf{F}_e(4,5)$ & $\mathbf{H}(2,5)$ \\
+\midrule
+4-state ($a'_x$ \textit{known}) & $\delta a_x=a'_x\Delta h_d$ fed forward & --- (no state) & --- \\
+5-state (increment $\delta a_x$ est.) & $\delta a_x[k{+}1]=\delta a_x[k]$ (free) & $1$ & $-d$ \\
+\textbf{this variant} ($a'_x$ \textit{est.}) & $\delta a_x=a'_x\Delta h_d$, $a'_x$ random walk & $\Delta h_d[k]$ & $-\Delta H_d[k]$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The 5-state lets the increment $\delta a_x$ drift with no tie to the trajectory (hence the near-wall lag). This variant reconstructs the increment as $a'_x\,\Delta h_d$ with the \textit{known} regressor $\Delta h_d$, factoring the known kinematics out of the unknown wall property --- gain-rate tracking becomes parameter identification of $a'_x$.
+
+\hd{Estimability test (planned)}
+In simulation the true slope $a'_x(h)=-a_x\,K_h/R$ is known, so the estimator is graded directly against it (the truth is used only for scoring; the estimator never sees $c(\bar h)$). Plan: \textbf{(i)} run the slope estimator \textit{open-loop} (estimate $\hat a'_x$ but feed the model $a'_x$, not $\hat a'_x$, to the control) to isolate ``is the information there'' from the closed-loop self-consistency effect; \textbf{(ii)} bracket the excitation from passive $1\,$Hz oscillation to a dedicated slow height sweep, reporting $\hat a'_x$ accuracy vs.\ excitation and vs.\ height (far-field vs.\ near-wall); \textbf{(iii)} then close the feed-forward ($\delta a_x=\hat a'_x\Delta h_d$) and check tracking.
+
+\end{document}

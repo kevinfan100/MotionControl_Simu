@@ -99,6 +99,7 @@ function simOut = run_pure_simulation(config, opts)
     clear motion_control_law motion_control_law_23state ...
           motion_control_law_eq6 motion_control_law_eq17 motion_control_law_eq17_core ...
           motion_control_law_eq17_6state motion_control_law_eq17_5state ...
+          motion_control_law_eq17_5state_aprime ...
           motion_control_law_eq17_4state motion_control_law_eq17_gscalar ...
           trajectory_generator calc_thermal_force;
 
@@ -195,12 +196,13 @@ function simOut = run_pure_simulation(config, opts)
     % ---- Dispatch A1: 6-state / 5-state / 4-state (Vpersonal) vs 7-state (eq17_core) ----
     is_6state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '6state');
     is_5state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '5state');
+    is_5state_aprime = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '5state_aprime');
     is_4state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state');
     is_gscalar = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, 'gscalar');
-    is_vpersonal = is_6state || is_5state || is_4state || is_gscalar;   % share prefill defaults + constants builder
+    is_vpersonal = is_6state || is_5state || is_5state_aprime || is_4state || is_gscalar;   % share prefill defaults + constants builder
     if opts.use_true_gain && ~is_vpersonal
         error('run_pure_simulation:useTrueGainUnsupported', ...
-              'opts.use_true_gain=true requires config.eq17_variant=''6state'', ''5state'', ''4state'' or ''gscalar''.');
+              'opts.use_true_gain=true requires config.eq17_variant=''6state'', ''5state'', ''5state_aprime'', ''4state'' or ''gscalar''.');
     end
     if is_vpersonal
         % Prefill three-pillar defaults (override 7-state warmup defaults
@@ -238,6 +240,17 @@ function simOut = run_pure_simulation(config, opts)
     end
     if isfield(config, 's_I_prior') && ~isempty(config.s_I_prior)
         ctrl_const.s_I_prior = config.s_I_prior;
+    end
+
+    % 5state_aprime knobs: slope process-noise scale, prior, freeze (L0).
+    if isfield(config, 'Q_aprime_factor') && ~isempty(config.Q_aprime_factor)
+        ctrl_const.Q_aprime_factor = config.Q_aprime_factor;
+    end
+    if isfield(config, 'Pf_aprime_scale') && ~isempty(config.Pf_aprime_scale)
+        ctrl_const.Pf_aprime_scale = config.Pf_aprime_scale;
+    end
+    if isfield(config, 'freeze_aprime') && ~isempty(config.freeze_aprime)
+        ctrl_const.freeze_aprime = logical(config.freeze_aprime);
     end
 
     % ------------------------------------------------------------------
@@ -374,6 +387,14 @@ function simOut = run_pure_simulation(config, opts)
                                     del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
             else
                 [f_d_k, ekf_k] = motion_control_law_eq17_5state( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            end
+        elseif is_5state_aprime
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_5state_aprime( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            else
+                [f_d_k, ekf_k] = motion_control_law_eq17_5state_aprime( ...
                                     del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
             end
         elseif is_6state
