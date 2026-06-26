@@ -1,0 +1,297 @@
+% ======================================================
+% Compile: xelatex 4state_del_hd_ar1.tex
+% Path:    reference/eq17_analysis/derivation/4state_del_hd_ar1.tex
+% AR(1)-first standalone derivation of the 4-state eq17 controller + closed-loop EKF.
+% Independent companion to 4state_del_hd.tex: identical main line (equation of motion
+% -> implementable control effort), but from the Parameter model onward the gain state
+% is presented directly as the corrected AR(1) reverting model (F_e(4,4)=lc, predict
+% reverts to a_x_det, Q44 = AR(1) white-driver variance) -- no random-walk-then-correct
+% two-pass. Per-axis state x = [delta_x_1, delta_x_2, delta_x_3, a_x].
+% Style mirrors 4state_del_hd (monochrome, \fbox on key results, terse, math only).
+% ======================================================
+% fontset=none: this derivation has no CJK text, so do not load Chinese fonts
+% (this Windows box lacks KaiTi/FangSong); output is identical, compiles anywhere.
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+\usepackage{graphicx}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+
+\begin{document}
+
+\hd{Equation of motion}
+\[ x[k+1] = x[k] + a_x[k]\{f_{dx}[k] + f_T[k]\} + \delta x_D[k], \]
+
+\hd{Motion error}
+\[ \delta x[k+1] = \delta x[k] + \Delta x_d[k] - a_x[k]\{f_{dx}[k] + f_T[k]\} - \delta x_D[k], \]
+
+$\delta x[k] = x_d[k] - x[k]$, $x_d[k]$ is the desired motion trajectory, $\delta x_D[k]$ is the motion error caused by the disturbance, and $\Delta x_d[k] = x_d[k+1] - x_d[k]$ is the desired motion step size.
+
+\hd{Measurement} (\textit{d}-step delay)
+\[ \delta x_m[k] = \delta x[k-d] + n_x[k], \]
+
+\noindent\underline{\textbf{Control objective}}: $\;\delta x[k+1] = \lc \cdot \delta x[k];\quad 0 \le \lc < 1$
+
+\medskip
+\textit{Ideal control effort (no measurement delay)}:
+\[ \bar f_{dx}[k] = a_x^{-1}[k]\{\Delta x_d[k] + (1-\lc)\,\bm{\delta x[k]} - \delta x_D[k]\} \]
+
+\textit{Motion error}:
+\[ \delta x[k+1] = \delta x[k] + \Delta x_d[k] - a_x[k]\{\bar f_{dx}[k] + f_T[k]\} - \delta x_D[k] = \lc \cdot \delta x[k] - a_x[k] f_T[k] \]
+
+\textit{d-step measurement delay}:
+\[ \bm{\delta x[k]} = \delta x[k-d] + \sum_{i=1}^{d}\Delta x_d[k-i] - \sum_{i=1}^{d} a_x[k-i]\{f_{dx}[k-i] + f_T[k-i]\} - \sum_{i=1}^{d}\delta x_D[k-i] \]
+
+\textit{Ideal control effort (with d-step measurement delay)}:
+\[
+\begin{aligned}
+\bar{\bar f}_{dx}[k] = a_x^{-1}[k]\Big\{
+& \underbrace{\Big[\Delta x_d[k] + (1-\lc)\textstyle\sum_{i=1}^{d}\Delta x_d[k-i]\Big]}_{\Delta x_d^{d}[k]}
++ (1-\lc)\Big[\delta x[k-d] - \textstyle\sum_{i=1}^{d} a_x[k-i] f_{dx}[k-i]\Big] \\
+& - \underbrace{\Big[\delta x_D[k] + (1-\lc)\textstyle\sum_{i=1}^{d}\delta x_D[k-i]\Big]}_{\delta x_D^{d}[k]}
+\Big\}
+\end{aligned}
+\]
+
+\textit{Motion error}:
+\[
+\delta x[k+1] = \lc \cdot \delta x[k] - \underbrace{\Big\{ a_x[k] f_T[k] + (1-\lc)\textstyle\sum_{i=1}^{d} a_x[k-i] f_T[k-i] \Big\}}_{\delta x_T^{d}[k]}
+\]
+
+\hd{Implementable control effort}
+\begin{empheq}[box=\fbox]{equation*}
+f_{dx}[k] = \hat a_x^{-1}[k]\Big\{ \Delta x_d^{d}[k] + (1-\lc)\Big[\delta x_m[k] - \textstyle\sum_{i=1}^{d}\hat a_x[k-i] f_{dx}[k-i]\Big] \Big\}
+\end{empheq}
+
+\hd{Motion error}
+\[ \delta x[k+1] = \lc \cdot \delta x[k] - a_x[k]\big[ f_{dx}[k] - \bar{\bar f}_{dx}[k] \big] - \delta x_T^{d}[k] \]
+
+\[ a_x[k]\,\bar{\bar f}_{dx}[k] = \Delta x_d^{d}[k] + (1-\lc)\Big[\delta x[k-d] - \textstyle\sum_{i=1}^{d} a_x[k-i] f_{dx}[k-i]\Big] - \delta x_D^{d}[k] \]
+
+\[
+a_x[k]\, f_{dx}[k] = \big(1 + e_{a_x}[k]\,\hat a_x^{-1}[k]\big)\Big\{ \Delta x_d^{d}[k]
++ (1-\lc)\Big[\big(\delta x[k-d] + n_x[k]\big) - \textstyle\sum_{i=1}^{d}\hat a_x[k-i] f_{dx}[k-i]\Big] \Big\}
+\]
+
+\[
+\begin{aligned}
+a_x[k]\, f_{dx}[k] - a_x[k]\,\bar{\bar f}_{dx}[k] ={}& e_{a_x}[k]\, f_{dx}[k] + (1-\lc) n_x[k] \\
+&+ (1-\lc)\textstyle\sum_{i=1}^{d}\big(a_x[k-i] - \hat a_x[k-i]\big) f_{dx}[k-i] + \delta x_D^{d}[k]
+\end{aligned}
+\]
+
+\hd{Parameter model}
+\[ a_x[k] = a_{x_{det}}[k] + a_{x_{ram}}[k]; \qquad a_{x_{ram}}[k] \approx a'_x[k]\, x_{ram}[k] \]
+\[
+\begin{aligned}
+a_x[k+1] &= a_{x_{det}}[k+1] + a_{x_{ram}}[k+1]
+= \underbrace{\big\{ a_{x_{det}}[k] + a_{x_{ram}}[k] \big\}}_{a_x[k]} + \Delta a_x[k]
++ \underbrace{\big\{ a_{x_{ram}}[k+1] - a_{x_{ram}}[k] \big\}}_{\Delta a_{ram}[k]} \\
+&= a_x[k] + \Delta a_x[k] + \Delta a_{ram}[k]
+\end{aligned}
+\]
+\[
+\Delta a_x[k] = a_{x_{det}}[k+1] - a_{x_{det}}[k] = a'_x[k]\,\Delta h_d[k]\ (\text{from } p_d),
+\qquad
+\Delta a_{ram}[k] = a'_x[k]\,\Delta x_{ram}[k]
+\]
+$\Delta h_d[k] = h_d[k+1] - h_d[k]$ (desired-trajectory height increment).
+
+\hd{Gain dynamics --- $a_{x_{ram}}$ is first-order autoregressive (AR(1))}
+\textbf{Assumption} ($x = x_{det}+x_{ram}$, perfect tracking $x_{det}=x_d$): $\;\delta x = x_d - x = -x_{ram}$ (zero-mean), $\;x_{ram} = -\delta x$.
+\[ a_{x_{ram}}[k+1] = -a'_x\,\delta x[k+1] = -a'_x\big(\lc\,\delta x[k]-\varepsilon[k]\big) = \lc\, a_{x_{ram}}[k] + a'_x\,\varepsilon[k] \]
+\[
+\begin{aligned}
+a_x[k+1] &= \big(a_{x_{det}}[k]+\Delta a_x[k]\big) + \big(\lc\,a_{x_{ram}}[k]+a'_x\,\varepsilon[k]\big) \\
+&= \big(a_{x_{det}}[k]+\Delta a_x[k]\big) + \lc\big(a_x[k]-a_{x_{det}}[k]\big) + a'_x\,\varepsilon[k] \\
+&= \underbrace{\lc\, a_x[k]}_{\mathbf F_e(4,4)=\lc} + \underbrace{(1-\lc)\,a_{x_{det}}[k] + \Delta a_x[k]}_{\text{known input}} + \underbrace{a'_x\,\varepsilon[k]}_{q_4[k]}
+\end{aligned}
+\]
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf F_e(4,4) = \lc
+\end{empheq}
+
+\textit{Parameter estimator} (predict reverts to $a_{x_{det}}$): \quad $\hat a_x[k+1] = \lc\,\hat a_x[k] + (1-\lc)\,a_{x_{det}}[k] + \Delta a_x[k]$
+
+\textit{Parameter estimation error}: \quad $e_{a_x}[k] = a_x[k] - \hat a_x[k]$
+
+\textit{Estimation error dynamics}: \quad $e_{a_x}[k+1] = \lc\, e_{a_x}[k] + a'_x\,\varepsilon[k]$
+
+\newpage
+\[
+a_x[k-i] - \hat a_x[k-i] = e_{a_x}[k-i]
+\;\overset{(\dagger)}{\approx}\; e_{a_x}[k] - \sum_{j=1}^{i}\Delta a_{ram}[k-j]
+\]
+{\small $(\dagger)$ feedforward form $e_{a_x}[k{+}1]{=}e_{a_x}[k]{+}\Delta a_{ram}$ is exact; the AR(1) predictor gives $e_{a_x}[k{+}1]{=}\lc e_{a_x}{+}a'_x\varepsilon$, altering the expansion by $O\big((1{-}\lc)e_{a_x}\big)$ which enters only $\delta x_{\delta af}^{d}\ (\ll \delta x_T^{d}$ in $\varepsilon)$.}
+
+\[
+\begin{aligned}
+a_x[k]\, f_{dx}[k] - a_x[k]\,\bar{\bar f}_{dx}[k] \approx{}&
+e_{a_x}[k]\,\underbrace{\Big\{ f_{dx}[k] + (1-\lc)\textstyle\sum_{i=1}^{d} f_{dx}[k-i] \Big\}}_{F_{dx}[k]} \\
+&- \underbrace{\Big\{ (1-\lc)\textstyle\sum_{i=1}^{d} (d+1-i)\, f_{dx}[k-i]\,\Delta a_{ram}[k-i] \Big\}}_{\delta x_{\delta af}^{d}[k]} \\
+&+ \delta x_D^{d}[k] + (1-\lc) n_x[k]
+\end{aligned}
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\delta x[k+1] = \lc \cdot \delta x[k] - F_{dx}[k]\cdot e_{a_x}[k] - \delta x_D^{d}[k]
+- \underbrace{\Big\{ \delta x_T^{d}[k] - \delta x_{\delta af}^{d}[k] + (1-\lc) n_x[k] \Big\}}_{\varepsilon[k]}
+\end{empheq}
+
+\hd{State equation} \;{\small ($\delta x_D^{d}\!\equiv\!0$: disturbance not modelled)}
+\[
+\begin{aligned}
+\delta x_1[k+1] &= \delta x_2[k] \\
+\delta x_2[k+1] &= \delta x_3[k] \\
+\delta x_3[k+1] &= \lc \cdot \delta x_3[k] - F_{dx}[k]\cdot e_{a_x}[k] - \varepsilon[k] \\
+a_x[k+1] &= \lc\, a_x[k] + (1-\lc)\,a_{x_{det}}[k] + \Delta a_x[k] + a'_x\,\varepsilon[k]
+\end{aligned}
+\]
+
+\hd{Output equation}
+\[
+\begin{cases}
+y_1[k] = \delta x_m[k] = \delta x_1[k] + \underbrace{n_x[k]}_{r_1[k]} \\[1.8ex]
+y_2[k] = \underbrace{a_x[k-d] + n_a[k]}_{a_{xm}[k]} = a_x[k] - \textstyle\sum_{i=1}^{d}\Delta a_x[k-i] + \underbrace{\Big\{ n_a[k] - \textstyle\sum_{i=1}^{d}\Delta a_{ram}[k-i] \Big\}}_{r_2[k]}
+\end{cases}
+\]
+\[
+\mathbf{H} = \begin{bmatrix} 1 & 0 & 0 & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix},
+\qquad
+\mathbf{c}[k] = \begin{bmatrix} 0 \\ \textstyle\sum_{i=1}^{d}\Delta a_x[k-i] \end{bmatrix}\ (\text{known}),
+\qquad
+\mathbf{y}[k] = \mathbf{H}\mathbf{x}[k] - \mathbf{c}[k] + \mathbf{r}[k]
+\]
+
+\newpage
+\hd{Past-error expansion under AR(1) $(\dagger)$}
+\textit{Two predictors, two $e_{a_x}$ recursions} (predict-only):
+\[
+\begin{aligned}
+\text{feedforward:}\quad & e_{a_x}[k+1] = e_{a_x}[k] + \Delta a_{ram}[k]
+   \ \Rightarrow\ e_{a_x}[k-i] = e_{a_x}[k] - \textstyle\sum_{j=1}^{i}\Delta a_{ram}[k-j] \quad(\text{exact}) \\
+\text{AR(1):}\quad & e_{a_x}[k+1] = \lc\, e_{a_x}[k] + a'_x\varepsilon[k]
+   \ \Rightarrow\ e_{a_x}[k-i] = \lc^{-i}\big(e_{a_x}[k] - \textstyle\sum_{j=1}^{i}\lc^{j-1}a'_x\varepsilon[k-j]\big)
+\end{aligned}
+\]
+\textit{Difference} ($\Delta_i := e_{a_x}^{\mathrm{AR(1)}}[k-i] - e_{a_x}^{\mathrm{ff}}[k-i]$):
+\[ \Delta_i = \underbrace{(\lc^{-i}-1)\,e_{a_x}[k]}_{\text{reverting}}
+   - \lc^{-i}\sum_{j=1}^{i}\lc^{j-1}a'_x\varepsilon[k-j]
+   + \sum_{j=1}^{i}\Delta a_{ram}[k-j] \]
+\textit{Leading order} (small $i$, $\lc^{-i} \approx 1 + i(1-\lc)$):
+\[ (\lc^{-i}-1)\,e_{a_x}[k] \approx i(1-\lc)\,e_{a_x}[k] = O\big((1-\lc)\,e_{a_x}\big) \]
+$\Rightarrow$ the feedforward expansion errs by $O((1-\lc)e_{a_x})$, entering $\varepsilon$ only through $\delta x_{\delta af}^{d}\ (\ll \delta x_T^{d})$; numerically $Q_{33}/R_{22}$ with $\mathrm{Var}(\Delta a_{ram})$ vs $q_4$ leaves $\hat a_x$ unchanged.
+
+\newpage
+\hd{Closed-loop Estimator}
+\[ e_{\delta x_1}[k] = \delta x_1[k] - \delta \hat x_1[k] \]
+\[ e_{a_x}[k] = a_x[k] - \hat a_x[k] \]
+\[ e_{y_1}[k] = y_1[k] - \hat y_1[k] = \delta x_m[k] - \delta \hat x_1[k] = e_{\delta x_1}[k] + \underbrace{n_x[k]}_{r_1[k]} \]
+\[
+\begin{aligned}
+e_{y_2}[k] &= y_2[k] - \hat y_2[k] = a_{xm}[k] - \Big(\hat a_x[k] - \textstyle\sum_{i=1}^{d}\Delta a_x[k-i]\Big) \\
+&= \Big(a_x[k] - \textstyle\sum_{i=1}^{d}\Delta a_x[k-i] + r_2[k]\Big) - \hat a_x[k] + \textstyle\sum_{i=1}^{d}\Delta a_x[k-i] \\
+&= e_{a_x}[k] + \underbrace{\Big\{ n_a[k] - \textstyle\sum_{i=1}^{d}\Delta a_{ram}[k-i] \Big\}}_{r_2[k]}
+\end{aligned}
+\]
+\[
+\begin{aligned}
+\delta \hat x_1[k+1] &= \delta \hat x_2[k] + \ell_{11}[k]\, e_{y_1}[k] + \ell_{12}[k]\, e_{y_2}[k] \\
+\delta \hat x_2[k+1] &= \delta \hat x_3[k] + \ell_{21}[k]\, e_{y_1}[k] + \ell_{22}[k]\, e_{y_2}[k] \\
+\delta \hat x_3[k+1] &= \lc \cdot \delta \hat x_3[k] + \ell_{31}[k]\, e_{y_1}[k] + \ell_{32}[k]\, e_{y_2}[k] \\
+\hat a_x[k+1] &= \lc\,\hat a_x[k] + (1-\lc)\,a_{x_{det}}[k] + \Delta a_x[k] + \ell_{41}[k]\, e_{y_1}[k] + \ell_{42}[k]\, e_{y_2}[k]
+\end{aligned}
+\]
+
+\hd{Error dynamics}
+\[
+\begin{aligned}
+e_{\delta x_1}[k+1] &= e_{\delta x_2}[k] - \ell_{11}[k]\, e_{\delta x_1}[k] - \ell_{12}[k]\, e_{a_x}[k] \\
+e_{\delta x_2}[k+1] &= e_{\delta x_3}[k] - \ell_{21}[k]\, e_{\delta x_1}[k] - \ell_{22}[k]\, e_{a_x}[k] \\
+e_{\delta x_3}[k+1] &= \lc \cdot e_{\delta x_3}[k] - F_{dx}[k]\cdot e_{a_x}[k] - \ell_{31}[k]\, e_{\delta x_1}[k] - \ell_{32}[k]\, e_{a_x}[k] - \underbrace{\varepsilon[k]}_{q_3[k]} \\
+e_{a_x}[k+1] &= \lc\, e_{a_x}[k] - \ell_{41}[k]\, e_{\delta x_1}[k] - \ell_{42}[k]\, e_{a_x}[k] + \underbrace{a'_x\,\varepsilon[k]}_{q_4[k]}
+\end{aligned}
+\]
+
+\newpage
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 \\
+0 & 0 & 1 & 0 \\
+0 & 0 & \lc & -F_{dx}[k] \\
+0 & 0 & 0 & \lc
+\end{bmatrix}
+\end{empheq}
+
+\[ F_{dx}[k] = f_{dx}[k] + (1-\lc)\sum_{i=1}^{d} f_{dx}[k-i] \]
+
+\[ \mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k] - \mathbf{L}[k]\,\mathbf{H}\,\mathbf{e}[k] + \mathbf{q}[k] - \mathbf{L}[k]\,\mathbf{r}[k] \]
+
+\newpage
+\hd{Process / measurement noise variances}
+\textbf{Assumption} ($x = x_{det}+x_{ram}$, perfect tracking): $\;x_{ram} = -\delta x$ (zero-mean), $\;a'_x := \dfrac{d a_x}{d h} = -\dfrac{a_x K_h}{R}$, $\;K_h = \dfrac{1}{c}\dfrac{dc}{d\bar h}$ (wall sensitivity).
+
+\textbf{Closed-loop tracking variance} (thermal-driven, $\hat a_x = a_x$):
+\[ \mathrm{Var}(x_{ram}) = \mathrm{Var}(\delta x) = C_{\delta x}\,\sigma^2_{\delta h}, \qquad C_{\delta x} = 2 + \frac{1}{1-\lc^2}, \qquad \sigma^2_{\delta h} := 4 k_B T\, a_x \]
+
+\textbf{(i) True increment} $\Delta a_{ram} = a'_x\,\Delta x_{ram}$ \;($\rho_1 = \mathrm{Cov}(x_{ram}[k{+}1],x_{ram}[k])/\mathrm{Var}(x_{ram})$, lag-1 autocorr):
+\[ \mathrm{Var}(\Delta x_{ram}) = 2(1-\rho_1)\,\mathrm{Var}(x_{ram}), \qquad
+   \rho_1 = \lc + \frac{2(1-\lc)}{C_{\delta x}} \;\Rightarrow\; 1-\rho_1 = \frac{1}{(1+\lc)\,C_{\delta x}} \]
+\begin{empheq}[box=\fbox]{equation*}
+\mathrm{Var}(\Delta a_{ram}) = a'^2_x\cdot \underbrace{2(1-\rho_1)\,C_{\delta x}}_{=\,2/(1+\lc)}\,\sigma^2_{\delta h}
+= \frac{2}{1+\lc}\,a'^2_x\,\sigma^2_{\delta h}
+\qquad (\to Q_{33}^{\mathrm{randgain}},\ R_{22}^{\mathrm{delay}})
+\end{empheq}
+
+\textbf{(ii) AR(1) white driver} $w_4 = a'_x\,\varepsilon$ \;($\mathrm{Var}(\varepsilon) = (1-\lc^2)\,\mathrm{Var}(\delta x)$ since $\delta x$ is AR(1)):
+\begin{empheq}[box=\fbox]{equation*}
+q_4 = a'^2_x\,\mathrm{Var}(\varepsilon) = (1-\lc^2)\,C_{\delta x}\,a'^2_x\,\sigma^2_{\delta h} = (3-2\lc^2)\,a'^2_x\,\sigma^2_{\delta h}
+\qquad (\to Q_{44})
+\end{empheq}
+
+\textbf{Self-consistency} (AR(1) steady-state variance $=$ true gain variance):
+\[ \frac{q_4}{1-\lc^2} = C_{\delta x}\,a'^2_x\,\sigma^2_{\delta h} = \mathrm{Var}(a_{x_{ram}}) \;\checkmark \]
+
+\textbf{Impl.}: $K_h,\ \sigma^2_{\delta h}=4k_BT\,a_\perp$ evaluated at $\bar h_{\mathrm{meas}}$ ($p_m$); gain $a_x\to\hat a_x$ (estimate); reversion target $a_{x_{det}}$ from $p_d$.
+
+\newpage
+\hd{Original random-walk $Q_{44}$ --- the mismatch}
+\textbf{Original model} (RW, $\mathbf F_e(4,4)=1$): predict mean and $Q_{44}$ are mutually consistent,
+\[ \hat a_x[k+1] = \hat a_x[k] + \Delta a_x[k], \qquad Q_{44} = \mathrm{Var}(\Delta a_{ram}). \]
+
+\textbf{True increment} (from $a_{x_{ram}}[k+1]=\lc\,a_{x_{ram}}[k]+a'_x\varepsilon[k]$):
+\[ \Delta a_{ram}[k] = a_{x_{ram}}[k+1]-a_{x_{ram}}[k]
+   = \underbrace{(\lc-1)\,a_{x_{ram}}[k]}_{\text{reversion (spring)}}
+   + \underbrace{a'_x\,\varepsilon[k]}_{\text{white}} \]
+
+\textbf{Mismatch}: RW puts the \emph{whole} $\Delta a_{ram}$ into $Q_{44}$ --- it treats the deterministic reversion $(\lc-1)a_{x_{ram}}$ as white noise; $\mathbf F_e(4,4)=1$ keeps no spring, so the modelled gain variance is unbounded while the true gain is bounded:
+\[ \text{RW: } P_a[k+1]=P_a[k]+Q_{44}\ \nearrow\infty
+   \qquad
+   \text{AR(1): } P_a[k+1]=\lc^2 P_a[k]+q_4 \to \tfrac{q_4}{1-\lc^2} \]
+
+\textbf{Fix}: move the reversion into the dynamics ($\mathbf F_e(4,4)=\lc$, predict reverts to $a_{x_{det}}$), keep only the white driver in $Q_{44}$:
+\[ \underbrace{\mathrm{Var}(\Delta a_{ram}) = \tfrac{2}{1+\lc}\,a'^2_x\sigma^2_{\delta h}}_{\text{RW }Q_{44}}
+   \;\longrightarrow\;
+   \underbrace{q_4 = (3-2\lc^2)\,a'^2_x\sigma^2_{\delta h}}_{\text{AR(1) }Q_{44}} \]
+
+\textbf{Effect} (1\,Hz, near wall, $z$-axis): $\;P_a/\mathrm{Var}(a_{x_{ram}}):\ 19.67 \to 0.78,\quad |\hat a_z - a_z|:\ 9.4\% \to 0.4\%$.
+
+\end{document}
