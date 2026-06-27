@@ -638,6 +638,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         diag.Q77                  = zeros(3, 1);
         diag.var_da_ram           = var_da_ram;
         diag.delta_x_hat_1        = x_e_per_axis(1, :).';
+        diag.delta_x_hat_3        = x_e_per_axis(3, :).';   % current motion-error estimate dx_hat_3
         diag.P_dx1                = P_dx1_v;
     end
 end
@@ -742,6 +743,7 @@ function d = empty_diag_4state()
     d.Q77                  = zeros(3, 1);
     d.var_da_ram           = zeros(3, 1);
     d.delta_x_hat_1        = zeros(3, 1);
+    d.delta_x_hat_3        = zeros(3, 1);
     d.P_dx1                = zeros(3, 1);
     d.a_ctrl_used          = zeros(3, 1);
 end
