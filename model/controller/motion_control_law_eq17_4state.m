@@ -387,6 +387,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
             diag.f_d = f_d; diag.a_hat = a_hat_post;
             diag.a_ctrl_used = a_ctrl;
             diag.sigma2_dxr_hat = sigma2_dxr_hat_new; diag.a_xm = a_xm;
+            diag.a_m_det = a_m_det_new;
             diag.delta_x_m = delta_x_m; diag.h_bar = h_bar; diag.dx_r = dx_r;
         end
         return;
@@ -617,6 +618,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         diag = empty_diag_4state();
         diag.sigma2_dxr_hat = sigma2_dxr_hat_new;
         diag.a_xm           = a_xm;
+        diag.a_m_det        = a_m_det_new;
         diag.delta_x_m      = delta_x_m;
         diag.innovation_y2  = innov_y2_v;
         diag.K_kf_a_y2      = K_a_y2_v;
@@ -638,6 +640,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         diag.Q77                  = zeros(3, 1);
         diag.var_da_ram           = var_da_ram;
         diag.delta_x_hat_1        = x_e_per_axis(1, :).';
+        diag.delta_x_hat_3        = x_e_per_axis(3, :).';   % current tracking-error estimate
         diag.P_dx1                = P_dx1_v;
     end
 end
@@ -722,6 +725,7 @@ function d = empty_diag_4state()
     d = struct();
     d.sigma2_dxr_hat    = zeros(3, 1);
     d.a_xm              = zeros(3, 1);
+    d.a_m_det           = zeros(3, 1);
     d.delta_x_m         = zeros(3, 1);
     d.innovation_y2     = zeros(3, 1);
     d.K_kf_a_y2         = zeros(3, 1);
@@ -742,6 +746,7 @@ function d = empty_diag_4state()
     d.Q77                  = zeros(3, 1);
     d.var_da_ram           = zeros(3, 1);
     d.delta_x_hat_1        = zeros(3, 1);
+    d.delta_x_hat_3        = zeros(3, 1);
     d.P_dx1                = zeros(3, 1);
     d.a_ctrl_used          = zeros(3, 1);
 end
