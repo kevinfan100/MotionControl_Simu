@@ -1,0 +1,118 @@
+% ======================================================
+% Compile: xelatex 5state_aprime_observability.tex
+% Path:    reference/eq17_analysis/derivation/5state_aprime_observability.tex
+% Observability of the gain slope a'_x in the 5-state eq17 estimator
+% (companion to 5state_est_aprime). Structural / numerical observability of the
+% augmented (F_e[k], H[k]) pair: a'_x is observable iff the desired height moves
+% (Delta_h_d != 0). Gain level is a free integrated state, F_e(4,4)=1 (unknown
+% wall: no a_det reversion target). Baseline (no thermal self-dither); the hold
+% case is superseded by 5state_aprime_selfmod.tex (rank 5 via self-dither).
+% Style mirrors 5state_est_aprime / 4state_del_hd (monochrome, \fbox, terse).
+% ======================================================
+\documentclass[11pt,a4paper]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+
+\begin{document}
+
+\hd{Augmented system (per axis)}
+\[ \mathbf{x}[k] = \begin{bmatrix} \delta x_1 & \delta x_2 & \delta x_3 & a_x & a'_x \end{bmatrix}^{\!\top}[k], \qquad \mathbf{y}[k] = \mathbf{H}[k]\,\mathbf{x}[k] + \mathbf{r}[k] \]
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lc & -F_{dx}[k] & dF_{dx}^{h}[k] \\
+0 & 0 & 0 & 1 & \Delta h_d[k] \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix},
+\qquad
+\mathbf{H}[k] =
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 & -\Delta H_d[k]
+\end{bmatrix}
+\end{empheq}
+\[
+F_{dx}[k] = f_{dx}[k] + (1-\lc)\sum_{i=1}^{d} f_{dx}[k-i], \qquad
+dF_{dx}^{h}[k] = (1-\lc)\sum_{i=1}^{d}\big(h_d[k]-h_d[k-i]\big)\,f_{dx}[k-i]
+\]
+\[
+\Delta h_d[k] = h_d[k+1]-h_d[k], \qquad \Delta H_d[k] = h_d[k]-h_d[k-d] \quad (\textit{desired height, known})
+\]
+$a'_x$ enters only through $\mathbf{F}_e(3,5)=dF_{dx}^{h}$, $\mathbf{F}_e(4,5)=\Delta h_d$, $\mathbf{H}(2,5)=-\Delta H_d$.
+
+\hd{Observability matrix}
+\[
+\mathcal{O}_N(k) =
+\begin{bmatrix}
+\mathbf{H}[k] \\ \mathbf{H}[k{+}1]\,\Phi(k{+}1,k) \\ \vdots \\ \mathbf{H}[k{+}N{-}1]\,\Phi(k{+}N{-}1,k)
+\end{bmatrix},
+\qquad
+\Phi(k{+}j,k) = \mathbf{F}_e[k{+}j{-}1]\cdots\mathbf{F}_e[k], \quad \Phi(k,k)=\mathbf{I}
+\]
+\[ \operatorname{rank}\mathcal{O}_N(k) = \#\{\text{observable modes}\}; \qquad \operatorname{rank}=5 \;\Leftrightarrow\; a'_x \text{ observable over the window.} \]
+
+\hd{Slope sensitivity (column 5)}
+\[ \mathbf{F}_e[k]\,\mathbf{e}_5 = \begin{bmatrix} 0 & 0 & dF_{dx}^{h}[k] & \Delta h_d[k] & 1 \end{bmatrix}^{\!\top} \]
+\[
+\mathcal{O}_N(k)\,\mathbf{e}_5 =
+\begin{bmatrix}
+0 \\[0.3ex]
+-\Delta H_d[k] \\[0.3ex]
+0 \\[0.3ex]
+\Delta h_d[k] - \Delta H_d[k{+}1] \\[0.3ex]
+0 \\[0.3ex]
+\Delta h_d[k] + \Delta h_d[k{+}1] - \Delta H_d[k{+}2] \\[0.3ex]
+\vdots
+\end{bmatrix}
+\quad
+\begin{aligned}
+&\text{$y_1$ (odd) rows}=0 \text{ for } j\le d;\\
+&\text{first nonzero $y_1$ at } j{=}d{+}1 \propto dF_{dx}^{h}[k].\\
+&\text{every entry } \propto \{\Delta h_d,\ \Delta H_d\}.
+\end{aligned}
+\]
+
+\hd{Structural rank}
+Sustained hold $\Rightarrow \Delta h_d=\Delta H_d=dF_{dx}^{h}=0 \Rightarrow \mathbf{F}_e[k]\mathbf{e}_5=\mathbf{e}_5,\ \mathbf{H}[k]\mathbf{e}_5=\mathbf{0} \Rightarrow \mathcal{O}_N\mathbf{e}_5=\mathbf{0}$:
+\begin{empheq}[box=\fbox]{equation*}
+\operatorname{rank}\mathcal{O}_N = 5 \;\Longleftrightarrow\; \Delta h_d \neq 0
+\qquad\text{(hold: } \operatorname{rank}=4,\ \ker\mathcal{O}_N = \operatorname{span}\{\mathbf{e}_5\}\text{)}
+\end{empheq}
+$a_x$ stays observable at any fixed height ($\mathbf{H}(2,4)=1\Rightarrow \mathcal{O}_N\mathbf{e}_4 \neq \mathbf{0}$); only $a'_x$ requires motion. The null direction at a hold is exactly $\mathbf{e}_5$: $a'_x$ is the sole unobservable state.
+
+\medskip
+\noindent\textbf{Baseline result; superseded on a hold.} The rank-4-on-hold conclusion above is for the \textit{baseline} map $\mathbf{H}(2,5)=-\Delta H_d$. The companion \texttt{5state\_aprime\_selfmod.tex} restores the actual-height coupling $a_x=a_{\det}-a'_x\delta x$, adding a thermal self-dither to $\mathbf{F}_e(4,5)$ and $\mathbf{H}(2,5)$ that is nonzero on a hold $\Rightarrow \operatorname{rank}=5$ on a hold (weakly, SNR-limited). It also corrects $\mathbf{F}_e(4,4)$ to $1$ here (unknown wall: no $a_{\det}$ reversion target).
+
+\hd{Observability strength}
+\[
+\sigma_5(\mathcal{O}_N)\ \text{(weakest mode; its right singular vector}\to\mathbf{e}_5\text{ at hold)}, \qquad
+\big\|\mathcal{O}_N\mathbf{e}_5\big\|^2 = \Delta H_d[k]^2 + \big(\Delta h_d[k]-\Delta H_d[k{+}1]\big)^2 + \cdots
+\]
+\begin{empheq}[box=\fbox]{equation*}
+\big\|\mathcal{O}_N\,\mathbf{e}_5\big\| \propto |\Delta h_d| \;(\text{height speed}), \qquad \frac{\sigma_5}{\sigma_1} \ll 1 \;(\text{$a'_x$ weakly observable})
+\end{empheq}
+
+\hd{Verification}
+Reconstruct $\mathbf{F}_e[k],\mathbf{H}[k]$ from $(f_{dx},h_d)$ along a run, form $\mathcal{O}_N(k)$ on a sliding window, report $\operatorname{rank}$, $\sigma_5/\sigma_1$, $\|\mathcal{O}_N\mathbf{e}_5\|$ versus $|\Delta h_d|$. \;(\texttt{check\_observability\_5state\_aprime.m})
+
+\end{document}

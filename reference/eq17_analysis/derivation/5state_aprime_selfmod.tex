@@ -1,0 +1,320 @@
+% ======================================================
+% Compile: xelatex 5state_aprime_selfmod.tex
+% Path:    reference/eq17_analysis/derivation/5state_aprime_selfmod.tex
+%
+% Derivation of the 5-state eq17 slope estimator with the THERMAL SELF-MODULATION
+% channel that makes a'_x observable on a height hold. Pages 1-5 (up to F_e) are
+% kept math-forward: an equation chain with intermediate steps and minimal text.
+% Pages 6-7 (AR(1) reconciliation, observability) carry the explanation.
+%
+% Built on the 4-state AR(1) gain-correction (4state_del_hd.tex): the gain
+% fluctuation a_x_ram = -a'_x*delta_x is a bounded AR(1) process (pole lambda_c),
+% not a random walk. Central new result: F_e(4,4)=1 for the unknown-wall 5-state
+% (vs lambda_c for the known-wall 4-state); the AR(1) physics relocates into the
+% (1-lambda_c) factor of F_e(4,5), the Q44 driver, and the conflation split.
+% ======================================================
+% fontset=none: no CJK text here, do not load Chinese fonts (Windows-safe).
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+
+% --- Looser, less-dense layout ---
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+\setlength{\abovedisplayskip}{7pt}
+\setlength{\belowdisplayskip}{7pt}
+\setlength{\abovedisplayshortskip}{4pt}
+\setlength{\belowdisplayshortskip}{4pt}
+
+% --- Shortcuts ---
+\newcommand{\lc}{\lambda_c}
+\newcommand{\dxh}{\delta\hat x}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.4ex}}
+\newcommand{\lbl}[1]{\par\smallskip\noindent\textbf{#1}\par\nobreak\vspace{0.2ex}}
+
+\begin{document}
+
+\noindent\fbox{\parbox{\linewidth}{\small\textbf{Status.} Verified-in-principle extension: the self-modulation entries $\mathbf F_e(4,5)\ni(1-\lc)\dxh_3$ and $\mathbf H(2,5)\ni(\dxh_3-\dxh_1)$ are not yet in the production controller (which uses the baseline $\mathbf F_e(4,5)=\Delta h_d$, $\mathbf H(2,5)=-\Delta H_d$; $a'_x$ hold-unobservable, $\operatorname{rank}=4$). The rank $4\!\to\!5$ on-hold result requires these uncommitted entries.}}
+
+\medskip
+
+%% ===================== PAGE 1 =====================
+\hd{Equation of motion}
+\[ x[k+1] = x[k] + a_x[k]\,\{f_{dx}[k] + f_T[k]\} + \delta x_D[k] \]
+
+\hd{Motion error}
+\[ \delta x[k+1] = \delta x[k] + \Delta x_d[k] - a_x[k]\,\{f_{dx}[k] + f_T[k]\} - \delta x_D[k] \]
+\[ \delta x[k] = x_d[k]-x[k], \qquad \Delta x_d[k] = x_d[k+1]-x_d[k]. \]
+Here $f_T$ is the white thermal force, $\delta x_D$ the disturbance contribution, and $n_x$ the sensor noise (introduced below).
+
+\hd{Gain via the actual height} \quad($\delta h = -\,\delta x$ on the wall normal)
+\begin{empheq}[box=\fbox]{equation*}
+a_x[k] = a\big(h_d[k]+\delta h[k]\big) = a_{\det}[k] + a'_x\,\delta h[k] = a_{\det}[k] - a'_x\,\delta x[k]
+\end{empheq}
+\[ a_{\det}[k] = a\big(h_d[k]\big), \qquad a'_x = \frac{da}{dh}\bigg|_{h_d[k]} \]
+
+\hd{Measurement} \quad(\,$d$-step delay)
+\[ \delta x_m[k] = \delta x[k-d] + n_x[k] \]
+
+\hd{Control objective} \quad $\delta x[k+1] = \lc\,\delta x[k], \quad 0 \le \lc < 1$
+
+\lbl{Ideal control effort (no delay), and the error it produces}
+\[ \bar f_{dx}[k] = a_x^{-1}[k]\,\{\Delta x_d[k] + (1-\lc)\,\delta x[k] - \delta x_D[k]\} \]
+\[ \delta x[k+1] = \lc\,\delta x[k] - a_x[k]\,f_T[k] \]
+
+\lbl{Current error over the $d$-step window}
+\[ \delta x[k] = \delta x[k-d] + \sum_{i=1}^{d}\Delta x_d[k-i] - \sum_{i=1}^{d} a_x[k-i]\,\{f_{dx}[k-i] + f_T[k-i]\} - \sum_{i=1}^{d}\delta x_D[k-i] \]
+
+\lbl{Ideal control effort ($d$-step delay), and the error}
+\[
+\begin{aligned}
+\bar{\bar f}_{dx}[k] = a_x^{-1}[k]\Big\{
+& \underbrace{\Big[\Delta x_d[k] + (1-\lc)\textstyle\sum_{i=1}^{d}\Delta x_d[k-i]\Big]}_{\Delta x_d^{d}[k]}
++ (1-\lc)\Big[\delta x[k-d] - \textstyle\sum_{i=1}^{d} a_x[k-i] f_{dx}[k-i]\Big] \\
+& - \underbrace{\Big[\delta x_D[k] + (1-\lc)\textstyle\sum_{i=1}^{d}\delta x_D[k-i]\Big]}_{\delta x_D^{d}[k]}
+\Big\}
+\end{aligned}
+\]
+\[
+\delta x[k+1] = \lc\,\delta x[k] - \underbrace{\Big\{ a_x[k] f_T[k] + (1-\lc)\textstyle\sum_{i=1}^{d} a_x[k-i] f_T[k-i] \Big\}}_{\delta x_T^{d}[k]}
+\]
+
+\medskip
+%% ===================== PAGE 2 =====================
+\hd{Implementable control effort} \quad($\hat a_x$ for $a_x$, $\delta x_m$ for $\delta x[k-d]$, disturbance dropped)
+\begin{empheq}[box=\fbox]{equation*}
+f_{dx}[k] = \hat a_x^{-1}[k]\Big\{ \Delta x_d^{d}[k] + (1-\lc)\Big[\delta x_m[k] - \textstyle\sum_{i=1}^{d}\hat a_x[k-i] f_{dx}[k-i]\Big] \Big\}
+\end{empheq}
+
+\[ \delta x[k+1] = \lc\,\delta x[k] - a_x[k]\big[ f_{dx}[k] - \bar{\bar f}_{dx}[k] \big] - \delta x_T^{d}[k] \]
+\[ a_x[k]\,\bar{\bar f}_{dx}[k] = \Delta x_d^{d}[k] + (1-\lc)\Big[\delta x[k-d] - \textstyle\sum_{i=1}^{d} a_x[k-i] f_{dx}[k-i]\Big] - \delta x_D^{d}[k] \]
+With the gain error $e_{a_x}=a_x-\hat a_x$,
+\[
+\begin{aligned}
+a_x[k]\, f_{dx}[k] = \big(1 + e_{a_x}[k]\,\hat a_x^{-1}[k]\big)\Big\{ & \Delta x_d^{d}[k] \\
+& + (1-\lc)\Big[\big(\delta x[k-d] + n_x[k]\big) - \textstyle\sum_{i=1}^{d}\hat a_x[k-i] f_{dx}[k-i]\Big] \Big\},
+\end{aligned}
+\]
+\[
+\begin{aligned}
+a_x[k]\, f_{dx}[k] - a_x[k]\,\bar{\bar f}_{dx}[k] ={}& e_{a_x}[k]\, f_{dx}[k] + (1-\lc) n_x[k] \\
+&+ (1-\lc)\textstyle\sum_{i=1}^{d}\big(a_x[k-i] - \hat a_x[k-i]\big) f_{dx}[k-i] + \delta x_D^{d}[k].
+\end{aligned}
+\]
+
+\hd{Parameter model}
+\[ a_x[k] = a_{\det}[k] + a_{x_{ram}}[k], \qquad a_{x_{ram}}[k] = a'_x\,x_{ram}[k] = -\,a'_x\,\delta x[k] \]
+\begin{empheq}[box=\fbox]{equation*}
+a_x[k{+}1]-a_x[k] = a'_x\big(\Delta h_d[k]-\Delta\delta x[k]\big), \qquad \Delta h_d[k]=h_d[k{+}1]-h_d[k]
+\end{empheq}
+Close the loop ($\delta x_3=\delta x[k]$, the current error; $\varepsilon$ is the lumped noise defined on the next page):
+\[ \delta x[k{+}1]=\lc\,\delta x_3[k]-\varepsilon[k] \;\Rightarrow\; \Delta\delta x[k] = (\lc-1)\delta x_3[k]-\varepsilon[k] = -(1-\lc)\,\delta x_3[k]-\varepsilon[k] \]
+\begin{empheq}[box=\fbox]{equation*}
+a_x[k{+}1] = \underbrace{a_x[k]}_{\mathbf F_e(4,4)=1}
++ a'_x\,\underbrace{\big[\Delta h_d[k] + (1-\lc)\,\delta x_3[k]\big]}_{\text{known}\,+\,\text{self-dither}}
++ \underbrace{a'_x\,\varepsilon[k]}_{w_4[k]\ \to\ q_4}
+\end{empheq}
+\begin{empheq}[box=\fbox]{equation*}
+\begin{cases}
+a_x[k+1]  = a_x[k] + a'_x\big[\Delta h_d[k]+(1-\lc)\,\delta x_3[k]\big] + w_4[k] \\
+a'_x[k+1] = a'_x[k] + w_{a'}[k]
+\end{cases}
+\end{empheq}
+
+\lbl{Estimator (predict at $\dxh_3$), errors, error dynamics}
+\[ \hat a_x[k+1] = \hat a_x[k] + \hat a'_x[k]\big[\Delta h_d[k]+(1-\lc)\,\dxh_3[k]\big], \qquad \hat a'_x[k+1] = \hat a'_x[k] \]
+\[ e_{a_x}[k] = a_x[k] - \hat a_x[k], \qquad e_{a'}[k] = a'_x[k] - \hat a'_x[k] \]
+\[
+\begin{cases}
+e_{a_x}[k+1] = e_{a_x}[k] + \big[\Delta h_d[k]+(1-\lc)\,\dxh_3[k]\big]\, e_{a'}[k] + w_4[k] \\
+e_{a'}[k+1]  = e_{a'}[k] + w_{a'}[k]
+\end{cases}
+\]
+
+\medskip
+%% ===================== PAGE 3 =====================
+\lbl{Gain error over the window ($e_{a'}$ const; $h_d[k]-h_d[k-i]=\sum_{j=1}^{i}\Delta h_d[k-j]$)}
+\[ a_x[k-i] - \hat a_x[k-i] \approx e_{a_x}[k] - \big(h_d[k]-h_d[k-i]\big)\, e_{a'}[k] - \sum_{j=1}^{i}\delta a_{ram}[k-j], \qquad \delta a_{ram}=a'_x\Delta x_{ram} \]
+\[
+\begin{aligned}
+a_x[k]\, f_{dx}[k] - a_x[k]\,\bar{\bar f}_{dx}[k] \approx{}&
+e_{a_x}[k]\,\underbrace{\Big\{ f_{dx}[k] + (1-\lc)\textstyle\sum_{i=1}^{d} f_{dx}[k-i] \Big\}}_{F_{dx}[k]} \\
+&- e_{a'}[k]\,\underbrace{\Big\{ (1-\lc)\textstyle\sum_{i=1}^{d} \big(h_d[k]-h_d[k-i]\big)\, f_{dx}[k-i] \Big\}}_{dF_{dx}^{h}[k]} \\
+&- \underbrace{\Big\{ (1-\lc)\textstyle\sum_{i=1}^{d} (d+1-i)\, f_{dx}[k-i]\,\delta a_{ram}[k-i] \Big\}}_{\delta x_{\delta af}^{d}[k]} \\
+&+ \delta x_D^{d}[k] + (1-\lc) n_x[k]
+\end{aligned}
+\]
+\begin{empheq}[box=\fbox]{align*}
+\delta x[k+1] ={}& \lc\,\delta x[k] - F_{dx}[k]\,e_{a_x}[k] + dF_{dx}^{h}[k]\,e_{a'}[k] - \delta x_D^{d}[k]
+- \underbrace{\Big\{ \delta x_T^{d}[k] - \delta x_{\delta af}^{d}[k] + (1-\lc) n_x[k] \Big\}}_{\varepsilon[k]}
+\end{empheq}
+
+\hd{State equation} \quad($\delta x_D^{d}\!\equiv\!0$; error row at baseline, route A)
+\[
+\begin{aligned}
+\delta x_1[k+1] &= \delta x_2[k], \qquad \delta x_2[k+1] = \delta x_3[k], \\
+\delta x_3[k+1] &= \lc\,\delta x_3[k] - F_{dx}[k]\,e_{a_x}[k] + dF_{dx}^{h}[k]\,e_{a'}[k] - \varepsilon[k], \\
+a_x[k+1] &= a_x[k] + a'_x\big[\Delta h_d[k]+(1-\lc)\,\delta x_3[k]\big] + w_4[k], \\
+a'_x[k+1] &= a'_x[k] + w_{a'}[k].
+\end{aligned}
+\]
+
+\hd{Output equation}
+\[ a_x[k-d] = a_x[k] - a'_x\big[\Delta H_d[k] - \big(\delta x_3[k]-\delta x_1[k]\big)\big], \qquad \Delta H_d[k]=h_d[k]-h_d[k-d] \]
+with $n_a$ the gain-measurement noise:
+\[
+\begin{aligned}
+y_1[k] &= \delta x_m[k] = \delta x_1[k] + \underbrace{n_x[k]}_{r_1[k]}, \\
+y_2[k] &= a_{xm}[k] = a_x[k-d]+n_a[k] \\
+&\approx a_x[k] - a'_x\big[\Delta H_d[k] - \big(\delta x_3[k]-\delta x_1[k]\big)\big] + \underbrace{n_a[k]}_{r_2[k]}.
+\end{aligned}
+\]
+The whole span $a'_x(\delta x_3-\delta x_1)$ is now a deterministic-in-state term carried by $\mathbf H$, so the only true measurement noise is $n_a$. (The baseline used $\mathbf H(2,5)=-\Delta H_d$ and absorbed the unmodelled span into $r_2=n_a-\sum_i\delta a_{ram}[k-i]$; since $\sum_i\delta a_{ram}[k-i]\simeq -a'_x(\delta x_3-\delta x_1)$, keeping that $r_2$ here would count the span once as the $\mathbf H(2,5)$ signal and again as noise -- a double-count that inflates $R_{22}$.)
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf{H}(2,5) = -\Delta H_d[k] + \big(\dxh_3[k]-\dxh_1[k]\big)
+\end{empheq}
+\[
+\mathbf{H}[k] = \begin{bmatrix} 1 & 0 & 0 & 0 & 0 \\ -\hat a'_x & 0 & \hat a'_x & 1 & -\Delta H_d[k]+(\dxh_3-\dxh_1) \end{bmatrix},
+\qquad \mathbf{y}[k] = \mathbf{H}[k]\,\mathbf{x}[k] + \mathbf{r}[k]
+\]
+($\mathbf H(2,1)=-\hat a'_x$, $\mathbf H(2,3)=+\hat a'_x$ are $O(\hat a'_x)$, negligible; the load-bearing new term is $\mathbf H(2,5)$.)
+
+\medskip
+%% ===================== PAGE 4 =====================
+\hd{Closed-loop estimator}
+\[ e_{\delta x_1}=\delta x_1-\dxh_1, \qquad e_{a_x}=a_x-\hat a_x, \qquad e_{a'}=a'_x-\hat a'_x \]
+\[ e_{y_1}[k] = \delta x_m[k] - \dxh_1[k] = e_{\delta x_1}[k] + \underbrace{n_x[k]}_{r_1[k]} \]
+\[
+\begin{aligned}
+e_{y_2}[k] &= a_{xm}[k] - \hat a_x[k] + \big[\Delta H_d[k]-(\dxh_3-\dxh_1)\big]\, \hat a'_x[k] \\
+&= e_{a_x}[k] - \big[\Delta H_d[k]-(\dxh_3-\dxh_1)\big]\, e_{a'}[k] + \underbrace{n_a[k] + \hat a'_x\big(e_{\delta x_3}-e_{\delta x_1}\big)}_{r_2[k]\,\approx\,n_a}
+\end{aligned}
+\]
+\[
+\begin{aligned}
+\dxh_1[k+1] &= \dxh_2[k] + \ell_{11}\, e_{y_1} + \ell_{12}\, e_{y_2}, \\
+\dxh_2[k+1] &= \dxh_3[k] + \ell_{21}\, e_{y_1} + \ell_{22}\, e_{y_2}, \\
+\dxh_3[k+1] &= \lc\,\dxh_3[k] + \ell_{31}\, e_{y_1} + \ell_{32}\, e_{y_2}, \\
+\hat a_x[k+1] &= \hat a_x[k] + \hat a'_x[k]\big[\Delta h_d[k]+(1-\lc)\dxh_3[k]\big] + \ell_{41}\, e_{y_1} + \ell_{42}\, e_{y_2}, \\
+\hat a'_x[k+1] &= \hat a'_x[k] + \ell_{51}\, e_{y_1} + \ell_{52}\, e_{y_2}.
+\end{aligned}
+\]
+
+\hd{Error dynamics} \quad $G_4[k]:=\Delta h_d[k]+(1-\lc)\dxh_3[k]$ \; ($\mathbf F_e(4,5)$), \quad $G_H[k]:=\Delta H_d[k]-(\dxh_3-\dxh_1)$ \; ($-\mathbf H(2,5)$)
+\[
+\begin{aligned}
+e_{\delta x_1}[k+1] &= e_{\delta x_2} - \ell_{11}\, e_{\delta x_1} - \ell_{12}\, e_{a_x} + \ell_{12}\,G_H\, e_{a'}, \\
+e_{\delta x_2}[k+1] &= e_{\delta x_3} - \ell_{21}\, e_{\delta x_1} - \ell_{22}\, e_{a_x} + \ell_{22}\,G_H\, e_{a'}, \\
+e_{\delta x_3}[k+1] &= \lc\, e_{\delta x_3} - F_{dx}\, e_{a_x} + dF_{dx}^{h}\, e_{a'} - \ell_{31}\, e_{\delta x_1} - \ell_{32}\, e_{a_x} + \ell_{32}\,G_H\, e_{a'} - \underbrace{\varepsilon[k]}_{q_3}, \\
+e_{a_x}[k+1] &= e_{a_x} + G_4\, e_{a'} - \ell_{41}\, e_{\delta x_1} - \ell_{42}\, e_{a_x} + \ell_{42}\,G_H\, e_{a'} + \underbrace{w_4[k]}_{q_4}, \\
+e_{a'}[k+1] &= e_{a'} - \ell_{51}\, e_{\delta x_1} - \ell_{52}\, e_{a_x} + \ell_{52}\,G_H\, e_{a'} + \underbrace{w_{a'}[k]}_{q_5}.
+\end{aligned}
+\]
+
+\medskip
+%% ===================== PAGE 5 =====================
+\hd{Error-dynamics matrix}
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lc & -F_{dx}[k] & dF_{dx}^{h}[k] \\
+0 & 0 & 0 & 1 & \;\Delta h_d[k]+(1-\lc)\,\dxh_3[k]\; \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\end{empheq}
+\[ F_{dx}[k] = f_{dx}[k] + (1-\lc)\sum_{i=1}^{d} f_{dx}[k-i], \qquad dF_{dx}^{h}[k] = (1-\lc)\sum_{i=1}^{d} \big(h_d[k]-h_d[k-i]\big)\, f_{dx}[k-i] \]
+\[ \mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k] - \mathbf{L}[k]\,\mathbf{H}[k]\,\mathbf{e}[k] + \mathbf{q}[k] - \mathbf{L}[k]\,\mathbf{r}[k] \]
+
+\lbl{Change versus the baseline slope estimator (5state\_est\_aprime)}
+\begin{empheq}[box=\fbox]{align*}
+\mathbf{F}_e(4,5) &= \Delta h_d[k] + (1-\lc)\,\dxh_3[k] && (\text{baseline } \Delta h_d[k]) \\
+\mathbf{H}(2,5)   &= -\Delta H_d[k] + \big(\dxh_3[k]-\dxh_1[k]\big) && (\text{baseline } -\Delta H_d[k])
+\end{empheq}
+On a hold $\Delta h_d=\Delta H_d=dF_{dx}^{h}=0$: column 5 collapses to the thermal terms $(1-\lc)\dxh_3$ and $\dxh_3-\dxh_1$ (Page 7). Route B (cross-check, not additive): substituting $a_x=a_{\det}-a'_x\delta x$ into the $\delta x_3$ row instead gives $\mathbf F_e(3,5)\mathrel{+}=\dxh_3 f_{dx}$, $\mathbf F_e(3,3)=\lc+\hat a'_x f_{dx}$; equivalent at first order, same Fisher information. Route A is implemented.
+
+\medskip
+%% ===================== PAGE 6 =====================
+\hd{Gain-state model: reconciliation with the 4-state AR(1)}
+
+The 4-state (known wall, \texttt{4state\_del\_hd}) noted that the gain fluctuation $a_{x_{ram}}=-a'_x\,\delta x$ is a bounded AR(1) process, not a random walk. With $\delta x[k{+}1]=\lc\,\delta x[k]-\varepsilon[k]$,
+\[ a_{x_{ram}}[k{+}1] = -a'_x\,\delta x[k{+}1] = \lc\,a_{x_{ram}}[k] + a'_x\,\varepsilon[k] \qquad(\text{pole }\lc). \]
+
+\hd{Why the 4-state's $\mathbf F_e(4,4)=\lc$ does not carry over}
+
+In the 4-state the wall is known, so $a_{\det}$ is a signal and $a_x=a_{\det}+a_{x_{ram}}$ with $a_{x_{ram}}=a_x-a_{\det}$. The AR(1) reversion is then a multiple of the state:
+\[ a_x[k{+}1]=\underbrace{\lc\,a_x[k]}_{\mathbf F_e(4,4)=\lc}+(1-\lc)\,a_{\det}[k]+\Delta a_x[k]+a'_x\varepsilon[k] \qquad(\text{4-state, known }a_{\det}). \]
+In the unknown-wall 5-state there is no $a_{\det}$ signal (avoiding $c(\bar h)$ is the reason for estimating $a'_x$). With no reversion target, $(1-\lc)a_{\det}$ cannot be formed and the reversion cannot live in $\mathbf F_e(4,4)$. The gain is a free integrated state:
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf F_e(4,4)=1 \qquad \text{(unknown wall: free $a_x$; the 4-state's $\lc$ needs the known $a_{\det}$ anchor).}
+\end{empheq}
+This corrects a cross-document slip: \texttt{5state\_aprime\_observability.tex} imported $\mathbf F_e(4,4)=\lc$; the correct value here is $1$, matching \texttt{build\_F\_e\_5state\_aprime.m} (row 4 $=[0\,0\,0\,1\,\ast]$).
+
+\hd{Where the AR(1) physics goes instead}
+
+The reversion does not vanish; it relocates to three places inherited from the 4-state.
+
+First, into the $(1-\lc)$ factor in $\mathbf F_e(4,5)$. From Page 2, $\Delta\delta x=-(1-\lc)\dxh_3-\varepsilon$, so the deterministic self-dither carries the closed-loop pole as its coefficient,
+\[ \mathbf F_e(4,5)=\Delta h_d+(1-\lc)\,\dxh_3 = \frac{\partial a_x[k{+}1]}{\partial a'_x}\bigg|_{\dxh}, \]
+where $(1-\lc)$ is the AR(1) reversion factor (one minus the pole $\lc$). The 4-state hides the pole in $\mathbf F_e(4,4)=\lc$; the 5-state exposes it as the coefficient of $\dxh_3$.
+
+Second, into $Q_{44}$, the AR(1) white innovation $w_4=a'_x\varepsilon$ (distinct from the realized increment $\delta a_{ram}$ below). With $\mathrm{Var}(\varepsilon)=(1-\lc^2)\,\mathrm{Var}(\delta x)$ and $\mathrm{Var}(\delta x)=C_{\delta x}\,\sigma^2_{\delta h}$, $C_{\delta x}=2+\tfrac{1}{1-\lc^2}$,
+\begin{empheq}[box=\fbox]{equation*}
+q_4 = \mathrm{Var}(a'_x\varepsilon) = a'^2_x(1-\lc^2)\,C_{\delta x}\,\sigma^2_{\delta h} = (3-2\lc^2)\,a'^2_x\,\sigma^2_{\delta h}, \qquad \sigma^2_{\delta h}=4k_BT\,a_x,
+\end{empheq}
+identical to the 4-state \texttt{use\_q44\_ar1} driver, using $a'_x=-a_xK_h/R$.
+
+Third, into the conflation split. The white driver $q_4$ is not the realized increment $\delta a_{ram}=a'_x\Delta x_{ram}$. The realized increment feeds $Q_{33}$ (the $\delta x_3$ random-gain term); the white driver feeds $Q_{44}$:
+\[ \underbrace{\mathrm{Var}(\delta a_{ram})=\tfrac{2}{1+\lc}\,a'^2_x\,\sigma^2_{\delta h}}_{\texttt{var\_da\_inc}\ \to\ Q_{33}}
+\qquad\text{vs}\qquad
+\underbrace{q_4=(3-2\lc^2)\,a'^2_x\,\sigma^2_{\delta h}}_{\texttt{var\_da\_ram}\ \to\ Q_{44}}. \]
+Using one number for both double-counts the physics (the 4-state's conflation bug). One difference from the 4-state: the realized increment does \textbf{not} feed $R_{22}$ here. The baseline routed the $d$-step span into $R_{22}$ (the $-\sum\delta a_{ram}$ term in $r_2$) because $\mathbf H$ did not model it; the self-mod carries that span in $\mathbf H(2,5)$, so $R_{22}=\mathrm{Var}(n_a)$ (the $a_{xm}$ floor) alone (Output equation, Page 3). Together, $\{\mathbf F_e(4,4)=1,\ \mathbf F_e(4,5)\ni(1-\lc)\dxh_3,\ q_4,\ \text{split}\}$ \textit{aims to} reproduce the 4-state's gain-level tracking while exposing the slope -- but the gain-level reversion is weak without a known $a_{\det}$ (Caveat 6).
+
+\medskip
+%% ===================== PAGE 7 =====================
+\hd{Observability on a height hold}
+
+On a hold $\Delta h_d=\Delta H_d=dF_{dx}^{h}=0$, and column 5 collapses to its thermal terms:
+\[
+\mathbf{F}_e[k]\,\mathbf{e}_5\Big|_{\text{hold}} = \begin{bmatrix}0\\0\\0\\(1-\lc)\dxh_3\\1\end{bmatrix},
+\qquad
+\mathbf{H}[k]\,\mathbf{e}_5\Big|_{\text{hold}} = \begin{bmatrix}0\\\dxh_3-\dxh_1\end{bmatrix}.
+\]
+The first block row of $\mathcal{O}_N$ already projects onto $\mathbf e_5$ through $a_{xm}$:
+\[ \mathcal{O}_N(k)\,\mathbf{e}_5 = \begin{bmatrix}\mathbf H[k]\mathbf e_5\\ \vdots\end{bmatrix} = \begin{bmatrix}0\\ \dxh_3[k]-\dxh_1[k]\\ \vdots\end{bmatrix}\neq\mathbf 0 \quad(\dxh_3\neq\dxh_1). \]
+Baseline: this entry was $-\Delta H_d=0$ on a hold, so $\operatorname{rank}=4$, $\ker\mathcal{O}_N=\operatorname{span}\{\mathbf e_5\}$ (slope the lone unobservable mode). With the self-dither restored:
+\begin{empheq}[box=\fbox]{equation*}
+\operatorname{rank}\mathcal{O}_N = 5 \text{ on a hold} \;\Longleftarrow\; \dxh_3-\dxh_1\neq 0 \quad(\Delta h_d=0).
+\end{empheq}
+The gain is sampled at two slightly different actual heights $h_d+\delta x[k]$ and $h_d+\delta x[k{-}d]$; their difference exposes the slope, with no commanded motion.
+
+\hd{Rank is necessary, not sufficient}
+
+The excitation is the thermal span $|\dxh_3-\dxh_1|\sim$ tens of nm ($\sigma_{\delta x}\!\approx\!16$--$24\,$nm), versus $\mu$m for a commanded sweep:
+\begin{empheq}[box=\fbox]{align*}
+&\big\|\mathcal{O}_N\,\mathbf e_5\big\|\big|_{\text{hold}}\sim|\dxh_3-\dxh_1|\ll|\Delta h_d|, \\
+&\frac{\sigma_5}{\sigma_1}\sim 6.4\times10^{-3}\ (\text{10\,nm span, }N{=}8\text{ window, linear in span}).
+\end{empheq}
+The binding limit on a hold is the self-dither SNR, beneath the gain noise $a_xf_T$ ($Q_{33}$) and the $a_{xm}$ chi-squared floor ($R_{22}\!\sim\!42\%$). A commanded $\Delta h_d\neq0$ remains the strong, reliable excitation; the self-modulation is the weak floor that keeps $a'_x$ off the null space on a hold.
+
+\hd{Caveats and failure modes}
+\begin{enumerate}[leftmargin=1.6em,itemsep=4pt]
+\item \textbf{Errors-in-variables.} The self-dither regressor ($\dxh_3$, $\dxh_3-\dxh_1$) is the filter's own noisy estimate, so the learned slope is biased toward zero by the reliability ratio $\mathrm{Var}(\delta x)/(\mathrm{Var}(\delta x)+\mathrm{Var}(e_{\delta x}))<1$. Worst on a hold, where the whole signal is this regressor; absent for a noise-free commanded sweep.
+\item \textbf{Common thermal noise (largely removed by the $r_2$ correction).} In the baseline accounting the gain-measurement noise carried $-\sum\delta a_{ram}[k-i]\simeq +a'_x(\delta x_3-\delta x_1)$ -- the same span $\mathbf H(2,5)$ now models -- an exact first-order double-count (signal in $\mathbf H$, noise in $R_{22}$). It is removed structurally by setting $r_2=n_a$ (Output equation), not by an $\mathbf R$ off-diagonal. What remains is the smaller second-order errors-in-variables residual $\hat a'_x(e_{\delta x_3}-e_{\delta x_1})$ plus the genuine correlation between $a_{xm}$'s intrinsic chi-squared noise and the $\delta x$ regressor; these still bias a pure-hold estimate and need an $\mathbf R$ off-diagonal or a whitened residual.
+\item \textbf{Near-wall gain-measurement bias.} The $a_{xm}$ chain's $C_{dpmr}$ degrades when $\hat a_x\neq a_x$; being height-dependent it masquerades as a slope and compounds the previous item. The central near-wall difficulty, carried from \texttt{5state\_est\_aprime}.
+\item \textbf{Wall-normal axis only.} $\delta h=-\delta x$ holds only on the normal axis; on $x,y$ the height does not move with the tracking error ($\partial a_x/\partial\delta x=0$), the self-mod column is zero, and tangential $a'_x$ stays hold-unobservable.
+\item \textbf{First-order filter vs.\ UKF.} The self-modulation is bilinear ($a'_x\,\delta x\,f_{dx}$); the Jacobians linearize at $\dxh$ and miss $\mathrm{Cov}(a'_x,\delta x)$. On a hold the whole signal is that second-order term, so a UKF / sigma-point (or iterated / 2nd-order EKF) is materially better.
+\item \textbf{No gain-level reversion near the wall.} $\mathbf F_e(4,4)=1$ is a free integrator. Unlike the 4-state (which reverts to the \textit{known} $a_{\det}$, an $O(a_{nom})$ pull), the unknown-wall gain LEVEL has only the zero-mean $O(\delta x)$ self-dither ($\sim$tens of nm, $\sim10^2$--$10^3\times$ weaker) and the $a_{xm}$ measurement to bound it. When the near-wall gate turns $a_{xm}$ off ($\bar h<\bar h_{\text{safe}}$), $a_x$ has neither reversion nor measurement and drifts as an undamped random walk -- the failure the 4-state $\mathbf F_e(4,4)=\lc$ was introduced to cure. A state-computable reversion ($a_{x_{ram}}=-a'_x\delta x_3$) or a near-wall gate-off stability check is required before closing the loop; ``aims to reproduce 4-state tracking'' (Page 6) is unverified for the unknown-wall case.
+\end{enumerate}
+
+\textbf{Bottom line.} Restoring the thermal $-a'_x\delta x$ coupling moves $a'_x$ from structurally unobservable to structurally observable on a hold; practical estimability is then an SNR question, eroded by items 1--2, with a commanded $\Delta h_d\neq0$ the reliable excitation.
+
+\end{document}
