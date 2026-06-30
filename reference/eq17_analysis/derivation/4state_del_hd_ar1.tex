@@ -115,7 +115,7 @@ a_x[k+1] &= a_{x_{det}}[k+1] + a_{x_{ram}}[k+1]
 $\Delta h_d[k] = h_d[k+1] - h_d[k]$ (desired-trajectory height increment).
 
 \hd{Gain dynamics --- $a_{x_{ram}}$ is first-order autoregressive (AR(1))}
-\textbf{Assumption} ($x = x_{det}+x_{ram}$, perfect tracking $x_{det}=x_d$): $\;\delta x = x_d - x = -x_{ram}$ (zero-mean), $\;x_{ram} = -\delta x$.
+\textbf{Assumption} ($x = x_{det}+x_{ram}$, perfect tracking $x_{det}=x_d$): $\;\delta x = x_d - x = -x_{ram}$ (zero-mean), $\;x_{ram} = -\delta x$; ideal closed loop ($\hat a_x = a_x$, $\delta x_D^{d}\!\equiv\!0$) gives $\delta x[k+1] = \lc\,\delta x[k] - \varepsilon[k]$ ($\varepsilon$: closed-loop residual, defined in the boxed motion error below).
 \[ a_{x_{ram}}[k+1] = -a'_x\,\delta x[k+1] = -a'_x\big(\lc\,\delta x[k]-\varepsilon[k]\big) = \lc\, a_{x_{ram}}[k] + a'_x\,\varepsilon[k] \]
 \[
 \begin{aligned}
