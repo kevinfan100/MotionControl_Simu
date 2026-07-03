@@ -31,6 +31,21 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd
 %       H(2,5)   : -Delta_H_d[k] = -(h_d[k]-h_d[k-d])   (was -d)   [TIME-VARYING H]
 %       Q(5,5)   : Var(w_a') baseline (was 0)
 %
+%   ctrl_const.use_selfmod (optional, default false; see
+%   reference/eq17_analysis/derivation/5state_aprime_unified.tex Sec.3-5,7):
+%       false (baseline, unchanged): F_e(4,5)=Delta_h_d, H(2,5)=-Delta_H_d;
+%           a'_x is structurally UNOBSERVABLE on a height hold (Delta_h_d=0).
+%           Q(5,5) uses the wall-peeking a''=(a/R^2)(K_h^2-K_h') formula.
+%       true: adds the thermal self-dither coupling, restoring hold-
+%           observability (rank(O_N) 4->5):
+%               F_e(4,5) = Delta_h_d + (1-lc)*delta_x_hat_3
+%               H(2,5)   = -Delta_H_d + (delta_x_hat_3-delta_x_hat_1)
+%           and replaces Q(5,5) with the honest dimensional-anchor formula
+%           sigma_a''~a_nom/R^2 (probe/fluid constants only, no c(h_bar)):
+%               Q(5,5) = Q_aprime_factor * (a_nom/R^2)^2 * (Delta_h_d^2 + sigma2_dh)
+%           (sigma2_dh here uses the ESTIMATE 4*kBT*a_hat_i, not the shared
+%           wall-peeking sigma2_dh used elsewhere in this file).
+%
 %   Q(5,5) baseline (per axis, the slope random-walk drive):
 %       a''_x   = (a_x / R^2) * (K_h^2 - K_h')          [d^2 a_x / dh^2]
 %       Q55     = Q_aprime_factor * [ (a''_x*Delta_h_d)^2 + a''_x^2 * sigma2_dh ]
@@ -100,11 +115,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd
     persistent warmup_count k_step
 
     persistent initialized
-    persistent lambda_c d_delay Ts kBT R_radius gamma_N_p
+    persistent lambda_c d_delay Ts kBT R_radius gamma_N_p a_nom_p
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_per_axis var_da_inc_factor
     persistent t_warmup_kf h_bar_safe R_OFF use_am_lpf a_det amlpf_var_factor
     persistent sigma2_n_s a_x_init enable_wall w_hat_n pz_wall
-    persistent Q_aprime_factor freeze_aprime aprime_init
+    persistent Q_aprime_factor freeze_aprime aprime_init use_selfmod
 
     % ------------------------------------------------------------------
     % [0] Initialization on first call
@@ -139,6 +154,10 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd
         Q_aprime_factor  = get_field_default(ctrl_const, 'Q_aprime_factor', 1);
         Pf_aprime_scale  = get_field_default(ctrl_const, 'Pf_aprime_scale', 1);
         freeze_aprime    = logical(get_field_default(ctrl_const, 'freeze_aprime', false));
+        % Self-modulation (hold-observability) + honest Q55, per
+        % reference/eq17_analysis/derivation/5state_aprime_unified.tex Sec.3-5,7.
+        % Default false: bit-identical to the pre-existing baseline.
+        use_selfmod      = logical(get_field_default(ctrl_const, 'use_selfmod', false));
         % NOTE: ctrl_const.suppress_xD is ignored (no disturbance term exists).
 
         % --- 0C. Wall geometry ---
@@ -154,7 +173,9 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd
 
         % --- 0E. Wall-aware a_x[0] + a'_x[0] seeding (one-time nominal; the
         %         ongoing estimation never re-reads c(h_bar)) ---
-        a_nom = Ts / gamma_N_p;
+        a_nom_p = Ts / gamma_N_p;      % persistent: also needed every step by the
+                                       % honest Q55 dimensional anchor (Step 4 below)
+        a_nom = a_nom_p;               % local alias, keeps the rest of this block unchanged
         if enable_wall && isfield(params, 'common') && isfield(params.common, 'p0')
             p0_init    = params.common.p0(:);
             h_init_um  = dot(p0_init, w_hat_n) - pz_wall;
@@ -410,9 +431,24 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd
         end
         Q33_nx = one_minus_lc^2 * sigma2_n_s(ax);
 
-        % Q55 = Var(w_a') baseline: a'' = (a/R^2)(K_h^2 - K_h'); drift + random floor
-        a_dprime_i = (a_hat_i / R_radius^2) * (K_h_axis(ax)^2 - K_hp_axis(ax));
-        Q55_i = Q_aprime_factor * ((a_dprime_i * Delta_h_d)^2 + a_dprime_i^2 * sigma2_dh);
+        % Q55 = Var(w_a'). use_selfmod=false (baseline): a''=(a/R^2)(K_h^2-K_h')
+        % from the REAL wall model (calc_correction_functions) -- wall-peeking,
+        % kept only for backward compatibility with the pre-existing baseline.
+        % use_selfmod=true (honest): dimensional anchor sigma_a''~a_nom/R^2
+        % (probe/fluid constants only, no c(h_bar)) AND the thermal variance
+        % term uses the ESTIMATE a_hat_i (4*kBT*a_hat_i), NOT the shared
+        % sigma2_dh (which is wall-peeking: it is built from a_perp_meas,
+        % which calls calc_correction_functions a few lines above -- reusing
+        % it here would silently smuggle c(h_bar) back into the "honest" Q55).
+        % 5state_aprime_unified.tex Section 7.
+        if use_selfmod
+            sigma2_a2prime     = (a_nom_p / R_radius^2)^2;
+            sigma2_dh_honest_i = 4 * kBT * a_hat_i;
+            Q55_i = Q_aprime_factor * sigma2_a2prime * (Delta_h_d^2 + sigma2_dh_honest_i);
+        else
+            a_dprime_i = (a_hat_i / R_radius^2) * (K_h_axis(ax)^2 - K_hp_axis(ax));
+            Q55_i = Q_aprime_factor * ((a_dprime_i * Delta_h_d)^2 + a_dprime_i^2 * sigma2_dh);
+        end
         if freeze_aprime
             Q55_i = 0;
         end
@@ -454,15 +490,18 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd
     % ------------------------------------------------------------------
     % [5] EKF predict + update per axis
     % ------------------------------------------------------------------
-    H_full = [1 0 0 0 0; 0 0 0 1 -Delta_H_d];    % TIME-VARYING H(2,5) = -Delta_H_d
-    H_y1   = H_full(1, :);
+    H_y1 = [1 0 0 0 0];
 
     K_a_y2_v  = zeros(3, 1);
     K_dx_y1_v = zeros(3, 1);
     innov_y2_v = zeros(3, 1);
 
     for ax = 1:3
-        % F_e Row 3: -F_dx (col 4), dF_dx^h (col 5); Row 4 col 5 = Delta_h_d.
+        x_curr = x_e_per_axis(:, ax);
+        P_curr = P_per_axis{ax};
+
+        % F_e Row 3: -F_dx (col 4), dF_dx^h (col 5); Row 4 col 5 = Delta_h_d
+        % [+ (1-lc)*delta_x_hat_3 when use_selfmod, restoring hold-observability].
         if d_delay == 2
             F_1_i  = f_d_km1(ax) + f_d_km2(ax);                       % sum f_d[k-i]
             dFh_i  = one_minus_lc * (dh1 * f_d_km1(ax) + dh2 * f_d_km2(ax));
@@ -470,10 +509,12 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd
             F_1_i  = f_d_km1(ax);
             dFh_i  = one_minus_lc * (dh1 * f_d_km1(ax));
         end
-        F_e = build_F_e_5state_aprime(lambda_c, f_d(ax), F_1_i, dFh_i, Delta_h_d);
-
-        x_curr = x_e_per_axis(:, ax);
-        P_curr = P_per_axis{ax};
+        if use_selfmod
+            dxh3_sm = x_curr(3);   % current (prior) delta_x_hat_3 estimate
+        else
+            dxh3_sm = 0;
+        end
+        F_e = build_F_e_5state_aprime(lambda_c, f_d(ax), F_1_i, dFh_i, Delta_h_d, dxh3_sm);
 
         % --- Predict: deterministic map. a_x advances by a'_x * Delta_h_d
         %     (estimated slope x known increment); a'_x random walk. ---
@@ -486,13 +527,23 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd
         P_pred = 0.5 * (P_pred + P_pred');
 
         % --- Update (1D if y_2 gated, else 2D). a_xm measures a_x[k-d] directly;
-        %     the d-step gain drift is carried by H(2,5) = -Delta_H_d. ---
+        %     the d-step gain drift is carried by H(2,5) = -Delta_H_d
+        %     [+ (delta_x_hat_3-delta_x_hat_1) when use_selfmod, matching the
+        %     F_e(4,5) thermal-dither term above -- both evaluated at the
+        %     PREDICTED state x_pred, standard EKF linearization convention].
+        if use_selfmod
+            H25_i = -Delta_H_d + (x_pred(3) - x_pred(1));
+        else
+            H25_i = -Delta_H_d;
+        end
+        H_full_i = [1 0 0 0 0; 0 0 0 1 H25_i];
+
         if gate_off(ax)
             H_use = H_y1;
             y_use = delta_x_m(ax);
             R_use = sigma2_n_s(ax);
         else
-            H_use = H_full;
+            H_use = H_full_i;
             y_use = [delta_x_m(ax); a_meas(ax)];
             R_use = R_per_axis{ax};
         end

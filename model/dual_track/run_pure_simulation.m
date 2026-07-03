@@ -283,6 +283,11 @@ function simOut = run_pure_simulation(config, opts)
     if isfield(config, 'freeze_aprime') && ~isempty(config.freeze_aprime)
         ctrl_const.freeze_aprime = logical(config.freeze_aprime);
     end
+    % Self-modulation (hold-observability) + honest Q55 -- see
+    % reference/eq17_analysis/derivation/5state_aprime_unified.tex Sec.3-5,7.
+    if isfield(config, 'use_selfmod') && ~isempty(config.use_selfmod)
+        ctrl_const.use_selfmod = logical(config.use_selfmod);
+    end
 
     % ------------------------------------------------------------------
     % 5. Time grid (matches Simulink: discrete samples 0, Ts, 2Ts, ...)
