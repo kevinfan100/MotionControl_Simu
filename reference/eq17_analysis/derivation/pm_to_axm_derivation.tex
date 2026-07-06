@@ -42,7 +42,7 @@
 % --- Shortcuts ---
 \newcommand{\lc}{\lambda_c}
 \newcommand{\dxr}{\delta x_r}                 % residual  (code: dx_r)
-\newcommand{\dxbm}{\overline{\delta x}_m}     % LP mean   (code: dx_bar_m)
+\newcommand{\dxbm}{\delta x_{md}}             % LP mean   (code: dx_bar_m)
 \newcommand{\shsq}{\hat\sigma^2_{\dxr}}        % variance estimate (code: sigma2_dxr_hat)
 % Bold-underlined run-in section header, with extra space above (looser)
 \newcommand{\hd}[1]{\par\bigskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.6ex}}
@@ -134,5 +134,17 @@ Since $\sum_{i=1}^{d}\delta a_x[k-i]$ is known, it is moved to a known correctio
 \textit{Effective measurement variance} (the intrinsic IIR noise $n_a$ and the past random gain increments are independent):
 \[ R(2,2)_{\text{eff}} = \underbrace{R(2,2)}_{=\,\mathrm{Var}(n_a)} + \sum_{i=1}^{d}\mathrm{Var}\bigl(\delta a_{ram}[k-i]\bigr), \qquad \mathrm{Var}(\delta a_{ram}) = \frac{2}{1+\lc}\Big(\frac{a_x K_h}{R}\Big)^{2}\sigma^2_{\delta h}, \]
 with $K_h = (1/c)\,(dc/d\bar h)$ the wall sensitivity, $R$ the probe radius, and $\sigma^2_{\delta h} = 4k_BT\,a_{\perp}$ the wall-normal thermal step variance. The random-gain term $\delta x_{\delta af}^{d}$ (the contribution of $\delta a_{ram}$ to $\delta x$) is second order and is omitted from the $C_{\mathrm{dpmr}}$ derivation above.
+
+\newpage
+\hd{Complete signal path: $p_{xm} \to a_{xm}$}
+\begin{align*}
+\delta x_m[k] &= p_{xd}[k-d] - p_{xm}[k], \quad d=2 \tag{1}\\[4pt]
+\dxbm[k] &= (1-a_{pd})\,\dxbm[k-1] + a_{pd}\,\delta x_m[k] \tag{2}\\[4pt]
+\dxr[k] &= \delta x_m[k] - \dxbm[k] \tag{3}\\[4pt]
+\shsq[k] &= (1-a_{cov})\,\shsq[k-1] + a_{cov}\,\dxr^2[k] \tag{4}
+\end{align*}
+\begin{empheq}[box=\fbox]{align*}
+a_{xm}[k] &= \frac{\shsq[k] - C_n\,\sigma_n^2}{C_{\mathrm{dpmr}}\cdot 4k_BT} \tag{5}
+\end{empheq}
 
 \end{document}
