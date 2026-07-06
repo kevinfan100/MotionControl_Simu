@@ -1,0 +1,142 @@
+% ======================================================
+% Compile: xelatex aprime_blackbox_regression.tex
+% Path:    reference/eq17_analysis/derivation/aprime_blackbox_regression.tex
+% Derivation of a correlation/regression-based estimator for a'_x = da_x/dh
+%   under the BLACK-BOX assumption: wall LOCATION known (h_bar measurable
+%   from p_m and the known wall plane), wall PROPERTY c(h_bar) completely
+%   unknown -- calc_correction_functions is never called, not even to seed
+%   a_x[0]. Replaces the "a' as an EKF state with a hand-picked Q55" idea:
+%   a' is instead a DERIVED quantity (an OLS regression slope between two
+%   signals the controller already computes), not a filtered state with an
+%   assumed process-noise prior.
+% Contrast: 4state_del_hd_ar1.tex is the production baseline (KNOWN wall):
+%   a_x_det[k] = a_nom/c(h_bar_d[k]) and a'_x = -a_x K_h/R both require the
+%   real c(h_bar). This document removes a_x_det and K_h entirely; only
+%   a_xm, dx_r, a_m_det (all already computed, all wall-model-free) are
+%   used. See the contrast table below.
+% Sources: pm_to_axm_derivation.tex (a_xm construction: dx_bar_m, dx_r,
+%   sigma2_dxr_hat, unbiasedness of a_xm, Var(a_xm) via Isserlis 4th
+%   moment); aram_variance.tex (Var(a_ram)=a'^2 Var(delta_x), the same
+%   first-order Taylor parameter model, generalized here to a level+slope
+%   local expansion with NO a_det reference point).
+% Style mirrors aram_variance.tex / pm_to_axm_derivation.tex (monochrome,
+%   \fbox on key results, terse, math only; run-in \hd{} headers).
+% Notation: aligned 1:1 to motion_control_law_eq17_4state.m: dx_r = dx_r,
+%   a_xm = a_xm, a_m_det = a_m_det (a_xm's own LP mean, a_det_lp pole),
+%   sigma2_dxr_hat = sigma2_dxr_hat, a_cov = a_cov (shared EWMA pole). New
+%   quantity (not yet in code): Cov_hat, added as one EWMA state.
+% ======================================================
+% fontset=none: no CJK text, do not load Chinese fonts.
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+\usepackage{graphicx}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.4em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\dxr}{\delta x_r}
+\newcommand{\dxbm}{\overline{\delta x}_m}
+\newcommand{\shsq}{\hat\sigma^2_{\dxr}}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+
+\begin{document}
+
+\begin{center}
+{\large\bfseries Black-Box Regression Estimator for $a'_x = da_x/d\bar h$ (no $c(\bar h)$, no lookup table)}
+\end{center}
+
+\hd{Setting: contrast with the known-wall baseline}
+\begin{center}
+\begin{tabular}{@{}p{3.1cm}p{6.3cm}p{6.3cm}@{}}
+\toprule
+ & \textbf{Known-wall} (\texttt{4state\_del\_hd\_ar1}) & \textbf{Black-box} (this document) \\
+\midrule
+$a_x$ predict target & $a_{x_{det}}[k] = a_{nom}/c(\bar h_d[k])$ & none --- self-referencing, no external target \\
+$a'_x$ & $-a_x K_h/R$, from the real $c(\bar h)$ & unknown; \emph{estimated} below \\
+$K_h, K_h'$ & \texttt{calc\_correction\_functions} & forbidden anywhere, incl.\ $t{=}0$ seeding \\
+$\mathbf F_e(4,4)$ & $\lc$, reverts to $a_{x_{det}}$ & driven by $\hat a'[k]\cdot\Delta h[k]$ (\S below) \\
+Spatial memory & --- & none; purely time-recursive (no $\bar h$-indexed map) \\
+\bottomrule
+\end{tabular}
+\end{center}
+Wall \emph{location} is still known ($\bar h[k]$ is measurable from $p_m[k]$ and the known wall plane); only the \emph{function} $c(\bar h)$ is unknown.
+
+\hd{Parameter model (black-box)}
+Define the slow reference level as the existing LP filter of $a_{xm}$ (already in code, pole $a_{det\_lp}$):
+\[ a_{level}[k] := a_{m\_det}[k] = (1-a_{det\_lp})\,a_{m\_det}[k-1] + a_{det\_lp}\,a_{xm}[k] \]
+First-order local expansion around the reference height $\bar h_{level}[k]$ that $a_{level}[k]$ corresponds to --- \emph{no assumed shape} for $c(\bar h)$, just a Taylor truism valid for any smooth $c$:
+\begin{empheq}[box=\fbox]{equation*}
+a_x(\bar h[k]) \approx a_{level}[k] + a'[k]\,\Delta h[k], \qquad \Delta h[k] := \bar h[k] - \bar h_{level}[k]
+\end{empheq}
+
+\hd{Honest proxy: $\dxr \approx -\Delta h$}
+Recall (\texttt{pm\_to\_axm\_derivation.tex}): $\delta x_m[k] = x_d[k-d] - p_m[k]$, $\dxbm[k] = (1-a_{pd})\dxbm[k-1] + a_{pd}\,\delta x_m[k]$, $\dxr[k] = \delta x_m[k] - \dxbm[k]$.
+
+If $x_d$ varies slowly relative to the LP bandwidth $a_{pd}$ (the LP tracks the command almost exactly, $\dxbm[k] \approx x_d[k-d] - \overline{p_m}[k]$), then $x_d[k-d]$ cancels between $\delta x_m$ and $\dxbm$:
+\[ \dxr[k] \approx -\big(p_m[k] - \overline{p_m}[k]\big) \]
+Projected onto the wall normal, this is exactly the particle's own local height fluctuation, sign-flipped:
+\begin{empheq}[box=\fbox]{equation*}
+\dxr[k] \approx -\Delta h[k]
+\end{empheq}
+No $c(\bar h)$, no $a_{x_{det}}$ --- $\dxr$ is already computed by the controller to build $a_{xm}$.
+
+\textbf{Caveat.} This differs from the known-wall usage of $\delta x_m$ directly (\texttt{aram\_variance.tex}: $x_{ram}=-\delta x$). Here $\delta x_m$ itself carries the slow/deterministic trend $\dxbm$ (tied to $x_d$'s own shape); using the \emph{residual} $\dxr$ instead avoids conflating the slope signal with the commanded trajectory's shape, which matters once $x_d$ is not near-stationary.
+
+\hd{Regression estimator}
+Substitute $\Delta h \approx -\dxr$ into the parameter model, with $n_a[k]$ the $a_{xm}$ chi-squared measurement noise (\texttt{pm\_to\_axm\_derivation.tex}):
+\[ a_{xm}[k] \approx a_{level}[k] - a'[k]\,\dxr[k] + n_a[k] \]
+Both sides are already mean-zero after subtracting $a_{level}$ ($\dxr$ is zero-mean by construction, $H_{HP}(z{=}1)=0$). The ordinary-least-squares slope is:
+\begin{empheq}[box=\fbox]{equation*}
+\hat a'[k] = -\frac{\mathrm{Cov}(a_{xm},\dxr)[k]}{\mathrm{Var}(\dxr)[k]}
+\end{empheq}
+
+\hd{Unbiasedness (Isserlis / Wick, third moment)}
+\textbf{Lemma} (Isserlis, odd order). For a zero-mean jointly Gaussian vector, every odd-order joint moment vanishes: $\mathbb E[XYZ] = 0$ for any zero-mean jointly Gaussian $(X,Y,Z)$, in particular $\mathbb E[X^2 Y] = 0$ for any zero-mean jointly Gaussian $(X,Y)$.
+
+$a_{level}[k]=a_{m\_det}[k]$ and $n_a[k]$ are both \textbf{purely quadratic functionals of past $\dxr$} --- every path from $\dxr$ to $a_{xm}$ or its LP filter goes through $\shsq[k]=(1-a_{cov})\shsq[k-1]+a_{cov}\dxr^2[k]$, i.e.\ a weighted sum of $\dxr[j]^2$ for $j\le k$ (including $j=k$, the current sample). Treating $\dxr$ as (to good approximation) a jointly Gaussian process --- the same standing assumption already used for $\mathrm{Var}(\shsq)$ in \texttt{pm\_to\_axm\_derivation.tex} --- the Lemma gives, for every $j$:
+\[ \mathrm{Cov}\big(\dxr[j]^2,\dxr[k]\big) = \mathbb E[\dxr[j]^2\,\dxr[k]] = 0 \]
+Summing over the EWMA weights that build $a_{level}$ and $n_a$:
+\begin{empheq}[box=\fbox]{equation*}
+\mathrm{Cov}(a_{level},\dxr)[k] = 0, \qquad \mathrm{Cov}(n_a,\dxr)[k] = 0 \quad\text{(exactly, under joint Gaussianity)}
+\end{empheq}
+Therefore
+\[ \mathrm{Cov}(a_{xm},\dxr)[k] = -a'[k]\,\mathrm{Var}(\dxr)[k] \;\;\Longrightarrow\;\; \mathbb E[\hat a'[k]] = a'[k]. \]
+This holds \textbf{regardless of $a_{cov}$, the LP bandwidth $a_{pd}$, or $\dxr$'s autocorrelation structure}, and regardless of whether $j=k$ (same-sample) or $j<k$ (past-sample) --- the ``$a_{xm}$ is built from $\dxr^2$, so correlating it with $\dxr$ is circular'' worry vanishes \emph{identically}, not just to first order, given Gaussian $\dxr$.
+
+\textbf{Caveat.} Real $\dxr$ is only approximately Gaussian (thermal force and sensor noise are Gaussian; the frozen-coefficient / small-$a'$ linearization above is itself an approximation). Residual skew would leak a small bias into $\hat a'$; not quantified here.
+
+\hd{Real-time recursive form}
+One new EWMA state (reuses the existing $a_{cov}$ pole --- same effective window as $\shsq$):
+\begin{empheq}[box=\fbox]{equation*}
+\widehat{\mathrm{Cov}}[k] = (1-a_{cov})\,\widehat{\mathrm{Cov}}[k-1] + a_{cov}\,\big(a_{xm}[k]-a_{m\_det}[k]\big)\,\dxr[k]
+\end{empheq}
+\[ \hat a'[k] = -\frac{\widehat{\mathrm{Cov}}[k]}{\shsq[k]} \]
+$\shsq$ is already computed for $a_{xm}$ --- same denominator, no new variance state. Everything on the right-hand side (\texttt{a\_xm}, \texttt{a\_m\_det}, \texttt{dx\_r}, \texttt{sigma2\_dxr\_hat}) already exists in \texttt{motion\_control\_law\_eq17\_4state.m}.
+
+\hd{Precision --- what does not disappear}
+Unbiasedness removes the ``which $\sigma^2_{a''}$ do I pick'' arbitrariness, \emph{not} the SNR problem. From \texttt{aram\_variance.tex}, single-sample $a_{ram}$ is buried $\sim\!73\times$ (std) under $a_{xm}$'s own noise, so $\hat a'[k]$ needs $N_{\mathrm{eff}}=1/a_{cov} \gtrsim 73^2 \approx 5300$ effective samples to reach $O(1)$ relative precision --- the same dwell-time floor already quantified by the CRLB table in \texttt{5state\_aprime\_selfmod.tex} (near-wall $0.5\,\mathrm s \to 81\%$ rel-std, $1.3\,\mathrm s \to 50\%$, \ldots). The exact $\mathrm{Var}(\hat a')$ (a further Isserlis expansion, mirroring $\mathrm{Var}(\shsq)$'s derivation) is left as follow-on work; the verification below checks the scaling empirically first.
+
+\hd{Verification plan (simple, offline, no controller change)}
+\texttt{diag.a\_xm} and \texttt{diag.dx\_r} are already logged by \texttt{motion\_control\_law\_eq17\_4state.m}. Both stages are pure post-processing of existing logs --- no controller edit needed for a first pass.
+
+\textbf{V0 (null / bias check).} Free-space run ($a'\equiv0$ everywhere, wall disabled). Compute $\hat a'[k]$ via the recursion above from the logged $a_{xm}, \dxr$. Expect $\hat a'[k]\to 0$ within sampling noise --- confirms the Isserlis cancellation holds in the actual simulated signal, not just the idealized-Gaussian argument.
+
+\textbf{V1 (oracle recovery).} Reuse the existing near-wall 1\,Hz oscillation scenario from \texttt{aram\_variance.tex} (ground-truth $a'(\bar h) = -a_x K_h/R$ available from the simulator for comparison only --- never fed to the estimator). Compute $\hat a'[k]$ the same way; compare to the true $a'(\bar h[k])$ as a function of dwell time / effective window ($1/a_{cov}$).
+
+\textbf{Pass criterion.} V0: mean $|\hat a'|$ consistent with zero at the sampling-noise level. V1: correlation with the true $a'(\bar h)$ improves monotonically as $a_{cov}$ is decreased (longer effective window), and the convergence rate matches the order of magnitude of the existing CRLB dwell-time curve.
+
+\end{document}
