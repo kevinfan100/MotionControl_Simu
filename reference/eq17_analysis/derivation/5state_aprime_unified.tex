@@ -72,7 +72,7 @@
 {\large\bfseries Black-Box 5-State $a'_x$ Estimator --- Consolidated Current Version}
 \end{center}
 
-\noindent\fbox{\parbox{\linewidth}{\small\textbf{Status.} Consolidates \texttt{5state\_est\_aprime.tex} + \texttt{5state\_aprime\_selfmod.tex} (F\_e/H algebra, reused verbatim, Sec.~3--5) with \texttt{aprime\_blackbox\_regression.tex} (Isserlis unbiasedness of $a_{xm}$, Sec.~2) and three NEW pieces from this session: the $Q(a'_x)$ formula (Sec.~7, empirically checked), the $\dxr$-vs-$\dxh$ signal reconciliation (Sec.~6, leading explanation for a still-open sign-flip bug), and a concrete near-wall reversion fix (Sec.~8). \textbf{Not yet implemented in code} -- this is the design document that precedes implementation.}}
+\noindent\fbox{\parbox{\linewidth}{\small\textbf{Status.} Consolidates \texttt{5state\_est\_aprime.tex} + \texttt{5state\_aprime\_selfmod.tex} (F\_e/H algebra, reused verbatim, Sec.~3--5) with \texttt{aprime\_blackbox\_regression.tex} (Isserlis unbiasedness of $a_{xm}$, Sec.~2) and pieces from this and a later session: the $Q(a'_x)$ formula (Sec.~7), the $\dxr$-vs-$\dxh$ signal reconciliation (Sec.~6, CONFIRMED as the sign-flip explanation, Sec.~9), a concrete near-wall reversion fix proposal (Sec.~8, still undone), and a self-dither magnitude gate fixing a closed-loop divergence found when the estimator was actually closed into the loop (Sec.~10). \textbf{Implemented in code} as \texttt{ctrl\_const.use\_selfmod} in \texttt{motion\_control\_law\_eq17\_5state\_aprime.m} (commit \texttt{4f5c663} + the Sec.~10 gate fix); default \texttt{false} reproduces the pre-existing baseline bit-for-bit.}}
 
 %% ===================== SECTION 1 =====================
 \hd{1. Setting: the black-box premise}
@@ -223,5 +223,25 @@ $Q(a')$ magnitude (Sec.~7) & dimensional anchor vs.\ oracle & \textbf{near-wall 
 \end{tabular}
 \end{center}
 \textbf{Resolved}: the wrong-sign result was caused by the raw-$\dxr$-vs-filtered-signal distinction (Sec.~6). The properly-derived 5-state EKF (Sec.~3--5,7), read directly from the real controller (\texttt{use\_selfmod=true}), recovers the correct sign on all three axes at 200 seeds. \textbf{Not yet done}: accuracy characterization beyond sign (L1-style $\kappa$ sweep, hold vs.\ motion, near vs.\ far field); the Sec.~8 near-wall reversion proposal remains undone (this test's scenario does not exercise the gate-off condition); Q33/Q44/R22 remain wall-peeking (Sec.~7 note).
+
+%% ===================== SECTION 10 =====================
+\newpage
+\hd{10. L2 closed-loop divergence: Q(5,5) far-field over-coverage, fixed with a self-dither gate}
+With \texttt{use\_selfmod=true} closing the loop for real (\texttt{use\_true\_gain=false}: the control law uses $\hat a_x$, not the true gain), a 1\,Hz near-wall oscillation scenario (\texttt{verify\_eq17\_5state\_aprime\_selfmod\_L1.m}) showed the open-loop estimability gain (Sec.~9-adjacent open-loop test: $\Delta\mathrm{corr}_z\approx+0.79$, zero tracking cost) does \textbf{not} carry over unmodified: $z$-axis tracking std nearly doubled ($26.9\to52.3$\,nm) and 1 of 10 seeds diverged, while the same toggle left off never diverged.
+
+\lbl{Root cause} The divergence occurred not near the wall but during the trajectory's fast DESCENT transient (large commanded $|\Delta h_d|$, far from the wall, $\bar h\approx6$--$15$), traced to $\hat a_x$ drifting monotonically off its true value over dozens of steps. A magnitude gate on $\mathbf F_e(4,5)/\mathbf H(2,5)$ alone (closing them whenever $|\Delta h_d|$ dominates the thermal scale) did \textbf{not} fix it --- tracing individual steps showed the gate was already correctly closed throughout the bad region, ruling out the self-dither coupling terms as the cause. The actual culprit is $q_5$ (Sec.~7): the honest anchor $\sigma^2_{a''}\sim(a_{nom}/R^2)^2$ has \textbf{no wall-distance awareness}, unlike the baseline $a''=(a/R^2)(K_h^2-K_h')$ it replaces (which shrinks far from the wall via $K_h,K_h'\to0$). During fast motion far from the wall, $q_5$'s $\Delta h_d^2$ term over-inflates by $\sim10^4$--$10^5\times$ --- exactly the already-documented far-field over-coverage (Sec.~7's empirical table), previously judged ``low-cost'' \emph{under open-loop scoring, where the over-covered $\hat a'_x$ never touches real dynamics}. In closed loop, $\hat a'_x$'s resulting noise multiplies $\Delta h_d[k]$ directly in $\hat a_x[k+1]=\hat a_x[k]+\hat a'_x[k]\Delta h_d[k]$, corrupting $\hat a_x$ and hence $f_d=1/\hat a_x\{\ldots\}$ itself.
+
+\lbl{Fix} Extend the same honest, no-$c(\bar h)$ magnitude gate to \textbf{both} the self-dither coupling terms AND $q_5$'s $\Delta h_d^2$ term:
+\begin{empheq}[box=\fbox]{align*}
+\text{gate}_i[k] &= \big(|\Delta h_d[k]| < \sigma_{\delta h,i}[k]\big) \\
+\sigma_{\delta h,i}[k] &= \sqrt{4k_BT\,\hat a_{x,i}[k]}
+\end{empheq}
+Gate open (thermal-dominated, the regime self-dither was designed for): $\mathbf F_e(4,5)$, $\mathbf H(2,5)$, and $q_5$ all use their full self-mod forms (Sec.~5, Sec.~7). Gate closed (motion-dominated, e.g.\ a fast descent): $\mathbf F_e(4,5)=\Delta h_d$, $\mathbf H(2,5)=-\Delta H_d$ (reduce to baseline), and $q_5=\sigma^2_{a''}\cdot\sigma^2_{\delta h}$ (drop the $\Delta h_d^2$ term only --- still the honest anchor, not a wall-peeking fallback).
+
+\lbl{Verification} Same 1\,Hz scenario, 10 seeds, closed loop: \textbf{no divergence} (was 1 of 10 seeds); $\Delta(\text{track\_std}_z)=+4.1$\,nm (was $+25$ to $+33$\,nm), a modest cost consistent with the already-known near-wall spread increase; $\Delta\mathrm{corr}_z=+0.74$ preserved. The static-hold sign-confirmation scenario (Sec.~6/9, 60 and 200 seeds) re-run \textbf{bit-for-bit identical} to before this fix, as expected: $\Delta h_d\approx0$ throughout a hold keeps the gate open, so nothing there changes. \texttt{verify\_eq17\_5state\_aprime\_selfmod\_L0.m} Check 3 added to lock in the gate's open/closed logic against regression.
+
+\textbf{Lesson}: an ``honest, no wall-peek'' formula can still be wrong in a way pure open-loop testing cannot reveal --- the far-field over-coverage was known and judged low-cost \emph{under an evaluation regime that never let the over-covered quantity touch real dynamics}. Closing the loop for real (L2) is not optional follow-on characterization; it is precisely where this class of bug lives, and it should be run before any claim that an estimator improvement helps tracking.
+
+\textbf{Not yet done}: L2 testing so far covers only this one trajectory (1\,Hz near-wall oscillation with a fast pre-oscillation descent); other fast-transient shapes are untested. Whether feeding $\hat a'_x$-improved $\hat a_x$ into the control law yields a measurable tracking benefit anywhere (vs.\ merely ``no regression'') remains open.
 
 \end{document}

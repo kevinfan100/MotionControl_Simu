@@ -37,12 +37,34 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd
 %           a'_x is structurally UNOBSERVABLE on a height hold (Delta_h_d=0).
 %           Q(5,5) uses the wall-peeking a''=(a/R^2)(K_h^2-K_h') formula.
 %       true: adds the thermal self-dither coupling, restoring hold-
-%           observability (rank(O_N) 4->5):
+%           observability (rank(O_N) 4->5), GATED by |Delta_h_d| < sigma_dh_i
+%           (per-axis; sigma_dh_i = sqrt(4*kBT*a_hat_i), the honest thermal
+%           position-step scale): the self-dither term is only added when
+%           commanded motion is NOT already dominant, i.e. exactly the regime
+%           it was designed for (a height hold, Delta_h_d~0). When |Delta_h_d|
+%           is large (fast commanded motion, e.g. a trajectory descent
+%           transient), motion alone already gives observability and the
+%           self-dither coupling instead amplifies any a'_x error into a
+%           destabilizing a_x correction -- see verify_eq17_5state_aprime_L2
+%           closed-loop divergence found empirically. When the gate is open:
 %               F_e(4,5) = Delta_h_d + (1-lc)*delta_x_hat_3
 %               H(2,5)   = -Delta_H_d + (delta_x_hat_3-delta_x_hat_1)
-%           and replaces Q(5,5) with the honest dimensional-anchor formula
-%           sigma_a''~a_nom/R^2 (probe/fluid constants only, no c(h_bar)):
-%               Q(5,5) = Q_aprime_factor * (a_nom/R^2)^2 * (Delta_h_d^2 + sigma2_dh)
+%           When the gate is closed (or use_selfmod=false), both reduce to the
+%           baseline F_e(4,5)=Delta_h_d, H(2,5)=-Delta_H_d.
+%           use_selfmod=true always replaces Q(5,5) with the honest
+%           dimensional-anchor formula sigma_a''~a_nom/R^2 (probe/fluid
+%           constants only, no c(h_bar)), and the Delta_h_d^2 term is ALSO
+%           gated by the SAME |Delta_h_d| < sigma_dh_i condition:
+%               gate open:   Q(5,5) = Q_aprime_factor*(a_nom/R^2)^2*(Delta_h_d^2 + sigma2_dh)
+%               gate closed: Q(5,5) = Q_aprime_factor*(a_nom/R^2)^2*sigma2_dh   (Delta_h_d^2 term dropped)
+%           This gate on Q55 was NOT optional: the fixed anchor (a_nom/R^2)^2,
+%           unlike the baseline a''=(a/R^2)(K_h^2-K_h') it replaces, has no
+%           wall-distance awareness and does not shrink far from the wall, so
+%           an ungated Delta_h_d^2 term over-inflates Q55 by ~1e4-1e5x during
+%           ANY fast commanded motion regardless of wall distance -- this let
+%           a'_x drift on noise and, via a_x[k+1]+=a'_x*Delta_h_d, destabilize
+%           a_x itself in closed loop (first found as a ~2x z-axis tracking
+%           regression in an ungated version of this code).
 %           (sigma2_dh here uses the ESTIMATE 4*kBT*a_hat_i, not the shared
 %           wall-peeking sigma2_dh used elsewhere in this file).
 %
@@ -416,6 +438,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd
     G_flags    = false(3, 3);
     var_da_ram = zeros(3, 1);
     Q55_vec    = zeros(3, 1);
+    selfmod_gate = false(3, 1);
     t_now = (k_step - 1) * Ts;
     for ax = 1:3
         a_hat_i = a_hat(ax);
@@ -444,7 +467,22 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd
         if use_selfmod
             sigma2_a2prime     = (a_nom_p / R_radius^2)^2;
             sigma2_dh_honest_i = 4 * kBT * a_hat_i;
-            Q55_i = Q_aprime_factor * sigma2_a2prime * (Delta_h_d^2 + sigma2_dh_honest_i);
+            % Self-dither gate: open only while commanded motion is NOT already
+            % dominant over the thermal position scale (honest, no c(h_bar)).
+            selfmod_gate(ax) = abs(Delta_h_d) < sqrt(sigma2_dh_honest_i);
+            if selfmod_gate(ax)
+                Q55_i = Q_aprime_factor * sigma2_a2prime * (Delta_h_d^2 + sigma2_dh_honest_i);
+            else
+                % Gate closed (motion-dominated): drop the Delta_h_d^2 term.
+                % The honest anchor (a_nom/R^2)^2 has no wall-distance awareness
+                % (unlike the baseline a''=(a/R^2)(K_h^2-K_h'), which naturally
+                % shrinks far from the wall) -- without this gate, Delta_h_d^2
+                % over-inflates Q55 by ~1e4-1e5x during ANY fast commanded
+                % motion regardless of wall distance, letting a'_x drift
+                % on noise and, via a_x[k+1]+=a'_x*Delta_h_d, destabilizing
+                % a_x itself in closed loop (see verify_eq17_5state_aprime_L2).
+                Q55_i = Q_aprime_factor * sigma2_a2prime * sigma2_dh_honest_i;
+            end
         else
             a_dprime_i = (a_hat_i / R_radius^2) * (K_h_axis(ax)^2 - K_hp_axis(ax));
             Q55_i = Q_aprime_factor * ((a_dprime_i * Delta_h_d)^2 + a_dprime_i^2 * sigma2_dh);
@@ -509,7 +547,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd
             F_1_i  = f_d_km1(ax);
             dFh_i  = one_minus_lc * (dh1 * f_d_km1(ax));
         end
-        if use_selfmod
+        if use_selfmod && selfmod_gate(ax)
             dxh3_sm = x_curr(3);   % current (prior) delta_x_hat_3 estimate
         else
             dxh3_sm = 0;
@@ -531,7 +569,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd
         %     [+ (delta_x_hat_3-delta_x_hat_1) when use_selfmod, matching the
         %     F_e(4,5) thermal-dither term above -- both evaluated at the
         %     PREDICTED state x_pred, standard EKF linearization convention].
-        if use_selfmod
+        if use_selfmod && selfmod_gate(ax)
             H25_i = -Delta_H_d + (x_pred(3) - x_pred(1));
         else
             H25_i = -Delta_H_d;
@@ -626,6 +664,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd
         diag.delta_a_hat          = aprime_hat_post;       % driver-log alias (slot 5)
         diag.gate_active_per_axis = gate_off;
         diag.guards_individual    = G_flags;
+        diag.selfmod_gate_active  = selfmod_gate;
         diag.h_bar                = h_bar;
         diag.f_d                  = f_d;
         diag.dx_r                 = dx_r;
@@ -712,6 +751,7 @@ function d = empty_diag_aprime()
     d.delta_a_hat          = zeros(3, 1);   % driver-log alias for slot 5
     d.gate_active_per_axis = false(3, 1);
     d.guards_individual    = false(3, 3);
+    d.selfmod_gate_active  = false(3, 1);
     d.h_bar                = 0;
     d.f_d                  = zeros(3, 1);
     d.dx_r                 = zeros(3, 1);

@@ -14,6 +14,14 @@ function out = verify_eq17_5state_aprime_selfmod_L0()
 %         computed independently in this test (not by calling the controller
 %         internals), with sigma2_dh_honest = 4*kBT*a_hat_i (the ESTIMATE, not
 %         calc_correction_functions).
+%     (3) Q55 self-dither GATE: |Delta_h_d| < sqrt(sigma2_dh_honest_i) opens
+%         the gate (full formula, incl. Delta_h_d^2 term); otherwise the gate
+%         is closed and the Delta_h_d^2 term is dropped. Without this gate,
+%         the honest anchor (a_nom/R^2)^2 has no wall-distance awareness and
+%         over-inflates Q55 by ~1e4-1e5x during fast commanded motion far from
+%         the wall, letting a'_x drift on noise and destabilizing a_x in
+%         closed loop via a_x[k+1]+=a'_x*Delta_h_d (found empirically by
+%         verify_eq17_5state_aprime_L2-style testing; use_true_gain=false).
 %
 %   See also: build_F_e_5state_aprime, motion_control_law_eq17_5state_aprime,
 %             verify_eq17_5state_aprime_L0
@@ -60,8 +68,32 @@ function out = verify_eq17_5state_aprime_selfmod_L0()
     fprintf('[Check 2] Q55 honest formula: computed=%.6g, expected=%.6g -> %s\n', ...
         computed_Q55, expected_Q55, ternary_str(out.Q55_swap_ok));
 
+    % ================= Check 3: Q55 self-dither gate =================
+    a_hat_i_repr2     = 0.02;
+    sigma2_dh_honest2 = 4 * pc.k_B * pc.T * a_hat_i_repr2;
+    sigma_dh2         = sqrt(sigma2_dh_honest2);
+
+    Delta_h_d_small = 0.5 * sigma_dh2;   % motion << thermal scale -> gate OPEN
+    Delta_h_d_large = 5   * sigma_dh2;   % motion >> thermal scale -> gate CLOSED
+
+    gate_small = abs(Delta_h_d_small) < sigma_dh2;
+    gate_large = abs(Delta_h_d_large) < sigma_dh2;
+
+    expected_Q55_open   = Q_aprime_factor * sigma2_a2prime * (Delta_h_d_small^2 + sigma2_dh_honest2);
+    expected_Q55_closed = Q_aprime_factor * sigma2_a2prime * sigma2_dh_honest2;   % Delta_h_d^2 term dropped
+
+    computed_Q55_open   = Q_aprime_factor * sigma2_a2prime * (gate_small * Delta_h_d_small^2 + sigma2_dh_honest2);
+    computed_Q55_closed = Q_aprime_factor * sigma2_a2prime * (gate_large * Delta_h_d_large^2 + sigma2_dh_honest2);
+
+    out.gate_logic_ok = gate_small && ~gate_large ...
+                         && abs(computed_Q55_open   - expected_Q55_open)   < 1e-20 ...
+                         && abs(computed_Q55_closed - expected_Q55_closed) < 1e-20;
+
+    fprintf('[Check 3] gate: small Delta_h_d -> open=%d (expect 1), large Delta_h_d -> open=%d (expect 0) -> %s\n', ...
+        gate_small, gate_large, ternary_str(out.gate_logic_ok));
+
     % ================= Overall =================
-    out.all_pass = out.Fe45_ok && out.Q55_swap_ok;
+    out.all_pass = out.Fe45_ok && out.Q55_swap_ok && out.gate_logic_ok;
     fprintf('\n[verify_eq17_5state_aprime_selfmod_L0] ALL PASS = %d\n', out.all_pass);
 end
 
