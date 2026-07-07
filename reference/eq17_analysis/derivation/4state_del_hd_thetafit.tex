@@ -1,0 +1,669 @@
+% ======================================================
+% Compile: xelatex 4state_del_hd_thetafit.tex
+% Path:    reference/eq17_analysis/derivation/4state_del_hd_thetafit.tex
+% C1 companion derivation: the 4-state eq17 controller when the wall drag law
+% c(h_bar) is analytically UNKNOWN. A fitted parametric curve a(h_bar; theta_hat)
+% (theta-fit supplier) replaces EVERY read of the true c inside the controller.
+% Wall POSITION is known (h_bar_d, Delta_h_d, h_bar_meas are all available).
+% DUAL-BRANCH (user ruling 2026-07-06):
+%   main text  = AR(1) reverting-gain base (F_e(4,4)=lc; predict reverts to the
+%                fitted level a_det_hat = a(h_bar_d; theta_hat)),
+%   companion  = RW-exact base (F_e(4,4)=1; documented known-c near-wall ceiling
+%                9.4%, see 4state_del_hd.tex last page).
+% Budget: z |a_hat-a|/a ~ 1% (known-c baseline 0.4%); xy near-wall <= 5%.
+% Status 2026-07-07: S1-S9 COMPLETE (full T1 draft, pending user review). Rulings
+% 1-5 = the operative design constraints; S9 = the consolidated lookup + flag
+% inventory (L1-L3 verification bridge).
+% Style mirrors 4state_del_hd / 4state_del_hd_ar1 (monochrome, \fbox on key
+% results, terse math-only prose). fontset=none: no CJK text, compiles anywhere.
+% ======================================================
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+\usepackage{graphicx}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+\emergencystretch=3em   % absorb unbreakable \texttt filenames in terse prose
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+\newcommand{\hbd}{\bar h_d}
+\newcommand{\hbm}{\bar h_{\mathrm{meas}}}
+\newcommand{\adet}{a_{x_{det}}}
+\newcommand{\ealev}{e_{a\ell}}
+
+\begin{document}
+
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+\small
+\textbf{Scope.} Companion to \texttt{4state\_del\_hd\_ar1.tex} / \texttt{4state\_del\_hd.tex}: drag law $c(\bar h)$ analytically \emph{unknown}; a fitted curve $a(\bar h;\hat\theta)$ (level $+$ slope $a'$) replaces \emph{every} true-$c$ read. Wall \emph{position} known ($\hbd,\ \Delta h_d,\ \hbm$ available).\\
+\textbf{Dual-branch} (user ruling): main $=$ AR(1) reverting-gain ($\mathbf F_e(4,4)=\lc$, predict reverts to $\hat\adet=a(\hbd;\hat\theta)$); companion $=$ RW-exact ($\mathbf F_e(4,4)=1$, known-$c$ ceiling $9.4\%$).\\
+\textbf{Budget}: $z\ |\hat a_x-a_x|/a_x \sim 1\%$ (known-$c$ baseline $0.4\%$); $xy$ near-wall $\le 5\%$.\ \ Supplier: $\theta$-fit per axis ($z=$ Z2, $xy=$ M2; see S6).\ \ S1--S9 complete (full T1 draft); Rulings 1--5 are the design constraints, S9 the lookup.
+}}
+
+\hd{1.\ Architecture ruling (dual-branch)}
+
+Per-axis augmented state $\mathbf x = [\delta x_1,\ \delta x_2,\ \delta x_3,\ a_x]^{\!\top}$; slot 4 carries two candidate dynamics. Both replace the true reads $\adet$, $a'_x$ by the fitted supplier
+\[ \hat\adet[k] = a(\hbd[k];\hat\theta), \qquad \hat a'_x[k] = \frac{\partial a}{\partial \bar h}\Big|_{\hat\theta}(\hbd[k]), \qquad \Delta\hat a_x[k] = \hat a'_x[k]\,\Delta h_d[k]. \]
+
+\underline{\textit{Two slot-4 branches}}
+\[
+\begin{aligned}
+\text{RW:}\quad\ & a_x[k+1] = a_x[k] + \Delta\hat a_x[k] + \Delta a_{ram}[k],
+   & \mathbf F_e(4,4) &= 1 \\[0.4ex]
+\text{AR(1):}\quad & a_x[k+1] = \lc\, a_x[k] + (1-\lc)\,\hat\adet[k] + \Delta\hat a_x[k] + a'_x\,\varepsilon[k],
+   & \mathbf F_e(4,4) &= \lc
+\end{aligned}
+\]
+
+The AR(1) predict reads the fitted \emph{level} $\hat\adet$ (reversion anchor) \emph{and} the fitted \emph{slope} $\hat a'_x$ (FF increment); the RW predict reads only the \emph{slope}.
+
+\hd{Structural fact (G1) --- the reversion consumes the curve LEVEL}
+Define the supplier \emph{level} error $\ealev[k] = a_{true}(\hbd[k]) - a(\hbd[k];\hat\theta)$. Under AR(1), $\ealev$ enters the slot-4 prediction with weight $(1-\lc)$ per step. Predict/update ($\hat a^-[k{+}1]=\lc\hat a_x[k]+(1-\lc)\hat\adet[k]+\Delta\hat a_x[k]$, then $\hat a_x[k{+}1]=(1-K)\hat a^-[k{+}1]+K\,y_2$) with constant $\ealev$ and $K=$ near-wall DARE gain of the $a_x$ slot gives the steady-state level-bias transfer
+\begin{empheq}[box=\fbox]{equation*}
+T \;:=\; \frac{e_{a_x}^{ss}}{\ealev} \;=\; \frac{(1-K)(1-\lc)}{(1-\lc) + K\,\lc}
+\;\xrightarrow[\;K\sim 10^{-3}\;]{}\; 0.99\text{--}1.00
+\end{empheq}
+i.e. a fitted \emph{level} bias passes $\sim\!1{:}1$ into $\hat a_x$ (the estimator cannot out-vote a persistent anchor bias with $K\!\to\!0$). This is the reason the audit's ``slope-only'' scope fails: the $0.4\%$ AR(1) baseline is bought by the \emph{level} anchor, and $\ealev$ is a first-class error input.
+
+\textbf{Branch trade}: AR(1) consumes LEVEL (bias $T\!\approx\!1$ but $0.4\%$ known-$c$ floor); RW consumes only SLOPE (no $\ealev$ path) but carries the documented known-$c$ near-wall ceiling $|\hat a_z-a_z|=9.4\%$ (\texttt{4state\_del\_hd.tex} L274 caption). Both are derived here; measured L2/L3 rungs pick the winner.
+
+\hd{Error dynamics (supplier errors as exogenous inputs)}
+With slope error $e_K[k] = a'_{true}(\hbd[k]) - a'(\hbd[k];\hat\theta)$ (so $\Delta a_x^{true}-\Delta\hat a_x = e_K\,\Delta h_d$), the predict-only gain-error recursion for each branch:
+\[
+\begin{aligned}
+\text{AR(1):}\quad e_{a_x}[k+1] &= \lc\, e_{a_x}[k] + (1-\lc)\,\ealev[k] \\
+   &\quad + e_K[k]\,\Delta h_d[k] + a'_x\,\varepsilon[k] \\
+\text{RW:}\qquad e_{a_x}[k+1] &= e_{a_x}[k] + e_K[k]\,\Delta h_d[k] + \Delta a_{ram}[k]
+\end{aligned}
+\]
+$a'_x\varepsilon$ (AR(1)) and $\Delta a_{ram}$ (RW) are the base white drivers ($q_4$; \texttt{4state\_del\_hd\_ar1.tex} p.5, \texttt{4state\_del\_hd.tex} L253). The two \emph{new} inputs $\ealev$ (AR(1) only) and $e_K$ (both) are \textbf{deterministic-dominated} --- structure misfit $+$ frozen-$\theta$ error, slowly varying, \emph{not} white. Their carrier assignment (which $Q/R$ entry, bridge, or offline bias table absorbs them) is \emph{not} $Q_{44}$ inflation; it is fixed in \S3.2 (bias/variance split) and \S3.3 (Ruling 1).
+
+\newpage
+\hd{2.\ Replacement-site inventory (the true-$c$ reads)}
+
+Every production read of the true $c(\bar h)$ in \texttt{model/controller/motion\_control\_law\_eq17\_4state.m}, its fitted replacement, the branch it applies to, and the supplier error it then carries. Line numbers verified against the file (helper $\to$ call-site distinguished).
+
+\medskip
+{\footnotesize\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}p{2.35cm} p{3.35cm} p{4.85cm} p{0.95cm} p{2.55cm}@{}}
+\toprule
+\textbf{Station} & \textbf{Source (file:line)} & \textbf{$\theta$-fit replacement} & \textbf{Branch} & \textbf{Error carried} \\
+\midrule
+$\adet$ level (AR(1) reversion anchor) &
+\texttt{local\_a\_x\_det} L667--680 (true-$c$ read \textbf{L675}); consumed L531 &
+$a(\hbd[k];\hat\theta)$ --- fitted level from $p_d$ &
+AR1 &
+$\ealev$ (\,$\sim\!1{:}1$, G1\,) \\
+\addlinespace
+FF predict increment $\Delta a_x$ &
+\texttt{da\_x\_pred} \textbf{L306} ($=a_{det,k}\!-\!a_{det,k-1}$); consumed L531/L533 &
+$a(\hbd[k];\hat\theta)-a(\hbd[k{-}1];\hat\theta)$ &
+both &
+$e_K$ (slope, finite-diff) \\
+\addlinespace
+$y_2$ known-input corr. $\sum_i\Delta a_x$ &
+\texttt{sum\_da\_ff} \textbf{L307--314} (telescoped $a_{det,k}\!-\!a_{det,k-d}$); consumed \textbf{L547} &
+$\hat c[k]=a(\hbd[k];\hat\theta)-a(\hbd[k{-}d];\hat\theta)$ &
+both &
+$e_K$ \\
+\addlinespace
+$Q_{44}$ slope / \texttt{var\_da\_ram} &
+$K_h$ read \texttt{K\_h\_axis} \textbf{L320--321} ($\hbm$); used L438 (AR1)/\textbf{L444} (RW)/L430 (cap) &
+$K_h = a'(\hbm;\hat\theta)/a$ from fit &
+both &
+$e_K$ (2nd-order, in $Q$) \\
+\addlinespace
+$R_{22}$ delay-leak &
+\texttt{var\_da\_inc} \textbf{L448} $\to$ \texttt{R22\_delay\_i} \textbf{L468--472} (d\,{=}\,2) &
+same fitted $K_h$ &
+both &
+$e_K$ (2nd-order, in $R$) \\
+\addlinespace
+$Q_{33}$ randgain &
+\textbf{L452--453} (d\,{=}\,2) / L456 (d\,{=}\,1); \emph{inherits} true-$c$ via \texttt{var\_da\_inc} (L448 $\leftarrow K_h$) &
+fitted $K_h$ (no independent read) &
+both &
+2nd-order ($\le\!10^{-5}$ of $Q_{33}$) \\
+\addlinespace
+$\sigma^2_{\delta h}$ (cross-axis $c_\perp$ $z$-shape) &
+\texttt{a\_perp\_meas} \textbf{L322} ($\leftarrow c_\perp$ L320); \texttt{sigma2\_dh} \textbf{L327} (all 3 axes) &
+$4k_BT\,a_\perp(\hbm;\hat\theta_z)$ ($z$-basis) &
+both &
+$\ealev$ of $c_\perp$; self-axis miswire $\to K_{44}\,{+}76\%$ \\
+\addlinespace
+Init block ($a_{x,init}$ / $K_{h,init}$ / DARE seed) &
+L176--217 (true-$c$ read \textbf{L181}); $a_{x,init}$ L182, $K_{h,init}$ L183, $\sigma^2_{\delta h,init}$ L199, DARE seed L216 &
+$\theta$-prior (Goldman 9/16, Brenner 9/8): $a_{x,init}=a_{nom}/c(\bar h_{init};\theta_0)$, $P(4,4)_{init}=(\partial a/\partial\theta)^2\mathrm{Var}(\theta_0)$ &
+both &
+$\ealev$ (transient) \\
+\addlinespace
+Optional flags &
+\texttt{use\_deblur} L342--349 (L343 uses $a_{det,k-d}$) / \texttt{use\_q44\_ar1} L434--438 / \texttt{use\_q44\_cap} L423--433 / \texttt{use\_aprime\_ff} L439--442,\,L522--525 &
+ar1 $=$ main branch (fit $K_h$); cap $=$ fit $K_h$; deblur $=$ \textsc{disabled} (self-ref, S8); aprime\_ff $=$ \textsc{disabled} (falsified, L440) &
+AR1 / both &
+$e_K$ / --- \\
+\bottomrule
+\end{tabular}
+}
+
+\medskip
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+\small The original plan's ``slope-only 3 sites'' scope is \textbf{FALSE} (G1 / INV-1): $9$ stations read the true $c$. This table is the corrected SSOT.}}
+
+\newpage
+\hd{3.\ Error dynamics $+$ carriers}
+
+\hd{3.1\ Exact error inputs (finite-difference of level evals)}
+The FF increment is coded as a difference of two level evaluations (\texttt{da\_x\_pred}, L306), not a slope read:
+\[ \Delta\hat a_x[k] = a(\hbd[k];\hat\theta) - a(\hbd[k{-}1];\hat\theta). \]
+True deterministic increment $\Delta a_x^{det}[k]=a_{true}(\hbd[k])-a_{true}(\hbd[k{-}1])$; the exact slot-4 FF error input is a level-error difference
+\[ \Delta\ealev[k] := \ealev(\hbd[k]) - \ealev(\hbd[k{-}1]), \qquad \ealev(\bar h):=a_{true}(\bar h)-a(\bar h;\hat\theta). \]
+Taylor at leading order (${}'\!=\!d/dh$, $\ealev'\!=\!e_K$, $\ealev''\!=\!e_K'$):
+\begin{empheq}[box=\fbox]{equation*}
+\Delta\ealev[k] = e_K[k]\,\Delta h_d[k] + \tfrac12 e_K'[k]\,\Delta h_d^2[k] + O(\Delta h_d^3),
+\qquad e_K[k]=a'_{true}(\hbd[k])-a'(\hbd[k];\hat\theta).
+\end{empheq}
+Exact recursions (Sec.\,1 form; leading order used below):
+\[
+\begin{aligned}
+\text{RW:}\quad\ & e_{a_x}[k+1] = e_{a_x}[k] + \Delta\ealev[k] + \Delta a_{ram}[k] \\
+\text{AR(1):}\quad & e_{a_x}[k+1] = \lc\,e_{a_x}[k] + (1-\lc)\,\ealev(\hbd[k]) + \Delta\ealev[k] + a'_x\varepsilon[k]
+\end{aligned}
+\]
+{\small AR(1) carries the level \emph{twice}: $(1-\lc)\ealev$ (reversion anchor, $O(\ealev)$) $+$ $\Delta\ealev$ (FF, $O(e_K\Delta h_d)\!\ll\!\ealev$). RW carries only $\Delta\ealev$; no $(1-\lc)\ealev$ path. This is the branch split of Sec.\,1 --- RW's level bias enters only through the FF slope-difference, AR(1)'s through the anchor.}
+
+\hd{3.2\ Deterministic/stochastic split $+$ carriers}
+\[ \ealev(\bar h,k) = \underbrace{b_{lvl}(\bar h)}_{\text{struct.\ misfit}\,+\,\text{frozen-}\theta} + \underbrace{s_{lvl}[k]}_{(\partial a/\partial\theta)^{\!\top}\!\delta\hat\theta}, \qquad e_K(\bar h,k)= b_K(\bar h)+s_K[k] \]
+Jacobian map (RLS posterior $P_\theta$, $\delta\hat\theta=\hat\theta-\theta^\ast$, zero-mean):
+\[ \mathrm{Var}(s_{lvl}) = (\partial a/\partial\theta)^{\!\top} P_\theta\, (\partial a/\partial\theta), \qquad
+   \mathrm{Var}(s_K) = (\partial a'/\partial\theta)^{\!\top} P_\theta\, (\partial a'/\partial\theta). \]
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+\small
+\textbf{Carrier rule (bias/variance split).}\ \
+\emph{Deterministic} $b_{lvl},\,b_K$ (functions of $\bar h$, slowly varying, NOT white): carrier $\in$ \{offline bias table $e_{ss}(\bar h)$ | deterministic bridge (subtract known lag) | gate (trough, $y_2$ off)\}. \textbf{Never $Q$.}\\
+\emph{Stochastic} $s_{lvl},\,s_K$ (RLS noise, white at loop rate): carrier $=$ $Q_{44}$ additive via Jacobian --- RW: $Q_{44}\mathrel{+}=\mathrm{Var}(s_K)\,\Delta h_d^2$ (relative form, \S3.6); AR(1): $Q_{44}\mathrel{+}=(1-\lc)^2\mathrm{Var}(s_{lvl})$ (\S3.5).
+}}
+
+\hd{3.3\ $Q_{44}$ inflation of the $e_K$ ramp --- rejected}
+Slot-4 input $u[k]=e_K[k]\,\Delta h_d[k]$ is a deterministic ramp, correlation time $\tau_c\approx$ quarter-period $=f_s/(4f)=1600/4=400$ steps. Its only white (unpredictable) content is the one-step innovation
+\[ \Delta u[k]=u[k]-u[k-1]\approx e_K\,\Delta^2 h_d[k],\quad \Delta^2 h_d=\ddot h_d\,T_s^2=-A_h\omega^2 T_s^2\sin\omega t, \]
+so the white-to-signal ratio is set purely by the sampling kinematics
+\[ \frac{q_{eq}}{\mathrm{Var}(u)} \approx \Big(\frac{\Delta u}{u}\Big)^{\!2} = (\omega T_s)^2 = \Big(\frac{2\pi}{1600}\Big)^{\!2} = 1.54\times10^{-5}. \]
+Against the base driver $Q_{44}=\mathrm{Var}(\Delta a_{ram})$ ($z$, trough) this gives
+\begin{empheq}[box=\fbox]{equation*}
+q_{eq}\ \le\ 6.4\times10^{-5}\,Q_{44}\quad(z)
+\end{empheq}
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+\small \textbf{Ruling 1:}\ $Q_{44}$ inflation is an \textbf{invalid carrier} for $e_K\Delta h_d$ (white content $<10^{-4}$ of $Q_{44}$). The ramp is $\sim$pure low-frequency: its effect is a \emph{bias}, not a variance. Use the ramp-lag table (\S3.4).}}
+
+{\small $6.4\!\times\!10^{-5}$ (audit C1-02 numerical eval) $=(\omega T_s)^2$ kinematic factor $\times\,\mathrm{Var}(u)/Q_{44}|_{trough}$ ($O(4)$); the $(\omega T_s)^2$ scaling is the load-bearing structural result --- agreement, not disagreement.}
+
+\hd{3.4\ Honest carrier: ramp-lag bias}
+RW slot-4 error is restored only by the KF gain $K_{44}$ ($\mathbf F_e(4,4)=1$):
+\[ e_{a_x}[k+1] = (1-K_{44})\,e_{a_x}[k] + u[k],\qquad u=e_K\Delta h_d=r\,\hat a'_x\Delta h_d,\quad r:=e_K/\hat a'_x, \]
+quasi-static ($u$ const):
+\begin{empheq}[box=\fbox]{equation*}
+e_{ss}^{RW}(\bar h) = \frac{r\,\hat a'_x(\bar h)\,\Delta h_d}{K_{44}(\bar h)}
+\end{empheq}
+AR(1) adds the reversion pole $(1-\lc)$: $\ e_{a_x}[k+1]=(1-K_{44})[\lc\,e_{a_x}[k]+u[k]]$, so
+\[ e_{ss}^{AR(1)} = \frac{(1-K_{44})\,r\,\hat a'_x\Delta h_d}{(1-\lc)+K_{44}\lc},
+   \qquad \frac{e_{ss}^{AR(1)}}{e_{ss}^{RW}}\approx\frac{K_{44}}{1-\lc}\approx 8\times10^{-3}. \]
+The reversion suppresses the FF ramp-lag $\sim\!125\times$ vs RW (trough): the slope-error ramp is an \textbf{RW-branch} problem. (AR(1)'s price is instead the LEVEL bias $(1-\lc)\ealev$, \S3.5, transfer $T\!\approx\!1$.)
+
+\underline{\textit{Sinusoid rejection}}\ \ $u$ reverses sign each half-cycle; the leaky integrator $H(z)=1/(z-(1-K_{44}))$ attenuates the quasi-static peak by
+\begin{empheq}[box=\fbox]{equation*}
+A_{rej}(\bar h) = K_{44}\,|H(e^{j\omega T_s})| = \frac{1}{\sqrt{1+(\omega T_s/K_{44})^2}}
+\end{empheq}
+evaluated at the bias-peak \emph{flank} (where $|\Delta h_d|$ is max --- not the trough, where $\Delta h_d\!\to\!0$). Flank $K_{44}\!\approx\!5\times10^{-3}$: $A_{rej}\!\approx\!0.80$ (reproduces audit T1 step 4). The trough $K_{44}=2.4\times10^{-3}$ would give $0.52$, but $\Delta h_d\!\approx\!0$ there so it is not the operative point. {\small (See final message for the flag: the audit's $\times0.80$ holds only at the flank $K_{44}$; a naive trough eval gives $0.52$.)}
+
+\textit{Schmidt consider alternative (optional).}\ Carry $\theta$ as a \emph{consider} parameter --- propagate fixed $P_{\theta\theta}$ and cross $P_{x\theta}$ in the covariance, no $\theta$ state, no gain on $\theta$; inflates slot-4 $P$ by $(\partial a/\partial\theta)P_{\theta\theta}(\partial a/\partial\theta)^{\!\top}$. Captures $s_{lvl},s_K$ (stochastic) but not $b_{lvl},b_K$ (still bias table). Cost: a $4\times n_\theta$ cross block per axis per step, no control-path change.
+
+\hd{3.5\ AR(1) level term in $Q_{44}$}
+Only the \emph{stochastic} $s_{lvl}$ is $Q$-able; the deterministic $b_{lvl}$ is a bias (transfer $T\!\approx\!1$, G1) that goes to the table:
+\begin{empheq}[box=\fbox]{equation*}
+Q_{44}\ \mathrel{+}=\ (1-\lc)^2\,\mathrm{Var}(s_{lvl}) = (1-\lc)^2\,(\partial a/\partial\theta)^{\!\top} P_\theta\,(\partial a/\partial\theta)
+\end{empheq}
+{\small The audit's ``$Q_{44}\!+\!=\!(1-\lc)^2\mathrm{Var}(\ealev)$'' is read as the \emph{stochastic} component only; $b_{lvl}^2$ is not a variance and must not enter $Q$ --- it surfaces as the $1{:}1$ level bias, the un-$Q$-able cost of the AR(1) anchor.}
+
+\newpage
+\hd{3.6\ Relative-form rule $+$ far-field checklist}
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+\small
+\textbf{Ruling 2 (relative-form rule, commit 121f86a).}\ Every new $Q/R$ term scaling with $\Delta h_d^2$ or $\dot h$ must be parameterized \textbf{relative} to $\hat a'_x(\bar h)$ (i.e. $\propto \hat a'^2_x(\bar h)\times$ dimensionless), so it auto-deflates far field ($\sim\!8.6\times10^{-4}$). A frozen absolute coefficient (e.g. $\mathrm{Var}(e_K)$ pinned near-wall) over-inflates far-field $Q_{44}$ by $38$--$65\times$ (@ $\bar h{=}22$) and \textbf{diverges in closed loop while looking fine open-loop}.\\
+\textbf{Checklist (each new $\Delta h_d^2$/$\dot h$ term):}
+(i) $\bar h\!\to\!\infty$ limit of the term $\to 0$ (since $\hat a'_x\!\to\!0$, $K_h\!\to\!0$);
+(ii) term$/Q_{44}^{base}$ bounded over the whole trajectory (no $>\!10\times$ excursion);
+(iii) named test: closed-loop far-field descent segment, \texttt{fig\_L2\_C1\_q44\_farfield} --- any such term $>\!10\times$ its near-wall design value $\Rightarrow$ STOP.
+}}
+
+\hd{3.7\ Numeric anchors}
+$K_{44}$ (z DARE): $2.4\times10^{-3}$ (trough) / $5.8\times10^{-9}$ (@ $\bar h{=}22$). $r_z\!\ge\!3\%\Rightarrow$ breaks z $1\%$ budget.
+\medskip
+
+{\footnotesize\setlength{\tabcolsep}{5pt}
+\begin{tabular}{@{}p{4.55cm} p{2.2cm} p{2.35cm} p{1.5cm} p{4.0cm}@{}}
+\toprule
+\textbf{Term} ($|\hat a_x{-}a_x|/a_x$) & $\bar h{=}1.2$ & $\bar h{=}1.5$ & $\bar h\!\ge\!3.4$ & \textbf{Carrier} \\
+\midrule
+$b_{lvl}$ level bias (z, Z2)          & $0.94\%$        & $\sim\!0.7\%$   & $\to 0$ & bias table; AR(1) $\times T\!\approx\!1$ \\
+$b_{lvl}$ level bias (xy, M2)         & $1.16\%$        & $\sim\!0.9\%$   & $\to 0$ & bias table \\
+$e_{ss}^{RW}$ ramp (z, $r{=}1.44\%$)  & $0.23$--$0.33\%$ & $<\!0.2\%$      & $\to 0$ & offline $e_{ss}(\bar h)\times A_{rej}$ \\
+$e_{ss}^{RW}$ ramp (xy, $r\!\approx\!16\%$) & $3$--$4\%$  & $2$--$3\%$      & $\to 0$ & offline; budget $\le\!5\%$ \\
+$Q_{44}\mathrel{+}=(1-\lc)^2\mathrm{Var}(s_{lvl})$ & rel. & rel.  & $\to 0$ & relative form (\S3.6) \\
+\bottomrule
+\end{tabular}
+}
+
+\medskip
+{\small Level bias ($b_{lvl}$) and slope-ramp ($e_{ss}$) both auto-deflate far field ($\hat a'_x\!\to\!0$); the far-field $K_{44}=5.8\times10^{-9}$ does \emph{not} blow up $e_{ss}=r\hat a'_x\Delta h_d/K_{44}$ because the numerator $\hat a'_x\Delta h_d\to0$ faster --- the relative-form rule (\S3.6) is what guarantees this.}
+
+\newpage
+\hd{4.\ $y_2$ known-input correction}
+
+\hd{4.1\ Model-exact telescoped level correction}
+Base $y_2$ correction is the known telescoped increment sum (\texttt{sum\_da\_ff}, L307--314, consumed L547): $c[k]=\sum_{i=1}^{d}\Delta a_x[k-i] = \adet[k]-\adet[k-d]$. Under $\theta$-fit it becomes the fitted level difference
+\begin{empheq}[box=\fbox]{equation*}
+\hat c[k] = a(\hbd[k];\hat\theta) - a(\hbd[k{-}d];\hat\theta)
+\end{empheq}
+Like the FF (\S3.1) this is a difference of two fitted \emph{level} evals --- no $a'$ read, exact within the fitted model (no Taylor step). Corrected $y_2=a_{xm}+\hat c$ measures $a_x[k]$ with residual
+\[ r_2[k] = \underbrace{n_a[k] - \textstyle\sum_{i=1}^{d}\Delta a_{ram}[k-i]}_{\text{base }r_2}\; -\; e_c[k], \]
+\[ e_c[k] = c_{true}[k]-\hat c[k] = \Delta_d\ealev[k] := \ealev(\hbd[k])-\ealev(\hbd[k{-}d]) \approx \textstyle\sum_{i=1}^{d} e_K[k{-}i]\,\Delta h_d[k{-}i]. \]
+Same level-error-difference structure as the FF, now over a $d$-step window.
+
+\hd{4.2\ No new $R_{22}$ term (and no double-count)}
+$e_c$ is deterministic-dominated (the $b_K$ ramp of \S3.3, seen through a $d$-step window); its white content is negligible. A conservative all-as-variance estimate at the flank is $\lesssim\!10^{-7}R_{22}$, within the audit bound
+\begin{empheq}[box=\fbox]{equation*}
+\mathrm{Var}_{\mathrm{white}}(e_c) \le 1.5\times10^{-6}\,R_{22}\ \ (\text{near wall, C1-06}) \;\Rightarrow\; \text{no new $R_{22}$ term}
+\end{empheq}
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+\small \textbf{No double-count.} The deterministic part of $e_c$ is the \emph{same} $b_K/b_{lvl}$ curve misfit already carried by the \S3.4 slot-4 bias table --- one physical error, seen once in the predict (FF, \S3.1) and once in $y_2$ ($e_c$). Do \textbf{not} add both a bias-table entry \emph{and} an $R_{22}$ term for it.}}
+
+\hd{4.3\ $Q$--$R$ cross (documentation-debt payoff)}
+$r_2$ shares noise with the slot-4 process input, so $E[q_4 r_2]\neq0$ in general. Two crosses:
+\[
+\text{pre-existing:}\quad E[q_4[k]\,r_2[k]] =
+\begin{cases}
+0, & \text{AR(1): } q_4=a'_x\varepsilon[k]\ \text{white},\ r_2\ \text{past-only} \\[0.4ex]
+-\textstyle\sum_{i=1}^{d} R_{\Delta a_{ram}}(i), & \text{RW: } |{\cdot}|\lesssim(1-\lc)\,Q_{44}^{RW}
+\end{cases}
+\]
+\[
+\text{$\theta$-fit (shared $s_K$):}\quad E\big[\Delta\ealev[k]\,(-e_c[k])\big] = 0\ (s_K\ \text{white, disjoint lags}),\quad \le \rho_{s_K}\sqrt{Q_{44}^{s_K}\,R_{22}^{e_c}}\ \text{otherwise.}
+\]
+Normalized by $\sqrt{Q_{44}R_{22}}$ all are $\ll1$ ($Q_{44}\!\ll\!R_{22}$ near wall). \textbf{Standing assumption} (missing from \texttt{4state\_del\_hd.tex}): diagonal $\mathbf R$, $E[\mathbf q\,\mathbf r^{\!\top}]\!\approx\!0$, with the bounds above. AR(1) is \emph{exactly} cross-free --- one more reason it is the cleaner base.
+
+\hd{4.4\ De-blur is the alternative implementation}
+With \texttt{use\_deblur} the code skips $\hat c$ (L544--548) and instead normalizes $a_{xm}$ by $a(\hbd[k{-}d];\hat\theta)$ (L342--349): $\hat\kappa=\mathrm{EWMA}\big[(\delta x_r^2-C_n\sigma^2_{n})/(C_{dpmr}4k_BT\,\adet[k{-}d])\big]$, $a_{xm}^{db}=\hat\kappa\,\adet[k]$ --- the \emph{same} $d$-step alignment, performed inside the measurement rather than as an additive correction. Scale cancels in the $\hat\kappa$ ratio (weak self-reference); \textbf{DISABLED pending the \S8 independence analysis} (per Sec.\,2 table).
+
+\medskip
+{\small \textbf{Numeric anchor.} $z$, flank ($r{=}1.44\%$ Z2 slope, $d{=}2$): $|e_c|\sim\!10^{-4}a_x \ll \sqrt{R_{22}}\!\approx\!0.45\,a_x$ (the $44$--$47\%$ per-step $a_{xm}$ chi-sq floor). $e_c$ sits $\sim\!3$ orders below the measurement noise --- invisible to $y_2$.}
+
+\newpage
+\hd{5.\ Gate-off propagation}
+
+\hd{5.1\ Setup}
+Guard G3 ($\bar h_{\mathrm{meas}}<h_{safe}=1.5$, code L477) sets $R_{22}\!\to\!R_{OFF}=10^{10}$ (L482): the EKF runs $y_1$-only, slot 4 predict-only ($K_{44}\!\to\!0$). On the osc$_{1\mathrm{Hz}}$ trough passage this is $N\!\approx\!383$ consecutive steps/pass with $y_2$ off. Moreover at the trough $F_{dx}\!\to\!0$ (velocity reversal $\Rightarrow f_d\!\to\!0$), so $\mathbf F_e(3,4)=-F_{dx}\!\to\!0$ and $y_1$ carries \emph{no} info on slot 4 (C1-03): during trough gate-off slot 4 is \textbf{fully unobservable}. Only the model bounds it.
+
+\hd{5.2\ Error propagation (both branches)}
+Under the Phase-1 G0 ruling the supplier is \emph{also} gated, so on $\bar h\in[1.2,1.5)$ the fitted curve is pure extrapolation: level $b_{lvl}^{\mathrm{ex}}(\bar h)$, slope $e_K^{\mathrm{ex}}=r^{\mathrm{ex}}\hat a'_x$ (both $=$ L0 gated-fit columns).
+\begin{empheq}[box=\fbox]{equation*}
+\begin{aligned}
+\text{RW:}\quad & e_{a_x}(t) = e_{a_x}(k_0) + \!\!\int_{h_d(k_0)}^{h_d(t)}\!\! e_K\,dh' + \!\sum_{k_0}^{t}\Delta a_{ram} \\
+\text{AR(1):}\quad & e_{a_x}(t) \to b_{lvl}^{\mathrm{ex}}(\bar h_d(t)) \ \text{within}\ \tfrac{1}{1-\lc}\!\approx\!3\ \text{steps}
+\end{aligned}
+\end{empheq}
+RW \textbf{integrates $e_K$} (sign-coherent on descent; no restoring $\Rightarrow$ it also random-walk-drifts). AR(1) \textbf{locks onto the extrapolation level} $b_{lvl}^{\mathrm{ex}}$ (reversion needs no $y_2$): model-based, so it bounds slot 4 even when fully unobservable --- the one mechanism alive in the trough.
+
+\hd{5.3\ Peak error at the trough}
+\textbf{AR(1)}: $\ |e_{a_x}^{\mathrm{peak}}| = |b_{lvl}^{\mathrm{ex}}(1.2)| = 1.83\%\ (z,\text{ Z2 gated}),\ 5.40\%\ (xy,\text{ M2 gated}).$
+
+\textbf{RW}: the descent integral (audit C1-03 form)
+\[ e_{a_x}^{\mathrm{peak,RW}} = \!\int_{1.5}^{1.2}\! e_K\,dh' \approx r\,(a(1.5)-a(1.2)),
+   \qquad \frac{a(1.5)-a(1.2)}{a(1.2)} = \frac{c_\perp(1.2)}{c_\perp(1.5)}-1 = \frac{6.35}{4.34}-1 = 0.463 \]
+so $z$: $e_{a_x}^{\mathrm{peak,RW}}/a \approx 0.46\,r$ (of local trough $a$). For the gated $z$ slope error $r\!\sim\!1$--$2\%$: $0.5$--$0.9\%$. $xy$: integrated $\sim\!15\%$ (audit; M2 gated slope $21$--$67\%$). {\small (\textbf{Flag:} the audit's ``$\sim\!1\%$ of local $a$ per $1\%$ slope'' implies sensitivity $\sim\!1.0$; my closed form gives $0.46$ from $c_\perp(1.2)/c_\perp(1.5)$ --- a $\sim\!2\times$ gap, reconcilable if $r^{\mathrm{ex}}$ grows toward the trough so the integral weights the deep region. See final message; resolve at L2.)}
+
+The round trip cancels the deterministic integral by re-entry ($\int_{1.5}^{1.2}\!+\!\int_{1.2}^{1.5}\!\approx\!0$); RW's error \emph{at re-entry} is $e_{a_x}(k_0)+$ random-walk drift $\sqrt{N}\,\sigma_{\Delta a_{ram}}$, not the integral.
+
+\hd{5.4\ $P(4,4)$ deterministic floor}
+With $y_2$ off, $P_{44}$ grows only by $Q_{44}$/step (RW: $P_{44}\!+\!=\!Q_{44}$; AR(1): $P_{44}\!\to\!q_4/(1{-}\lc^2)$, bounded) --- but the deterministic extrapolation error is \emph{not} in $Q_{44}$ (\S3 carrier rule), so $P_{44}$ understates the true slot-4 uncertainty in the trough.
+
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+\small \textbf{Ruling 3 (gate-off $P$ floor).} While G3 active, add a \emph{deterministic} $P(4,4)$ floor (a floor, \textbf{not} $Q$):
+\[ \begin{aligned}
+P_{44}^{\mathrm{fl}}(k) &= \big[\,b_{lvl}^{\mathrm{ex}}(\bar h_d[k])\,\big]^2 & &(\text{AR(1)}) \\
+&= \big[\,\textstyle\int_{h(k_0)}^{h(k)} e_K\,dh'\,\big]^2 & &(\text{RW})
+\end{aligned} \]
+Remove it on gate re-entry. It represents the bias-envelope the filter is blind to, preventing overconfident fusion at the first post-gate $y_2$ sample.}}
+
+\hd{5.5\ Gate re-entry transient}
+At $\bar h\!\uparrow\!1.5$, $y_2$ returns; the first correction is $\Delta\hat a_x = K_{44}^{re}\,(e_{a_x}+r_2)$, $K_{44}^{re}=P_{44}^{\mathrm{fl}}/(P_{44}^{\mathrm{fl}}+R_{22})$. With $\sqrt{R_{22}}/a\!\approx\!0.45$ (the $44$--$47\%$ $a_{xm}$ chi-sq floor, $R_{22}/a^2\!\approx\!0.2$) the recovery time is
+\begin{empheq}[box=\fbox]{equation*}
+\tau_{re} \approx \frac{1}{K_{44}^{re}} \approx \frac{R_{22}/a^2}{(\text{peak}/a)^2} = \frac{0.2}{(\text{peak}/a)^2}\quad(P_{44}^{\mathrm{fl}}\!\ll\!R_{22})
+\end{empheq}
+So the floor speeds recovery from $\gg\!10^4$ steps (no floor: $P_{44}$ tiny $\Rightarrow$ overconfident, clings to bias) to $R_{22}$-limited $\tau_{re}$. {\small \textbf{Flag:} $\tau_{re}$ is $O(1$--$10)$ steps \emph{only} for large bias (xy RW $15\%\Rightarrow\!\sim\!10$); for small bias ($z\ 1$--$2\%\Rightarrow\!\sim\!500$--$2000$) recovery stays $a_{xm}$-SNR-limited, \emph{not} ``$O(1)$ step''.} Crucially, \textbf{AR(1) needs no re-entry correction}: its reversion self-corrects $e_{a_x}\!\to\!b_{lvl}(\bar h)$ (in-band) in $\sim\!3$ steps as $\bar h$ climbs, independent of $y_2$ --- the reversion \emph{is} the gate-off floor. Re-entry recovery is an RW-branch problem.
+
+\hd{5.6\ Supplier side (frozen extrapolation)}
+Under Phase-1 G0 the RLS sees no data on $[1.2,1.5)$; the extrapolation curves $b^{\mathrm{ex}}$ are \textbf{frozen} properties of (basis $+$ training band) $=$ exactly L0's gated-fit columns. \emph{Forward pointer}: if T3-7's Phase-2 flip ($\beta$-corrected near-wall training) lands, the penalty collapses to the dwell-trained numbers ($z$ $1.83\!\to\!0.94\%$, $xy$ $5.40\!\to\!1.16\%$); the S5 formulas stay valid with the new (smaller) $b$ curves.
+
+\hd{5.7\ Numeric anchors}
+$\lc{=}0.7$, $N{=}383$, $R_{22}/a^2\!\approx\!0.2$, L0 gated-fit levels.
+\medskip
+
+{\footnotesize\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}p{4.9cm} p{2.35cm} p{2.35cm} p{2.35cm} p{2.35cm}@{}}
+\toprule
+\textbf{Quantity} & $z$ AR(1) & $z$ RW & $xy$ AR(1) & $xy$ RW \\
+\midrule
+peak trough $|e_{a_x}|/a_x$              & $1.83\%$ & $0.5$--$0.9\%$ & $5.40\%$ & $\sim\!15\%$ \\
+$P_{44}^{\mathrm{fl}}/a_x^2=(\text{peak})^2$ & $3.4\!\times\!10^{-4}$ & $\sim\!5\!\times\!10^{-5}$ & $2.9\!\times\!10^{-3}$ & $2.3\!\times\!10^{-2}$ \\
+recovery mechanism                       & reversion & $y_2{+}$floor & reversion & $y_2{+}$floor \\
+recovery time (steps)                    & $\sim\!3$ & $\sim\!2000$ & $\sim\!3$ & $\sim\!10$ \\
+recovery, no floor (RW)                  & --- & $\gg\!10^4$ & --- & $\gg\!10^4$ \\
+\bottomrule
+\end{tabular}
+}
+
+\medskip
+{\small AR(1) recovers by reversion ($\sim\!1/(1{-}\lc)$ steps) regardless of $y_2$ or peak size --- the reversion is the natural gate-off floor. RW recovery is $R_{22}$-limited ($\tau_{re}\!\approx\!0.2/\text{peak}^2$): fast only when the bias is large ($xy$). This is the decisive gate-off argument for AR(1).}
+
+\newpage
+\hd{6.\ $\theta$-RLS supplier spec}
+
+\hd{6.1\ Training-stream data model}
+The supplier trains on $a_{xm}$, which carries three corruptions on top of $a_{true}$:
+\begin{empheq}[box=\fbox]{equation*}
+a_{xm}[k] = \underbrace{m(g[k])}_{\text{g-loop}}\cdot\underbrace{(1+\beta(\bar h))}_{\text{h-blur}}\cdot a_{true}\!\big(\bar h[k{-}d{-}L_{eff}]\big) + \underbrace{\nu[k]}_{\text{chi-sq floor}}
+\end{empheq}
+\begin{itemize}[leftmargin=1.4em,itemsep=0pt,topsep=1pt]
+\item $m(g)=C_{dpmr}(\lambda_{eff})/C_{dpmr}(\lc)$, $\lambda_{eff}=1-g(1-\lc)$, $g:=a_{true}/\hat a_x$ --- the g-loop scale (C1-08 $+$ cross-session 2026-07-07). $m(1){=}1$; $dm/dg|_1=-0.41$.
+\item $\beta(\bar h)$ --- EWMA h-blur bias ($\sim\!63\%$ of the measured $+11\%$ at trough; G3, T3-1).
+\item $L_{eff}=(1-a_{cov})/a_{cov}=19$ steps --- EWMA window-centre lag (C1-11).
+\item $\nu[k]$ --- chi-sq floor, rel.\ std $44$--$47\%$/step, $\tau_{int}\!\approx\!39$ steps (C1-10).
+\end{itemize}
+
+\hd{6.2\ RLS specification (per axis)}
+Replaces the exploratory hand-set scalar KF of C1-10 ($R{=}(0.42a)^2$, $\tau{=}20$, which under-counts $\mathrm{Var}(e_\theta)$ by $\sim\!2.2\times$ since the true $\tau_{int}{=}39$).
+
+\textbf{Regressor pairing}: $\big(\bar h_d[k{-}d{-}L_{eff}],\ a_{xm}[k]\big)$ --- the window-centre correction of \S3/C1-11 (pair the measurement to the height at its EWMA window centre, not $\bar h[k]$).
+
+\textbf{Basis $+$ priors (G0), as Bayesian pseudo-observations}:
+\[
+\begin{aligned}
+z\ (\text{Z2}):\ & c = 1 + \tfrac{\theta_1}{\bar h-1} + \tfrac{\theta_2}{\bar h}, & & \theta_1{+}\theta_2 \sim N\!\big(\tfrac98,\ \sigma_{pr}^2\big)\ \ \text{(Brenner; pins collinear, corr } 0.94) \\
+xy\ (\text{M2}):\ & a = a_{nom}(1 - b_1 u - b_3 u^3),\ u{:=}\tfrac1{\bar h}, & & b_1 \sim N(\tfrac{9}{16},\text{soft})\ \text{(Faxén)},\ \ b_3\!\to\!0\ (\text{corr}\,0.97)
+\end{aligned}
+\]
+Fallbacks Z1 rel-LS / M1 stay defined as ladder rungs.
+
+\textbf{Measurement variance} (the derived chi-sq floor, bound to \texttt{build\_eq17\_6state\_constants}):
+\[ R_{RLS}[k] = K_{var}\,IF_{eff}\,(\hat a_x + \xi)^2 \]
+
+\textbf{In-band training discipline}: train only when G3 off \emph{and} $\bar h_d \le h_{train}\ (\sim\!4$--$5)$. The info weight $(\partial a/\partial\theta)^2/R_{RLS}$ decays far-field naturally (numerator $\to0$ as $\bar h\!\to\!\infty$); the hard cap $h_{train}$ additionally blocks far-band data, which would otherwise flip the sign of the 2nd parameter (L0 band-shift: $\theta^\ast(\text{band})$ drift).
+
+\textbf{Forgetting $\leftrightarrow$ $\mathrm{Var}(e_\theta)_{ss}$} (scalar, persistent excitation $\phi=\partial a/\partial\theta|_{\text{train}}$):
+\[ P_{\theta,ss} \approx \frac{(1-\lambda_f)\,R_{RLS}}{\phi^2}, \qquad
+   \mathrm{Var}(s_{lvl}) = \Big(\tfrac{\partial a}{\partial\theta}\Big)^{\!2}\!P_{\theta,ss},\quad
+   \mathrm{Var}(s_K) = \Big(\tfrac{\partial a'}{\partial\theta}\Big)^{\!2}\!P_{\theta,ss} \]
+(the Jacobian map of \S3.2 into $Q_{44}$). Smaller $1-\lambda_f$ $\Rightarrow$ smaller supplier noise, but slower tracking of $\theta^\ast(\bar h)$ --- and, crucially, a smaller anchor-loop gain (\S6.3), which is the binding constraint.
+
+\hd{6.3\ Anchor-loop design constraint}
+The RLS anchor $\hat\adet=a(\bar h_d;\hat\theta)$ closes the g-loop through \emph{physics}: $\hat a_x\!\to\!f_d\!\to\!\delta x\!\to\!\hat\sigma^2_{\delta x_r}\!\to\!a_{xm}\!\to\!\hat\theta\!\to\!\hat\adet\!\to$ predict (cross-session 2026-07-07, 5-layer verified). The anchor moves per step by $(\partial a/\partial\theta)\,K_\theta[k]$ per unit innovation; with forgetting the steady RLS gain gives, at matched training/operating height,
+\[ \alpha_{eq} = \frac{\partial a/\partial\theta|_{\bar h_d[k]}}{\partial a/\partial\theta|_{\text{train}}}\,(1-\lambda_f)\,\big|P_{tilt}(\bar h)\big|
+   \;\approx\; (1-\lambda_f)\,\big|P_{tilt}(\bar h)\big|. \]
+\underline{\textit{Two structural suppressors vs the raw }$a_{m\_det}$\underline{ anchor}}
+\begin{itemize}[leftmargin=1.4em,itemsep=1pt,topsep=1pt]
+\item \textbf{(i) Scale-absorption blocking}: a global scale $m$ on the data cannot be represented by the basis ($a_{nom}$ fixed); by the G6 mechanism it maps to a bounded \emph{tilt} ($d\theta{=}{+}2.56\varepsilon$ dwell-weighted), not $1{:}1$ scaling. The residual projection at the operating height is $|P_{tilt}|\!\approx\!0.9$ ($-0.92$ trough, sign-flipped $\Rightarrow$ stabilizing; $+0.88$ far). \emph{Weak} suppressor ($\sim\!10\%$).
+\item \textbf{(ii) Memory}: the RLS integrates the whole history $\Rightarrow$ per-step gain $\to(1-\lambda_f)$, vs the $a_{m\_det}$ EWMA $\alpha{=}0.005$ ($P_{tilt}{=}1$, only $1.6\times$ below the cliff). This is the \emph{dominant} suppressor --- \emph{but only if} $\lambda_f$ meets the constraint; a fast-forgetting RLS recreates the cliff.
+\end{itemize}
+
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+\small \textbf{Ruling 4 (anchor-loop safety, not acyclicity).} Algorithmic acyclicity is \textbf{not} the safety argument (cross-session falsification: the loop closes through physics; noise-triggered escape at cliff $\alpha^\ast{=}0.008$, seed-dependent). The argument is loop-gain below the cliff with margin $M\!\ge\!4$ (justified by the $46\%$ chi-sq fluctuation $+$ seed-dependence: $0.007\!\to\!0/5$, $0.008\!\to\!1/5$, $0.020\!\to\!5/5$):
+\[ \alpha_{eq} = (1-\lambda_f)\,|P_{tilt}| \ \le\ \frac{\alpha^\ast}{M} = \frac{0.008}{4} = 0.002 \quad\Longrightarrow\quad \boxed{\lambda_f \ge 0.999}. \]
+Full physical-loop treatment (mean part $=$ C1-08 fixed point $\lambda_{eff}{=}1{-}g(1{-}\lc)$, $dm/dg{=}{-}0.41$): \S8.}}
+
+\hd{6.4\ Warm-up handoff}
+Before $\theta$ convergence the FF runs the A-floor $\hat a'_x{=}0$ (\S7): the slot-4 FF is off, so the g-loop is not yet closed. Enable the fitted slope only when the RLS slope uncertainty falls below the target (consistent with \S7):
+\[ (\partial a'/\partial\theta)^2\,P_\theta \ <\ (r_{target}\,\hat a'_x)^2. \]
+The soft prior collapses $P_\theta$ fast, bounding the early $K_\theta$-transient in $\alpha_{eq}$.
+
+\hd{6.5\ Forbidden inputs}
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+\small \textbf{The RLS must never read}: $\hat a_x$; $a_{ctrl}$; EKF innovations ($e_{y_1},e_{y_2}$); fit-normalized de-blur output ($\hat\kappa\,\adet$, self-referential). \textbf{Plus (physical-loop)}: any quantity whose statistics depend on tracking quality --- $\hat\sigma^2_{\delta x_r}$ may enter \emph{only} through $a_{xm}$ (no second entry point), else the loop gains a bypass around $P_{tilt}$.\\
+\emph{Future (out of MVP)}: $p_{md}$ ($\delta\bar x_m$, the LP mean) carries a $(1-g)\,D[k]$ first-moment term --- a \emph{signed} g-observation channel (parallel-session discovery), a candidate de-confounder. Forward-ref S8/T3.}}
+
+\hd{6.6\ Numeric anchors}
+Priors: $z$ $\theta_1{+}\theta_2\!\sim\!N(1.125,\sigma_{pr}^2)$; $xy$ $b_1\!\sim\!N(0.5625,\text{soft})$, $b_3\!\to\!0$. $R_{RLS}\!\propto\!(\hat a_x{+}\xi)^2$: smaller (abs.) at trough ($\hat a$ small), larger far. $|P_{tilt}|\!\approx\!0.9$, $\alpha^\ast{=}0.008$, $M{=}4$.
+\medskip
+
+{\footnotesize\setlength{\tabcolsep}{7pt}
+\begin{tabular}{@{}p{2.2cm} p{1.7cm} p{2.6cm} p{2.4cm} p{2.0cm} p{2.6cm}@{}}
+\toprule
+$\lambda_f$ & $1-\lambda_f$ & $\alpha_{eq}=(1{-}\lambda_f)|P_{tilt}|$ & margin $\alpha_{eq}/\alpha^\ast$ & verdict & $\mathrm{Var}(s_{lvl})$@trough \\
+\midrule
+$1$        & $0$      & $0$                 & $0$    & PASS$^\dagger$ & $\to 0$ (frozen) \\
+$0.9999$   & $10^{-4}$ & $9\times10^{-5}$   & $0.011$ & PASS  & $\sim\!10^{-4}(\hat a\xi\text{-set})$ \\
+$0.999$    & $10^{-3}$ & $9\times10^{-4}$   & $0.11$  & PASS  & $\sim\!(1{-}\lambda_f)R_{RLS}$ \\
+$0.99$     & $10^{-2}$ & $9\times10^{-3}$   & $1.13$  & \textbf{FAIL} & (above cliff) \\
+\bottomrule
+\end{tabular}
+}
+
+\medskip
+{\small Constraint $\alpha_{eq}\!\le\!\alpha^\ast/M{=}0.002$ (margin $\le\!0.25$) $\Rightarrow$ $\lambda_f\!\ge\!0.999$. $\lambda_f{=}0.99$ sits \emph{above} the cliff (margin $1.13$) --- diverges. $^\dagger$ $\lambda_f{=}1$ is safest for the loop but freezes $\theta^\ast(\bar h)$ $\Rightarrow$ band-dependent bias (C1-10); the working range is $\lambda_f\!\in\![0.999,1)$. Note $\mathrm{Var}(s_{lvl})\!\propto\!(1{-}\lambda_f)$ trades \emph{against} loop safety and tracking --- all three want the same $\lambda_f\!\gtrsim\!0.999$.}
+
+\newpage
+\hd{7.\ Init $+$ warm-up}
+Replaces every true-$c$ init read (CR-3: \texttt{a\_x\_init} L182, \texttt{K\_h\_init} L183, $\sigma^2_{\delta h,init}$ L199, DARE $P$ seed L216) with a $\theta$-prior evaluation. The trajectory gives a clean far-field warm-up: hold $0.5$\,s at $\bar h\!\approx\!22$ $\to$ descend $1$\,s $\to$ osc.
+
+\hd{7.1\ $\theta$ prior init values}
+Centers from S6 universal physics: $z$ (Z2) $\theta_1{+}\theta_2=\tfrac98$ (Brenner), $xy$ (M2) $b_1=\tfrac{9}{16}$ (Faxén), $b_3{=}0$. \textbf{Split decision} ($z$):
+\begin{empheq}[box=\fbox]{equation*}
+\theta_{1,0} = \tfrac98,\qquad \theta_{2,0} = 0
+\end{empheq}
+Far-field data constrains only the \emph{sum} ($\tfrac1{\bar h-1}$ and $\tfrac1{\bar h}$ are collinear as $\bar h\!\to\!\infty$, corr $0.94$); the split is resolved only near the wall, unknown pre-data, so $\theta_{2,0}{=}0$ is the neutral choice. The L0-informed split ($\theta_1^\ast{=}1.062,\theta_2^\ast{=}0.116$) is \textbf{rejected}: it would be read from the true $c$ (scope violation) --- literature gives the \emph{sum} $\tfrac98$ (universal), not the split.
+
+\textbf{Prior widths} (cover the true value, bound the early $K_\theta$-transient, \S6.4): the true $\theta^\ast$ sits $\sim\!0.05$--$0.12$ from centers ($z$ $\theta_1^\ast{+}\theta_2^\ast{=}1.178$ vs $1.125$, $+4.7\%$; $xy$ $b_1^\ast{=}0.539$ vs $0.5625$, $-4.2\%$). Take $\sigma_{pr}(\text{sum})\!\sim\!0.05$--$0.1$ (tight; Brenner universal), $\sigma_{pr}(\text{split }\theta_2)\!\sim\!0.15$ (wide; unknown), $\sigma_{pr}(b_1)\!\sim\!0.05$, $b_3$ shrinkage $\sim\!0.05$.
+
+\hd{7.2\ Init chain (far-field, $\bar h_{init}\!\approx\!22$)}
+$c(22;\theta_0)=1+\tfrac{9/8}{21}=1.0536$ vs true $c_\perp(22){=}1.053$ ($+0.06\%$). Each station is therefore $\approx a_{nom}$ to $<0.5\%$, all transient (absorbed in the hold):
+\[ \hat a_{x,init}=\frac{a_{nom}}{c(\bar h_{init};\theta_0)}=0.949\,a_{nom},\quad
+   K_{h,init}=\tfrac1c\tfrac{dc}{d\bar h}\Big|_{\theta_0}\!=-2.4{\times}10^{-3}\ (\approx0),\quad
+   \sigma^2_{\delta h,init}=4k_BT\,\frac{a_{nom}}{c_\perp(\theta_{0z})}. \]
+
+\hd{7.3\ $P(4,4)$ init compression (CR-3 hazard)}
+The naive consistency map $P_{44}^{init}=(\partial a/\partial\theta|_{init})^2\mathrm{Var}(\theta_0)$ is dangerous \emph{near wall} ($\sim\!2000\times$ DARE $\Rightarrow$ a-slot blow-up; buffer-deeper: $10a_{nom}^2{=}2.16{\times}10^{-3}$ diverges). But at far-field init $\partial a/\partial\theta|_{22}=\phi(22)\!\approx\!0.045\,a_{nom}$ is small, so
+\[ P_{44,\text{naive}}^{init}(22) = \phi(22)^2\,\sigma_{pr}^2 \approx (0.045)^2 a_{nom}^2 (0.15)^2 \approx 1{\times}10^{-8}\ \ll\ P_{44}^{\mathrm{DARE}}\!\sim\!10^{-6} \]
+so the naive map is \textbf{benign at far-field init} (unlike the near-wall case the audit flagged). Since steady-state $P$ is init-independent (Task-04: $P_{init}$ has no bias effect), this is a \emph{stability}/transient concern only. Design rule:
+
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+\small \textbf{Init table} ($\kappa\!\in\![1,10]$, but $\kappa\!\lesssim\!3$ safer --- buffer-deeper marginal band $2$--$20\times$DARE; $2.16{\times}10^{-7}$ stable, $2.16{\times}10^{-3}$ blow-up):
+\smallskip
+
+{\footnotesize\setlength{\tabcolsep}{5pt}
+\begin{tabular}{@{}p{2.15cm} p{4.6cm} p{3.0cm} p{2.4cm}@{}}
+\toprule
+station & formula & far-field ($\bar h{=}22$) & residual \\
+\midrule
+$\hat a_{x,init}$ & $a_{nom}/c(\bar h_{init};\theta_0)$ & $0.949\,a_{nom}$ & $<\!0.1\%$ \\
+$K_{h,init}$ & $\tfrac1c\,dc/d\bar h|_{\theta_0}$ & $-2.4{\times}10^{-3}$ & $\approx\!0$ \\
+$\sigma^2_{\delta h,init}$ & $4k_BT\,a_{nom}/c_\perp(\theta_{0z})$ & $4k_BT(0.949a_{nom})$ & $<\!0.5\%$ \\
+$P_{44}^{init}$ & $\max\!\big(\phi^2\sigma_{pr}^2,\ \kappa P_{44}^{\mathrm{DARE}}\big)$ & $\kappa P_{44}^{\mathrm{DARE}}\!\sim\!10^{-6}$ & transient \\
+$\theta_0,P_{\theta,0}$ & $(\tfrac98,0)_z/(\tfrac9{16},0)_{xy};\ \sigma_{pr}^2$ & center; sum tight/split wide & $4$--$5\%$ \\
+\bottomrule
+\end{tabular}}
+}}
+
+\hd{7.4\ Warm-up sequence $+$ FF-enable}
+Three phases on osc$_{1\mathrm{Hz}}$: \textbf{(i) hold} $[0,0.5\,\text{s}]$: existing G1 ($t{<}t_{warmup,kf}{=}0.2$\,s); RLS trains at far field (a\_nom-scale, G6 anchor); FF disabled ($\hat a'_x{:=}0$, A-floor). \textbf{(ii) descend}: FF-enables at the S6.4 criterion, with hysteresis. \textbf{(iii) osc} steady state.
+
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+\small \textbf{FF-enable (with hysteresis).}\ \ enable when $(\partial a'/\partial\theta)^2 P_\theta < (r_{target}\,\hat a'_x)^2$; disable only if $>(2 r_{target}\,\hat a'_x)^2$. The factor $2$ prevents chattering under the $46\%$ chi-sq fluctuation (a single-threshold gate would toggle every few steps near the boundary). \textbf{Requirement}: enable \emph{before} $\bar h\!<\!3$ (else the no-FF ramp lag $\sim\!30\%$, C1-12).}}
+
+\textit{Expected enable time}: $\hat a'_x\!\to\!0$ far field makes the RHS tiny during hold, so enable fires on the descent once $\hat a'_x$ (hence RHS) has grown and $P_\theta$ collapsed; order $\sim\!0.3$--$0.7$\,s into the descent ($\bar h\!\sim\!8$--$12$), comfortably before $\bar h\!<\!3$. Flag: L1-measurable (RLS collapse rate $\times$ descend $\phi$ ramp).
+
+\hd{7.5\ A-floor BIBO $+$ $Q_{44}$ never zero}
+During $\hat a'_x{=}0$ the slot-4 predict is AR(1) $\lc a_x+(1-\lc)\hat\adet$ (fit still converging) or RW frozen $a$. Boundedness: AR(1) $e_{a_x}$ is bounded by $|\ealev|_{warmup}$ ($<\!0.5\%$ far field, growing near wall $\Rightarrow$ the enable-before-$\bar h{<}3$ requirement); RW by the no-FF ramp lag ($\sim\!30\%$ near wall if descent finishes first). The \textbf{worst case} (C1-12: literal A-floor $Q_{44}{=}0$ $+$ G3 near wall $\to 170$--$490\%$) is ruled out:
+
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+\small \textbf{$Q_{44}$ never zeroed.} The A-floor zeros $\hat a'_x$ for the \emph{FF predict increment} only --- \textbf{not} $Q_{44}$. Keep $Q_{44}\ge Q_{44}^{fl}>0$ (a warm-up floor) so the a-slot stays adaptive; else A-floor $Q_{44}{=}0$ $+$ G3 (both channels dead) freezes the slot ($170$--$490\%$, C1-12).}}
+
+\hd{7.6\ Numeric anchors}
+{\small $\bar h_{init}{=}22$ init residuals $<\!0.5\%$/station (see \S7.3 box), all decayed within the $0.5$\,s hold. FF-enable window $\sim\!0.3$--$0.7$\,s (descend, $\bar h\!\sim\!8$--$12$). A-floor worst-case: AR(1) $\lesssim\!0.5\%$ (far) / $\lesssim\!|\ealev(3)|$ if late-enable; RW $\sim\!30\%$ if enable misses $\bar h{<}3$ --- hence the hard requirement. $P_{44}^{init}{=}\kappa P_{44}^{\mathrm{DARE}}$, $\kappa\!\lesssim\!3$.}
+
+\newpage
+\hd{8.\ Independence --- the physical g-loop}
+S3--S7 treated $\ealev/e_K$ as exogenous. Cross-session (2026-07-07) proved algorithmic acyclicity does \emph{not} license this: the loop closes through physics. S8 analyzes the full loop, states the conditions for the exogenous treatment, and specifies the verifying tests.
+
+\hd{8.1\ The full loop map}
+\textbf{PHYSICAL} leg (uncuttable --- it is the plant): $\ \hat a_x \xrightarrow{\,f_d\,} \delta x \to \hat\sigma^2_{\delta x_r} \to a_{xm}$.
+\ \ \textbf{ALGORITHMIC} return (S6.5 severs algebraic shortcuts): $a_{xm}$ feeds two paths back to $\hat a_x$,
+\[
+\begin{cases}
+\text{P1: } y_2 \to \text{EKF slot 4} \to \hat a_x & (\text{fast, per-step}) \\
+\text{P2: RLS} \to \hat\theta \to a(\bar h_d;\hat\theta),\,\text{FF},\,Q_{44}/R_{22} \to \hat a_x & (\text{slow})
+\end{cases}
+\]
+The forbidden-inputs list cuts algebraic shortcuts (selfdet-type), but the physical leg cannot be cut by code discipline.
+
+\hd{8.2\ Mean-path (DC) analysis}
+Compose stage log-gains at $g{=}1$: $\ d\ln g/d\ln\hat a_x=-1$; $\ d\ln a_{xm}/d\ln g = dm/dg|_1=-0.41$ (C1-08) $\Rightarrow$ forward physics $d\ln a_{xm}/d\ln\hat a_x=+0.41$. With the anchor$\to\hat a_x$ DC transfer (EWMA $a_{m\_det}$: $1$; RLS: $|P_{tilt}|\!\approx\!0.9$) and lumped $\beta$/lag/$T$ attenuation $\eta\!\approx\!0.76$:
+\[ S_{DC} = |dm/dg|_1\cdot(\text{anchor DC})\cdot\eta =
+\begin{cases} 0.41\cdot 1\cdot 0.76 \approx 0.31 & (\text{EWMA; matches parallel } S\!\approx\!0.31) \\ 0.41\cdot 0.9\cdot 0.76 \approx 0.28 & (\text{RLS, smaller}) \end{cases} \]
+$|S_{DC}|<1$ $\Rightarrow$ unique contracting fixed point (stable). The C1-08 amplification $1/(1-S_{DC})$ is the \textbf{mean equilibrium shift}, not instability: $1/(1{-}0.41){=}1.69$ (the $|dm/dg|$ bound), measured $1/(1{-}0.31){=}1.45$ (production $1.38$--$1.52$). The $+12\%$ decomposes as open-loop $1.6$--$3.7\%$ $+$ $\sim\!8$pt loop-equilibrium shift; the linear $1/(1{-}S)$ captures leading order, the remainder is $m(g)$ nonlinearity.
+
+\hd{8.3\ Fluctuation / escape}
+DC contraction does \emph{not} preclude noise-triggered escape. The chi-sq stream $\nu$ (rel.\ std $46\%$/step, $\tau_{int}\!\approx\!39$) enters $\hat\sigma^2_{\delta x_r}\!\to\!a_{xm}\!\to$ anchor every step. Through the \emph{nonlinear} $m(g)$, a rare large downward $a_{xm}$ excursion pushes $\hat a_x$, shifting $g$ into a region where the local $|dm/dg|$ momentarily exceeds the contraction margin; the per-step anchor gain $\alpha$ sets how much of each excursion commits to $\hat a_x$. Below the cliff excursions decay; above, a large deviation escapes the finite basin ($S_{DC}\!<\!1$ is only \emph{local}). Seed-dependence reflects the rare trigger: $\alpha^\ast{=}0.008$ ($0.007\!\to\!0/5$, $0.008\!\to\!1/5$, $0.010\!\to\!3/5$, $0.020\!\to\!5/5$). This is metastable escape, not mean instability. The operative fluctuation-safety condition is S6 Ruling 4: $\alpha_{eq}\le\alpha^\ast/M$, $M\!\ge\!4$ (margin sized to clear the seed-dependent onset $0.007$--$0.008$ under the $46\%$ fluctuation; $M{=}1$ would sit at the $1/5$-escape point).
+
+\hd{8.4\ The anchor-gain spectrum}
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+\small \textbf{One phenomenon, three loop gains} (per-step anchor gain vs cliff $\alpha^\ast{=}0.008$):
+\smallskip
+
+{\footnotesize\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}p{3.5cm} p{2.9cm} p{2.5cm} p{4.4cm}@{}}
+\toprule
+anchor & per-step gain & vs cliff & outcome \\
+\midrule
+selfdet ($\adet{:=}\hat a_x$) & $1$ (algebraic) & $125\times$ cliff & $3/3$ diverged \\
+$a_{m\_det}$ EWMA & $0.005$ & $1.6\times$ below & marginal; $+12\%$ ($\sim\!8$pt loop) \\
+$\theta$-RLS ($\lambda_f{=}0.999$) & $9{\times}10^{-4}$ & $9\times$ below & predicted safe \\
+\bottomrule
+\end{tabular}}
+\smallskip
+
+The three historical outcomes are the \emph{same} loop at three gains --- selfdet, $a_{m\_det}$, and $\theta$-RLS differ only in $\alpha$.}}
+
+\hd{8.5\ Shared-noise covariance}
+$e_K$ (via $s_K$) and $e_{a_x}$ (via $K_{44}$) are both driven by the \emph{same} chi-sq stream $\nu$ (the $a_{xm}$ noise, audit $n_a$): $e_{a_x}$ gets $K_{44}\nu$ (P1), $s_K=(\partial a'/\partial\theta)K_\theta\nu$ (P2). Over the $\tau_{int}$ window,
+\[ \mathrm{Cov}(e_K,e_{a_x}) \sim (\partial a'/\partial\theta)\,K_\theta\,K_{44}\,\mathrm{Var}(\nu)\,\tau_{int},\qquad
+   |\mathrm{Cov}| \le \rho_\nu\sqrt{\mathrm{Var}(s_K)\,\mathrm{Var}(e_{a_x})}. \]
+Both anchor gains are small ($K_\theta\!\sim\!(1{-}\lambda_f)\!\sim\!10^{-3}$, $K_{44}\!\sim\!10^{-3}$ near wall), so $\rho_\nu$ is a product of two tiny gains: the cross is second-order. Consequence: treating $e_K,e_{a_x}$ independent in the S3 carrier bookkeeping makes $P$ \emph{optimistic} by $2\,\mathrm{Cov}/Q_{44}\lesssim 5\%$ of $Q_{44}$ (order estimate); identically for $\mathrm{Cov}(s_{lvl},e_{a_x})$. $\ll$ the $1\%$ budget (C1-09).
+
+\hd{8.6\ The conditioned-exogeneity license}
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{%
+\small \textbf{Ruling 5 (conditioned exogeneity).} $\ealev/e_K$ may be treated as exogenous in the S3--S7 bookkeeping \textbf{iff} all four hold:
+(i) forbidden-inputs list (S6.5) --- \emph{algorithmic} layer;
+(ii) anchor-loop gain Ruling 4, $\lambda_f\!\ge\!0.999$ --- \emph{fluctuation} layer;
+(iii) shared-noise Cov within the \S8.5 bounds --- \emph{bookkeeping} layer;
+(iv) verified by the \S8.7 ablations.
+Violation of \emph{any} $\Rightarrow$ the S3 carrier table is invalid (the loop is not exogenous; the $Q/R$ sizing is wrong).}}
+
+\hd{8.7\ Verification spec (interventions, L2)}
+\begin{itemize}[leftmargin=1.4em,itemsep=1pt,topsep=1pt]
+\item \textbf{(a) freeze-$\theta$ oracle}: same seed $+$ \texttt{clear}; live RLS vs $\theta$ frozen at its converged value. The difference isolates the supplier-loop contribution. \emph{Holds}: difference $\ll$ budget. \emph{Fails}: difference grows/diverges.
+\item \textbf{(b) cut-physics}: $a_{ctrl}{:=}$ true gain (oracle) while the estimator runs normally --- kills the physical leg, isolates the measurement chain. \emph{Holds}: $\hat a_x$ error drops to open-loop $1.6$--$3.7\%$ (confirms the $\sim\!8$pt was loop-driven).
+\item \textbf{(c) cut-$y_2$}: $y_2$ permanently gated --- isolates P2 (RLS) from P1. \emph{Holds}: RLS-only path stays bounded; \emph{Fails}: escape persists with $y_2$ off (RLS-loop unsafe).
+\item \textbf{(d) $\lambda_f\in\{0.99,0.999\}$ cliff-transfer pair}: S6 Ruling 4 predicts $0.99$ escapes (above cliff), $0.999$ safe. Confirms/falsifies the $\alpha_{eq}\!\leftrightarrow\!$cliff mapping.
+\end{itemize}
+
+\hd{8.8\ $p_{md}$ future channel}
+$p_{md}$ (the LP mean $\delta\bar x_m$) carries $\;p_{md}\approx(1-g)\,D[k]+\text{noise}$, $\ D[k]=p_d[k{+}1]-\lc p_d[k]-(1-\lc)p_d[k{-}d]$ (known trajectory functional, $D{=}0$ at hold). This is a \emph{signed first-moment} $g$-observation, currently discarded. It would de-confound $g$ (scale) from $\theta$ (shape) --- a \emph{direct} $g$ estimate independent of the $a_{xm}$ scale, breaking the confound that Ruling 5 must otherwise bound. Out of MVP: needs its own noise/bias analysis ($D$-SNR, the $(1-g)$ linearization, control-loop interaction). Forward-ref T3.
+
+\newpage
+\hd{9.\ Numeric anchors}
+Single lookup for the implementation. Fit floors: \emph{L0 basis oracle} (\texttt{compute\_L0.py}, 2026-07-06; osc$_{1\mathrm{Hz}}$, $\bar h\!\in\![1.2,3.42]$, dwell-weighted LS).
+
+\hd{9.1\ L0 basis floors (frozen G0 bases)}
+Level $=a_{model}/a_{true}-1$, slope $=a'_{model}/a'_{true}-1$ (\%). Dwell fit; gated column $=$ fit trained on $\bar h\!\ge\!1.5$, extrapolated to the trough.
+
+\medskip
+{\footnotesize\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}l r r r r r@{}}
+\toprule
+metric & @1.2 & @1.5 & @3.42 & RMS & gated@1.2 \\
+\midrule
+Z2 level ($z$) & $-0.94$ & $+0.12$ & $-0.12$ & $0.30$ & $-1.83^{\dagger}$ \\
+Z2 slope ($z$) & $+1.22$ & $+0.92$ & $-1.44$ & $1.11$ & --- \\
+M2 level ($xy$) & $+1.16$ & $-0.78$ & $+0.34$ & $0.47$ & $+5.40$ \\
+M2 slope ($xy$) & $-15.85$ & $-1.31$ & $+2.12$ & $6.29$ & $\sim\!21$ \\
+\bottomrule
+\end{tabular}}
+
+\smallskip
+{\small Fallbacks: Z1 level $-4.20$ (dwell) / $-2.67$ (rel-LS) / $-4.65$ (gated) @1.2, slope $2.78$ max; M1 level $5.16$ max, slope $32.9$ max. $\beta$ (h-blur, $z$): Taylor $+2.58$@1.2 / $+5.06$@1.11; full-kernel ($\times1.36$) $+3.51$ / $+6.88$. Far field ($\bar h\!>\!5$): Z2/M1/M2 level $<\!1\%$ (over-inflation gates clean); X0 retired (slope $\to\!+40\%$). \textbf{Binding floor everywhere $=$ near-wall SLOPE} ($1.4\%$ $z$ / $16\%$ $xy$): no static basis reaches the $1\%$ slope budget near wall. $^{\dagger}$Z2 gated $-1.83$@1.2 ($-0.34$@1.5) $=$ \texttt{L0\_summary.json} \texttt{results.Z2.W3\_gated} ($\theta_1{=}1.078$, $\theta_2{=}0.091$); the \texttt{L0\_tables.md} prose omits the Z2 gated row only.}
+
+\hd{9.2\ Design constants}
+Every implementation number, with its defining section/ruling.
+\medskip
+
+{\footnotesize\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}p{4.7cm} p{6.6cm} p{2.9cm}@{}}
+\toprule
+constant & value & source \\
+\midrule
+forgetting $\lambda_f$ & $\ge 0.999$ (working range $[0.999,1)$) & Ruling 4 (\S6.3) \\
+cliff margin $M$ & $\ge 4$ & \S6.3, \S8.3 \\
+escape cliff $\alpha^\ast$ & $0.008$ (per-step anchor gain) & \S6.3, \S8.3 \\
+tilt projection $|P_{tilt}|$ & $\approx 0.9$ ($-0.92$ trough, $+0.88$ far) & \S6.3 \\
+KF gain $K_{44}$ & $2.4{\times}10^{-3}$ trough / $\sim\!5{\times}10^{-3}$ flank / $5.8{\times}10^{-9}$ far & \S3.7, \S5.7 \\
+sinusoid rejection $A_{rej}$ & $\approx 0.80$ (flank-evaluated) & \S3.4 \\
+window-centre lag $L_{eff}$ & $19=(1{-}a_{cov})/a_{cov}$ & \S6.1 \\
+$P_{44}^{init}$ scale $\kappa$ & $\lesssim 3$ in $\max(\phi^2\sigma_{pr}^2,\kappa P_{44}^{\mathrm{DARE}})$ & \S7.3 \\
+train-band cap $h_{train}$ & $\sim 4$--$5$ & \S6.2 \\
+FF-enable hysteresis & on at $r_{target}$, off at $2r_{target}$; before $\bar h\!<\!3$ & \S7.4 \\
+$\theta_0$ (prior centre) & $(\tfrac98,0)_z$ / $(\tfrac9{16},0)_{xy}$ & \S7.1 \\
+prior widths $\sigma_{pr}$ & sum $0.05$--$0.1$, split $0.15$, $b_1$ $0.05$ & \S7.1 \\
+$R_{RLS}$ & $K_{var}\,IF_{eff}\,(\hat a_x+\xi)^2$ & \S6.2 \\
+gate-off $P_{44}$ floor & $[b_{lvl}^{\mathrm{ex}}]^2$ (AR1) / $[\!\int\! e_K dh']^2$ (RW) & Ruling 3 (\S5.4) \\
+warm-up $Q_{44}$ floor & $>0$ (never zeroed) & \S7.5 \\
+$Q_{44}$ ramp inflation & rejected ($e_K\Delta h_d$ is bias) & Ruling 1 (\S3.3) \\
+relative-form rule & $\Delta h_d^2$ terms $\propto\hat a'^2_x(\bar h)$ & Ruling 2 (\S3.6) \\
+exogeneity license & 4 conditions (i)--(iv) & Ruling 5 (\S8.6) \\
+\bottomrule
+\end{tabular}}
+
+\hd{9.3\ Flag inventory (L1--L3 must resolve)}
+Every inline hypothesis/estimate in S3--S8, with its resolving test --- the bridge to the verification matrix.
+\medskip
+
+{\footnotesize\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}c p{7.6cm} p{1.4cm} p{3.9cm}@{}}
+\toprule
+\# & flag / hypothesis & \S & resolving test \\
+\midrule
+i    & $6.4{\times}10^{-5}$ $O(4)$ prefactor is amplitude-dependent & 3.3 & L2 amplitude sweep \\
+ii   & flank $K_{44}\!\sim\!5{\times}10^{-3}$ inferred; $A_{rej}{=}0.80$ flank-evaluated & 3.4 & \texttt{fig\_L2\_eax\_channels} \\
+iii  & RW trough sensitivity $0.46r$ vs audit $\sim\!1.0r$ ($2\times$ gap) & 5.3 & L2 gain overlay \\
+iv   & $\alpha_{eq}\!\leftrightarrow\!$cliff transfer is a HYPOTHESIS & 6.3 & $\lambda_f\{0.99,0.999\}$ pair (L3) \\
+v    & $|P_{tilt}|\!\approx\!0.9$ borrowed (G6/para-c); exact Z2/M2 pending & 6.3 & L0/L2 \\
+vi   & $\eta\!\approx\!0.76$ back-solved lumped factor & 8.2 & L2 decomposition \\
+vii  & $\mathrm{Cov}\!\le\!5\%\,Q_{44}$ order estimate & 8.5 & L2 \\
+viii & FF-enable $0.3$--$0.7$\,s order estimate & 7.4 & L1 \\
+\bottomrule
+\end{tabular}}
+
+\end{document}
