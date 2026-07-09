@@ -149,6 +149,28 @@ R22_new = R22_intrinsic + delay-leak (original)  +  ΔH_d²·Var(e_aprime)   [su
   level rather than the divergence level). No closed form yet; treat as an
   independent approximate term for a first pass, flag as open.
 
+> **Cross-reference (2026-07-06, from the parallel `5state_aprime` line, now
+> paused — see `reference/eq17_analysis/derivation/5state_aprime_unified.tex`
+> Status box): that line hit the two issues this section anticipates, with
+> concrete numbers that may save time here.**
+> 1. **The α-sweep will likely show a real trade-off, not a clean optimum.**
+>    Sweeping `Q_aprime_factor` (their analogue of α) over
+>    `[0.1, 0.3, 1, 3, 10]` on the same 1 Hz near-wall scenario: correlation/
+>    accuracy improved monotonically with the gain, but tracking cost and
+>    instability risk ALSO worsened monotonically — `kappa=3,10` reintroduced
+>    closed-loop divergence. Expect a bias-variance shape here too, not a
+>    single best value.
+> 2. **A too-generous or context-blind noise-inflation term can look fine
+>    open-loop and only break in REAL closed loop.** Their honest `Q(a')`
+>    anchor (no `c(h̄)`) had no wall-distance awareness and over-inflated
+>    ~1e4–1e5x during fast motion far from the wall — invisible under
+>    open-loop scoring, but caused real z-axis divergence once closed
+>    (control law using `â_x`, not the true gain). Given `e_aprime`'s
+>    self-referential structure is already flagged above as risky (same
+>    family as Exp. 03's divergence), worth testing whatever `Var(e_aprime)`
+>    formula is derived in BOTH open- and closed-loop modes before trusting
+>    an open-loop-only characterization.
+
 ---
 
 ## 7. Known limits / open issues

@@ -1,0 +1,250 @@
+% ======================================================
+% Compile: xelatex 5state_aprime_unified.tex
+% Path:    reference/eq17_analysis/derivation/5state_aprime_unified.tex
+%
+% CONSOLIDATED, single-document current version of the black-box 5-state
+% a'_x estimator. Supersedes the following as the ONE reference (each is
+% kept on disk for provenance, but this file is where new work should land):
+%   - aprime_blackbox_regression.tex : standalone external regression
+%       estimator (a_xm, dx_r) + Isserlis unbiasedness proof. Its
+%       unbiasedness result is REUSED here (Section 2) to justify treating
+%       a_xm as a clean linear measurement of a_x[k-d]; its STANDALONE
+%       regression architecture is SUPERSEDED by folding a'_x into the KF
+%       as a proper state (this file), because the standalone version
+%       cannot see the closed-loop F_e coupling (see Section 6).
+%   - 5state_est_aprime.tex : baseline 5-state (Delta_h_d only, motion-only
+%       observability). F_e/H algebra reused verbatim in Section 3-5.
+%   - 5state_aprime_selfmod.tex : adds the thermal self-dither term for
+%       hold-observability (rank 4 -> 5). F_e/H algebra reused verbatim in
+%       Section 3-5. Its Status box and 5 caveats are the starting point for
+%       Sections 7-8 of this file.
+%
+% NEW in this file (not in any prior document):
+%   - Section 7: Q(a') = q5 process-noise formula via dimensional anchor
+%       (a_nom/R, a_nom/R^2), filling the gap the selfmod doc left as
+%       "the estimator bandwidth on the slope" with no formula. Empirically
+%       checked against the oracle wall model (verify_aprime_Qprime_
+%       assumptions.m) BEFORE this file was written.
+%   - Section 6: reconciles the RAW residual dx_r (used in this session's
+%       external regression test, verify_aprime_blackbox_v1_ensemble.m,
+%       which found a statistically significant WRONG-SIGN discrepancy) vs.
+%       the FILTERED EKF states delta_x_hat_3, delta_x_hat_1 (used correctly
+%       by 5state_aprime_selfmod.tex's H(2,5)). This is the leading
+%       (unconfirmed) explanation for the sign flip.
+%   - Section 8: concrete fix proposal for Caveat 5 (undamped near-wall
+%       drift, F_e(4,4)=1 free integrator) using a state-computable
+%       reversion a_x_ram ~= -a'_x*delta_x_hat_3, per the "required before
+%       closing the loop" note already flagged in 5state_aprime_selfmod.tex.
+%   - Section 9: consolidated verification status (what passed, what is
+%       still open) across every script run this session.
+%
+% Style mirrors 5state_aprime_selfmod.tex / aram_variance.tex (monochrome,
+% \fbox on key results, terse, math only; run-in \hd{}/\lbl{} headers).
+% ======================================================
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.1cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.5em}
+\setlength{\abovedisplayskip}{6pt}
+\setlength{\belowdisplayskip}{6pt}
+\setlength{\abovedisplayshortskip}{3pt}
+\setlength{\belowdisplayshortskip}{3pt}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\dxh}{\delta\hat x}
+\newcommand{\dxr}{\delta x_r}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.3ex}}
+\newcommand{\lbl}[1]{\par\smallskip\noindent\textbf{#1}\par\nobreak\vspace{0.2ex}}
+
+\begin{document}
+
+\begin{center}
+{\large\bfseries Black-Box 5-State $a'_x$ Estimator --- Consolidated Current Version}
+\end{center}
+
+\noindent\fbox{\parbox{\linewidth}{\small\textbf{PAUSED (2026-07-06).} The production controller stays in the 4-state (no state augmentation) architecture; Q44/R22 are being re-derived directly within it instead of adopting this 5-state augmented-state line as the base --- see \texttt{reference/eq17\_analysis/4state\_adet\_aprime\_nocheat\_status.md} (a concurrent, parallel-session investigation). This document and \texttt{ctrl\_const.use\_selfmod} (commits \texttt{4f5c663}, \texttt{121f86a}) are frozen as a validated reference/comparison point, \textbf{not a dead end}: the Sec.~7/10 $Q(a')$ dimensional-anchor + magnitude-gate design, and the $\kappa$-sweep methodology exposing the bias-variance / SNR-dwell-time trade-off, are directly reusable if the 4-state line's Q44/R22 re-derivation needs the same technique for its own $\mathrm{Var}(e_{a'})$ term (that document already flags reusing this methodology).}}
+
+\bigskip
+\noindent\fbox{\parbox{\linewidth}{\small\textbf{Status (prior, for reference).} Consolidates \texttt{5state\_est\_aprime.tex} + \texttt{5state\_aprime\_selfmod.tex} (F\_e/H algebra, reused verbatim, Sec.~3--5) with \texttt{aprime\_blackbox\_regression.tex} (Isserlis unbiasedness of $a_{xm}$, Sec.~2) and pieces from this and a later session: the $Q(a'_x)$ formula (Sec.~7), the $\dxr$-vs-$\dxh$ signal reconciliation (Sec.~6, CONFIRMED as the sign-flip explanation, Sec.~9), a concrete near-wall reversion fix proposal (Sec.~8, still undone), and a self-dither magnitude gate fixing a closed-loop divergence found when the estimator was actually closed into the loop (Sec.~10). \textbf{Implemented in code} as \texttt{ctrl\_const.use\_selfmod} in \texttt{motion\_control\_law\_eq17\_5state\_aprime.m} (commit \texttt{4f5c663} + the Sec.~10 gate fix); default \texttt{false} reproduces the pre-existing baseline bit-for-bit.}}
+
+%% ===================== SECTION 1 =====================
+\hd{1. Setting: the black-box premise}
+\begin{center}
+\begin{tabular}{@{}p{3.0cm}p{6.2cm}p{6.4cm}@{}}
+\toprule
+ & \textbf{Known-wall 4-state} (\texttt{4state\_del\_hd\_ar1}) & \textbf{This document (black-box)} \\
+\midrule
+$a_x$ predict target & $a_{x_{det}}[k]=a_{nom}/c(\bar h_d[k])$ & none --- integrated state, no external target \\
+$a'_x$ & $-a_x K_h/R$, from the real $c(\bar h)$ & \textit{estimated}, 5th state \\
+$K_h,K_h'$ & \texttt{calc\_correction\_functions} & forbidden anywhere, incl.\ $t{=}0$ seeding \\
+Spatial memory & --- & none; purely time-recursive (no $\bar h$-indexed map) \\
+\bottomrule
+\end{tabular}
+\end{center}
+Wall \emph{location} is known ($\bar h[k]$ measurable from $p_m[k]$ and the known wall plane); only the \emph{function} $c(\bar h)$ is unknown. Excitation requirement (per design discussion): the estimator must work \textbf{both} during commanded height motion \emph{and} during a static hold.
+
+%% ===================== SECTION 2 =====================
+\hd{2. Why $a_{xm}$ is a legitimate, unbiased measurement (imported result)}
+$a_{xm}[k] = a_x[k-d]+n_a[k]$ is built by squaring and EWMA-averaging the residual $\dxr$ (\texttt{pm\_to\_axm\_derivation.tex}), so a natural worry is circularity: is $a_{xm}$'s own noise $n_a$ correlated with the very state ($a_x$, or its fluctuation) we want to measure? \texttt{aprime\_blackbox\_regression.tex} resolved this by Isserlis' theorem (zero-mean jointly Gaussian vectors have zero odd-order moments): every term contributing to $a_{xm}$ is a \emph{quadratic} functional of $\dxr$, so its covariance with $\dxr$ itself (degree 3, odd) vanishes exactly, regardless of $a_{cov}$, the LP bandwidth, or $\dxr$'s autocorrelation structure. This is why $a_{xm}$ can be treated below as a clean linear measurement of $a_x[k-d]$ with additive noise $n_a$, not a self-referential trap.
+
+%% ===================== SECTION 3 =====================
+\hd{3. Parameter model (imported from 5state\_aprime\_selfmod, verbatim)}
+Local decomposition (derivation device only --- \textbf{not} evaluated at runtime):
+\[ a_x[k] = a_{\det}[k] + a_{x_{ram}}[k], \qquad a_{x_{ram}}[k] = a'_x\,x_{ram}[k] = -\,a'_x\,\delta x[k] \]
+Closing the loop ($\delta x_3=\delta x[k]$ the current tracking error, $\varepsilon$ the lumped closed-loop noise defined in Sec.~4):
+\[ \delta x[k{+}1]=\lc\,\delta x_3[k]-\varepsilon[k] \;\Rightarrow\; \Delta\delta x[k] = -(1-\lc)\,\delta x_3[k]-\varepsilon[k] \]
+\begin{empheq}[box=\fbox]{equation*}
+\begin{cases}
+a_x[k+1]  = a_x[k] + a'_x\big[\Delta h_d[k]+(1-\lc)\,\delta x_3[k]\big] + w_4[k] \\
+a'_x[k+1] = a'_x[k] + w_{a'}[k]
+\end{cases}
+\end{empheq}
+$\Delta h_d[k]=h_d[k{+}1]-h_d[k]$ (known, from the commanded trajectory) supplies observability \textbf{during motion}; $(1-\lc)\,\delta x_3[k]$ (thermal self-dither, zero-mean, $\sim$tens of nm) supplies observability \textbf{on a hold}. Neither requires $c(\bar h)$.
+
+%% ===================== SECTION 4 =====================
+\hd{4. State equation (5-state)}
+\[
+\begin{aligned}
+\delta x_1[k+1] &= \delta x_2[k], \qquad \delta x_2[k+1] = \delta x_3[k], \\
+\delta x_3[k+1] &= \lc\,\delta x_3[k] - F_{dx}[k]\,e_{a_x}[k] + dF_{dx}^{h}[k]\,e_{a'}[k] - \varepsilon[k], \\
+a_x[k+1] &= a_x[k] + a'_x\big[\Delta h_d[k]+(1-\lc)\,\delta x_3[k]\big] + w_4[k], \\
+a'_x[k+1] &= a'_x[k] + w_{a'}[k].
+\end{aligned}
+\]
+\[ F_{dx}[k] = f_{dx}[k] + (1-\lc)\sum_{i=1}^{d} f_{dx}[k-i], \qquad dF_{dx}^{h}[k] = (1-\lc)\sum_{i=1}^{d} \big(h_d[k]-h_d[k-i]\big)\, f_{dx}[k-i] \]
+$e_{a_x}=a_x-\hat a_x$, $e_{a'}=a'_x-\hat a'_x$ (level and slope estimation errors).
+
+%% ===================== SECTION 5 =====================
+\hd{5. Output equation, $\mathbf H$, closed-loop estimator, $\mathbf F_e$ (imported verbatim)}
+\[ a_x[k-d] = a_x[k] - a'_x\big[\Delta H_d[k] - \big(\delta x_3[k]-\delta x_1[k]\big)\big], \qquad \Delta H_d[k]=h_d[k]-h_d[k-d] \]
+\[
+\begin{aligned}
+y_1[k] &= \delta x_m[k] = \delta x_1[k] + \underbrace{n_x[k]}_{r_1[k]}, \\
+y_2[k] &= a_{xm}[k] = a_x[k-d]+n_a[k] \approx a_x[k] - a'_x\big[\Delta H_d[k] - \big(\delta x_3[k]-\delta x_1[k]\big)\big] + \underbrace{n_a[k]}_{r_2[k]}.
+\end{aligned}
+\]
+The span $a'_x(\delta x_3-\delta x_1)$ is carried entirely by $\mathbf H$ (not left in $r_2$) --- this is the fix for the "common thermal noise double-count" that self-mod's Caveat 2 documents (keeping the span in \emph{both} $\mathbf H$ and $R_{22}$ self-defeats the very observability the self-dither term is supposed to provide).
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf{H}[k] = \begin{bmatrix} 1 & 0 & 0 & 0 & 0 \\ -\hat a'_x & 0 & \hat a'_x & 1 & -\Delta H_d[k]+(\dxh_3-\dxh_1) \end{bmatrix}
+\end{empheq}
+($\mathbf H(2,1),\mathbf H(2,3)=\mp\hat a'_x$ are $O(\hat a'_x)$, negligible; the load-bearing term is $\mathbf H(2,5)$.)
+
+Error dynamics ($G_4[k]:=\Delta h_d[k]+(1-\lc)\dxh_3[k]$, $G_H[k]:=\Delta H_d[k]-(\dxh_3-\dxh_1)$):
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lc & -F_{dx}[k] & dF_{dx}^{h}[k] \\
+0 & 0 & 0 & 1 & G_4[k] \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\end{empheq}
+$\mathbf F_e(4,5)=G_4[k]$ is the direct consequence of $a_x$'s own predict equation using $\hat a'_x$ (Sec.~3) --- \emph{not} an assumption bolted on. $\mathbf F_e(3,4)=-F_{dx}$ is unchanged from the 4-state (control law uses $\hat a_x$ to compute force). $a'_x$ affects $\delta x_3$ only \emph{indirectly}, through $a_x$'s error (two-hop propagation); there is no direct $\mathbf F_e(3,5)$ unless $\hat a'_x$ is also fed forward into the control law directly (a separate design choice, not made here).
+
+%% ===================== SECTION 6 =====================
+\newpage
+\hd{6. Reconciliation: raw $\dxr$ vs.\ filtered $\dxh_3-\dxh_1$ --- leading explanation for the sign-flip}
+This session's external, standalone regression test (\texttt{verify\_aprime\_blackbox\_v1\_ensemble.m}) computed
+\[ \hat a'_{\text{ext}} = -\frac{\mathrm{Cov}(a_{xm},\dxr)}{\mathrm{Var}(\dxr)} \]
+using the \textbf{raw} residual $\dxr$ (the $a_{xm}$ channel's own IIR intermediate, \emph{before} any state filtering) as the $\Delta h$ proxy. Against 60 independent seeds (static hold, $\bar h\approx1.78$), this gave a statistically significant \textbf{wrong-sign} result ($t$-stat $-2.9$ to $-7.6$), even though: (i) the pure regression algebra was verified unbiased on synthetic data built to the same model (\texttt{verify\_aprime\_blackbox\_synthetic.m}, both i.i.d.\ and autocorrelated $\dxr$), (ii) a $d$-step delay misalignment does not by itself flip the sign (\texttt{verify\_aprime\_blackbox\_synthetic\_delay.m}), and (iii) an oracle indexing fix (pre/post-integration alignment) changed nothing.
+
+The present derivation (Sec.~5, imported from \texttt{5state\_aprime\_selfmod}) uses $\dxh_3-\dxh_1$ --- the \textbf{EKF's own filtered state estimates} of $\delta x_3,\delta x_1$ --- not the raw $\dxr$. These are related but \textbf{not} the same signal: $\dxh_3,\dxh_1$ are shaped by the \emph{closed-loop feedback} (the control law computes $f_{dx}[k]$ directly from $\delta x_m[k]$, which the raw $\dxr$ also feeds into, but $\dxh$ is the KF's own posterior after fusing $y_1$ and $y_2$, weighted by the current $\mathbf P$). \textbf{Leading (unconfirmed) hypothesis}: the external test's raw-$\dxr$ regressor absorbs contamination from this closed-loop feedback path (the control law's use of $\delta x_m[k]$ to compute the very force that determines the next position) that the properly-derived $\mathbf H(2,5)$ --- built from the filtered $\dxh$, and appearing \emph{inside} a jointly-consistent $\mathbf F_e/\mathbf H$ pair --- does not suffer, because the KF's own error-dynamics bookkeeping (Sec.~5) already accounts for this coupling structurally rather than assuming it away via an external statistical identity.
+
+\textbf{Confirmed} (\texttt{verify\_5state\_aprime\_selfmod\_signflip.m}, same static-hold scenario, real controller with \texttt{use\_selfmod=true}): at 60 seeds, $\hat a'_x$ (read directly from \texttt{diag.delta\_a\_hat}) already showed $|t\text{-stat}|<1.51$ on all three axes versus the external test's $-2.9$ to $-7.6$; the $y,z$ axes matched the oracle's sign, while $x$'s point estimate was nominally opposite but statistically indistinguishable from zero ($\mathrm{SE}$ exceeded $|\mathrm{mean}|$). A re-run at 200 seeds resolved this: all three axes now match the oracle's sign ($x,y,z$: $t=-0.62,\,0.01,\,-1.24$), confirming the $x$-axis discrepancy was sampling noise, not a residual sign problem. This confirms the raw-vs-filtered-signal distinction (this section's hypothesis) was the dominant explanation for the external test's wrong sign.
+
+%% ===================== SECTION 7 =====================
+\newpage
+\hd{7. $Q(a'_x)=q_5$ --- honest process-noise design (NEW this session)}
+\texttt{5state\_aprime\_selfmod.tex} leaves $q_5=\mathrm{Var}(w_{a'})$ labelled only as ``the estimator bandwidth on the slope,'' with no formula. Decompose:
+\begin{empheq}[box=\fbox]{equation*}
+q_5[k] = \sigma^2_{a''}\cdot\big(\Delta h_d[k]^2 + \sigma^2_{\delta h}[k]\big), \qquad \sigma^2_{\delta h}[k] = 4k_BT\,\hat a_x[k]
+\end{empheq}
+\textit{Rationale.} $a'_x$ changes because the (unknown) curvature $a''_x=da'_x/d\bar h$ is nonzero; moving by $\Delta h$ changes $a'_x$ by $\approx a''_x\cdot\Delta h$ (chain rule), so $\mathrm{Var}(\Delta a'_x)\approx a''^2_x\cdot\mathrm{Var}(\Delta h)$. $\Delta h_d[k]$ (commanded) is exactly known; $\sigma^2_{\delta h}[k]$ (thermal) reuses the already-validated $4k_BT\,a_x$ formula with the \textbf{current level estimate} $\hat a_x[k]$ (honest, no wall peek). Only $\sigma^2_{a''}$ --- one scalar, the curvature magnitude prior --- remains free.
+
+\lbl{Dimensional anchor for $\sigma^2_{a''}$} $R$ (probe radius) and $a_{nom}=\Delta t/\gamma_N$ are known probe/fluid constants, \textbf{not} wall properties. Since $c(\bar h)$ is defined as a function of $\bar h=h/R$, $R$ is the wall effect's own natural length scale:
+\[ \sigma_{a'} \sim a_{nom}/R \quad(\text{slope scale}), \qquad \sigma_{a''} \sim \sigma_{a'}/R = a_{nom}/R^2 \quad(\text{curvature scale}) \]
+\begin{empheq}[box=\fbox]{equation*}
+\sigma^2_{a''} \sim (a_{nom}/R^2)^2
+\end{empheq}
+This is an order-of-magnitude engineering prior, not an exact derivation --- but it is \emph{derived from known constants}, not picked from nothing.
+
+\lbl{Empirical check (verify\_aprime\_Qprime\_assumptions.m, run before this file was written)}
+\begin{center}\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+ & near-wall ($\bar h\approx1.05$--$1.2$) & $\bar h\approx1.78$ & far-field ($\bar h>5$) \\
+\midrule
+$|a'_{true}|/(a_{nom}/R)$        & $0.6$--$0.9$ & $0.30$ & $\le0.04$ \\
+$|a''_{true}|/(a_{nom}/R^2)$     & $2.2$--$3.8$ & $0.31$ & $\le0.02$ \\
+$\mathrm{Var}(\Delta a'_{true})$ vs.\ predicted (real osc trajectory) & ratio $0.65$ & --- & ratio $\sim10^{-4}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\textbf{Near-wall (where $a'_x$ matters most): the anchor is the correct order of magnitude} (ratios $0.6$--$3.8\times$, and the $\mathrm{Var}(\Delta a')$ check lands within $35\%$). \textbf{Far-field: the fixed constant over-covers by $\sim10^4\times$} --- the already-known, architecturally unavoidable single-constant trade-off (Sec.~8 of \texttt{5state\_aprime\_selfmod.tex}'s antecedent discussion), now quantified with real numbers. Over-covering far-field is low-cost: $a'_x\to0$ there and tracking does not depend on it.
+
+%% ===================== SECTION 8 =====================
+\newpage
+\hd{8. Caveat 5 fix proposal: state-computable near-wall reversion (NEW this session)}
+\texttt{5state\_aprime\_selfmod.tex} Caveat 5: $\mathbf F_e(4,4)=1$ is a free integrator (no reversion target, since there is no known $a_{\det}$); when the near-wall gate turns $a_{xm}$ off, $a_x$ has neither reversion nor measurement and drifts as an undamped random walk. It explicitly flags the fix as required-but-undone: \textit{``a state-computable reversion ($a_{x_{ram}}=-a'_x\delta x_3$) ... is required before closing the loop.''}
+
+\lbl{Proposal} Use the \textbf{already-known local-linear relationship} (Sec.~3) as a self-consistency check, not an external target. Define a slow reference level $\bar a_x[k]$ (its own, slower EWMA of $\hat a_x$ --- purely internal, no wall model), and add a weak correction pulling $\hat a_x$ toward the value \textbf{implied by the current state itself}:
+\begin{empheq}[box=\fbox]{equation*}
+\hat a_x[k+1] = \hat a_x[k] + \hat a'_x[k]\big[\Delta h_d[k]+(1-\lc)\dxh_3[k]\big] + \kappa\Big(\underbrace{\bar a_x[k] - \hat a'_x[k]\,\dxh_3[k]}_{\text{state-implied }a_{\det}\text{ estimate}} - \hat a_x[k]\Big)
+\end{empheq}
+$\kappa$ small (weak pull, e.g.\ $\kappa\sim(1-\lc)/N$ for some large averaging horizon $N$ --- a design choice, not yet tuned). Physical bound as a secondary safety net (fully honest, $R$/$a_{nom}$ are probe constants): $0<a_x\le a_{nom}$ always (the wall only adds drag, never removes it below the free-space value); a clip or soft-barrier reparametrization on $\hat a_x$ prevents runaway growth even if $\kappa$ is mistuned. \textbf{Not yet derived to the same rigor as Sec.~3--5; flagged here as the next piece of derivation work, not a finished result.}
+
+%% ===================== SECTION 9 =====================
+\newpage
+\hd{9. Consolidated verification status}
+\begin{center}\small
+\begin{tabular}{@{}p{3.6cm}p{6.2cm}p{5.2cm}@{}}
+\toprule
+Test & What it checked & Result \\
+\midrule
+V0 (free-space null) & Isserlis unbiasedness on real simulated signal & \textbf{PASS} \\
+V1 (1\,Hz osc, single traj.) & external regression vs.\ oracle & bug found (wrong regressor axis) + locality-vs-SNR tension found \\
+V1-hold (static, single traj.) & same, locality removed & weak corr., large bias; ambiguous (noise vs.\ real) \\
+V1-ensemble (60 seeds, batch) & same, high power & significant wrong-sign ($t=-2.9$ to $-7.6$); resolved by the two rows below \\
+Synthetic (pure algebra) & regression formula + Isserlis, $\rho{=}0,0.85$ & \textbf{PASS} (rules out formula bug) \\
+Synthetic+delay & $d$-step misalignment alone & does not flip sign (rules out this cause alone) \\
+Oracle pre/post-integration fix & indexing bug & no numerical effect (rules out this cause) \\
+$Q(a')$ magnitude (Sec.~7) & dimensional anchor vs.\ oracle & \textbf{near-wall PASS} (order of magnitude); far-field over-covers (expected) \\
+5-state \texttt{use\_selfmod} (60 seeds, real controller) & same scenario, real \texttt{diag.delta\_a\_hat} & sign correct on $y,z$; $x$ nominally wrong but $|t|<1$ (noise, SE$>|$mean$|$) \\
+5-state \texttt{use\_selfmod} (200 seeds, real controller) & same scenario, higher power & \textbf{sign CONFIRMED correct on all 3 axes} ($t=-0.62,\,0.01,\,-1.24$) \\
+\bottomrule
+\end{tabular}
+\end{center}
+\textbf{Resolved}: the wrong-sign result was caused by the raw-$\dxr$-vs-filtered-signal distinction (Sec.~6). The properly-derived 5-state EKF (Sec.~3--5,7), read directly from the real controller (\texttt{use\_selfmod=true}), recovers the correct sign on all three axes at 200 seeds. \textbf{Not yet done}: accuracy characterization beyond sign (L1-style $\kappa$ sweep, hold vs.\ motion, near vs.\ far field); the Sec.~8 near-wall reversion proposal remains undone (this test's scenario does not exercise the gate-off condition); Q33/Q44/R22 remain wall-peeking (Sec.~7 note).
+
+%% ===================== SECTION 10 =====================
+\newpage
+\hd{10. L2 closed-loop divergence: Q(5,5) far-field over-coverage, fixed with a self-dither gate}
+With \texttt{use\_selfmod=true} closing the loop for real (\texttt{use\_true\_gain=false}: the control law uses $\hat a_x$, not the true gain), a 1\,Hz near-wall oscillation scenario (\texttt{verify\_eq17\_5state\_aprime\_selfmod\_L1.m}) showed the open-loop estimability gain (Sec.~9-adjacent open-loop test: $\Delta\mathrm{corr}_z\approx+0.79$, zero tracking cost) does \textbf{not} carry over unmodified: $z$-axis tracking std nearly doubled ($26.9\to52.3$\,nm) and 1 of 10 seeds diverged, while the same toggle left off never diverged.
+
+\lbl{Root cause} The divergence occurred not near the wall but during the trajectory's fast DESCENT transient (large commanded $|\Delta h_d|$, far from the wall, $\bar h\approx6$--$15$), traced to $\hat a_x$ drifting monotonically off its true value over dozens of steps. A magnitude gate on $\mathbf F_e(4,5)/\mathbf H(2,5)$ alone (closing them whenever $|\Delta h_d|$ dominates the thermal scale) did \textbf{not} fix it --- tracing individual steps showed the gate was already correctly closed throughout the bad region, ruling out the self-dither coupling terms as the cause. The actual culprit is $q_5$ (Sec.~7): the honest anchor $\sigma^2_{a''}\sim(a_{nom}/R^2)^2$ has \textbf{no wall-distance awareness}, unlike the baseline $a''=(a/R^2)(K_h^2-K_h')$ it replaces (which shrinks far from the wall via $K_h,K_h'\to0$). During fast motion far from the wall, $q_5$'s $\Delta h_d^2$ term over-inflates by $\sim10^4$--$10^5\times$ --- exactly the already-documented far-field over-coverage (Sec.~7's empirical table), previously judged ``low-cost'' \emph{under open-loop scoring, where the over-covered $\hat a'_x$ never touches real dynamics}. In closed loop, $\hat a'_x$'s resulting noise multiplies $\Delta h_d[k]$ directly in $\hat a_x[k+1]=\hat a_x[k]+\hat a'_x[k]\Delta h_d[k]$, corrupting $\hat a_x$ and hence $f_d=1/\hat a_x\{\ldots\}$ itself.
+
+\lbl{Fix} Extend the same honest, no-$c(\bar h)$ magnitude gate to \textbf{both} the self-dither coupling terms AND $q_5$'s $\Delta h_d^2$ term:
+\begin{empheq}[box=\fbox]{align*}
+\text{gate}_i[k] &= \big(|\Delta h_d[k]| < \sigma_{\delta h,i}[k]\big) \\
+\sigma_{\delta h,i}[k] &= \sqrt{4k_BT\,\hat a_{x,i}[k]}
+\end{empheq}
+Gate open (thermal-dominated, the regime self-dither was designed for): $\mathbf F_e(4,5)$, $\mathbf H(2,5)$, and $q_5$ all use their full self-mod forms (Sec.~5, Sec.~7). Gate closed (motion-dominated, e.g.\ a fast descent): $\mathbf F_e(4,5)=\Delta h_d$, $\mathbf H(2,5)=-\Delta H_d$ (reduce to baseline), and $q_5=\sigma^2_{a''}\cdot\sigma^2_{\delta h}$ (drop the $\Delta h_d^2$ term only --- still the honest anchor, not a wall-peeking fallback).
+
+\lbl{Verification} Same 1\,Hz scenario, 10 seeds, closed loop: \textbf{no divergence} (was 1 of 10 seeds); $\Delta(\text{track\_std}_z)=+4.1$\,nm (was $+25$ to $+33$\,nm), a modest cost consistent with the already-known near-wall spread increase; $\Delta\mathrm{corr}_z=+0.74$ preserved. The static-hold sign-confirmation scenario (Sec.~6/9, 60 and 200 seeds) re-run \textbf{bit-for-bit identical} to before this fix, as expected: $\Delta h_d\approx0$ throughout a hold keeps the gate open, so nothing there changes. \texttt{verify\_eq17\_5state\_aprime\_selfmod\_L0.m} Check 3 added to lock in the gate's open/closed logic against regression.
+
+\textbf{Lesson}: an ``honest, no wall-peek'' formula can still be wrong in a way pure open-loop testing cannot reveal --- the far-field over-coverage was known and judged low-cost \emph{under an evaluation regime that never let the over-covered quantity touch real dynamics}. Closing the loop for real (L2) is not optional follow-on characterization; it is precisely where this class of bug lives, and it should be run before any claim that an estimator improvement helps tracking.
+
+\textbf{Not yet done}: L2 testing so far covers only this one trajectory (1\,Hz near-wall oscillation with a fast pre-oscillation descent); other fast-transient shapes are untested. Whether feeding $\hat a'_x$-improved $\hat a_x$ into the control law yields a measurable tracking benefit anywhere (vs.\ merely ``no regression'') remains open.
+
+\end{document}
