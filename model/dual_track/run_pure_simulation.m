@@ -73,6 +73,9 @@ function simOut = run_pure_simulation(config, opts)
     if ~isfield(opts, 'collect_diag'); opts.collect_diag = false;              end
     % True-gain A/B: feed true time-varying gain to the 6-state control law
     if ~isfield(opts, 'use_true_gain'); opts.use_true_gain = false;          end
+    % TEMP (chat 2026-07-06, fixed-g probe; remove after use): scale factor c on
+    % the true-gain override, a_ctrl = c*a_true => mismatch g := a_true/a_ctrl = 1/c.
+    if ~isfield(opts, 'true_gain_scale'); opts.true_gain_scale = 1;          end
 
     % ------------------------------------------------------------------
     % 1. RNG seeding — MUST precede calc_simulation_params.
@@ -198,8 +201,17 @@ function simOut = run_pure_simulation(config, opts)
     is_5state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '5state');
     is_5state_aprime = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '5state_aprime');
     is_4state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state');
+    is_4state_selfdet = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state_selfdet');   % TEMP diagnostic (chat 2026-07-05); remove after use
+    is_4state_aprime_ff = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state_aprime_ff');   % TEMP diagnostic (chat 2026-07-06); remove after use
+    is_4state_nocheat = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state_nocheat');   % TEMP diagnostic (chat 2026-07-06); remove after use
+    is_4state_adet_only = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state_adet_only');   % TEMP diagnostic (chat 2026-07-06); remove after use
+    is_4state_adet_only_newq = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state_adet_only_newq');   % TEMP diagnostic (chat 2026-07-06); remove after use
+    is_4state_adet_only_gfix = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state_adet_only_gfix');   % TEMP oracle g-correction counter-side test (chat 2026-07-07); remove after use
+    is_4state_deploy = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state_deploy');   % TEMP deployable model-free variant (chat 2026-07-07); remove after use
+    is_4state_deploy_kf = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state_deploy_kf');   % TEMP KF-weighted deployable variant (chat 2026-07-07); remove after use
+    is_4state_selfrw = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state_selfrw');   % TEMP a_det:=a_hat RW + fully self-diff a' (chat 2026-07-07); remove after use
     is_gscalar = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, 'gscalar');
-    is_vpersonal = is_6state || is_5state || is_5state_aprime || is_4state || is_gscalar;   % share prefill defaults + constants builder
+    is_vpersonal = is_6state || is_5state || is_5state_aprime || is_4state || is_4state_selfdet || is_4state_aprime_ff || is_4state_nocheat || is_4state_adet_only || is_4state_adet_only_newq || is_4state_adet_only_gfix || is_4state_deploy || is_4state_deploy_kf || is_4state_selfrw || is_gscalar;   % share prefill defaults + constants builder
     if opts.use_true_gain && ~is_vpersonal
         error('run_pure_simulation:useTrueGainUnsupported', ...
               'opts.use_true_gain=true requires config.eq17_variant=''6state'', ''5state'', ''5state_aprime'', ''4state'' or ''gscalar''.');
@@ -262,6 +274,17 @@ function simOut = run_pure_simulation(config, opts)
         ctrl_const.use_q44_ar1 = logical(config.use_q44_ar1);
     end
 
+    % TEMP (chat 2026-07-07): 4state_selfrw adet_known toggle (RW a_det:=a_hat vs
+    % AR(1) reversion to KNOWN a_det, both with self-diff a'); remove with variant.
+    if isfield(config, 'adet_known') && ~isempty(config.adet_known)
+        ctrl_const.adet_known = logical(config.adet_known);
+    end
+    % TEMP (chat 2026-07-08): exact row-4 pole F_e(4,4)=lc+a'*F_dx in the AR(1)
+    % covariance propagation (4state_del_hd.tex p.7); remove with variant.
+    if isfield(config, 'use_exact_fe44') && ~isempty(config.use_exact_fe44)
+        ctrl_const.use_exact_fe44 = logical(config.use_exact_fe44);
+    end
+
     % gscalar-only knobs: forgetting factor + h_bar source for a_det.
     if isfield(config, 'beta_s') && ~isempty(config.beta_s)
         ctrl_const.beta_s = config.beta_s;
@@ -282,6 +305,27 @@ function simOut = run_pure_simulation(config, opts)
     end
     if isfield(config, 'freeze_aprime') && ~isempty(config.freeze_aprime)
         ctrl_const.freeze_aprime = logical(config.freeze_aprime);
+    end
+
+    % TEMP (chat 2026-07-05): 4state_selfdet gate+EWMA knobs; remove with the variant.
+    if isfield(config, 'selfdet_gate_thresh') && ~isempty(config.selfdet_gate_thresh)
+        ctrl_const.selfdet_gate_thresh = config.selfdet_gate_thresh;
+    end
+    if isfield(config, 'selfdet_beta') && ~isempty(config.selfdet_beta)
+        ctrl_const.selfdet_beta = config.selfdet_beta;
+    end
+    % TEMP (chat 2026-07-07): deploy-variant g-hat estimator knobs; remove with the variant.
+    if isfield(config, 'g_gate_thresh') && ~isempty(config.g_gate_thresh)
+        ctrl_const.g_gate_thresh = config.g_gate_thresh;
+    end
+    if isfield(config, 'g_beta') && ~isempty(config.g_beta)
+        ctrl_const.g_beta = config.g_beta;
+    end
+    if isfield(config, 'g_decay') && ~isempty(config.g_decay)
+        ctrl_const.g_decay = config.g_decay;
+    end
+    if isfield(config, 'kf_q44_scale') && ~isempty(config.kf_q44_scale)
+        ctrl_const.kf_q44_scale = config.kf_q44_scale;
     end
 
     % ------------------------------------------------------------------
@@ -350,6 +394,9 @@ function simOut = run_pure_simulation(config, opts)
         diag_log.a_xm              = zeros(N, 3);
         diag_log.a_m_det           = zeros(N, 3);   % a_m LPF study: post-LPF gain measurement
         diag_log.a_x_det           = zeros(N, 3);   % deterministic gain a_nom/c(h_bar_d) from p_d
+        diag_log.a_prime_hat       = zeros(N, 3);   % TEMP (chat 2026-07-06): self-differenced a' estimate; remove after use
+        diag_log.g_hat             = zeros(N, 3);   % TEMP (chat 2026-07-07): p_md-based mismatch estimate; remove after use
+        diag_log.a_xm_corr         = zeros(N, 3);   % TEMP (chat 2026-07-07): g-corrected a_xm; remove after use
         diag_log.delta_x_m         = zeros(N, 3);
         diag_log.innovation_y2     = zeros(N, 3);
         diag_log.K_kf_a_y2         = zeros(N, 3);
@@ -358,6 +405,7 @@ function simOut = run_pure_simulation(config, opts)
         diag_log.P_dx              = zeros(N, 3);
         diag_log.P77               = zeros(N, 3);
         diag_log.Q77               = zeros(N, 3);
+        diag_log.var_da_ram        = zeros(N, 3);   % Q44 driver (gain process-noise) time series
         diag_log.a_hat             = zeros(N, 3);
         diag_log.x_D_hat           = zeros(N, 3);
         diag_log.delta_a_hat       = zeros(N, 3);
@@ -401,7 +449,7 @@ function simOut = run_pure_simulation(config, opts)
             a_true_k = a_nom_drv * ones(3, 1);
         end
         if opts.use_true_gain
-            a_override_k = a_true_k;
+            a_override_k = opts.true_gain_scale * a_true_k;   % TEMP fixed-g probe (chat 2026-07-06)
         else
             a_override_k = [];
         end
@@ -445,6 +493,78 @@ function simOut = run_pure_simulation(config, opts)
                                     del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
             else
                 [f_d_k, ekf_k] = motion_control_law_eq17_gscalar( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            end
+        elseif is_4state_selfdet   % TEMP diagnostic (chat 2026-07-05); remove after use
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = temp_motion_control_law_eq17_4state_selfdet( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            else
+                [f_d_k, ekf_k] = temp_motion_control_law_eq17_4state_selfdet( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            end
+        elseif is_4state_aprime_ff   % TEMP diagnostic (chat 2026-07-06); remove after use
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = temp_motion_control_law_eq17_4state_aprime_ff( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            else
+                [f_d_k, ekf_k] = temp_motion_control_law_eq17_4state_aprime_ff( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            end
+        elseif is_4state_nocheat   % TEMP diagnostic (chat 2026-07-06); remove after use
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = temp_motion_control_law_eq17_4state_nocheat( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            else
+                [f_d_k, ekf_k] = temp_motion_control_law_eq17_4state_nocheat( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            end
+        elseif is_4state_adet_only   % TEMP diagnostic (chat 2026-07-06); remove after use
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = temp_motion_control_law_eq17_4state_adet_only( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            else
+                [f_d_k, ekf_k] = temp_motion_control_law_eq17_4state_adet_only( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            end
+        elseif is_4state_adet_only_newq   % TEMP diagnostic (chat 2026-07-06); remove after use
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = temp_motion_control_law_eq17_4state_adet_only_newq( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            else
+                [f_d_k, ekf_k] = temp_motion_control_law_eq17_4state_adet_only_newq( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            end
+        elseif is_4state_adet_only_gfix   % TEMP oracle g-correction counter-side test (chat 2026-07-07); remove after use
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = temp_motion_control_law_eq17_4state_adet_only_gfix( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k, a_true_k);
+            else
+                [f_d_k, ekf_k] = temp_motion_control_law_eq17_4state_adet_only_gfix( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k, a_true_k);
+            end
+        elseif is_4state_deploy   % TEMP deployable model-free variant (chat 2026-07-07); remove after use
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = temp_motion_control_law_eq17_4state_deploy( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            else
+                [f_d_k, ekf_k] = temp_motion_control_law_eq17_4state_deploy( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            end
+        elseif is_4state_deploy_kf   % TEMP KF-weighted deployable variant (chat 2026-07-07); remove after use
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = temp_motion_control_law_eq17_4state_deploy_kf( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            else
+                [f_d_k, ekf_k] = temp_motion_control_law_eq17_4state_deploy_kf( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            end
+        elseif is_4state_selfrw   % TEMP a_det:=a_hat RW + fully self-diff a' (chat 2026-07-07); remove after use
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = temp_motion_control_law_eq17_4state_selfrw( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+            else
+                [f_d_k, ekf_k] = temp_motion_control_law_eq17_4state_selfrw( ...
                                     del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
             end
         else
@@ -499,6 +619,9 @@ function simOut = run_pure_simulation(config, opts)
             diag_log.a_xm(k, :)              = diag_k.a_xm.';
             if isfield(diag_k, 'a_m_det'); diag_log.a_m_det(k, :) = diag_k.a_m_det.'; end
             if isfield(diag_k, 'a_x_det'); diag_log.a_x_det(k, :) = diag_k.a_x_det.'; end
+            if isfield(diag_k, 'a_prime_hat'); diag_log.a_prime_hat(k, :) = diag_k.a_prime_hat.'; end   % TEMP (chat 2026-07-06); remove after use
+            if isfield(diag_k, 'g_hat'); diag_log.g_hat(k, :) = diag_k.g_hat.'; end   % TEMP (chat 2026-07-07); remove after use
+            if isfield(diag_k, 'a_xm_corr'); diag_log.a_xm_corr(k, :) = diag_k.a_xm_corr.'; end   % TEMP (chat 2026-07-07); remove after use
             diag_log.delta_x_m(k, :)         = diag_k.delta_x_m.';
             diag_log.innovation_y2(k, :)     = diag_k.innovation_y2.';
             diag_log.K_kf_a_y2(k, :)         = diag_k.K_kf_a_y2.';
@@ -507,6 +630,7 @@ function simOut = run_pure_simulation(config, opts)
             diag_log.P_dx(k, :)              = diag_k.P_dx.';
             diag_log.P77(k, :)               = diag_k.P77.';
             diag_log.Q77(k, :)               = diag_k.Q77.';
+            if isfield(diag_k, 'var_da_ram'); diag_log.var_da_ram(k, :) = diag_k.var_da_ram.'; end
             diag_log.a_hat(k, :)             = diag_k.a_hat.';
             diag_log.x_D_hat(k, :)           = diag_k.x_D_hat.';
             diag_log.delta_a_hat(k, :)       = diag_k.delta_a_hat.';
