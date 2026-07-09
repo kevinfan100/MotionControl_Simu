@@ -169,3 +169,165 @@ R22_new = R22_intrinsic + delay-leak (original)  +  ΔH_d²·Var(e_aprime)   [su
 
 All `.m` checkcode-clean. Verification is dynamic-only; figures land in
 `test_results/verify_4state/osc_1hz/` (gitignored).
+
+---
+
+## 8. MAIN CAUSE identified and triple-confirmed (2026-07-06/07)
+
+**Goal refinement (user decision)**: wall POSITION known, `c(h̄)` unknown;
+base = the AR(1) variant (not RW); the deliverable is a complete, correct
+theory that predicts and guides design ("α 該設多少" is tuning, NOT the cause).
+
+### 8.1 The cause (one sentence)
+
+The `a_xm` inversion `a_xm = (σ̂²_δxr − C_n·σ²_n)/(C_dpmr·4kBT)` silently
+assumes `g := a_true/â = 1` (control at its design point); it cannot
+distinguish "a changed" from "tracking degraded because â is wrong". Feeding
+this confounded measurement back as the AR(1) reversion anchor
+(`a_det_k := a_m_det`, fixed weight `(1−λc)`, no KF damping) creates a
+positive-feedback anchor loop whose gain scales with `α`.
+
+**Consequence for §6**: the "e_amdet is exogenous" assumption in the
+`4state_del_hd_ar1.tex` correction is FALSIFIED — `e_amdet` couples to `e_ax`
+through the real tracking error. `Q44_new`'s `Var(e_amdet)` additive term was
+tested (`4state_adet_only_newq`) and does nothing (bias 11.9→12.2%), because
+the injection path bypasses the Kalman gain entirely.
+
+### 8.2 The corrected closed loop (g-mismatch form, VALIDATED)
+
+```
+δx[k+1] = λc·δx[k] + (1−g)(1−λc)·δx[k−d] + (1−g)·D[k] − ε_g[k]
+D[k]    = p_d[k+1] − λc·p_d[k] − (1−λc)·p_d[k−d]      (known; =0 during holds)
+ε_g[k]  = a·f_T[k] + (1−λc)·Σᵢ a·f_T[k−i] − g(1−λc)·n_x[k]
+```
+
+- g=1 self-check: reduces to `λc·δx − ε`; `Var(ε)` matches the code's `Q33_ss`.
+- The `(1−g)·D[k]` deterministic feedthrough is exactly what `dx_bar_m`
+  (δp_md) measures — **p_md is a discarded, signed, first-moment g-observation
+  channel** (δx_det ≈ (1−g)·D/(g(1−λc)) quasi-statically). This answers the
+  "is p_md hidden information" question: yes.
+
+### 8.3 Evidence chain (all numerical gates PASSED)
+
+| # | Test | File | Result |
+|---|---|---|---|
+| 1 | Loop-cut interventions | `temp_loop_cut_interventions.m` | CUT-PHYSICS (control on true gain) fully stabilizes α=0.010 (0/3); CUT-Y2 is bit-identical to closed-loop (max ratio 759.06 both) → y2/Q44/R22 irrelevant; predict path alone carries the loop. Open-loop a_m_det bias only 1.6–3.7% → **"information floor" hypothesis overturned** (~8 of the 12 bias points are loop-equilibrium shift). |
+| 2 | Deterministic feedthrough | `temp_g_probe_validation.m` Part A (noise-free osc, fixed g via TEMP `opts.true_gain_scale`) | corr=1.0000, amplitude ratio 1.000, relRMS 0.2–0.3% at g=0.5 and g=2.0. |
+| 3 | Stochastic variance map | same, Part B (hold h̄=2.22, augmented 6-state Lyapunov → `Var(dx_r)=c_w(g)·4kBT·a + c_n(g)·σ²_n`) | all five g within 0.1–0.5%; g=1 reproduces the C_dpmr formula to ratio 1.0000. Confound strength: a_xm/a_true = 1.22 @ g=0.6, 0.93 @ g=1.67; hold-scenario DC loop gain S≈0.31<1 (statically stable → cliff must be dynamic). |
+| 4 | Mean-path surrogate | `temp_loop_surrogate.m` | reproduces the closed-loop BIAS (26.1%/10.6% vs measured 25.5%/11.9% at α=0.002/0.005) but NOT the cliff (stable to 0.05) → bias = mean-path lag+loop effect. |
+| 5 | Stochastic surrogate | `temp_loop_surrogate_v2.m` (adds only correlated noise sampling) | **reproduces the cliff at the measured location**: 0.007→0/5, 0.008→1/5, 0.010→3/5, 0.020→5/5 (real sim: 0.005 stable / 0.008 blown) → cliff = noise-triggered escape (χ² fluctuations of σ̂², rel std ~46%, amplified by the nonlinear g-loop). |
+| 6 | **Counter-side (surgical removal)** | `temp_gfix_counterside_test.m` + `temp_motion_control_law_eq17_4state_adet_only_gfix.m` (oracle g-corrected inversion: subtract predicted deterministic leak, divide by c_w(g) instead of C_dpmr; loop fully closed) | bias @0.005: 11.9%→**4.1%** (predicted open-loop floor 2–4%); cliff removed: 0.008→0/3 (28.3nm), 0.010→0/3 (28.8nm); 0.020→1/3 (residual escape consistent with the correction's quasi-static approximation). |
+
+Residual: v2 surrogate over-predicts bias slightly (16.3 vs 11.9% @0.005) —
+the omitted y1-channel correction of slot 4 is mildly stabilizing; secondary.
+
+### 8.4 Files added for §8 (all TEMP, uncommitted)
+
+- `model/controller/temp_motion_control_law_eq17_4state_adet_only.m` — a_det-only ablation
+- `model/controller/temp_motion_control_law_eq17_4state_adet_only_newq.m` — Var(e_amdet) Q44 test (falsified)
+- `model/controller/temp_motion_control_law_eq17_4state_adet_only_gfix.m` — oracle g-correction (counter-side)
+- `model/dual_track/run_pure_simulation.m` — 3 TEMP dispatch branches + `opts.true_gain_scale`
+- `test_script/integration/temp_decompose_adet_vs_aprime.m` — 4-way ablation (a' has ZERO effect; a_det carries ~all of nocheat's degradation)
+- `test_script/integration/temp_adet_only_alpha_newq_sweep.m`, `temp_adet_only_alpha_fine_sweep.m` — α cliff mapping (0.005 stable / 0.008 blown)
+- `test_script/integration/temp_check_sigma2_dxr_coupling.m`, `temp_check_q_r_height_scaling.m` — intermediate diagnostics (the scalar-KF-from-existing-Q/R idea was CHECKED AND REJECTED: near-wall gain would be ~600x the far-field one, wrong direction)
+- `test_script/integration/temp_loop_cut_interventions.m`, `temp_g_probe_validation.m`, `temp_loop_surrogate.m`, `temp_loop_surrogate_v2.m`, `temp_gfix_counterside_test.m` — the §8.3 evidence chain
+
+### 8.5 Next steps
+
+1. ~~Write the g-mismatch derivation (§8.2) + validation into
+   `derivation/4state_del_hd_ar1.tex`~~ **DONE (2026-07-07)** — see §9.
+2. ~~Design the PRODUCTION (non-oracle) remedy~~ **DONE (2026-07-07)** — see §9.
+3. Only then revisit Q44/R22 numbers (they were proven irrelevant to THIS
+   failure mode, but the g-corrected a_xm changes `R22`'s operating point).
+
+---
+
+## 9. DEPLOYABLE controller completed (2026-07-07)
+
+`temp_motion_control_law_eq17_4state_deploy.m` — fully model-free (wall
+position known, `c(h̄)` unknown): a' self-diff + `a_det := a_m_det` anchor +
+**ĝ-from-δp_md regression estimator** + g-corrected inversion. No oracle
+anywhere. Full derivation + validation written into
+`derivation/4state_del_hd_ar1.tex` (8 new sections after the Var(e_aprime)
+treatment; 18 pages, compiles clean).
+
+### 9.1 The ĝ estimator (design iteration matters)
+
+- Pointwise ratio `u = (1−λc)·δp_md/D̄` **FAILED** (bias +52.9%, worse than
+  uncorrected): per-sample SNR < 1, ratio rectification bias.
+- **Regression form WORKS**: `Sxy = EWMA_βg(D̄·δp_md)`, `Sxx = EWMA_βg(D̄²)`,
+  `u = (1−λc)·Sxy/Sxx`, `ĝ = clamp(1/(1+u), [0.5, 2])`, hold while
+  `Sxx ≤ γ_D²`. `D̄ = LP_apd(D[k−d])` (matched-lag regressor; D̄ deterministic
+  → `E[D̄·noise] = 0`, unbiased). Knobs: `β_g=0.05`, `γ_D=2e-3 µm`.
+- Clamp tightening [0.2,5]→[0.5,2] was the stability enabler (α=0.010 blew
+  up before); slower `β_g=0.02` REJECTED (estimator lag destabilizes).
+
+### 9.2 Final validation (osc_1hz, 5 seeds)
+
+| α | blown | track x/y/z (nm) | bias x/y/z (%) |
+|---|---|---|---|
+| **0.005 (operating point)** | **0/5** | 28.2 / 27.9 / 30.5 | +5.5 / −2.4 / +3.2 |
+| 0.008 | 1/5 | 28.5/27.6/34.0 | +4.6/−4.0/+0.4 |
+| 0.010 | 1/5 | 28.5/27.6/47.6 | +4.1/−4.3/+0.1 |
+| 0.020 | 5/5 | blown | — |
+
+vs uncorrected (+12.2%/34.9nm, cliff 0.008) and oracle upper bound
+(+4.1%/27.9nm). The deployable version recovers most of the oracle's gain;
+margin to the cliff ≈ 1.6× at the operating point.
+
+### 9.3 Files added for §9 (TEMP, uncommitted)
+
+- `model/controller/temp_motion_control_law_eq17_4state_deploy.m`
+- `model/dual_track/run_pure_simulation.m`: deploy dispatch + `g_gate_thresh`/
+  `g_beta` passthrough + `diag_log.g_hat`/`a_xm_corr`
+- `test_script/integration/temp_deploy_{validation,knob_sweep,final_validation}.m`
+- `derivation/4state_del_hd_ar1.tex/.pdf` — 8 new sections (FALSIFICATION →
+  g-mismatch loop → variance map → mechanism closure → ĝ estimator →
+  corrected inversion → complete controller → end-to-end table)
+
+Residual known-model dependencies (declared out of scope): `K_h` inside the
+Q44/R22 random-gain floor, and the wall-aware `â_x[0]` seed.
+
+---
+
+## 10. Lag/accuracy characterization + main-line KF experiment (2026-07-07, post-deploy)
+
+### 10.1 a_hat error characterized (user observation: inaccurate + lagged)
+
+Lag chain decomposition (z, osc window, 3 seeds): `a_xm_corr` lag 1.7 ms /
+43.3% relRMS -> `a_m_det` (EWMA alpha=0.005 anchor) lag **78.8 ms** / 26.9%
+-> `a_hat` **78.3 ms / 26.9% (identical to the anchor -- the EKF contributes
+nothing; y2 gain negligible under AR(1)-bounded P44)**. Removing the pure lag
+leaves 17.8% (chi-square floor through the EWMA). Phase decomposition: the
+error cause DIFFERS per phase -- hold1 (far) 9.1% pure noise floor; descent
++7.8% bias = lag-on-a-ramp; osc bias ~0, lag-as-phase-shift ~1/3 of 28.7% RMS;
+hold2 (near wall) 47% = transient tail (decays in 0.5 s) + stale-g_hat
+persistent bias + near-wall relative inflation (a_true 7x smaller).
+
+### 10.2 hold2 fix: slow g_hat decay-to-1
+
+Freezing g_hat during holds leaves a persistent −12..−20% long-hold bias
+(stale g=0.5 while true g recovers to 1); FAST decay (0.01) is worse (turns
+the correction off before the real g recovers). **Slow decay g_decay=0.001**
+(~390 ms, matched to the hold recovery rate) fixes the long-hold windows
+(19.6->13.0%, 23.8->12.6%, late 27.6->20.8%) without touching the early
+transient or osc. Set as deploy default. Sweep: temp_gdecay_sweep.m,
+temp_hold2_settle_test.m.
+
+### 10.3 Main line tested and FALSIFIED: KF-weighting cannot replace the anchor (4-state)
+
+`temp_motion_control_law_eq17_4state_deploy_kf.m` (y2 := a_xm_corr, RW gain
+state, anchor removed from predict): lag collapses 78->8 ms and hold2 halves
+(47.9->23.4%), BUT oscRMS 28.7->57.6%, a_std 39.6->71.9%, track 28.9->48.5 nm.
+kf_q44_scale sweep {1..0.003} maps the frontier: **no point beats the anchor**
+-- even at matched bandwidth (scale 0.003, lag 62 ms) oscRMS is 40.5% vs
+28.7%, and small scales grow bias (a'-ff drift accumulates in RW; the anchor's
+(1−λc) reversion kills that drift every step). Feeding a_xm_corr to y2 within
+the anchor architecture: bit-identical (y2 gain negligible). **Conclusion: the
+anchor architecture is ON the achievable frontier under the 4-state
+constraint; the 79 ms lag is the price of the chi-square noise level, not an
+architectural mistake.** Structural escape would need a level+rate gain model
+(state augmentation -- ruled out by scope) or better raw-measurement SNR.
+Files: temp_deploy_kf_test.m, temp_deploy_kf_q44_sweep.m,
+temp_deploy_y2corr_test.m; deploy grew `y2_use_corr` (default false) and
+deploy_kf grew `kf_q44_scale` knobs.

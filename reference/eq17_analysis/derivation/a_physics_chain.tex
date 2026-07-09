@@ -1,0 +1,125 @@
+% ======================================================
+% Compile: xelatex a_physics_chain.tex
+% Path:    reference/eq17_analysis/derivation/a_physics_chain.tex
+% Pure-physics formula chain for the motion gain a_x: wall model, thermal
+% force, and the a_det/a_ram decomposition. Single generic axis x (no
+% parallel/perpendicular subscript on c, no x/y/z split, no "h" symbol --
+% position along the axis is always x, matching the rest of this project's
+% notation). Expressed entirely through a_x -- the drag coefficient gamma
+% never appears. No controller content (no lambda_c, no closed-loop variance).
+% a_nom numeric value below = Ts/gamma_N from physical_constants.m
+% (Ts=1/1600 s, gamma_N=0.0425 pN*s/um) -- gamma_N itself is not shown in
+% the rendered document, only the resulting a_nom number.
+% Style mirrors 4state_del_hd (monochrome, \fbox on key results, terse, math only).
+% ======================================================
+% fontset=none: no CJK text, do not load Chinese fonts.
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+
+\begin{document}
+
+\hd{Constants}
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Symbol & Value & Unit \\
+\midrule
+$R$        & $2.25$                     & $\mu$m \\
+$a_{nom}$  & $1.4706\times10^{-2}$      & $\mu$m/pN \\
+$k_B$      & $1.3806503\times10^{-5}$   & pN$\cdot\mu$m/K \\
+$T$        & $310.15$                   & K \\
+$4k_BT$    & $1.7128\times10^{-2}$      & pN$\cdot\mu$m \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\medskip
+\hd{Symbols and units}
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Symbol & Meaning & Unit \\
+\midrule
+$x[k]$              & position along axis            & $\mu$m \\
+$\bar x := x/R$     & normalized position             & -- \\
+$a_x[k]$            & motion gain (mobility)          & $\mu$m/pN \\
+$a'_x := da_x/dx$   & gain sensitivity                & 1/pN \\
+$K_x(\bar x)$       & wall sensitivity of $c$          & -- \\
+$f_T[k]$            & thermal force                   & pN \\
+$\sigma^2_x[k]$     & single-step thermal position var & $\mu$m$^2$ \\
+$a_{det}[k]$        & deterministic part of $a_x$      & $\mu$m/pN \\
+$a_{ram}[k]$        & random part of $a_x$             & $\mu$m/pN \\
+$x_{ram}[k]$        & position residual                & $\mu$m \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\medskip
+\hd{Wall model}
+\[ a_x[k] = \frac{a_{nom}}{c(\bar x[k])} \]
+
+\medskip
+\hd{Wall sensitivity}
+\[
+K_x(\bar x) := \frac{1}{c}\frac{dc}{d\bar x},
+\qquad
+a'_x[k] := \frac{d a_x}{d x} = -\frac{a_x[k]\,K_x(\bar x[k])}{R}
+\]
+
+\medskip
+\hd{Thermal force}
+\begin{empheq}[box=\fbox]{equation*}
+\mathrm{Var}\big(f_T[k]\big) = \frac{4\,k_B T}{a_x[k]}
+\end{empheq}
+
+\medskip
+\hd{Thermal-driven position variance (single step)}
+\begin{empheq}[box=\fbox]{equation*}
+\sigma^2_x[k] := a_x[k]^2\cdot \mathrm{Var}\big(f_T[k]\big) = 4\,k_B T\,a_x[k]
+\end{empheq}
+
+\medskip
+\hd{Gain decomposition}
+\[
+a_x[k] = a_{det}[k] + a_{ram}[k],
+\qquad
+a_{det}[m] = \frac{a_{nom}}{c(\bar x_d[m])}
+\]
+\[
+a_{ram}[k] \approx a'_x[k]\cdot x_{ram}[k],
+\qquad
+x_{ram}[k] := x[k] - x_d[k]
+\]
+
+\medskip
+\hd{Variance propagation}
+\begin{empheq}[box=\fbox]{align*}
+\mathrm{Var}\big(a_{ram}[k]\big)   &= a_x'^{\,2}[k]\cdot \mathrm{Var}\big(x_{ram}[k]\big) \\[0.8ex]
+\mathrm{Var}\big(\Delta a_{ram}[k]\big) &= a_x'^{\,2}[k]\cdot \mathrm{Var}\big(\Delta x_{ram}[k]\big)
+\end{empheq}
+
+\medskip
+\hd{Deterministic increment}
+\[
+\Delta a_x[k] = a_{det}[k+1] - a_{det}[k] = a'_x[k]\cdot \Delta x_d[k]
+\]
+
+\end{document}

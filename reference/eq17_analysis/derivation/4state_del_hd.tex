@@ -98,7 +98,19 @@ a_x[k]\, f_{dx}[k] - a_x[k]\,\bar{\bar f}_{dx}[k] ={}& e_{a_x}[k]\, f_{dx}[k] + 
 
 \hd{Parameter model}
 \[ a_x[k] = a_{x_{det}}[k] + a_{x_{ram}}[k]; \qquad a_{x_{ram}}[k] \approx a'_x[k]\, x_{ram}[k] \]
+
+\medskip
+\[
+\begin{aligned}
+a_x[k+1] &= \bm{a_{x_{det}}[k+1]} + a_{x_{ram}}[k+1] \\[1.0ex]
+&= \underbrace{\Big\{ \bm{a_{x_{det}}[k]} + a_{x_{ram}}[k] \Big\}}_{a_x[k]} + \bm{\Delta a_x[k]} + \underbrace{\Big\{ a_{x_{ram}}[k+1] - a_{x_{ram}}[k] \Big\}}_{\Delta a_{ram}[k]}
+\end{aligned}
+\]
+
+\medskip
 \[ a_x[k+1] = a_x[k] + \Delta a_x[k] + \Delta a_{ram}[k] \]
+
+\bigskip
 \[
 \Delta a_x[k] = a_{x_{det}}[k+1] - a_{x_{det}}[k] = a'_x[k]\,\Delta h_d[k],
 \qquad
@@ -224,31 +236,26 @@ e_{a_x}[k+1] &= e_{a_x}[k] - \ell_{41}[k]\, e_{\delta x_1}[k] - \ell_{42}[k]\, e
 \newpage
 \hd{Correction --- $a_{x_{ram}}$ is first-order autoregressive (AR(1)), not a random walk}
 
-\textbf{True-signal dynamics} (no estimate; $x_{ram}=-\delta x$, $\delta x[k+1]=\lc\,\delta x[k]-\varepsilon[k]$):
-\[ a_{x_{ram}}[k+1] = -a'_x\,\delta x[k+1] = -a'_x\big(\lc\,\delta x[k]-\varepsilon[k]\big) = \lc\, a_{x_{ram}}[k] + a'_x\,\varepsilon[k] \]
-\[ \Delta a_{ram}[k] = a_{x_{ram}}[k+1]-a_{x_{ram}}[k] = \underbrace{(\lc-1)\,a_{x_{ram}}[k]}_{\text{reversion}} + \underbrace{a'_x\,\varepsilon[k]}_{\text{white}} \]
+\textbf{True-signal dynamics} ($x_{ram}=-\delta x$; $\delta x[k+1]=\lc\,\delta x[k]-F_{dx}[k]\,e_{a_x}[k]-\varepsilon[k]$):
+\[ a_{x_{ram}}[k+1] = -a'_x\,\delta x[k+1] = \lc\, a_{x_{ram}}[k] + a'_x\,F_{dx}[k]\,e_{a_x}[k] + a'_x\,\varepsilon[k] \]
+\[ \Delta a_{ram}[k] = (\lc-1)\,a_{x_{ram}}[k] + a'_x\,F_{dx}[k]\,e_{a_x}[k] + a'_x\,\varepsilon[k] \]
 
-\textbf{True gain state} ($a_x = a_{x_{det}} + a_{x_{ram}}$, $a_{x_{det}}[k+1]=a_{x_{det}}[k]+\Delta a_x[k]$):
+\medskip
+\textbf{True gain state} ($a_x = a_{x_{det}} + a_{x_{ram}}$, $a_{x_{det}}[k+1]=a_{x_{det}}[k]+\Delta a_x[k]$, $e_{a_x}=a_x-\hat a_x$):
 \[
 \begin{aligned}
-a_x[k+1] &= \big(a_{x_{det}}[k]+\Delta a_x[k]\big) + \big(\lc\,a_{x_{ram}}[k]+a'_x\,\varepsilon[k]\big) \\
-&= \big(a_{x_{det}}[k]+\Delta a_x[k]\big) + \lc\big(a_x[k]-a_{x_{det}}[k]\big) + a'_x\,\varepsilon[k] \\
-&= \underbrace{\lc\, a_x[k]}_{\mathbf F_e(4,4)=\lc} + \underbrace{(1-\lc)\,a_{x_{det}}[k] + \Delta a_x[k]}_{\text{known input}} + \underbrace{a'_x\,\varepsilon[k]}_{q_4[k]}
+a_x[k+1] &= \big(a_{x_{det}}[k]+\Delta a_x[k]\big) + \lc\big(a_x[k]-a_{x_{det}}[k]\big) + a'_x F_{dx}[k]\big(a_x[k]-\hat a_x[k]\big) + a'_x\,\varepsilon[k] \\
+&= \underbrace{\big(\lc + a'_x F_{dx}[k]\big)\, a_x[k]}_{\mathbf F_e(4,4)} + \underbrace{(1-\lc)\,a_{x_{det}}[k] + \Delta a_x[k] - a'_x F_{dx}[k]\,\hat a_x[k]}_{\text{known input}} + \underbrace{a'_x\,\varepsilon[k]}_{q_4[k]}
 \end{aligned}
 \]
 \begin{empheq}[box=\fbox]{equation*}
-\mathbf F_e(4,4) = \lc
+\mathbf F_e(4,4) = \lc + a'_x F_{dx}[k]
 \end{empheq}
 
-\textbf{Estimator} (predict reverts to $a_{x_{det}}$):
+\medskip
+\textbf{Estimator} ($\big(\lc+a'_x F_{dx}\big)\hat a_x - a'_x F_{dx}\,\hat a_x = \lc\,\hat a_x$: the feedthrough vanishes at the estimate):
 \[ \hat a_x[k+1] = \lc\,\hat a_x[k] + (1-\lc)\,a_{x_{det}}[k] + \Delta a_x[k] + \ell_{4\cdot}[k]\,e_y[k] \]
-\[
-\begin{aligned}
-e_{a_x}[k+1] &= a_x[k+1] - \hat a_x[k+1] \\
-&= \lc\big(a_x[k]-\hat a_x[k]\big) + a'_x\,\varepsilon[k] - \ell_{4\cdot}[k]\,e_y[k] \\
-&= \lc\, e_{a_x}[k] + a'_x\,\varepsilon[k] - \ell_{4\cdot}[k]\,e_y[k]
-\end{aligned}
-\]
+\[ e_{a_x}[k+1] = a_x[k+1] - \hat a_x[k+1] = \big(\lc + a'_x F_{dx}[k]\big)\, e_{a_x}[k] + a'_x\,\varepsilon[k] - \ell_{4\cdot}[k]\,e_y[k] \]
 
 \textbf{Process noise} (white driver $w_4=a'_x\varepsilon$; $\mathrm{Var}(\varepsilon)=(1-\lc^2)\,\mathrm{Var}(\delta x)$ since $\delta x$ is AR(1)):
 \[ q_4 = \mathrm{Var}(w_4) = a'^2_x\,\mathrm{Var}(\varepsilon) = a'^2_x\,(1-\lc^2)\,\mathrm{Var}(\delta x) = (1-\lc^2)\,C_{\delta x}\,a'^2_x\,\sigma^2_{\delta h} \]
@@ -256,7 +263,7 @@ e_{a_x}[k+1] &= a_x[k+1] - \hat a_x[k+1] \\
 q_4 = a'^2_x\,\mathrm{Var}(\varepsilon) = (3-2\lc^2)\,a'^2_x\,\sigma^2_{\delta h}
 \end{empheq}
 
-\textbf{Impl.}: predict and $q_4$ use $\hat a_x$ with $a'_x$ at $\bar h_{\mathrm{meas}}$ ($p_m$); reversion target $a_{x_{det}}$ from $p_d$.
+\textbf{Impl.}: predict and $q_4$ use $\hat a_x$ with $a'_x$ at $\bar h_{\mathrm{meas}}$ ($p_m$); reversion target $a_{x_{det}}$ from $p_d$; production $\mathbf F_e(4,4)=\lc$ (drops $a'_x F_{dx}$).
 
 \newpage
 \hd{Verification (1\,Hz, near wall)}
@@ -272,6 +279,48 @@ Per-axis EKF, seed ensemble; near-wall 1\,Hz oscillation ($h_{init}=50\,\mu$m, t
 \noindent\begin{minipage}{\linewidth}\centering
 \includegraphics[width=0.82\textwidth]{figures/fig_q44_orig_vs_ar1_z.png}\\[0.4ex]
 {\small\itshape $a_z$: original random-walk $Q_{44}$ ($\mathbf F_e(4,4)=1$) vs AR(1) reverting gain ($\mathbf F_e(4,4)=\lc$); middle tile, estimation error; bottom, $\bar h$. Near-wall $|\hat a_z-a_z|$: $9.4\%\!\to\!0.4\%$.}
+\end{minipage}
+
+\newpage
+\hd{Model-free $a'$ via self-difference --- original (RW) vs AR(1)}
+So far $a'_x$ has come from the known wall model. If the wall is unknown, we can read $a'_x$ straight off the gain estimate instead: take the change in $\hat a_x$ and divide it by the (known) change in desired height. But that raw ratio is very jumpy --- $\hat a_x$ already carries estimation noise, and taking a difference makes the noise worse. So we do two simple things: (i) smooth the raw slope with a running average (an EWMA with weight $\beta$), and (ii) stop updating whenever the height is barely moving (a gate $\gamma$, so we never divide by almost zero):
+
+\bigskip
+\begin{empheq}[box=\fbox]{equation*}
+\hat a'_x[k] =
+\begin{cases}
+(1-\beta)\,\hat a'_x[k{-}1] \;+\; \beta\,\dfrac{\hat a_x[k]-\hat a_x[k{-}1]}{\Delta h_d[k{-}1]}, & |\Delta h_d[k{-}1]| > \gamma \\[2.6ex]
+\hat a'_x[k{-}1], & |\Delta h_d[k{-}1]| \le \gamma \quad(\text{gate closed: keep the last value})
+\end{cases}
+\end{empheq}
+
+\bigskip
+\begin{center}
+$\beta = 0.05$ \ \ (running-average weight: smaller $=$ smoother but slower) \qquad $\gamma = 10^{-3}\,\mu$m \ \ (freeze $\hat a'$ once $|\Delta h_d|$ drops below this)
+\end{center}
+
+\bigskip
+This one self-difference supplies $a'$ everywhere in both runs; the runs differ \emph{only} in how the gain \emph{level} $a_{x_{det}}$ is anchored:
+
+\medskip
+\begin{itemize}[leftmargin=1.6em,topsep=3pt,itemsep=7pt]
+\item \textbf{original (RW)}: \ $a_{x_{det}} := \hat a_x$ (no outside anchor --- the estimate leans on itself), \ $\mathbf F_e(4,4)=1$, \ $Q_{44}=\dfrac{2}{1+\lc}\,\hat a'^2_x\,\sigma^2_{\delta h}$ \ --- \ \emph{fully} model-free.
+\item \textbf{AR(1)}: \ the level $a_{x_{det}} = a_{\mathrm{nom}}/c(\bar h_d)$ is still taken from the wall, \ $\mathbf F_e(4,4)=\lc$, \ $Q_{44}=(3-2\lc^2)\,\hat a'^2_x\,\sigma^2_{\delta h}$ \ --- \ $a'$ is model-free, but the level still needs the wall.
+\end{itemize}
+
+\bigskip
+\noindent\begin{minipage}{\linewidth}\centering
+\includegraphics[width=0.88\textwidth]{figures/fig_selfaprime_rw_vs_ar1_z.png}\\[0.6ex]
+{\small\itshape Same self-difference $\hat a'_x$ in both runs. Top: gain $a_z$. Bottom: slope $a'_z$. With a known level anchor (AR(1)) the estimate follows the truth; without one (RW) it is buried in noise.}
+\end{minipage}
+
+\newpage
+\hd{Verification --- $\mathbf F_e(4,4)=\lc$ (simplified) vs $\lc + a'_x F_{dx}$ (complete), known $c(\bar h)$, same seed}
+
+\medskip
+\noindent\begin{minipage}{\linewidth}\centering
+\includegraphics[width=0.88\textwidth]{figures/fig_ar1_exact_vs_simple_knownc_z.png}\\[0.6ex]
+{\small\itshape Top: $a_z$ --- $a_{x_{det}}(p_d)$ and the two $\hat a_x$. Bottom: $a_x - a_{x_{det}}$ (true, black) and $\hat a_x - a_{x_{det}}$ (both versions). The two versions coincide: $\max|\hat a_x^{\mathrm{complete}} - \hat a_x^{\mathrm{simplified}}| / a_{x_{det}} = 0.085\,\%$; \ $a_{x_{det}}(p_d) - \hat a_x = -0.03\,\% \pm 0.30\,\%$ \ ($\bar h_d < 2$: $\pm\,0.41\,\%$).}
 \end{minipage}
 
 \end{document}

@@ -1,0 +1,113 @@
+% ======================================================
+% Compile: xelatex rw_q44_derivation.tex
+% Path:    reference/eq17_analysis/derivation/rw_q44_derivation.tex
+% Full step-by-step derivation of the RW-mode Q44 = Var(delta_a_ram) formula
+% used in motion_control_law_eq17_4state.m (var_da_inc_factor = 2/(1+lambda_c)
+% default branch). Builds the lag-1 autocorrelation rho_1 of the closed-loop
+% residual delta_x from the MA(2) structure of epsilon[k], then propagates it
+% through the gain-sensitivity chain rule a_ram = a'_x * x_ram.
+% Cross-checked against reference/eq17_analysis/derivation/phase2_C_dpmr_C_n_derivation.md
+% (rho_dx(1)=0.85, C_dpmr=3.96 for lambda_c=0.7) and 4state_del_hd.tex's boxed
+% Var(delta_a_ram) = 2/(1+lambda_c) a'^2 sigma^2_x result.
+% Style mirrors 4state_del_hd (monochrome, \fbox on key results, terse).
+% ======================================================
+% fontset=none: no CJK text, do not load Chinese fonts.
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+
+\begin{document}
+
+\hd{Goal}
+\begin{empheq}[box=\fbox]{equation*}
+Q_{44} := \mathrm{Var}\big(\Delta a_{ram}[k]\big) = \frac{2}{1+\lc}\,a_x'^{\,2}[k]\,\sigma^2_x[k]
+\qquad \big(\sigma^2_x := 4k_BT\,a_x,\ \ a'_x := -a_x K_x/R\big)
+\end{empheq}
+
+\medskip
+\hd{Step 1 --- closed-loop residual $\varepsilon[k]$ (MA(2))}
+\[ \delta x[k+1] = \lc\,\delta x[k] - \varepsilon[k] \]
+\[ \varepsilon[k] = a_x f_T[k] + (1-\lc)\,a_x f_T[k-1] + (1-\lc)\,a_x f_T[k-2] \]
+$\varepsilon[k]$ mixes the current thermal kick with the two most recent ones (controller's $d{=}2$-step delay compensation), so consecutive $\varepsilon$'s share raw noise samples --- it is \textit{not} white.
+
+\medskip
+\hd{Step 2 --- autocovariance $\gamma_\varepsilon(\tau)$ of $\varepsilon$}
+\[
+\gamma_\varepsilon(0) = \sigma^2_x\big\{1+2(1-\lc)^2\big\},
+\qquad
+\gamma_\varepsilon(1) = (1-\lc)(2-\lc)\,\sigma^2_x,
+\]
+\[
+\gamma_\varepsilon(2) = (1-\lc)\,\sigma^2_x,
+\qquad
+\gamma_\varepsilon(\tau\ge3) = 0
+\]
+
+\medskip
+\hd{Step 3 --- steady-state $\mathrm{Var}(\delta x)$}
+\[
+\mathrm{Var}(\delta x) = C_{\delta x}\,\sigma^2_x,
+\qquad
+C_{\delta x} = 2 + \frac{1}{1-\lc^2}
+\]
+
+\medskip
+\hd{Step 4 --- lag-1 covariance $\gamma_{\delta x}(1)$}
+\[ \gamma_{\delta x}(1) = E\big[\delta x[k]\,\delta x[k{+}1]\big] = \lc\,\mathrm{Var}(\delta x) - E\big[\delta x[k]\,\varepsilon[k]\big] \]
+Expand $\delta x[k] = -\sum_{i=0}^{\infty}\lc^i\,\varepsilon[k{-}1{-}i]$ and use $\gamma_\varepsilon(\tau\ge3)=0$:
+\[
+E\big[\delta x[k]\,\varepsilon[k]\big] = -\gamma_\varepsilon(1) - \lc\,\gamma_\varepsilon(2)
+= -(1-\lc)\sigma^2_x\big\{(2-\lc)+\lc\big\} = -2(1-\lc)\,\sigma^2_x
+\]
+\[
+\gamma_{\delta x}(1) = \lc\,C_{\delta x}\,\sigma^2_x + 2(1-\lc)\,\sigma^2_x
+\]
+
+\medskip
+\hd{Step 5 --- lag-1 autocorrelation $\rho_1$}
+\begin{empheq}[box=\fbox]{equation*}
+\rho_1 := \frac{\gamma_{\delta x}(1)}{\mathrm{Var}(\delta x)} = \lc + \frac{2(1-\lc)}{C_{\delta x}}
+\end{empheq}
+For $\lc=0.7$: $C_{\delta x}=3.961,\ \rho_1 = 0.7+0.6/3.961 \approx 0.8515$.
+
+\medskip
+\hd{Step 6 --- increment-variance identity (general, any stationary signal)}
+\[
+\mathrm{Var}(\Delta x_{ram}) = 2\,\mathrm{Var}(x_{ram}) - 2\,\mathrm{Cov}\big(x_{ram}[k{+}1],x_{ram}[k]\big) = 2(1-\rho_1)\,\mathrm{Var}(x_{ram})
+\]
+with $x_{ram} := -\delta x$, so $\mathrm{Var}(x_{ram}) = \mathrm{Var}(\delta x) = C_{\delta x}\sigma^2_x$.
+
+\medskip
+\hd{Step 7 --- propagate through $a_{ram} = a'_x\,x_{ram}$}
+\[
+\mathrm{Var}(\Delta a_{ram}) = a_x'^{\,2}\cdot \mathrm{Var}(\Delta x_{ram})
+= a_x'^{\,2}\cdot \underbrace{2(1-\rho_1)\,C_{\delta x}}_{\displaystyle =\,2/(1+\lc)}\,\sigma^2_x
+\]
+$C_{\delta x}$ cancels exactly because $(1-\rho_1) = 1/\big[(1+\lc)C_{\delta x}\big]$ (from Step 5).
+
+\medskip
+\hd{Result --- $Q_{44}$ (RW mode)}
+\begin{empheq}[box=\fbox]{equation*}
+Q_{44} = \mathrm{Var}(\Delta a_{ram}) = \frac{2}{1+\lc}\,a_x'^{\,2}\,\sigma^2_x
+\end{empheq}
+Code: \texttt{var\_da\_inc\_factor = 2/(1+lambda\_c)} (\texttt{motion\_control\_law\_eq17\_4state.m:141}), applied as \texttt{var\_da\_inc\_factor * (a\_hat*K\_h/R)\^{}2 * sigma2\_dh} (line 444/448).
+
+\end{document}
