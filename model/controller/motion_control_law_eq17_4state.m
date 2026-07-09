@@ -91,7 +91,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     persistent initialized
     persistent lambda_c d_delay Ts kBT R_radius gamma_N_p a_nom_p
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_per_axis var_da_inc_factor
-    persistent t_warmup_kf h_bar_safe R_OFF use_am_lpf a_det_lp amlpf_var_factor use_deblur use_aprime_ff use_q44_cap use_q44_ar1
+    persistent t_warmup_kf h_bar_safe R_OFF use_am_lpf a_det_lp amlpf_var_factor use_deblur use_aprime_ff use_q44_cap use_q44_ar1 use_exact_fe44
     persistent sigma2_n_s a_x_init enable_wall w_hat_n pz_wall
 
     % ------------------------------------------------------------------
@@ -159,6 +159,16 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
             use_q44_ar1 = ctrl_const.use_q44_ar1;
         else
             use_q44_ar1 = false;
+        end
+        % use_exact_fe44 (chat 2026-07-08): exact AR(1) row-4 pole for the
+        % COVARIANCE propagation, F_e(4,4) = lc + a'*F_dx[k] with the known-wall
+        % slope a' = -a_hat*K_h/R (keeps the F_dx*e_ax feedthrough; see
+        % 4state_del_hd.tex p.7). Mean predict UNCHANGED (feedthrough vanishes
+        % at the estimate). Only active with use_q44_ar1.
+        if isfield(ctrl_const, 'use_exact_fe44') && ~isempty(ctrl_const.use_exact_fe44)
+            use_exact_fe44 = ctrl_const.use_exact_fe44;
+        else
+            use_exact_fe44 = false;
         end
         % NOTE: ctrl_const.suppress_xD is ignored (no disturbance term exists).
 
@@ -509,7 +519,15 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         % 4-state F_e has no delta_a_x column, so dF_dx = (1-lc)*F_2 does not
         % appear; only F_1 (-> F_dx) is needed.
         if use_q44_ar1
-            F_e = build_F_e_4state(lambda_c, f_d(ax), F_1_i, lambda_c);   % AR(1): F_e(4,4)=lc
+            if use_exact_fe44
+                % exact pole lc + a'*F_dx, a' = -a_hat*K_h/R (known wall),
+                % F_dx = f_d[k] + (1-lc)*sum f_d[k-i]
+                a_prime_i = -a_hat(ax) * K_h_axis(ax) / R_radius;
+                a_pole_i = lambda_c + a_prime_i * (f_d(ax) + (1 - lambda_c) * F_1_i);
+            else
+                a_pole_i = lambda_c;                                      % simplified (drops a'*F_dx)
+            end
+            F_e = build_F_e_4state(lambda_c, f_d(ax), F_1_i, a_pole_i);   % AR(1)
         else
             F_e = build_F_e_4state(lambda_c, f_d(ax), F_1_i);
         end
