@@ -154,6 +154,34 @@ function ctrl_const = build_eq17_6state_constants(opts)
     var_da_increment_factor = 2 / (1 + lc);
 
     % ------------------------------------------------------------
+    % r22_delay_sum_factor: correction for the R22 d-step delay term.
+    %   The code sums the two increment variances var(delta_a_ram[k-1]) +
+    %   var(delta_a_ram[k-2]) as if independent. But the residual delay part is
+    %   r2_delay = delta_a_ram[k-1] + delta_a_ram[k-2], which TELESCOPES:
+    %       delta_a_ram[k-1] + delta_a_ram[k-2] = a_ram[k] - a_ram[k-2].
+    %   Hence Var(r2_delay) = 2*V_a*(1-rho2) (rho2 = lag-2 autocorr of a_ram = of
+    %   delta_x), not 2*[2*V_a*(1-rho1)] = independent-sum. Correction factor is
+    %       (1-rho2) / (2*(1-rho1))  ~ +10.4% at lc=0.7   (audit 2026-07-10).
+    %   For d=1 the single increment term is exact -> factor 1.
+    %   rho_dx_1/rho_dx_2 use the same thermal-dominated epsilon MA(2) closed form
+    %   as build_eq17_constants Option A (independent of a_pd); verified
+    %   rho_dx_1=0.8515, rho_dx_2=0.6718 at lc=0.7.
+    % ------------------------------------------------------------
+    one_m_lc  = 1 - lc;
+    denom_e   = 1 + 2 * one_m_lc^2;
+    rho_e_1   = one_m_lc * (2 - lc) / denom_e;
+    rho_e_2   = one_m_lc / denom_e;
+    Var_dx_over_sig_e = (1 + 2*lc*rho_e_1 + 2*lc^2*rho_e_2) / (1 - lc^2);
+    inv_var_ratio = 1 / Var_dx_over_sig_e;
+    rho_dx_1  = lc + inv_var_ratio * (rho_e_1 + lc*rho_e_2);
+    rho_dx_2  = lc * rho_dx_1 + inv_var_ratio * rho_e_2;
+    if d == 2
+        r22_delay_sum_factor = (1 - rho_dx_2) / (2 * (1 - rho_dx_1));
+    else
+        r22_delay_sum_factor = 1;                  % d=1 single term is exact
+    end
+
+    % ------------------------------------------------------------
     % IF color-inflation: EXACT closed form (R22_derivation.tex S4-S6).
     %   IF_eff = 1 + 2*sum_{tau>=1} rho_dpmr^2(tau)*s^tau, s=1-a_cov, depends on
     %   the per-axis ratio r = sigma2_dxT/sigma2_nx (= 4kBT*a/sigma2_nx). Since a
@@ -197,6 +225,7 @@ function ctrl_const = build_eq17_6state_constants(opts)
     ctrl_const.a_det           = a_det;
     ctrl_const.amlpf_var_factor = amlpf_var_factor;
     ctrl_const.var_da_increment_factor = var_da_increment_factor;  % 2/(1+lc) closed form
+    ctrl_const.r22_delay_sum_factor    = r22_delay_sum_factor;     % (1-rho2)/(2(1-rho1)) at d=2, 1 at d=1 (telescoped delay-sum)
     ctrl_const.IF_abc          = [IF_abc_A; IF_abc_B; IF_abc_C];  % s-weighted autocorr sums for exact per-step IF_eff
     ctrl_const.xi_per_axis     = xi_per_axis;
     ctrl_const.t_warmup_kf     = t_warmup_kf;
