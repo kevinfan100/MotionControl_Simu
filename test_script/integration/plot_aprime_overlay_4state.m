@@ -4,7 +4,7 @@ function plot_aprime_overlay_4state(opts)
 %   plot_aprime_overlay_4state()
 %   plot_aprime_overlay_4state(opts)
 %
-%   Runs the taylor-gain 4-state controller (4state_taylor_gain.tex) on the
+%   Runs the taylor-gain 4-state controller (4state_del_hd.tex taylor section) on the
 %   standard 1 Hz osc scenario with two a' sources and per-seed overlay
 %   figures in the selfrw-study style (z axis):
 %     row 1: a_hat vs a_true vs a_det(h_bar_d)

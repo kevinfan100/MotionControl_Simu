@@ -92,7 +92,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     persistent lambda_c d_delay Ts kBT R_radius gamma_N_p a_nom_p
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_per_axis var_da_inc_factor r22_delay_factor
     persistent t_warmup_kf h_bar_safe R_OFF use_am_lpf a_det_lp amlpf_var_factor use_deblur use_aprime_ff use_q44_cap use_q44_ar1 use_exact_fe44
-    persistent use_taylor_gain aprime_source ap_beta ap_gate_um ap_clamp_pos ap_pos_only  % taylor-gain suite (4state_taylor_gain.tex)
+    persistent use_taylor_gain aprime_source ap_beta ap_gate_um ap_clamp_pos ap_pos_only  % taylor-gain suite (4state_del_hd.tex taylor section)
     persistent a_prime_diff                                                   % 'diff' EWMA slope state (selfrw convention)
     persistent sigma2_n_s a_x_init enable_wall w_hat_n pz_wall
 
@@ -181,7 +181,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
             use_exact_fe44 = false;
         end
         % use_taylor_gain (chat 2026-07-10): Taylor-gain full suite
-        % (4state_taylor_gain.tex). z axis: predict slot 4 adds a'*dh_d +
+        % (4state_del_hd.tex taylor section). z axis: predict slot 4 adds a'*dh_d +
         % (1-lc)*a'*dxhat3, F_e row 4 = [0 0 (1-lc)a' 1+a'F_dx], rank-1
         % Q(3:4,3:4) (q3 = -eps and q4 = a'*eps share the same sample).
         % x/y axes: the gain argument is the wall-normal height, so z's dxhat3
@@ -486,7 +486,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
                          - one_minus_lc * sum_a_fd_past);
 
     % ------------------------------------------------------------------
-    % [3b] Taylor-gain slope a' + desired height steps (4state_taylor_gain.tex)
+    % [3b] Taylor-gain slope a' + desired height steps (4state_del_hd.tex taylor section)
     % ------------------------------------------------------------------
     if use_taylor_gain
         % Predict maps posterior[k-1] -> prior[k], so the gain-advance step is
@@ -613,7 +613,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         R_per_axis{ax} = R_ax;
     end
 
-    % --- Taylor-gain rank-1 Q fixup (4state_taylor_gain.tex): q3 = -eps and
+    % --- Taylor-gain rank-1 Q fixup (4state_del_hd.tex taylor section): q3 = -eps and
     %     q4 = a'*eps share the same sample -> Q(3:4,3:4) = s2eps*[1 -a'; -a' a'^2]
     %     on the z axis; x/y have q4 = a'_i*eps_z (independent of own q3), so
     %     Q34 = 0 and Q44 = a'_i^2 * Q33_z. Overrides the RW Q44 set above. ---
@@ -651,7 +651,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         % 4-state F_e has no delta_a_x column, so dF_dx = (1-lc)*F_2 does not
         % appear; only F_1 (-> F_dx) is needed.
         if use_taylor_gain && ax == 3
-            % Taylor-gain z row 4 = [0 0 (1-lc)a' 1+a'F_dx] (4state_taylor_gain.tex)
+            % Taylor-gain z row 4 = [0 0 (1-lc)a' 1+a'F_dx] (4state_del_hd.tex taylor section)
             F_dx_i   = f_d(ax) + one_minus_lc * F_1_i;
             fe43_i   = one_minus_lc * a_prime(3);
             a_pole_i = 1 + a_prime(3) * F_dx_i;
@@ -844,7 +844,7 @@ function F_e = build_F_e_4state(lambda_c, f_d_i, F_1_i, a_pole, fe43)
 %     a_pole defaults to 1 (random walk; feedforward increment enters the
 %     predict mean). Set a_pole=lc for the AR(1) reverting-gain model, or
 %     a_pole = 1+a'*F_dx with fe43 = (1-lc)*a' for the taylor-gain model
-%     (4state_taylor_gain.tex).
+%     (4state_del_hd.tex taylor section).
     if nargin < 4 || isempty(a_pole); a_pole = 1; end
     if nargin < 5 || isempty(fe43);   fe43 = 0;   end
     one_minus_lc = 1 - lambda_c;

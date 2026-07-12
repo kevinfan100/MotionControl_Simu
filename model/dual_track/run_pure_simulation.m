@@ -284,7 +284,7 @@ function simOut = run_pure_simulation(config, opts)
     if isfield(config, 'use_exact_fe44') && ~isempty(config.use_exact_fe44)
         ctrl_const.use_exact_fe44 = logical(config.use_exact_fe44);
     end
-    % Taylor-gain full suite (chat 2026-07-10, 4state_taylor_gain.tex): z-axis
+    % Taylor-gain full suite (chat 2026-07-10, 4state_del_hd.tex taylor section): z-axis
     % F_e row 4 [0 0 (1-lc)a' 1+a'F_dx] + rank-1 Q(3:4,3:4) + predict deviation
     % correction; aprime_source = 'known' | 'ahat' | 'diff'.
     if isfield(config, 'use_taylor_gain') && ~isempty(config.use_taylor_gain)

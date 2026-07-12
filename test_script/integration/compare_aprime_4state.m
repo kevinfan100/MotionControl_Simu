@@ -15,7 +15,7 @@ function results = compare_aprime_4state(opts)
 %     A3  : taylor-gain suite, aprime_source = 'ahat'   (level self-anchored)
 %     A4  : taylor-gain suite, aprime_source = 'diff'   (model-free LS slope)
 %
-%   Derivation: reference/eq17_analysis/derivation/4state_taylor_gain.tex.
+%   Derivation: reference/eq17_analysis/derivation/4state_del_hd.tex taylor section.
 %   Per arm: 1 det run (noise off) + numel(seeds) noisy runs, collect_diag.
 %   Output: <out_root>/f1Hz[-smoke]/runs.mat  (test_results/ is gitignored).
 %

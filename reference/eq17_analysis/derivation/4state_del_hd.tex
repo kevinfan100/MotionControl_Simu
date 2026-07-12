@@ -233,6 +233,25 @@ e_{a_x}[k+1] &= e_{a_x}[k] - \ell_{41}[k]\, e_{\delta x_1}[k] - \ell_{42}[k]\, e
 
 \textbf{Impl.}: $K_h,\ \sigma^2_{\delta h}=4k_BT\,a_\perp$ evaluated at $\bar h_{\mathrm{meas}}$ (measured, $p_m$); gain $a_x\to\hat a_x$ (estimate).
 
+\medskip
+\hd{Correction --- the $R_{22}$ delay term telescopes}
+\[
+\Delta a_{ram}[k-1] + \Delta a_{ram}[k-2] = a_{ram}[k] - a_{ram}[k-2]
+\;\Rightarrow\;
+\mathrm{Var}\Big(\textstyle\sum_{i=1}^{2}\Delta a_{ram}[k-i]\Big) = 2\,(1-\rho_2)\,\mathrm{Var}(a_{ram})
+\]
+\begin{empheq}[box=\fbox]{equation*}
+R_{22}^{delay} = \frac{1-\rho_2}{2\,(1-\rho_1)}
+\sum_{i=1}^{d} \mathrm{Var}\big(\Delta a_{ram}[k-i]\big),
+\qquad
+\frac{1-\rho_2}{2(1-\rho_1)} = 1.105 \;(\lc{=}0.7)
+\end{empheq}
+\[
+\rho_1 = 0.8515,\quad \rho_2 = 0.6718 \qquad
+(\rho_\tau = \text{lag-}\tau\ \text{autocorr of } \delta x;\ \text{independent sum} \Rightarrow -9.5\%)
+\]
+\textbf{Impl.}: offline constant \texttt{r22\_delay\_sum\_factor} (build\_eq17\_6state\_constants); $d=1 \to 1$ (single term, exact).
+
 \newpage
 \hd{Correction --- $a_{x_{ram}}$ is first-order autoregressive (AR(1)), not a random walk}
 
@@ -257,13 +276,96 @@ a_x[k+1] &= \big(a_{x_{det}}[k]+\Delta a_x[k]\big) + \lc\big(a_x[k]-a_{x_{det}}[
 \[ \hat a_x[k+1] = \lc\,\hat a_x[k] + (1-\lc)\,a_{x_{det}}[k] + \Delta a_x[k] + \ell_{4\cdot}[k]\,e_y[k] \]
 \[ e_{a_x}[k+1] = a_x[k+1] - \hat a_x[k+1] = \big(\lc + a'_x F_{dx}[k]\big)\, e_{a_x}[k] + a'_x\,\varepsilon[k] - \ell_{4\cdot}[k]\,e_y[k] \]
 
-\textbf{Process noise} (white driver $w_4=a'_x\varepsilon$; $\mathrm{Var}(\varepsilon)=(1-\lc^2)\,\mathrm{Var}(\delta x)$ since $\delta x$ is AR(1)):
+\textbf{Process noise} (white driver $w_4=a'_x\varepsilon$; equivalent-white
+$\mathrm{Var}_{\mathrm{eff}}(\varepsilon)=(1-\lc^2)\,\mathrm{Var}(\delta x)$, stationary-variance
+matching --- the per-step $\gamma_\varepsilon(0)=(1+2(1-\lc)^2)\,\sigma^2_{\delta h}$ differs by
+$1.712$; $\varepsilon$ is MA($d$), $\delta x$ is not AR(1)):
 \[ q_4 = \mathrm{Var}(w_4) = a'^2_x\,\mathrm{Var}(\varepsilon) = a'^2_x\,(1-\lc^2)\,\mathrm{Var}(\delta x) = (1-\lc^2)\,C_{\delta x}\,a'^2_x\,\sigma^2_{\delta h} \]
 \begin{empheq}[box=\fbox]{equation*}
 q_4 = a'^2_x\,\mathrm{Var}(\varepsilon) = (3-2\lc^2)\,a'^2_x\,\sigma^2_{\delta h}
 \end{empheq}
 
 \textbf{Impl.}: predict and $q_4$ use $\hat a_x$ with $a'_x$ at $\bar h_{\mathrm{meas}}$ ($p_m$); reversion target $a_{x_{det}}$ from $p_d$; production $\mathbf F_e(4,4)=\lc$ (drops $a'_x F_{dx}$).
+
+\newpage
+\hd{Taylor gain --- the full first-order model (anchor-free)}
+
+\textbf{Gain by Taylor expansion about the desired trajectory} ($x = x_d - \delta x$):
+\[
+a_x[k+1] = a_x\big(x[k+1]\big)
+= \underbrace{a_x\big(x_d[k+1]\big)}_{a_{x_{det}}[k+1]} - \; a'_x[k+1]\,\delta x[k+1],
+\qquad
+a_{x_{det}}[k+1] = a_{x_{det}}[k] + a'_x[k]\,\Delta h_d[k],
+\qquad a'_x[k+1] \approx a'_x[k] =: a'_x
+\]
+
+\textbf{True gain state} ($a_{x_{det}}[k] = a_x[k] + a'_x\,\delta x[k]$, then the boxed $\delta x$ recursion):
+\begin{empheq}[box=\fbox]{equation*}
+a_x[k+1] = a_x[k] + a'_x\,\Delta h_d[k]
++ (1-\lc)\,a'_x\,\delta x[k]
++ a'_x\, F_{dx}[k]\, e_{a_x}[k]
++ a'_x\,\varepsilon[k]
+\end{empheq}
+
+\textbf{Estimator} ($E\{e_{a_x}\}=0$, $E\{\varepsilon\}=0$; $\delta x[k] \to \delta\hat x_3[k]$):
+\begin{empheq}[box=\fbox]{equation*}
+\hat a_x[k+1] = \hat a_x[k] + a'_x\,\Delta h_d[k] + (1-\lc)\,a'_x\,\delta \hat x_3[k]
++ \ell_{41}[k]\, e_{y_1}[k] + \ell_{42}[k]\, e_{y_2}[k]
+\end{empheq}
+
+\textbf{Error dynamics} ($e_{\delta x_3} = \delta x_3 - \delta\hat x_3$):
+\begin{empheq}[box=\fbox]{equation*}
+e_{a_x}[k+1] = \big(1 + a'_x F_{dx}[k]\big)\, e_{a_x}[k]
++ (1-\lc)\,a'_x\, e_{\delta x_3}[k]
++ \underbrace{a'_x\,\varepsilon[k]}_{q_4[k]}
+- \ell_{41}[k]\, e_{y_1}[k] - \ell_{42}[k]\, e_{y_2}[k]
+\end{empheq}
+
+\textbf{$\mathbf F_e$ and process noise} ($q_3 = -\varepsilon$, $q_4 = a'_x\,\varepsilon$: one sample $\Rightarrow$ rank-1):
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 \\
+0 & 0 & 1 & 0 \\
+0 & 0 & \lc & -F_{dx}[k] \\
+0 & 0 & (1-\lc)\,a'_x & \;1 + a'_x F_{dx}[k]
+\end{bmatrix},
+\qquad
+\mathrm{eig}(\mathbf{F}_e) = \{\,0,\;0,\;\lc + a'_x F_{dx},\;1\,\}
+\end{empheq}
+\begin{empheq}[box=\fbox]{equation*}
+Q_{33} = \sigma^2_\varepsilon,
+\qquad
+Q_{34} = Q_{43} = -\,a'_x\,\sigma^2_\varepsilon,
+\qquad
+Q_{44} = a'^2_x\,\sigma^2_\varepsilon,
+\qquad
+\sigma^2_\varepsilon := \gamma_\varepsilon(0) = \big(1+2(1-\lc)^2\big)\sigma^2_{\delta h}
+\end{empheq}
+\[
+P_{44} = a'^2_x\,P_{33},\qquad P_{34} = -a'_x\,P_{33}
+\qquad (\text{exact filter invariant, } \forall R_{22})
+\]
+\[
+\tfrac{\gamma_\varepsilon(0)}{1-\lc^2} = 2.31\,\sigma^2_{\delta h}
+\;\;\text{vs}\;\;
+\mathrm{Var}(\delta x) = C_{\delta x}\,\sigma^2_{\delta h} = 3.96\,\sigma^2_{\delta h}
+\quad (\varepsilon \text{ colored: white-}\varepsilon \text{ model under-represents } \mathrm{Var}(a_{ram}))
+\]
+
+\textbf{Feedforward (implemented forms; raw $a'\Delta h$ accumulates $\sim$3.6\% Euler drift over the descent)}:
+\[
+\text{known: } \Delta\hat a = a_{x_{det}}[k] - a_{x_{det}}[k-1];
+\qquad
+\text{ahat: } \Delta\hat a = \hat a_x\Big(\tfrac{a_{x_{det}}[k]}{a_{x_{det}}[k-1]} - 1\Big);
+\qquad
+\text{diff: } \Delta\hat a = \hat a'_x\,\Delta h_d[k-1]
+\]
+
+\textbf{Impl.}: knobs \texttt{use\_taylor\_gain} + \texttt{aprime\_source} (known $|$ ahat $|$ diff $=$ the
+self-difference box below), default off. $z$ axis: full row 4. $x,y$: the gain argument is the
+wall-normal height, so $z$'s $\delta\hat x_3$ enters their predict as a known input; row 4
+$=[\,0\;0\;0\;1\,]$, $Q_{34}=0$, $Q_{44}=a'^2_i\,\sigma^2_{\varepsilon,z}$.
 
 \newpage
 \hd{Verification (1\,Hz, near wall)}
@@ -321,6 +423,33 @@ This one self-difference supplies $a'$ everywhere in both runs; the runs differ 
 \noindent\begin{minipage}{\linewidth}\centering
 \includegraphics[width=0.88\textwidth]{figures/fig_ar1_exact_vs_simple_knownc_z.png}\\[0.6ex]
 {\small\itshape Top: $a_z$ --- $a_{x_{det}}(p_d)$ and the two $\hat a_x$. Bottom: $a_x - a_{x_{det}}$ (true, black) and $\hat a_x - a_{x_{det}}$ (both versions). The two versions coincide: $\max|\hat a_x^{\mathrm{complete}} - \hat a_x^{\mathrm{simplified}}| / a_{x_{det}} = 0.085\,\%$; \ $a_{x_{det}}(p_d) - \hat a_x = -0.03\,\% \pm 0.30\,\%$ \ ($\bar h_d < 2$: $\pm\,0.41\,\%$).}
+\end{minipage}
+
+\newpage
+\hd{Verification --- taylor gain ($z$ axis, 1\,Hz osc, seed 1)}
+
+\medskip
+\noindent\begin{minipage}{\linewidth}\centering
+\includegraphics[width=0.86\textwidth]{figures/fig_taylor_gap_known_z.png}\\[0.4ex]
+{\small\itshape Oracle-$a'$ arm: $\hat a_x - a_x(p_d)$ vs $a_{x,true} - a_x(p_d)$ ($= a_{x_{ram}}$).}
+\end{minipage}
+
+\medskip
+\noindent\begin{minipage}{\linewidth}\centering
+\includegraphics[width=0.86\textwidth]{figures/fig_taylor_dx3_known_z.png}\\[0.4ex]
+{\small\itshape Same arm: $\delta\hat x_3$ vs true $\delta x_z$.}
+\end{minipage}
+
+\newpage
+\noindent\begin{minipage}{\linewidth}\centering
+\includegraphics[width=0.86\textwidth]{figures/fig_taylor_overlay_stacked_z.png}\\[0.4ex]
+{\small\itshape $\hat a_x$ (top) and $a'_x$ (bottom): oracle-$a'$ arm vs self-diff arm (no clamp).}
+\end{minipage}
+
+\medskip
+\noindent\begin{minipage}{\linewidth}\centering
+\includegraphics[width=0.86\textwidth]{figures/fig_taylor_overlay_stacked_z_clamp.png}\\[0.4ex]
+{\small\itshape Same seed with the post-EWMA clamp $\hat a'_x \leftarrow \max(\hat a'_x, 0)$. Six-arm study (20 seeds, osc window): taylor-known $-0.69\%\,/\,3.08\%$ vs RW $-2.5\%\,/\,16.5\%$ vs AR(1) $+0.02\%\,/\,0.96\%$ (bias/std); self-diff $+33\%\,/\,90\%$.}
 \end{minipage}
 
 \end{document}
