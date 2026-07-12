@@ -90,8 +90,10 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
 
     persistent initialized
     persistent lambda_c d_delay Ts kBT R_radius gamma_N_p a_nom_p
-    persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_per_axis var_da_inc_factor
+    persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_per_axis var_da_inc_factor r22_delay_factor
     persistent t_warmup_kf h_bar_safe R_OFF use_am_lpf a_det_lp amlpf_var_factor use_deblur use_aprime_ff use_q44_cap use_q44_ar1 use_exact_fe44
+    persistent use_taylor_gain aprime_source ap_beta ap_gate_um ap_clamp_pos ap_pos_only  % taylor-gain suite (4state_taylor_gain.tex)
+    persistent a_prime_diff                                                   % 'diff' EWMA slope state (selfrw convention)
     persistent sigma2_n_s a_x_init enable_wall w_hat_n pz_wall
 
     % ------------------------------------------------------------------
@@ -140,6 +142,14 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         else
             var_da_inc_factor = 2 / (1 + lambda_c);     % closed-form fallback
         end
+        % r22_delay_factor (audit 2026-07-10): telescoped 2-step-difference
+        % correction for the R22 d-step delay term (shared by ALL Q44 modes).
+        % Backward-compat: absent -> 1 (old independent-sum, ~9.5% low at d=2).
+        if isfield(ctrl_const, 'r22_delay_sum_factor') && ~isempty(ctrl_const.r22_delay_sum_factor)
+            r22_delay_factor = ctrl_const.r22_delay_sum_factor;
+        else
+            r22_delay_factor = 1;
+        end
         if isfield(ctrl_const, 'use_deblur') && ~isempty(ctrl_const.use_deblur)
             use_deblur = ctrl_const.use_deblur;
         else
@@ -170,6 +180,56 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         else
             use_exact_fe44 = false;
         end
+        % use_taylor_gain (chat 2026-07-10): Taylor-gain full suite
+        % (4state_taylor_gain.tex). z axis: predict slot 4 adds a'*dh_d +
+        % (1-lc)*a'*dxhat3, F_e row 4 = [0 0 (1-lc)a' 1+a'F_dx], rank-1
+        % Q(3:4,3:4) (q3 = -eps and q4 = a'*eps share the same sample).
+        % x/y axes: the gain argument is the wall-normal height, so z's dxhat3
+        % enters their predict as a known exogenous input; row 4 stays
+        % [0 0 0 1], Q34 = 0, Q44 = a'_i^2 * Q33_z. Default off -> bit-identical.
+        if isfield(ctrl_const, 'use_taylor_gain') && ~isempty(ctrl_const.use_taylor_gain)
+            use_taylor_gain = ctrl_const.use_taylor_gain;
+        else
+            use_taylor_gain = false;
+        end
+        % aprime_source: 'known' -a_det(h_bar_d)*K_h(h_bar_d)/R (oracle level) |
+        %                'ahat'  -a_hat*K_h(h_bar_d)/R (level self-anchored)   |
+        %                'diff'  per-step self-diff of a_hat vs h_d, gate +
+        %                        EWMA (model-free, selfrw convention 2026-07-07)
+        if isfield(ctrl_const, 'aprime_source') && ~isempty(ctrl_const.aprime_source)
+            aprime_source = lower(ctrl_const.aprime_source);
+        else
+            aprime_source = 'known';
+        end
+        if use_taylor_gain
+            assert(any(strcmp(aprime_source, {'known', 'ahat', 'diff'})), ...
+                   'motion_control_law_eq17_4state:badAprimeSource', ...
+                   'aprime_source must be ''known''|''ahat''|''diff'', got ''%s''.', aprime_source);
+            assert(~use_q44_ar1 && ~use_q44_cap && ~use_aprime_ff && ~use_deblur, ...
+                   'motion_control_law_eq17_4state:taylorComboUnsupported', ...
+                   'use_taylor_gain cannot combine with use_q44_ar1/use_q44_cap/use_aprime_ff/use_deblur.');
+        end
+        if isfield(ctrl_const, 'aprime_diff_beta') && ~isempty(ctrl_const.aprime_diff_beta)
+            ap_beta = ctrl_const.aprime_diff_beta;
+        else
+            ap_beta = 0.05;                     % EWMA weight (selfrw convention)
+        end
+        if isfield(ctrl_const, 'aprime_diff_gate_um') && ~isempty(ctrl_const.aprime_diff_gate_um)
+            ap_gate_um = ctrl_const.aprime_diff_gate_um;
+        else
+            ap_gate_um = 1e-3;                  % [um] |dh_d| excitation gate (selfrw convention)
+        end
+        if isfield(ctrl_const, 'aprime_clamp_pos') && ~isempty(ctrl_const.aprime_clamp_pos)
+            ap_clamp_pos = logical(ctrl_const.aprime_clamp_pos);
+        else
+            ap_clamp_pos = false;               % a'>0 post-EWMA clamp (chat 2026-07-10) off by default
+        end
+        if isfield(ctrl_const, 'aprime_pos_only') && ~isempty(ctrl_const.aprime_pos_only)
+            ap_pos_only = logical(ctrl_const.aprime_pos_only);
+        else
+            ap_pos_only = false;                % input-side gate: negative raw skipped, no update
+        end
+        a_prime_diff = zeros(3, 1);
         % NOTE: ctrl_const.suppress_xD is ignored (no disturbance term exists).
 
         % --- 0C. Wall geometry ---
@@ -181,6 +241,14 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
             w_hat_n     = [0; 0; 1];
             pz_wall     = 0;
             enable_wall = false;
+        end
+        if use_taylor_gain
+            % Per-axis realization assumes the wall normal is the z axis
+            % (x/y taylor coupling reads z's dxhat3 as the height error).
+            assert(abs(w_hat_n(3) - 1) < 1e-12, ...
+                   'motion_control_law_eq17_4state:taylorWallOrientation', ...
+                   'use_taylor_gain requires w_hat = [0;0;1] (got [%g;%g;%g]).', ...
+                   w_hat_n(1), w_hat_n(2), w_hat_n(3));
         end
 
         % --- 0E. Wall-aware a_x[0] seeding ---
@@ -221,7 +289,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
             Q_ss(4, 4) = var_da_init;                      % Q on a_x slot (= 5-state Q44)
             IF_ss  = if_eff_eval(IF_abc, C_dpmr, C_n, kBT, a_init_ax, sigma2_n_s(ax));
             R22_ss = amlpf_var_factor * K_var * IF_ss * (a_init_ax + xi_per_axis(ax))^2 ...
-                     + d_delay * var_da_init;
+                     + r22_delay_factor * d_delay * var_da_init;   % telescoped delay-sum (audit 2026-07-10)
             R_ss = [sigma2_n_s(ax), 0; 0, R22_ss];
             P_per_axis{ax} = solve_dare_kf_local(F_e_ss, H_ss, Q_ss, R_ss);
         end
@@ -418,6 +486,48 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
                          - one_minus_lc * sum_a_fd_past);
 
     % ------------------------------------------------------------------
+    % [3b] Taylor-gain slope a' + desired height steps (4state_taylor_gain.tex)
+    % ------------------------------------------------------------------
+    if use_taylor_gain
+        % Predict maps posterior[k-1] -> prior[k], so the gain-advance step is
+        % the BACKWARD desired increment h_d[k]-h_d[k-1] (same convention as
+        % da_x_pred). The d-step span aligns a_xm[k] (= a[k-d]) to a[k].
+        dh_d_step  = dot(pd - pd_km1,  w_hat_n);      % h_d[k]   - h_d[k-1] [um]
+        dH_d_dspan = dot(pd - pd_km_d, w_hat_n);      % h_d[k]   - h_d[k-d] [um]
+        switch aprime_source
+            case 'known'        % oracle: exogenous level (a_det) + known shape
+                a_prime = local_a_prime_known(pd, w_hat_n, pz_wall, R_radius, ...
+                                              enable_wall, a_det_k);
+            case 'ahat'         % known shape, level self-anchored to the estimate
+                a_prime = local_a_prime_known(pd, w_hat_n, pz_wall, R_radius, ...
+                                              enable_wall, a_hat);
+            otherwise           % 'diff': model-free per-step self-diff, selfrw
+                                % convention (chat 2026-07-07): backward raw
+                                % slope (a_hat[k]-a_hat[k-1])/dh_d[k-1], gated
+                                % by |dh_d| >= gamma, EWMA-smoothed with beta.
+                dh_prev = dot(pd - pd_km1, w_hat_n);                  % h_d[k]-h_d[k-1] [um]
+                if abs(dh_prev) >= ap_gate_um
+                    raw = (a_hat - a_hat_km1) / dh_prev;              % 3x1 [um/pN per um]
+                    if ap_pos_only
+                        upd = raw >= 0;                               % input-side gate: skip negative raw
+                        a_prime_diff(upd) = (1 - ap_beta) * a_prime_diff(upd) + ap_beta * raw(upd);
+                    else
+                        a_prime_diff = (1 - ap_beta) * a_prime_diff + ap_beta * raw;
+                    end
+                end                 % else: hold the previous slope (no excitation)
+                if ap_clamp_pos
+                    a_prime = max(a_prime_diff, 0);                   % a' > 0 prior (post-EWMA clamp)
+                else
+                    a_prime = a_prime_diff;
+                end
+        end
+    else
+        dh_d_step  = 0;
+        dH_d_dspan = 0;
+        a_prime    = zeros(3, 1);
+    end
+
+    % ------------------------------------------------------------------
     % [4] Q (4x4 diagonal) and R (2x2) per axis
     %   Q33 = Var(epsilon); Q44 = var(delta_a_ram) (gain-level driving noise)
     % ------------------------------------------------------------------
@@ -425,8 +535,9 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     R_per_axis = cell(3, 1);
     gate_off   = false(3, 1);
     G_flags    = false(3, 3);
-    var_da_ram = zeros(3, 1);   % Q44 driver (mode-dependent: RW / AR(1) / cap)
+    var_da_ram = zeros(3, 1);   % Q44 driver (mode-dependent: RW / AR(1) / cap / taylor)
     var_da_inc = zeros(3, 1);   % true increment var Var(delta_a_ram), for Q33/R22
+    Q33_vec    = zeros(3, 1);   % Var(epsilon) per axis (taylor Q needs Q33_z cross-axis)
     t_now = (k_step - 1) * Ts;
     for ax = 1:3
         a_hat_i = a_hat(ax);
@@ -466,9 +577,10 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
             Q33_randgain = one_minus_lc^2 * (f_d_km1(ax)^2 * var_da_inc_km1(ax));
         end
         Q33_nx = one_minus_lc^2 * sigma2_n_s(ax);
+        Q33_vec(ax) = Q33_thermal + Q33_randgain + Q33_nx;
 
         Q_i = zeros(4);
-        Q_i(3, 3) = Q33_thermal + Q33_randgain + Q33_nx;
+        Q_i(3, 3) = Q33_vec(ax);
         Q_i(4, 4) = var_da_ram(ax);                    % gain-level driving noise (slot 4)
         Q_per_axis{ax} = Q_i;
 
@@ -476,9 +588,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         IF_eff_i = if_eff_eval(IF_abc, C_dpmr, C_n, kBT, a_hat_i, sigma2_n_s(ax));
         R2_intrinsic_i = amlpf_var_factor * K_var * IF_eff_i * (a_hat_i + xi_per_axis(ax))^2;
         if d_delay == 2
-            R22_delay_i = var_da_inc_km1(ax) + var_da_inc_km2(ax);
+            % Telescoped delay-sum: var(delta_a_ram[k-1]+delta_a_ram[k-2]) =
+            % 2*V_a*(1-rho2), not the independent 2-term sum (audit 2026-07-10).
+            R22_delay_i = r22_delay_factor * (var_da_inc_km1(ax) + var_da_inc_km2(ax));
         else
-            R22_delay_i = var_da_inc_km1(ax);
+            R22_delay_i = var_da_inc_km1(ax);       % d=1 single term is exact
         end
         R2_eff_i = R2_intrinsic_i + R22_delay_i;
 
@@ -499,6 +613,20 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         R_per_axis{ax} = R_ax;
     end
 
+    % --- Taylor-gain rank-1 Q fixup (4state_taylor_gain.tex): q3 = -eps and
+    %     q4 = a'*eps share the same sample -> Q(3:4,3:4) = s2eps*[1 -a'; -a' a'^2]
+    %     on the z axis; x/y have q4 = a'_i*eps_z (independent of own q3), so
+    %     Q34 = 0 and Q44 = a'_i^2 * Q33_z. Overrides the RW Q44 set above. ---
+    if use_taylor_gain
+        Q33_z = Q33_vec(3);
+        for ax = 1:3
+            var_da_ram(ax) = a_prime(ax)^2 * Q33_z;
+            Q_per_axis{ax}(4, 4) = var_da_ram(ax);
+        end
+        Q_per_axis{3}(3, 4) = -a_prime(3) * Q33_z;
+        Q_per_axis{3}(4, 3) = -a_prime(3) * Q33_z;
+    end
+
     % ------------------------------------------------------------------
     % [5] EKF predict + update per axis
     % ------------------------------------------------------------------
@@ -509,6 +637,10 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     K_dx_y1_v = zeros(3, 1);
     innov_y2_v = zeros(3, 1);
 
+    % z-axis posterior[k-1] tracking-error estimate: the wall-normal deviation
+    % that drives the taylor-gain deviation correction on ALL axes (w_hat = z).
+    dxhat3_z_prev = x_e_per_axis(3, 3);
+
     for ax = 1:3
         % F_e (time-varying Row 3 via f_d history)
         if d_delay == 2
@@ -518,7 +650,13 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         end
         % 4-state F_e has no delta_a_x column, so dF_dx = (1-lc)*F_2 does not
         % appear; only F_1 (-> F_dx) is needed.
-        if use_q44_ar1
+        if use_taylor_gain && ax == 3
+            % Taylor-gain z row 4 = [0 0 (1-lc)a' 1+a'F_dx] (4state_taylor_gain.tex)
+            F_dx_i   = f_d(ax) + one_minus_lc * F_1_i;
+            fe43_i   = one_minus_lc * a_prime(3);
+            a_pole_i = 1 + a_prime(3) * F_dx_i;
+            F_e = build_F_e_4state(lambda_c, f_d(ax), F_1_i, a_pole_i, fe43_i);
+        elseif use_q44_ar1
             if use_exact_fe44
                 % exact pole lc + a'*F_dx, a' = -a_hat*K_h/R (known wall),
                 % F_dx = f_d[k] + (1-lc)*sum f_d[k-i]
@@ -544,7 +682,27 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         else
             da_ram_pred_i = 0;
         end
-        if use_q44_ar1
+        if use_taylor_gain
+            % Taylor-gain predict: slope feedforward + (1-lc)*a'*dxhat3
+            % deviation correction (dxhat3 = wall-normal = z-axis estimate for
+            % all axes; for ax==3 this equals its own x_curr(3)).
+            % Feedforward form per source (avoids the ~3.6%% Euler-integration
+            % drift of a'*dh over the descent when the exact shape is known):
+            %   known: exact a_det difference (= da_x_pred, telescopes exactly)
+            %   ahat : shape-exact ratio, level self-anchored:
+            %          a_hat*(a_det[k]/a_det[k-1] - 1) = a_hat*(c[k-1]/c[k] - 1)
+            %   diff : a'*(h_d[k]-h_d[k-1]) (no shape available)
+            switch aprime_source
+                case 'known'
+                    da_ff_i = da_x_pred(ax);
+                case 'ahat'
+                    da_ff_i = x_curr(4) * (a_det_k(ax) / a_det_km1(ax) - 1);
+                otherwise
+                    da_ff_i = a_prime(ax) * dh_d_step;
+            end
+            x4_pred = x_curr(4) + da_ff_i ...
+                      + one_minus_lc * a_prime(ax) * dxhat3_z_prev;
+        elseif use_q44_ar1
             % AR(1) reverting gain: a_x reverts to a_det with pole lc.
             x4_pred = lambda_c * x_curr(4) + (1 - lambda_c) * a_det_k(ax) + da_x_pred(ax);
         else
@@ -561,6 +719,16 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         %     the corrected a_xm directly measures a_x[k] (H row 2 = [0 0 0 1]). ---
         if use_deblur
             a_meas_corr = a_meas(ax);                    % de-blur already aligned to a_x[k]
+        elseif use_taylor_gain
+            % d-step gain-drift removal, source-consistent with the predict FF
+            switch aprime_source
+                case 'known'
+                    a_meas_corr = a_meas(ax) + sum_da_ff(ax);
+                case 'ahat'
+                    a_meas_corr = a_meas(ax) + a_hat(ax) * (a_det_k(ax) / a_det_kmd(ax) - 1);
+                otherwise
+                    a_meas_corr = a_meas(ax) + a_prime(ax) * dH_d_dspan;
+            end
         else
             a_meas_corr = a_meas(ax) + sum_da_ff(ax);    % a_xm + Sum_i delta_a_x[k-i]
         end
@@ -610,7 +778,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     % ------------------------------------------------------------------
     pd_km2 = pd_km1; pd_km1 = pd;
     f_d_km2 = f_d_km1; f_d_km1 = f_d;
-    a_hat_km2 = a_hat_km1; a_hat_km1 = a_hat;            % a_hat[k] used this step
+    a_hat_km2 = a_hat_km1; a_hat_km1 = a_hat;   % entry posterior used during this step
+                                                % (same object the taylor comments call posterior[k-1])
     a_ctrl_km2 = a_ctrl_km1; a_ctrl_km1 = a_ctrl;
     var_da_inc_km2 = var_da_inc_km1; var_da_inc_km1 = var_da_inc;
     dx_bar_m = dx_bar_m_new;
@@ -660,25 +829,45 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         diag.delta_x_hat_1        = x_e_per_axis(1, :).';
         diag.delta_x_hat_3        = x_e_per_axis(3, :).';   % current tracking-error estimate
         diag.P_dx1                = P_dx1_v;
+        diag.a_prime_used         = a_prime;                % taylor-gain slope (zeros if off)
     end
 end
 
 
 %% =================== Local Helpers ===================
 
-function F_e = build_F_e_4state(lambda_c, f_d_i, F_1_i, a_pole)
+function F_e = build_F_e_4state(lambda_c, f_d_i, F_1_i, a_pole, fe43)
 %BUILD_F_E_4STATE  4x4 error-dynamics matrix (per axis), rate state removed.
 %   Row 3 = [0 0 lc -F_dx]   (cols: 1=dx1 2=dx2 3=dx3 4=a_x)
 %       F_dx = f_d[k] + (1-lc)*F_1,   F_1 = sum_{i=1..d} f_d[k-i].
-%   The a_x row diagonal a_pole defaults to 1 (random walk; feedforward increment
-%   enters the predict mean). Set a_pole=lc for the AR(1) reverting-gain model.
+%   Row 4 = [0 0 fe43 a_pole]:
+%     a_pole defaults to 1 (random walk; feedforward increment enters the
+%     predict mean). Set a_pole=lc for the AR(1) reverting-gain model, or
+%     a_pole = 1+a'*F_dx with fe43 = (1-lc)*a' for the taylor-gain model
+%     (4state_taylor_gain.tex).
     if nargin < 4 || isempty(a_pole); a_pole = 1; end
+    if nargin < 5 || isempty(fe43);   fe43 = 0;   end
     one_minus_lc = 1 - lambda_c;
     Fe3_a = -f_d_i - one_minus_lc * F_1_i;     % col 4 (a_x): -F_dx
     F_e = [0 1 0        0; ...
            0 0 1        0; ...
            0 0 lambda_c Fe3_a; ...
-           0 0 0        a_pole];
+           0 0 fe43     a_pole];
+end
+
+
+function a_prime = local_a_prime_known(p_d, w_hat_n, pz_wall, R_radius, enable_wall, a_level)
+%LOCAL_A_PRIME_KNOWN  Wall-model gain slope a' = -a_level * K_h(h_bar_d) / R.
+%   Shape K_h evaluated at the DESIRED height (exogenous); the level comes
+%   from the caller (a_det for 'known', a_hat for 'ahat'). [um/pN per um]
+    if enable_wall
+        h_bar_d = max((dot(p_d, w_hat_n) - pz_wall) / R_radius, 1.001);
+        [~, ~, drv] = calc_correction_functions(h_bar_d, true);
+        K_h_d = [drv.K_h_para; drv.K_h_para; drv.K_h_perp];
+    else
+        K_h_d = zeros(3, 1);
+    end
+    a_prime = -a_level .* K_h_d / R_radius;
 end
 
 
@@ -767,4 +956,5 @@ function d = empty_diag_4state()
     d.delta_x_hat_3        = zeros(3, 1);
     d.P_dx1                = zeros(3, 1);
     d.a_ctrl_used          = zeros(3, 1);
+    d.a_prime_used         = zeros(3, 1);
 end

@@ -284,6 +284,42 @@ function simOut = run_pure_simulation(config, opts)
     if isfield(config, 'use_exact_fe44') && ~isempty(config.use_exact_fe44)
         ctrl_const.use_exact_fe44 = logical(config.use_exact_fe44);
     end
+    % Taylor-gain full suite (chat 2026-07-10, 4state_taylor_gain.tex): z-axis
+    % F_e row 4 [0 0 (1-lc)a' 1+a'F_dx] + rank-1 Q(3:4,3:4) + predict deviation
+    % correction; aprime_source = 'known' | 'ahat' | 'diff'.
+    if isfield(config, 'use_taylor_gain') && ~isempty(config.use_taylor_gain)
+        ctrl_const.use_taylor_gain = logical(config.use_taylor_gain);
+    end
+    if isfield(config, 'aprime_source') && ~isempty(config.aprime_source)
+        ctrl_const.aprime_source = config.aprime_source;
+    end
+    if isfield(config, 'aprime_diff_beta') && ~isempty(config.aprime_diff_beta)
+        ctrl_const.aprime_diff_beta = config.aprime_diff_beta;
+    end
+    if isfield(config, 'aprime_diff_gate_um') && ~isempty(config.aprime_diff_gate_um)
+        ctrl_const.aprime_diff_gate_um = config.aprime_diff_gate_um;
+    end
+    if isfield(config, 'aprime_clamp_pos') && ~isempty(config.aprime_clamp_pos)
+        ctrl_const.aprime_clamp_pos = config.aprime_clamp_pos;
+    end
+    if isfield(config, 'aprime_pos_only') && ~isempty(config.aprime_pos_only)
+        ctrl_const.aprime_pos_only = config.aprime_pos_only;
+    end
+    % TEMP (chat 2026-07-10): positivity gate on the self-diff a' (physical
+    % prior a' > 0; negative raw slopes are skipped); remove with variant.
+    if isfield(config, 'selfdet_pos_only') && ~isempty(config.selfdet_pos_only)
+        ctrl_const.selfdet_pos_only = logical(config.selfdet_pos_only);
+    end
+    % TEMP (chat 2026-07-10): a'>0 prior as a post-EWMA clamp instead
+    % (max(a_prime_hat,0)); remove with variant.
+    if isfield(config, 'selfdet_clamp_pos') && ~isempty(config.selfdet_clamp_pos)
+        ctrl_const.selfdet_clamp_pos = logical(config.selfdet_clamp_pos);
+    end
+    % TEMP (chat 2026-07-10): oracle a' ablation (known-wall slope at h_bar_d,
+    % a_det stays self-anchored); remove with variant.
+    if isfield(config, 'use_true_aprime') && ~isempty(config.use_true_aprime)
+        ctrl_const.use_true_aprime = logical(config.use_true_aprime);
+    end
 
     % gscalar-only knobs: forgetting factor + h_bar source for a_det.
     if isfield(config, 'beta_s') && ~isempty(config.beta_s)
@@ -411,6 +447,7 @@ function simOut = run_pure_simulation(config, opts)
         diag_log.P77               = zeros(N, 3);
         diag_log.Q77               = zeros(N, 3);
         diag_log.var_da_ram        = zeros(N, 3);   % Q44 driver (gain process-noise) time series
+        diag_log.a_prime_used      = zeros(N, 3);   % taylor-gain slope a' time series
         diag_log.a_hat             = zeros(N, 3);
         diag_log.x_D_hat           = zeros(N, 3);
         diag_log.delta_a_hat       = zeros(N, 3);
@@ -636,6 +673,7 @@ function simOut = run_pure_simulation(config, opts)
             diag_log.P77(k, :)               = diag_k.P77.';
             diag_log.Q77(k, :)               = diag_k.Q77.';
             if isfield(diag_k, 'var_da_ram'); diag_log.var_da_ram(k, :) = diag_k.var_da_ram.'; end
+            if isfield(diag_k, 'a_prime_used'); diag_log.a_prime_used(k, :) = diag_k.a_prime_used.'; end
             diag_log.a_hat(k, :)             = diag_k.a_hat.';
             diag_log.x_D_hat(k, :)           = diag_k.x_D_hat.';
             diag_log.delta_a_hat(k, :)       = diag_k.delta_a_hat.';
