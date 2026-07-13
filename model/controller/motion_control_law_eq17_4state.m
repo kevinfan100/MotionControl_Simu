@@ -636,6 +636,9 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     K_a_y2_v  = zeros(3, 1);
     K_dx_y1_v = zeros(3, 1);
     innov_y2_v = zeros(3, 1);
+    K_a_y1_v  = zeros(3, 1);        % L(4,1): y1 -> gain state (v-budget diag)
+    K_dx_y2_v = zeros(3, 1);        % L(3,2): y2 -> dx3 state  (v-budget diag)
+    innov_y1_v = zeros(3, 1);
 
     % z-axis posterior[k-1] tracking-error estimate: the wall-normal deviation
     % that drives the taylor-gain deviation correction on ALL axes (w_hat = z).
@@ -761,11 +764,15 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
 
         % Diagnostics
         K_dx_y1_v(ax) = K_kf(3, 1);
+        K_a_y1_v(ax)  = K_kf(4, 1);          % post-freeze (G1 zeroes row 4)
+        innov_y1_v(ax) = innov(1);
         if gate_off(ax)
             K_a_y2_v(ax)  = 0;
+            K_dx_y2_v(ax) = 0;
             innov_y2_v(ax) = 0;
         else
             K_a_y2_v(ax)  = K_kf(4, 2);
+            K_dx_y2_v(ax) = K_kf(3, 2);
             innov_y2_v(ax) = innov(2);
         end
 
@@ -810,6 +817,9 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         diag.innovation_y2  = innov_y2_v;
         diag.K_kf_a_y2      = K_a_y2_v;
         diag.K_kf_dx_y1     = K_dx_y1_v;
+        diag.innovation_y1  = innov_y1_v;
+        diag.K_kf_a_y1      = K_a_y1_v;
+        diag.K_kf_dx_y2     = K_dx_y2_v;
         diag.P_a            = P_a_v;
         diag.P_dx           = P_dx_v;
         diag.x_D_hat              = zeros(3, 1);            % no disturbance state (driver compat)
@@ -937,6 +947,9 @@ function d = empty_diag_4state()
     d.innovation_y2     = zeros(3, 1);
     d.K_kf_a_y2         = zeros(3, 1);
     d.K_kf_dx_y1        = zeros(3, 1);
+    d.innovation_y1     = zeros(3, 1);
+    d.K_kf_a_y1         = zeros(3, 1);
+    d.K_kf_dx_y2        = zeros(3, 1);
     d.P_a               = zeros(3, 1);
     d.P_dx              = zeros(3, 1);
     d.x_D_hat              = zeros(3, 1);   % no disturbance state (placeholder, driver compat)

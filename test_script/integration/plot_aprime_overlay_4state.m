@@ -136,16 +136,27 @@ function plot_aprime_overlay_4state(opts)
     % --- optional: known-arm gap overlay (single panel) ---
     %     a_hat - a_det(h_bar_d)  vs  a_true - a_det(h_bar_d) (= a_ram)
     if opts.gap_fig
+        % gain at the EKF-implied position p_d - dxhat3 (z axis; taylor asserts
+        % w_hat = z): a(p_d - dxhat3) - a(p_d) ~ -a' * dxhat3, the slice of
+        % a_ram the estimator reconstructs through its tracking-error estimate.
+        hb_hat = max(hbd - so_k.diag.delta_x_hat_3(:, 3) / R, 1.001);
+        a_hat3 = zeros(N_t, 1);
+        for k = 1:N_t
+            [~, c_pe_k] = calc_correction_functions(hb_hat(k), true);
+            a_hat3(k) = a_nom / c_pe_k;
+        end
         fg = figure('Position', [80 80 1100 480], 'Color', 'w', 'NumberTitle', 'off', 'Visible', 'off');
         hold on;
         hT = plot(t, (so_k.a_true_out(:, 3) - a_det_d) * 1e3, '-', 'Color', COL_TH, ...
                   'LineWidth', 2.2, 'DisplayName', 'a_{true} - a(p_d)  (= a_{ram})');
+        hR = plot(t, (a_hat3 - a_det_d) * 1e3, '-', 'Color', COL_D, ...
+                  'LineWidth', 1.2, 'DisplayName', 'a(p_d - \deltax\_hat_3) - a(p_d)');
         hK = plot(t, (so_k.diag.a_hat(:, 3) - a_det_d) * 1e3, '-', 'Color', COL_K, ...
                   'LineWidth', 1.4, 'DisplayName', 'a\_hat - a(p_d)');
         xlim([0 T_END]);
         ylabel('a_z - a_z(p_d)  (nm/pN)', 'FontSize', FS, 'FontWeight', 'bold');
         xlabel('Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');
-        legend([hT hK], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
+        legend([hT hR hK], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
                'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
         set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on'); grid off;
         fgout = fullfile(out_dir, sprintf('fig_overlay_gap_known_seed%d.png', opts.plot_seed));
