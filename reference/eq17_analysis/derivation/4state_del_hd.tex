@@ -573,4 +573,128 @@ $V_1{+}V_2{+}C_3 - v = 7\times10^{-14}$). At $t{=}4$\,s: $V_2\,{+}0.378$, $V_1\,
 $v\,{+}0.227$\,nm/pN --- $v$ comes from $y_2$ ($a_{xm}$); $y_1$ cancels about $1/3$.}
 \end{minipage}
 
+% ======================================================
+% Colored y2 chapter (chat 2026-07-12/13): measurement-noise dynamics of
+% a_xm, AR(1) noise-state augmentation (knob y2_noise_model='ar1').
+% Math-only per user directive; explanations live in the chat/session notes.
+% ======================================================
+\newpage
+\hd{Colored $y_2$ --- measurement-noise dynamics}
+\[ y_2[k] = a_{x_m}[k] = a_x[k] + v[k], \qquad \text{KF:}\ \ \mathrm E\{v[k]\,v[j]\} = R_{22}\,\delta_{kj} \]
+
+\[ \hat\sigma^2_{\delta x_r}[k{+}1] = (1-a_{cov})\,\hat\sigma^2_{\delta x_r}[k] + a_{cov}\,\delta x_r^2[k{+}1],
+\qquad a_{x_m}[k] = \frac{\hat\sigma^2_{\delta x_r}[k] - C_n\,\sigma^2_{n_x}}{C_{dpmr}\;4k_BT} \]
+
+\[ \tilde v[k{+}1] = \alpha\,\tilde v[k] + a_{cov}\,\tilde s[k{+}1];
+\qquad \alpha = 1 - a_{cov}, \quad \tilde s[k] = \delta x_r^2[k] - \mathrm E\{\delta x_r^2\} \]
+
+\[ \rho_s(\tau) = \rho_{\delta x_r}^2(\tau) \qquad (\delta x_r \sim \mathcal N,\ \text{Isserlis}) \]
+
+\hd{ACF of $v$}
+\[ \gamma_v(\tau) = a_{cov}^2 \sum_{i,j\ge 0} \alpha^{\,i+j}\,\gamma_s(\tau+i-j)
+ = \frac{a_{cov}^2}{1-\alpha^2}\sum_{m=-\infty}^{\infty} \alpha^{|m|}\,\gamma_s(|\tau+m|) \]
+\begin{empheq}[box=\fbox]{equation*}
+\rho_v(\tau) = \frac{\sum_m \alpha^{|m|}\,\rho_s(|\tau+m|)}{\sum_m \alpha^{|m|}\,\rho_s(|m|)},
+\qquad
+\varphi := \rho_v(1) = 0.9864 \quad (\lc = 0.7,\ a_{pd} = a_{cov} = 0.05)
+\end{empheq}
+\[ \rho_v(\tau{+}1)/\rho_v(\tau) \xrightarrow{\ \tau\to\infty\ } \alpha = 0.95 \]
+
+\medskip
+\begin{center}
+\begin{tabular}{lcccccc}
+\toprule
+$\tau$ & 1 & 2 & 5 & 10 & 20 & 50\\
+\midrule
+$\rho_v(\tau)$ analytic          & 0.9840 & 0.9512 & 0.8271 & 0.6513 & 0.4040 & 0.0905\\
+measured (A2, 20 seeds)          & 0.9854 & 0.9526 & 0.8260 & 0.6472 & 0.4013 & 0.1008\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\medskip
+\[ \frac{(1-\varphi^2)\,\gamma_v(0)}{\gamma_v(0)} = 1-\varphi^2 \approx \frac{1}{37} \]
+
+\hd{AR(1) noise state}
+\begin{empheq}[box=\fbox]{equation*}
+v[k{+}1] = \varphi\, v[k] + w_v[k], \qquad
+x_e = [\,\delta x_1,\ \delta x_2,\ \delta x_3,\ a_x,\ v\,]^{\mathsf T}
+\end{empheq}
+\[ \mathbf F_e \rightarrow \operatorname{blkdiag}\!\big(\mathbf F_e^{4\times4},\ \varphi\big), \qquad
+\mathbf H = \begin{bmatrix} 1&0&0&0&0\\[0.2ex] 0&0&0&1&1 \end{bmatrix} \]
+\begin{empheq}[box=\fbox]{equation*}
+Q_{55}[k] = (1-\varphi^2)(1-r_f)\,R_{2,\mathrm{int}}[k], \qquad
+R_{22}[k] = r_f\,R_{2,\mathrm{int}}[k] + R_{2,\mathrm{delay}}[k], \qquad r_f = 0.05
+\end{empheq}
+\[ \mathrm{Var}(v) + R_{22} = R_{2,\mathrm{int}}[k] + R_{2,\mathrm{delay}}[k] \]
+
+\hd{Init hold (first $d$ samples)}
+\[ k \le d:\quad \delta x_m[k] \equiv 0 \ \ (\text{buffer init}) \ \Rightarrow\
+\hat\sigma^2_{\delta x_r}[k] := \hat\sigma^2_{\delta x_r}[0],\quad \overline{\delta x}_m[k] := \overline{\delta x}_m[0] \]
+
+% ======================================================
+% F_e endogeneity chapter (chat 2026-07-13): f_dx = f_det + f_ram split;
+% expectation-linearized F_e := F_det restores KF noise-independence.
+% Math-only per user directive; explanations live in the chat/session notes.
+% ======================================================
+\newpage
+\hd{$\mathbf F_e$ endogeneity --- expectation linearization ($f_{det}$)}
+\[ f_{dx}[k] = f_{det}[k] + f_{ram}[k] \]
+
+\textit{Deterministic mirror} (control law at $\delta x_m := 0$):
+\begin{empheq}[box=\fbox]{equation*}
+f_{det}[k] = \hat a_x^{-1}[k]\Big\{ \Delta x_d^{d}[k] - (1-\lc)\textstyle\sum_{i=1}^{d}\hat a_x[k-i]\, f_{det}[k-i] \Big\}
+\end{empheq}
+
+\textit{Remainder} (linear in the noise history):
+\[ f_{ram}[k] = \hat a_x^{-1}[k]\,(1-\lc)\Big\{ \delta x_m[k] - \textstyle\sum_{i=1}^{d}\hat a_x[k-i]\, f_{ram}[k-i] \Big\} \]
+\[
+\begin{aligned}
+F_{det}[k] &= f_{det}[k] + (1-\lc)\textstyle\sum_{i=1}^{d} f_{det}[k-i], \qquad
+F_{ram}[k] = f_{ram}[k] + (1-\lc)\textstyle\sum_{i=1}^{d} f_{ram}[k-i], \\
+F_{dx} &= F_{det} + F_{ram}
+\end{aligned}
+\]
+
+\hd{Violation}
+\[ \delta x[k+1] = \lc\,\delta x[k] - F_{dx}[k]\, e_{a_x}[k] - \varepsilon[k] \]
+$F_{ram}[k] = F_{ram}\big(\{n_x, f_T\}_{<k}\big)$: same noises driving $\varepsilon[k]$ and the innovation $\nu[k]$.
+\[
+\begin{aligned}
+\mathrm{Cov}\big(F_{ram}[k],\varepsilon[k]\big) \ne 0
+&\;\Rightarrow\; K[k] = K\big(F_{det}+F_{ram}\big) \not\perp \nu[k] \\
+&\;\Rightarrow\; \mathrm E\{K\,\nu\} = \bar K\,\mathrm E\{\nu\} + \mathrm{Cov}(K,\nu) \ne 0
+\end{aligned}
+\]
+\[ \mathrm{Cov}(K,\nu)\ \text{term}:\ \text{per-step systematic drift on } \hat a_x\quad(\text{rectification via filter geometry, not via } R) \]
+
+\hd{Fix --- expectation linearization}
+$\mathbf F_e$ built from $F_{det} = \mathrm E\{F_{dx} \mid \text{trajectory},\ \hat a_x\ \text{history}\}$; the error dynamics rewrites exactly as
+\begin{empheq}[box=\fbox]{align*}
+\delta x[k+1] &= \lc\,\delta x[k] - F_{det}[k]\, e_{a_x}[k] - \tilde\varepsilon[k], \\
+\tilde\varepsilon[k] &:= \varepsilon[k] + F_{ram}[k]\, e_{a_x}[k]
+\end{empheq}
+\[ F_{det}[k]\ \text{known (trajectory, } \hat a_x\ \text{history)} \;\Rightarrow\; \text{KF independence restored};\qquad F_{ram}[k]\,e_{a_x}[k] \;\to\; \text{noise} \]
+
+\hd{Residual magnitude ($\to Q$, negligible)}
+\[ \mathrm{Var}\big(F_{ram}[k]\,e_{a_x}[k]\big) \approx \mathrm{Var}\big(F_{ram}[k]\big)\;\mathrm E\{e_{a_x}^2[k]\} \qquad (F_{ram}\perp e_{a_x}\ \text{to first order}) \]
+\[ \frac{\mathrm{Var}(F_{ram}\,e_{a_x})}{\mathrm{Var}(\varepsilon)} < 10^{-3} \qquad (\lc{=}0.7,\ a_{pd}{=}a_{cov}{=}0.05,\ \text{hold},\ z,\ e_{a_x}\!\sim\!0.03\,a_x) \]
+
+\hd{Verification} (colored-$y_2$ `ar1' model, 20 seeds, $z$ axis, osc window)
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+arm & bias (\%)\ before\,$\to$\,after & std (\%)\ before\,$\to$\,after & div\ before\,$\to$\,after\\
+\midrule
+A2 ($a'$ known)            & $-3.49 \to -0.37$ & $3.04 \to 2.53$ & $0/21 \to 0/21$\\
+A3 ($a' = \hat a_x K_h$)   & $-4.52 \to -1.59$ & $2.42 \to 2.26$ & $0/21 \to 0/21$\\
+A4 ($a'$ self-diff, surv.) & $+6.4 \to +14.1$  & $66 \to 71$     & $10/21 \to 1/21$\\
+A1 (RW baseline)           & $-1.73 \to +0.30$ & $16.7 \to 6.13$ & $0/21 \to 0/21$\\
+A0 (production AR(1))      & $+0.02 \to +0.03$ & $0.96 \to 0.96$ & $0/21 \to 0/21$\\
+\bottomrule
+\end{tabular}
+\end{center}
+\[ \text{white (deaf) control:}\quad \text{A2}\ \ -0.43 \to +0.29 \qquad (\text{drift} \propto \text{gain} \;\Rightarrow\; \text{no effect}) \]
+\[ P_{44}/\mathrm{Var}(e_{a_x}) = 0.415 \to 0.396 \qquad (\text{honesty unchanged} \;\Rightarrow\; \text{independent problem}) \]
+
 \end{document}
