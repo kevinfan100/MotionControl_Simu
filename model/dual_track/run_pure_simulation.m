@@ -290,6 +290,9 @@ function simOut = run_pure_simulation(config, opts)
     if isfield(config, 'use_taylor_gain') && ~isempty(config.use_taylor_gain)
         ctrl_const.use_taylor_gain = logical(config.use_taylor_gain);
     end
+    if isfield(config, 'aprime_eval_xhat') && ~isempty(config.aprime_eval_xhat)
+        ctrl_const.aprime_eval_xhat = logical(config.aprime_eval_xhat);   % EXPERIMENT (chat 2026-07-13)
+    end
     if isfield(config, 'aprime_source') && ~isempty(config.aprime_source)
         ctrl_const.aprime_source = config.aprime_source;
     end

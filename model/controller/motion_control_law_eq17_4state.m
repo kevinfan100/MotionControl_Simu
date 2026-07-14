@@ -93,6 +93,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_per_axis var_da_inc_factor r22_delay_factor
     persistent t_warmup_kf h_bar_safe R_OFF use_am_lpf a_det_lp amlpf_var_factor use_deblur use_aprime_ff use_q44_cap use_q44_ar1 use_exact_fe44
     persistent use_taylor_gain aprime_source ap_beta ap_gate_um ap_clamp_pos ap_pos_only  % taylor-gain suite (4state_del_hd.tex taylor section)
+    persistent aprime_eval_xhat                                               % EXPERIMENT (chat 2026-07-13): a' at x_hat = p_d - dxhat3 instead of p_d
     persistent a_prime_diff                                                   % 'diff' EWMA slope state (selfrw convention)
     persistent sigma2_n_s a_x_init enable_wall w_hat_n pz_wall
 
@@ -228,6 +229,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
             ap_pos_only = logical(ctrl_const.aprime_pos_only);
         else
             ap_pos_only = false;                % input-side gate: negative raw skipped, no update
+        end
+        if isfield(ctrl_const, 'aprime_eval_xhat') && ~isempty(ctrl_const.aprime_eval_xhat)
+            aprime_eval_xhat = logical(ctrl_const.aprime_eval_xhat);
+        else
+            aprime_eval_xhat = false;           % EXPERIMENT: default off (a' at p_d, production)
         end
         a_prime_diff = zeros(3, 1);
         % NOTE: ctrl_const.suppress_xD is ignored (no disturbance term exists).
@@ -496,8 +502,18 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         dH_d_dspan = dot(pd - pd_km_d, w_hat_n);      % h_d[k]   - h_d[k-d] [um]
         switch aprime_source
             case 'known'        % oracle: exogenous level (a_det) + known shape
-                a_prime = local_a_prime_known(pd, w_hat_n, pz_wall, R_radius, ...
-                                              enable_wall, a_det_k);
+                if aprime_eval_xhat
+                    % EXPERIMENT (chat 2026-07-13): full a'(.) at the EKF-implied
+                    % position x_hat = p_d - dxhat3_z (posterior [k-1]).
+                    p_ap = pd - w_hat_n * x_e_per_axis(3, 3);
+                    a_det_ap = local_a_x_det(p_ap, w_hat_n, pz_wall, R_radius, ...
+                                             enable_wall, a_nom_p);
+                    a_prime = local_a_prime_known(p_ap, w_hat_n, pz_wall, R_radius, ...
+                                                  enable_wall, a_det_ap);
+                else
+                    a_prime = local_a_prime_known(pd, w_hat_n, pz_wall, R_radius, ...
+                                                  enable_wall, a_det_k);
+                end
             case 'ahat'         % known shape, level self-anchored to the estimate
                 a_prime = local_a_prime_known(pd, w_hat_n, pz_wall, R_radius, ...
                                               enable_wall, a_hat);
