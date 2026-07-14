@@ -308,6 +308,82 @@ function simOut = run_pure_simulation(config, opts)
     if isfield(config, 'aprime_pos_only') && ~isempty(config.aprime_pos_only)
         ctrl_const.aprime_pos_only = config.aprime_pos_only;
     end
+    % Colored-y2 noise model (chat 2026-07-12): 'white' (default) | 'ar1'
+    % (5th state v carries the a_xm EWMA estimator noise, pole y2_ar1_phi).
+    if isfield(config, 'y2_noise_model') && ~isempty(config.y2_noise_model)
+        ctrl_const.y2_noise_model = config.y2_noise_model;
+    end
+    if isfield(config, 'y2_ar1_r2_floor_frac') && ~isempty(config.y2_ar1_r2_floor_frac)
+        ctrl_const.y2_ar1_r2_floor_frac = config.y2_ar1_r2_floor_frac;   % F2 white floor
+    end
+    % C2 level channel (chat 2026-07-13): y_3 = p_md + v3 (requires 'ar1').
+    if isfield(config, 'use_c2_level') && ~isempty(config.use_c2_level)
+        ctrl_const.use_c2_level = logical(config.use_c2_level);
+    end
+    % y2 mirror-sensitivity H correction (chat 2026-07-13): H(2,4) = derived s.
+    if isfield(config, 'use_y2_mirror_h') && ~isempty(config.use_y2_mirror_h)
+        ctrl_const.use_y2_mirror_h = logical(config.use_y2_mirror_h);
+    end
+    % PROBE (chat 2026-07-13): R2_intrinsic chain evaluated at oracle a_det.
+    if isfield(config, 'r22_eval_adet') && ~isempty(config.r22_eval_adet)
+        ctrl_const.r22_eval_adet = logical(config.r22_eval_adet);
+    end
+    % PROBE (chat 2026-07-13): build F_e from the deterministic mirror force f_det.
+    if isfield(config, 'fe_eval_fdet') && ~isempty(config.fe_eval_fdet)
+        ctrl_const.fe_eval_fdet = logical(config.fe_eval_fdet);
+    end
+    % PROBE (chat 2026-07-14, knife-2): oracle y_2 measurement (true delayed gain
+    % + booked synthetic noise). The controller draws the synthetic noise from an
+    % ISOLATED RandStream seeded well away from the global seed (opts.seed +
+    % 7000000) so the thermal / measurement streams stay bit-identical to the
+    % knob-off baseline.
+    if isfield(config, 'y2_oracle_meas') && ~isempty(config.y2_oracle_meas)
+        ctrl_const.y2_oracle_meas = logical(config.y2_oracle_meas);
+    end
+    ctrl_const.y2_oracle_seed = opts.seed + 7000000;
+    % Gamma-split z-axis level/shape split (chat 2026-07-14, gamma_split_draft.tex).
+    if isfield(config, 'use_gamma_split') && ~isempty(config.use_gamma_split)
+        ctrl_const.use_gamma_split = logical(config.use_gamma_split);
+    end
+    if isfield(config, 'sigma_gamma0') && ~isempty(config.sigma_gamma0)
+        ctrl_const.sigma_gamma0 = config.sigma_gamma0;
+    end
+    if isfield(config, 'gamma_learn_start') && ~isempty(config.gamma_learn_start)
+        ctrl_const.gamma_learn_start = config.gamma_learn_start;
+    end
+    if isfield(config, 'gamma_freeze_t0') && ~isempty(config.gamma_freeze_t0)
+        ctrl_const.gamma_freeze_t0 = config.gamma_freeze_t0;
+    end
+    if isfield(config, 'gamma_freeze_t1') && ~isempty(config.gamma_freeze_t1)
+        ctrl_const.gamma_freeze_t1 = config.gamma_freeze_t1;
+    end
+    if isfield(config, 'gamma_hbar_min') && ~isempty(config.gamma_hbar_min)
+        ctrl_const.gamma_hbar_min = config.gamma_hbar_min;   % near-wall gamma height gate
+    end
+    % Colored-eps MA(2) thermal-history augmentation (chat 2026-07-14).
+    if isfield(config, 'use_colored_eps') && ~isempty(config.use_colored_eps)
+        ctrl_const.use_colored_eps = logical(config.use_colored_eps);
+    end
+    % 3-axis shared-gamma federated fusion (chat 2026-07-14).
+    if isfield(config, 'gamma_shared') && ~isempty(config.gamma_shared)
+        ctrl_const.gamma_shared = logical(config.gamma_shared);
+    end
+    if isfield(config, 'shared_xy_y2_off') && ~isempty(config.shared_xy_y2_off)
+        ctrl_const.shared_xy_y2_off = logical(config.shared_xy_y2_off);   % DIAGNOSTIC
+    end
+    % a_nom-normalized init (c-unknown charter, chat 2026-07-14).
+    if isfield(config, 'init_from_anom') && ~isempty(config.init_from_anom)
+        ctrl_const.init_from_anom = logical(config.init_from_anom);
+    end
+    if isfield(config, 'c2_phi') && ~isempty(config.c2_phi)
+        ctrl_const.c2_phi = config.c2_phi;
+    end
+    if isfield(config, 'c2_kappa_pmd') && ~isempty(config.c2_kappa_pmd)
+        ctrl_const.c2_kappa_pmd = config.c2_kappa_pmd;
+    end
+    if isfield(config, 'c2_r3_floor_frac') && ~isempty(config.c2_r3_floor_frac)
+        ctrl_const.c2_r3_floor_frac = config.c2_r3_floor_frac;
+    end
     % TEMP (chat 2026-07-10): positivity gate on the self-diff a' (physical
     % prior a' > 0; negative raw slopes are skipped); remove with variant.
     if isfield(config, 'selfdet_pos_only') && ~isempty(config.selfdet_pos_only)
@@ -436,6 +512,7 @@ function simOut = run_pure_simulation(config, opts)
         diag_log.dx_r              = zeros(N, 3);
         diag_log.sigma2_dxr_hat    = zeros(N, 3);
         diag_log.a_xm              = zeros(N, 3);
+        diag_log.a_xm_fed          = zeros(N, 3);   % value fed to EKF y_2 (oracle-y2 probe, chat 2026-07-14)
         diag_log.a_m_det           = zeros(N, 3);   % a_m LPF study: post-LPF gain measurement
         diag_log.a_x_det           = zeros(N, 3);   % deterministic gain a_nom/c(h_bar_d) from p_d
         diag_log.a_prime_hat       = zeros(N, 3);   % TEMP (chat 2026-07-06): self-differenced a' estimate; remove after use
@@ -454,6 +531,15 @@ function simOut = run_pure_simulation(config, opts)
         diag_log.Q77               = zeros(N, 3);
         diag_log.var_da_ram        = zeros(N, 3);   % Q44 driver (gain process-noise) time series
         diag_log.a_prime_used      = zeros(N, 3);   % taylor-gain slope a' time series
+        diag_log.v_hat             = zeros(N, 3);   % colored-y2 noise estimate (ar1 mode)
+        diag_log.P_v               = zeros(N, 3);   % filter var of v_hat
+        diag_log.v3_hat            = zeros(N, 3);   % C2 p_md noise estimate (use_c2 mode)
+        diag_log.P_v3              = zeros(N, 3);
+        diag_log.c3_used           = zeros(N, 3);   % C2 y_3 gain coefficient
+        diag_log.gamma_hat         = zeros(N, 3);   % gamma-split level estimate (z; ln units)
+        diag_log.sigma_hat         = zeros(N, 3);   % gamma-split shape estimate (z; ln units)
+        diag_log.P_gamma           = zeros(N, 3);   % filter var of gamma
+        diag_log.P_sigma           = zeros(N, 3);   % filter var of sigma
         diag_log.a_hat             = zeros(N, 3);
         diag_log.x_D_hat           = zeros(N, 3);
         diag_log.delta_a_hat       = zeros(N, 3);
@@ -506,10 +592,10 @@ function simOut = run_pure_simulation(config, opts)
         if is_4state
             if opts.collect_diag
                 [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_4state( ...
-                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k, a_true_k);
             else
                 [f_d_k, ekf_k] = motion_control_law_eq17_4state( ...
-                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k);
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k, a_true_k);
             end
         elseif is_5state
             if opts.collect_diag
@@ -665,6 +751,7 @@ function simOut = run_pure_simulation(config, opts)
             diag_log.dx_r(k, :)              = diag_k.dx_r.';
             diag_log.sigma2_dxr_hat(k, :)    = diag_k.sigma2_dxr_hat.';
             diag_log.a_xm(k, :)              = diag_k.a_xm.';
+            if isfield(diag_k, 'a_xm_fed'); diag_log.a_xm_fed(k, :) = diag_k.a_xm_fed.'; end   % oracle-y2 probe
             if isfield(diag_k, 'a_m_det'); diag_log.a_m_det(k, :) = diag_k.a_m_det.'; end
             if isfield(diag_k, 'a_x_det'); diag_log.a_x_det(k, :) = diag_k.a_x_det.'; end
             if isfield(diag_k, 'a_prime_hat'); diag_log.a_prime_hat(k, :) = diag_k.a_prime_hat.'; end   % TEMP (chat 2026-07-06); remove after use
@@ -683,6 +770,15 @@ function simOut = run_pure_simulation(config, opts)
             diag_log.Q77(k, :)               = diag_k.Q77.';
             if isfield(diag_k, 'var_da_ram'); diag_log.var_da_ram(k, :) = diag_k.var_da_ram.'; end
             if isfield(diag_k, 'a_prime_used'); diag_log.a_prime_used(k, :) = diag_k.a_prime_used.'; end
+            if isfield(diag_k, 'v_hat'); diag_log.v_hat(k, :) = diag_k.v_hat.'; end
+            if isfield(diag_k, 'P_v'); diag_log.P_v(k, :) = diag_k.P_v.'; end
+            if isfield(diag_k, 'v3_hat'); diag_log.v3_hat(k, :) = diag_k.v3_hat.'; end
+            if isfield(diag_k, 'P_v3'); diag_log.P_v3(k, :) = diag_k.P_v3.'; end
+            if isfield(diag_k, 'c3_used'); diag_log.c3_used(k, :) = diag_k.c3_used.'; end
+            if isfield(diag_k, 'gamma_hat'); diag_log.gamma_hat(k, :) = diag_k.gamma_hat.'; end
+            if isfield(diag_k, 'sigma_hat'); diag_log.sigma_hat(k, :) = diag_k.sigma_hat.'; end
+            if isfield(diag_k, 'P_gamma'); diag_log.P_gamma(k, :) = diag_k.P_gamma.'; end
+            if isfield(diag_k, 'P_sigma'); diag_log.P_sigma(k, :) = diag_k.P_sigma.'; end
             diag_log.a_hat(k, :)             = diag_k.a_hat.';
             diag_log.x_D_hat(k, :)           = diag_k.x_D_hat.';
             diag_log.delta_a_hat(k, :)       = diag_k.delta_a_hat.';

@@ -203,6 +203,41 @@ function ctrl_const = build_eq17_6state_constants(opts)
     end
 
     % ------------------------------------------------------------
+    % y2_ar1_phi: lag-1 autocorrelation of the a_xm estimator noise v
+    %   (colored-y2 modeling, chat 2026-07-12). v is the deviation of the
+    %   variance EWMA sigma2_dxr_hat from its mean: an AR(1) with pole
+    %   (1-a_cov) driven by the COLORED squared residuals dx_r^2 (Wick:
+    %   rho_s = rho_dxr^2), so rho_v(1) > 1-a_cov. Yule-Walker lag-1 AR(1)
+    %   fit; regime spread over sigma2_dxT/sigma2_nx is < 0.003 so the
+    %   thermal-dominated limit serves all axes. 0.9864 at lc=0.7,
+    %   a_pd=a_cov=0.05. Consumed by motion_control_law_eq17_4state when
+    %   ctrl_const.y2_noise_model = 'ar1' (5th state v).
+    % ------------------------------------------------------------
+    y2_ar1_phi = compute_y2_ar1_phi(lc, apd, a_cov);
+
+    % ------------------------------------------------------------
+    % y2_mirror_sT / y2_mirror_cN: sensitivity of the a_xm gauge at g=1
+    %   (g-mismatch modeling). a_xm inverts the residual variance
+    %   sigma2_dxr assuming the loop-gain ratio g = a/a_hat equals 1. At
+    %   g != 1 the loop suppression changes the read residual variance, so
+    %   E[a_xm|a,a_hat] scales as C_T(g)*s2T + C_N(g)*s2n over the g=1
+    %   normalization. C_T(g)/C_N(g) are the closed-loop variance
+    %   coefficients of the thermal (w) and sensor (n) noise sources, each
+    %   an exact discrete-Lyapunov solve of the hold-phase loop (no Monte
+    %   Carlo). The EKF needs the sensitivity dE[a_xm]/da at g=1 (NOT 1: the
+    %   loop suppresses the fluctuations being read). Central difference at
+    %   g=1 gives sT (thermal-dominated) and cN (sensor-mix correction).
+    %   Self-check: C_T(1)=C_dpmr, C_N(1)=C_n (independent route to the same
+    %   consts, matched < 1e-6 below).
+    % ------------------------------------------------------------
+    [y2_mirror_sT, y2_mirror_cN, CT1, CN1] = compute_y2_mirror(lc, apd, d);
+    if abs(CT1 - C_dpmr) > 1e-5 * C_dpmr || abs(CN1 - C_n) > 1e-5 * C_n
+        warning('build_eq17_6state_constants:mirrorSelfcheck', ...
+                ['y2_mirror self-check mismatch: C_T(1)=%.6f vs C_dpmr=%.6f ; ' ...
+                 'C_N(1)=%.6f vs C_n=%.6f'], CT1, C_dpmr, CN1, C_n);
+    end
+
+    % ------------------------------------------------------------
     % xi : sensor-noise offset, (C_n/C_dpmr)*sigma2_n_s/(4*kBT)   [3x1]
     % ------------------------------------------------------------
     xi_per_axis = (C_n / C_dpmr) * sigma2_n_s / (4 * kBT);
@@ -227,6 +262,9 @@ function ctrl_const = build_eq17_6state_constants(opts)
     ctrl_const.var_da_increment_factor = var_da_increment_factor;  % 2/(1+lc) closed form
     ctrl_const.r22_delay_sum_factor    = r22_delay_sum_factor;     % (1-rho2)/(2(1-rho1)) at d=2, 1 at d=1 (telescoped delay-sum)
     ctrl_const.IF_abc          = [IF_abc_A; IF_abc_B; IF_abc_C];  % s-weighted autocorr sums for exact per-step IF_eff
+    ctrl_const.y2_ar1_phi      = y2_ar1_phi;    % lag-1 rho of a_xm noise (colored-y2 AR(1) fit)
+    ctrl_const.y2_mirror_sT    = y2_mirror_sT;  % thermal-dominated sensitivity dE[a_xm]/da at g=1
+    ctrl_const.y2_mirror_cN    = y2_mirror_cN;  % sensor-mix correction coefficient
     ctrl_const.xi_per_axis     = xi_per_axis;
     ctrl_const.t_warmup_kf     = t_warmup_kf;
     ctrl_const.h_bar_safe      = h_bar_safe;
@@ -244,6 +282,43 @@ function v = get_opt(opts, name, default)
     else
         v = default;
     end
+end
+
+
+function phi = compute_y2_ar1_phi(lc, apd, a_cov)
+%COMPUTE_Y2_AR1_PHI  Lag-1 autocorr of the a_xm EWMA estimator noise v.
+%   Same impulse-response machinery as compute_if_abc: dx_r ACF from the
+%   thermal-path transfer F_T, squared via Wick (rho_s = rho_dxr^2), then the
+%   EWMA output ACF is the two-sided geometric sum
+%       gamma_v(tau) ~ sum_m (1-a_cov)^|m| * rho_s(|tau+m|)
+%   and phi = gamma_v(1)/gamma_v(0). Asymptotic pole is (1-a_cov); the colored
+%   driver lifts the lag-1 value above it (0.9864 vs 0.95 at lc=0.7,
+%   a_pd=a_cov=0.05; matches the measured a_xm noise ACF on f1Hz A2 data).
+    q1 = [1, -1]; q3 = [0, 0, 0, 1]; thnum = [1, (1 - lc), (1 - lc)];
+    numFT = (1 - apd) * conv(conv(q1, q3), thnum);
+    den   = conv([1, -(1 - apd)], [1, -lc]);
+    N = 8000;
+    imp = [1; zeros(N - 1, 1)];
+    hFT = filter(numFT, den, imp);
+    Tmax = 800;
+    rho = zeros(Tmax + 1, 1);
+    for t = 0:Tmax
+        rho(t + 1) = sum(hFT(1:end - t) .* hFT(1 + t:end));
+    end
+    rho_s = (rho / rho(1)).^2;                 % Wick: ACF of dx_r^2
+    alpha = 1 - a_cov;
+    g01 = zeros(2, 1);
+    for tau = 0:1
+        ssum = 0;
+        for m = -Tmax:Tmax
+            idx = abs(tau + m);
+            if idx <= Tmax
+                ssum = ssum + alpha^abs(m) * rho_s(idx + 1);
+            end
+        end
+        g01(tau + 1) = ssum;
+    end
+    phi = g01(2) / g01(1);
 end
 
 
@@ -279,4 +354,109 @@ function [A, B, C, RfT0, RfN0] = compute_if_abc(lc, apd, a_cov)
         B = B + RfT * RfN * st;
         C = C + RfN ^ 2 * st;
     end
+end
+
+
+function [sT, cN, CT1, CN1, CTp1, CNp1] = compute_y2_mirror(lc, apd, d)
+%COMPUTE_Y2_MIRROR  Closed-loop sensitivity of the a_xm gauge at g=1.
+%   C_T(g)/C_N(g) are the closed-loop variance coefficients of the thermal
+%   (w) and sensor (n) noise, read out through the residual dx_r (the signal
+%   a_xm inverts). Each is an exact stationary discrete-Lyapunov solve of the
+%   hold-phase loop (cl_var_dxr below). Central difference (dg=1e-4) gives the
+%   g-derivatives at g=1; sT=(C_T(1)+C_T'(1))/C_T(1) is dE[a_xm]/da in the
+%   thermal-dominated limit, cN=C_N'(1)/C_T(1) the sensor-mix correction.
+    dg = 1e-4;
+    CT1  = cl_var_dxr(1,      lc, apd, d, 'T');
+    CN1  = cl_var_dxr(1,      lc, apd, d, 'N');
+    CTp  = cl_var_dxr(1 + dg, lc, apd, d, 'T');
+    CTm  = cl_var_dxr(1 - dg, lc, apd, d, 'T');
+    CNp  = cl_var_dxr(1 + dg, lc, apd, d, 'N');
+    CNm  = cl_var_dxr(1 - dg, lc, apd, d, 'N');
+    CTp1 = (CTp - CTm) / (2 * dg);
+    CNp1 = (CNp - CNm) / (2 * dg);
+    sT = (CT1 + CTp1) / CT1;
+    cN = CNp1 / CT1;
+end
+
+
+function V = cl_var_dxr(g, lc, apd, d, src)
+%CL_VAR_DXR  Stationary Var(dx_r) driven by one unit-variance noise source.
+%   src='T' thermal (w), src='N' sensor (n). Builds the hold-phase loop
+%   state-space via mirror_ss, solves the Stein equation P = A*P*A' + Q, and
+%   reads Var(dx_r) = c'*P*c (plus the direct dn^2 term for the sensor source;
+%   z[k] is built from inputs up to k-1 so z[k] and n[k] are independent and
+%   the cross term vanishes).
+    [A, Bn, Bw, c, dn] = mirror_ss(g, lc, apd, d);
+    if src == 'T'
+        P = dlyap_local(A, Bw * Bw');
+        V = c' * P * c;
+    else
+        P = dlyap_local(A, Bn * Bn');
+        V = c' * P * c + dn ^ 2;
+    end
+end
+
+
+function [A, Bn, Bw, c, dn] = mirror_ss(g, lc, apd, d)
+%MIRROR_SS  Hold-phase closed-loop state space of the a_xm read-out chain.
+%   State z[k] (before step k), inputs n[k] (sensor), w[k] (thermal):
+%     dxm = dx[k-d] + n ; u = g*beta*dxm - beta*sum(u[k-1..k-d]) ;
+%     xbn = (1-apd)*xb[k-1] + apd*dxm ; dx[k+1] = dx[k] - u - w ;
+%     dxr = dxm - xbn = (1-apd)*(dx[k-d] + n - xb[k-1])   (OUTPUT).
+%   d=2: z=[dx;dx(k-1);dx(k-2);u(k-1);u(k-2);xb(k-1)] (6 states).
+%   d=1: z=[dx;dx(k-1);u(k-1);xb(k-1)]                (4 states).
+    beta = 1 - lc;
+    om   = 1 - apd;                 % 1 - a_pd
+    if d == 2
+        A = [ 1, 0, -g*beta,  beta,  beta, 0; ...
+              1, 0,  0,       0,     0,    0; ...
+              0, 1,  0,       0,     0,    0; ...
+              0, 0,  g*beta, -beta, -beta, 0; ...
+              0, 0,  0,       1,     0,    0; ...
+              0, 0,  apd,     0,     0,    om ];
+        Bn = [-g*beta; 0; 0; g*beta; 0; apd];
+        Bw = [-1; 0; 0; 0; 0; 0];
+        c  = om * [0; 0; 1; 0; 0; -1];
+    elseif d == 1
+        A = [ 1, -g*beta,  beta, 0; ...
+              1,  0,       0,    0; ...
+              0,  g*beta, -beta, 0; ...
+              0,  apd,     0,    om ];
+        Bn = [-g*beta; 0; g*beta; apd];
+        Bw = [-1; 0; 0; 0];
+        c  = om * [0; 1; 0; -1];
+    else
+        error('build_eq17_6state_constants:mirrorDelay', ...
+              'compute_y2_mirror supports d=1 or d=2 only; got %g.', d);
+    end
+    dn = om;
+end
+
+
+function X = dlyap_local(A, Q)
+%DLYAP_LOCAL  Solve the Stein equation X = A*X*A' + Q. Uses dlyap (Control
+%   Toolbox) when present, else a toolbox-free squaring iteration
+%   X = sum_k A^k Q (A')^k (converges for spectral radius < 1; the hold-phase
+%   loop is stable so this holds). Fallback mirrors solve_dare_kf_local in
+%   motion_control_law_eq17_4state.m.
+    if exist('dlyap', 'file') ~= 0
+        try
+            X = dlyap(A, Q);
+            X = (X + X') / 2;
+            return;
+        catch
+            % Control Toolbox absent or dlyap failed: fall through to iterate.
+        end
+    end
+    X = Q;
+    T = A;
+    for it = 1:200000
+        dX = T * X * T';
+        X  = X + dX;
+        T  = T * T;
+        if max(abs(dX(:))) < 1e-14
+            break;
+        end
+    end
+    X = (X + X') / 2;
 end

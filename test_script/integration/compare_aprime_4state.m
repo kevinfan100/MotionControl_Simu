@@ -24,6 +24,12 @@ function results = compare_aprime_4state(opts)
 %     T_sim    (4.0)    - simulation duration [s]
 %     out_root (test_results/aprime_4state) - output root
 %     smoke    (false)  - true -> seeds=1 only, saved under -smoke suffix
+%     arms     (all)    - cellstr subset of {REF,A0,A1,A2,A3,A4} to run
+%     y2_noise_model    - 'white' (default) | 'ar1' colored-y2 augmentation,
+%                         applied to ALL selected arms (chat 2026-07-12)
+%     use_c2_level      - true adds the C2 y_3 = p_md level channel (needs
+%                         'ar1'; chat 2026-07-13), applied to selected arms
+%     out_tag  ('')     - suffix for the output dir: f1Hz-<tag>
 %     verbose  (true)
 %
 %   See also: analyze_aprime_4state, run_pure_simulation, compare_gain_6state
@@ -33,6 +39,7 @@ function results = compare_aprime_4state(opts)
     if ~isfield(opts, 'T_sim');   opts.T_sim = 4.0;   end
     if ~isfield(opts, 'verbose'); opts.verbose = true; end
     if ~isfield(opts, 'smoke');   opts.smoke = false;  end
+    if ~isfield(opts, 'out_tag'); opts.out_tag = '';   end
     if opts.smoke; opts.seeds = 1; end
 
     [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
@@ -56,6 +63,12 @@ function results = compare_aprime_4state(opts)
            h_min_actual, t_crit);
 
     arms = arm_table();
+    if isfield(opts, 'arms') && ~isempty(opts.arms)
+        keep = ismember({arms.name}, opts.arms);
+        assert(any(keep), 'compare_aprime_4state:badArms', ...
+               'opts.arms matched no arm in {%s}.', strjoin({arms.name}, ','));
+        arms = arms(keep);
+    end
     if opts.verbose
         fprintf('[compare_aprime:1Hz] T_sim=%.1fs seeds=%s arms=%s\n', ...
                 cfg.T_sim, mat2str(opts.seeds), strjoin({arms.name}, ','));
@@ -84,6 +97,9 @@ function results = compare_aprime_4state(opts)
         out_dir = fullfile(opts.out_root, 'f1Hz-smoke');
     else
         out_dir = fullfile(opts.out_root, 'f1Hz');
+    end
+    if ~isempty(opts.out_tag)
+        out_dir = [out_dir, '-', opts.out_tag];
     end
     if ~exist(out_dir, 'dir'); mkdir(out_dir); end
     save(fullfile(out_dir, 'runs.mat'), 'runs', 'cfg', 'opts', 'layer0', '-v7.3');
@@ -127,7 +143,15 @@ function cfg = build_config(opts)
     cfg.h_bottom = 2.7;           % [um] h_bar = 1.2
     cfg.amplitude = 2.5;          % [um]
     cfg.frequency = 1;
-    cfg.n_cycles  = 2;            % osc duration = 2 s
+    if isfield(opts, 'n_cycles') && ~isempty(opts.n_cycles)
+        assert(isscalar(opts.n_cycles) && opts.n_cycles > 0 && ...
+               opts.n_cycles == round(opts.n_cycles), ...
+               'compare_aprime_4state:badNCycles', ...
+               'opts.n_cycles must be a positive integer.');
+        cfg.n_cycles = opts.n_cycles;   % long-run enabler (chat 2026-07-14)
+    else
+        cfg.n_cycles = 2;            % osc duration = n_cycles / frequency [s]
+    end
     cfg.t_hold    = 0.5;
     cfg.t_descend_override = 1.0;
     cfg.T_sim     = opts.T_sim;
@@ -146,6 +170,71 @@ function cfg = build_config(opts)
     cfg.meas_noise_std = [0.00062; 0.00057; 0.00331];   % [um]
     cfg.suppress_xD = true;
     cfg.h_bar_safe = 1;           % gate-free (trough h_bar = 1.2)
+    if isfield(opts, 'y2_noise_model') && ~isempty(opts.y2_noise_model)
+        cfg.y2_noise_model = opts.y2_noise_model;   % colored-y2 knob (chat 2026-07-12)
+        % No G1 blanket: the -10% warmup slug traced to the first d = 2
+        % buffer-init samples (artifacts, not data); the controller now holds
+        % the IIR for those d steps in ar1 mode (init-correct, user directive
+        % 2026-07-13). t_warmup_kf stays at the project default (0).
+    end
+    if isfield(opts, 'use_c2_level') && ~isempty(opts.use_c2_level)
+        cfg.use_c2_level = logical(opts.use_c2_level);   % C2 y_3 channel (chat 2026-07-13)
+    end
+    if isfield(opts, 'use_y2_mirror_h') && ~isempty(opts.use_y2_mirror_h)
+        cfg.use_y2_mirror_h = logical(opts.use_y2_mirror_h);   % derived y2 sensitivity H (chat 2026-07-13)
+    end
+    if isfield(opts, 'r22_eval_adet') && ~isempty(opts.r22_eval_adet)
+        cfg.r22_eval_adet = logical(opts.r22_eval_adet);   % PROBE: rectification test (chat 2026-07-13)
+    end
+    if isfield(opts, 'fe_eval_fdet') && ~isempty(opts.fe_eval_fdet)
+        cfg.fe_eval_fdet = logical(opts.fe_eval_fdet);   % PROBE: F_e-from-f_det rectification test (chat 2026-07-13)
+    end
+    if isfield(opts, 'y2_oracle_meas') && ~isempty(opts.y2_oracle_meas)
+        cfg.y2_oracle_meas = logical(opts.y2_oracle_meas);   % PROBE: knife-2 oracle y_2 (chat 2026-07-14)
+    end
+    if isfield(opts, 'use_gamma_split') && ~isempty(opts.use_gamma_split)
+        cfg.use_gamma_split = logical(opts.use_gamma_split);   % z-axis level/shape split (chat 2026-07-14)
+        % Freeze window [t0, t1). Standard (default): freeze [0, t_hold+t_descend)
+        % -> learn gamma only during oscillation (== the original descent gate).
+        cfg.gamma_learn_start = cfg.t_hold + cfg.t_descend_override;
+        if isfield(opts, 'gamma_hold_learn') && opts.gamma_hold_learn
+            % Discriminating variant: gamma LEARNS during the far-field hold
+            % [0, t_hold) (zero curvature, cleanest level info), freezes only
+            % through the descent [t_hold, t_hold+t_descend), resumes at osc.
+            cfg.gamma_freeze_t0 = cfg.t_hold;
+            cfg.gamma_freeze_t1 = cfg.t_hold + cfg.t_descend_override;
+        end
+    end
+    if isfield(opts, 'init_from_anom') && ~isempty(opts.init_from_anom)
+        cfg.init_from_anom = logical(opts.init_from_anom);   % a_nom-normalized init (chat 2026-07-14)
+    end
+    if isfield(opts, 'gamma_hbar_min') && ~isempty(opts.gamma_hbar_min)
+        cfg.gamma_hbar_min = opts.gamma_hbar_min;   % near-wall gamma height gate (chat 2026-07-14)
+    end
+    if isfield(opts, 'use_colored_eps') && ~isempty(opts.use_colored_eps)
+        cfg.use_colored_eps = logical(opts.use_colored_eps);   % MA(2) thermal-history augmentation (chat 2026-07-14)
+    end
+    if isfield(opts, 'gamma_shared') && ~isempty(opts.gamma_shared)
+        cfg.gamma_shared = logical(opts.gamma_shared);   % 3-axis shared-gamma federated fusion (chat 2026-07-14)
+    end
+    if isfield(opts, 'shared_xy_y2_off') && ~isempty(opts.shared_xy_y2_off)
+        cfg.shared_xy_y2_off = logical(opts.shared_xy_y2_off);   % DIAGNOSTIC (chat 2026-07-14)
+    end
+    if isfield(opts, 'sigma_gamma0') && ~isempty(opts.sigma_gamma0)
+        cfg.sigma_gamma0 = opts.sigma_gamma0;   % diffuse gamma init std (ln units)
+    end
+    if isfield(opts, 'gamma_learn_start') && ~isempty(opts.gamma_learn_start)
+        cfg.gamma_learn_start = opts.gamma_learn_start;   % explicit override
+    end
+    if isfield(opts, 'gamma_freeze_t0') && ~isempty(opts.gamma_freeze_t0)
+        cfg.gamma_freeze_t0 = opts.gamma_freeze_t0;   % explicit freeze-window override
+    end
+    if isfield(opts, 'gamma_freeze_t1') && ~isempty(opts.gamma_freeze_t1)
+        cfg.gamma_freeze_t1 = opts.gamma_freeze_t1;
+    end
+    if isfield(opts, 'h_bar_safe') && ~isempty(opts.h_bar_safe)
+        cfg.h_bar_safe = opts.h_bar_safe;   % G3 near-wall y_2 gate override
+    end
 end
 
 
@@ -198,8 +287,19 @@ function layer0 = layer0_checks(runs, arms)
                        'Layer0: REF a_ctrl_used ~= a_true_out (seed %d)', r.seed);
             end
             if ~r.is_det
-                assert(~any(r.simOut.diag.gate_active(:)), ...
-                       'Layer0: gate fired in expected-gate-free run (arm %s seed %d)', nm, r.seed);
+                % G1 warmup rows (t < t_warmup_kf) are expected when the ar1
+                % colored-y2 mode enables the warmup shield; beyond warmup the
+                % run must stay gate-free (h_bar_safe = 1, trough 1.2).
+                ga = r.simOut.diag.gate_active;
+                tck = r.simOut.tout(:);
+                dtk = tck(2) - tck(1);
+                ga(tck < r.simOut.ctrl_const.t_warmup_kf + 2*dtk, :) = false;
+                if r.simOut.ctrl_const.h_bar_safe <= 1.2
+                    % gate-free expectation only holds when G3 sits below the
+                    % trough (h_bar_safe override probes near-wall gating).
+                    assert(~any(ga(:)), ...
+                           'Layer0: gate fired beyond warmup in expected-gate-free run (arm %s seed %d)', nm, r.seed);
+                end
             end
         end
     end
