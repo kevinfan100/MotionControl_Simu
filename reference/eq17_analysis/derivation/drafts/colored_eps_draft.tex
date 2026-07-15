@@ -1,0 +1,249 @@
+% ======================================================
+% Compile: xelatex colored_eps_draft.tex
+% DRAFT (scratch, not repo). Exact KF bookkeeping of the colored process
+% noise eps (the MA(2) thermal-history structure) for the 4-state eq17
+% taylor EKF -- the project's "Path B augmentation" finally done: two
+% noise-history states m1,m2 make the lagged thermal kicks DETERMINISTIC
+% coupling and leave only a white per-step kick as process noise.
+% Style mirrors 4state_del_hd.tex / gamma_split_draft.tex (monochrome,
+% \fbox on key results, terse, math-only). Preamble copied verbatim so it
+% compiles on the fontset=none box.
+% Notation: lambda_c (\lc); beta := 1-lambda_c; F_dx / F_det as parent;
+% w[k]:=a[k]f_T[k] per-step thermal kick, Var(w)=sigma2_dh=4kBT*a.
+% ======================================================
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+\usepackage{graphicx}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+\newcommand{\Fdx}{F_{dx}}
+\newcommand{\Fdet}{F_{\!\mathrm{det}}}
+\newcommand{\sdh}{\sigma^2_{\delta h}}
+\newcommand{\sw}{\sigma^2_{w}}
+\newcommand{\bet}{\beta}
+
+\begin{document}
+
+\begin{center}\textbf{\large Exact bookkeeping of the colored residual $\varepsilon$ --- MA(2) noise-history augmentation}\\[0.3ex]
+{\small two states $m_1,m_2$ carry the lagged thermal kicks; the per-step process noise becomes white ; \ builds on \texttt{4state\_del\_hd.tex} (taylor row, colored-$y_2$ AR(1), $\Fdet$ endogeneity) and \texttt{gamma\_split\_draft.tex}}\\[0.3ex]
+{\small $\bet:=1-\lc$ ; \ $w[k]:=a_x[k]\,f_T[k]$ (per-step thermal displacement kick), $\ \mathrm{Var}(w)=\sw:=\sdh=4k_BT\,a_x$}\end{center}
+
+% ------------------------------------------------------
+\hd{0. The colored residual and its exact ACF}
+From the parent boxed error recursion, the closed-loop residual driving $\delta x_3$ is (thermal + delay-compensation lags + measurement feedthrough; the second-order gain-fluctuation piece $\delta x^{d}_{\delta af}$ is set aside, $\S 3$):
+\[ \varepsilon[k] = \delta x_T^{d}[k] + \bet\,n_x[k] - \delta x^{d}_{\delta af}[k],
+\qquad
+\delta x_T^{d}[k] = a_x[k]f_T[k] + \bet\big(a_x[k{-}1]f_T[k{-}1] + a_x[k{-}2]f_T[k{-}2]\big) \]
+Writing $w[k]:=a_x[k]f_T[k]$ (so $\mathrm{Var}(w)=a_x^2\,\sigma^2_{fT}=a_x^2\cdot 4k_BT\gamma_N/T_s = 4k_BT\,a_x=\sdh$, using $a_x=T_s/\gamma_N$):
+\begin{empheq}[box=\fbox]{equation*}
+\varepsilon[k] = \underbrace{w[k]}_{\text{white}} \;+\; \bet\big(w[k{-}1]+w[k{-}2]\big) \;+\; \bet\,n_x[k]
+\qquad(d=2:\ \text{MA}(2)\ \text{in }w)
+\end{empheq}
+Exact autocovariance of the \emph{thermal} part $w[k]+\bet(w[k{-}1]+w[k{-}2])$ ($w$ white, variance $\sdh$; the $\bet n_x$ term adds $\bet^2\sigma^2_{n}$ to $\gamma_\varepsilon(0)$ only):
+\begin{empheq}[box=\fbox]{align*}
+\gamma_\varepsilon(0) &= (1+2\bet^2)\,\sdh, \qquad
+\rho(1) = \frac{\bet(1+\bet)}{1+2\bet^2} = 0.3305, \\
+\rho(2) &= \frac{\bet}{1+2\bet^2} = 0.2542, \qquad
+\rho(\tau\!\ge\!3) = 0
+\qquad (\lc=0.7,\ \bet=0.3)
+\end{empheq}
+
+\textbf{Empirical anchor} --- measured $y_1$ innovation ACF on the current filter (M0 $=$ ar1$+\Fdet+$init-from-$a_{\mathrm{nom}}$; $5$ seeds, osc window, 2026-07-14). The innovations carry $\varepsilon$'s unmodeled MA(2) fingerprint; correct bookkeeping must whiten them:
+\begin{center}\small
+\begin{tabular}{lcccccc}
+\toprule
+$\tau$ & 1 & 2 & 3 & 4 & 5 \\
+\midrule
+$\rho(\tau)$ predicted ($\varepsilon$ ACF) & $0.3305$ & $0.2542$ & $0$ & $0$ & $0$ \\
+$\rho(\tau)$ measured (M0 innov.)          & $+0.320$ & $+0.258$ & $\approx 0$ & $\approx 0$ & $\approx 0$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ------------------------------------------------------
+\hd{1. Augmentation --- two noise-history states}
+Append (per axis) the two most-recent thermal kicks as states:
+\begin{empheq}[box=\fbox]{equation*}
+m_1[k] := w[k{-}1], \qquad m_2[k] := w[k{-}2]
+\;\Longrightarrow\;
+m_1[k{+}1] = w[k]\ (\text{noise-driven}), \qquad m_2[k{+}1] = m_1[k]\ (\text{shift})
+\end{empheq}
+Then $\bet(w[k{-}1]+w[k{-}2]) = \bet(m_1[k]+m_2[k])$ is \emph{current state}, so the motion-error recursion carries the lagged content as \emph{deterministic coupling} and only the fresh kick $w[k]$ (plus $\bet n_x$) remains stochastic:
+\begin{empheq}[box=\fbox]{equation*}
+\delta x[k{+}1] = \lc\,\delta x[k] - \Fdx[k]\,e_{a_x}[k]
+- \underbrace{w[k]}_{\text{white } q} - \underbrace{\bet\big(m_1[k]+m_2[k]\big)}_{\text{det.\ coupling}} - \underbrace{\bet\,n_x[k]}_{\S 4}
+\end{empheq}
+The taylor transport of the gain picks up $a'_x\,\varepsilon$ (parent boxed $a$-row), so with the same split the $a$-row gains $+a'_x\bet$ on the $m$-columns and white noise $+a'_x w[k]$:
+\[ a_x[k{+}1] = a_x[k] + a'_x\Delta h_d + (1-\lc)a'_x\delta x[k] + a'_x\Fdx[k]\,e_{a_x}[k]
++ a'_x w[k] + a'_x\bet\big(m_1[k]+m_2[k]\big) + a'_x\bet\,n_x[k] \]
+
+% ------------------------------------------------------
+\hd{2. Error dynamics and $\mathbf F_e$ --- taylor $+$ AR(1) $+$ $m$-augmentation ($7\times7$, $z$ axis)}
+State $\mathbf x_e = [\,\delta x_1,\ \delta x_2,\ \delta x_3,\ a_x,\ v,\ m_1,\ m_2\,]^{\mathsf T}$
+($v$: colored-$y_2$ AR(1) noise state, parent doc). The $m_1,m_2$ dynamics carry no state coupling except the shift; the lagged content sits in rows $3,4$:
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf F_e[k]=
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & 1 & 0 & 0 & 0 & 0\\
+0 & 0 & \lc & -\Fdx & 0 & -\bet & -\bet\\
+0 & 0 & (1-\lc)a'_x & 1+a'_x\Fdx & 0 & +a'_x\bet & +a'_x\bet\\
+0 & 0 & 0 & 0 & \varphi & 0 & 0\\
+0 & 0 & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & 0 & 0 & 0 & 1 & 0
+\end{bmatrix}
+\end{empheq}
+\[ \mathbf H = \begin{bmatrix} 1&0&0&0&0&0&0\\[0.2ex] 0&0&0&1&1&0&0 \end{bmatrix}
+\qquad(y_1=\delta x_m;\ \ y_2=a_{xm}=a_x+v;\ \ m\text{'s not measured directly}) \]
+$m_1,m_2$ enter $\mathbf F_e$ only through the $-\bet$ (row 3) and $+a'_x\bet$ (row 4) columns; the $v$-column is zero in rows $3,4$ (AR(1) noise is a $y_2$-only measurement state). Reduces to the parent $5\times5$ (blkdiag $\mathbf F_e^{4\times4},\varphi$) when the $-\bet,+a'_x\bet$ couplings and the $m$-block are deleted.
+
+% ------------------------------------------------------
+\hd{2b. Gamma-split variant ($8\times8$) --- $m$'s couple to $\sigma$, not $\gamma$}
+State $[\,\delta x_1,\delta x_2,\delta x_3,\sigma,\gamma,v,m_1,m_2\,]^{\mathsf T}$, $\kappa:=a'_x/a_x=-K_h/R$, $\Fdet$ from the endogeneity linearization:
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf F_e[k]=
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & 1 & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & \lc & -\Fdet a & -\Fdet a & 0 & -\bet & -\bet\\
+0 & 0 & (1-\lc)\kappa & 1+\kappa\Fdet a & \kappa\Fdet a & 0 & +\kappa\bet & +\kappa\bet\\
+0 & 0 & 0 & 0 & 1 & 0 & 0 & 0\\
+0 & 0 & 0 & 0 & 0 & \varphi & 0 & 0\\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0\\
+0 & 0 & 0 & 0 & 0 & 0 & 1 & 0
+\end{bmatrix}
+\qquad (a=\hat a=e^{\hat\gamma+\hat\sigma})
+\end{empheq}
+The $m$-couplings appear in the $\sigma$-row scaled by $\kappa$ (the thermal noise enters the shape, not the bulk level); the $\gamma$ row \emph{and} the $\gamma$ column are zero in the $m$-rows/cols --- consistent with $\gamma$ noiseless ($\S$gamma-split proof).
+
+% ------------------------------------------------------
+\hd{3. Rank-1 thermal $Q$ + reconciliation (ends Path C vs Path A$'$)}
+A single sample $w[k]$ drives $\delta x_3$ (with $-1$), $a_x$ (with $+a'_x$), and $m_1$ (with $+1$); $m_2,v$ get none:
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf q_{\mathrm{th}}[k]=w[k]\,\mathbf v,\quad
+\mathbf v=[\,0,0,-1,\,a'_x,\,0,\,1,\,0\,]^{\mathsf T}
+\;\Rightarrow\;
+\mathbf Q_{\mathrm{th}}=\sw\,\mathbf v\mathbf v^{\mathsf T},\quad \sw=4k_BT\,\hat a_x[k]
+\end{empheq}
+\[
+\begin{array}{llll}
+Q_{33}=\sw, & Q_{34}=Q_{43}=-a'_x\sw, & Q_{36}=Q_{63}=-\sw, &\\
+Q_{44}=a'^2_x\sw, & Q_{46}=Q_{64}=+a'_x\sw, & Q_{66}=\sw, & (\text{all others }0)
+\end{array}
+\]
+plus the AR(1) $y_2$ state $Q_{55}=(1-\varphi^2)(1-r_f)R_{2,\mathrm{int}}[k]$ (parent doc). Gamma-split ($\S$2b): same rank-1 with $\mathbf v=[\,0,0,-1,\kappa,0,0,1,0\,]$, $\ Q_{\sigma\sigma}=\kappa^2\sw,\ Q_{3\sigma}=-\kappa\sw,\ Q_{3m_1}=-\sw,\ Q_{\sigma m_1}=\kappa\sw,\ Q_{m_1m_1}=\sw$, $\gamma$-row/col $\equiv 0$.
+
+\textbf{Reconciliation (the exact third way).}
+\begin{empheq}[box=\fbox]{equation*}
+Q_{33}:\ (1+2\bet^2)\sdh \;\longrightarrow\; \sdh\ (=\sw)\ \text{ per-step white (Path C strict)};\quad
+Q_{44}:\ a'^2_x(1+2\bet^2)\sdh \;\longrightarrow\; a'^2_x\sdh
+\end{empheq}
+The removed coloring $2\bet^2\sdh$ (resp.\ $a'^2_x\cdot$) does not vanish --- it \emph{moves} into the $m$-state propagation. Injecting $Q_{m_1m_1}=\sw[k]$ each step, the variance the two $m$'s deliver into $\delta x_3$ at prediction is
+\[ \mathrm{Var}\big(-\bet(m_1[k]+m_2[k])\big) = \bet^2\big(\sw[k{-}1]+\sw[k{-}2]\big)
+= 4k_BT\,\bet^2\big(\hat a_x[k{-}1]+\hat a_x[k{-}2]\big), \]
+which is \emph{exactly} the code's current \texttt{Q33\_thermal} lag term
+$4k_BT\,\bet^2(\hat a_{km1}+\hat a_{km2})$ (\texttt{motion\_control\_law\_eq17\_4state.m} L986). So the augmentation neither drops the lag variance (Path C strict, $P$ undershoot ${\sim}50\%$) nor folds it into a white inflation (Path A$'$, rejected as a hack): it books the same variance in states the filter can \emph{learn} from $y_1$. The equality is at injection/prediction; the filter then refines $\hat m_i$ from the measurement chain, which is the entire gain.
+
+\textbf{The other current $Q_{33}$ terms.}
+\begin{itemize}[leftmargin=1.4em,topsep=2pt,itemsep=3pt]
+\item \texttt{Q33\_randgain} $=\bet^2(4f_{d,k{-}1}^2 v_{\Delta a,k{-}1}+f_{d,k{-}2}^2 v_{\Delta a,k{-}2})$ (the $\delta x^{d}_{\delta af}$ gain-fluctuation term): \textbf{keep as-is}. It is a \emph{different}, second-order MA($d$) coloring (products of known $f_d[k{-}i]$ with the random gain increments $\Delta a_{ram}[k{-}i]$); its exact treatment needs a separate augmentation of the $\Delta a_{ram}$ history. Magnitude is small; keeping it as white inflation is the same whiteness approximation, now on a minor term.
+\item \texttt{Q33\_nx} $=\bet^2\sigma^2_{n}$ (the $\bet n_x[k]$ feedthrough): \textbf{keep as-is (independent-noise approx)}, but it is genuinely process--measurement \emph{correlated} --- $\S 4$.
+\end{itemize}
+
+% ------------------------------------------------------
+\hd{4. Measurement-correlated remainder $\bet\,n_x[k]$ (the $S$ term)}
+The same $n_x[k]$ appears in $\varepsilon[k]$ (control law uses $\delta x_m[k]$) and in $y_1[k]=\delta x_1[k]+n_x[k]$ ($r_1[k]=n_x[k]$). Hence $\mathrm E\{\mathbf q[k]\,r_1[k]\}=:\mathbf S\ne 0$:
+\begin{empheq}[box=\fbox]{equation*}
+S_{3,1} = -\bet\,\sigma^2_{n}, \qquad S_{4,1} = +a'_x\bet\,\sigma^2_{n}
+\ \ (\text{gsplit: } S_{\sigma,1}=+\kappa\bet\,\sigma^2_{n}), \qquad S_{m_i,1}=0
+\end{empheq}
+Exact treatment is the correlated-noise gain (Simon, \emph{Optimal State Estimation}, Ch.\,7): with $\mathbf q[k]$ entering $\mathbf x[k{+}1]$ and $\mathbf r[k]$ in $\mathbf y[k]$,
+\[ \mathbf K_{\mathrm{eff}}[k] = \big(\mathbf P^{f}\mathbf H^{\mathsf T}+\mathbf S\big)\big(\mathbf H\mathbf P^{f}\mathbf H^{\mathsf T}+\mathbf R\big)^{-1},
+\qquad \text{covariance recursion gains the matching } -\mathbf S\text{-cross terms.} \]
+
+\textbf{Magnitude} ($r:=\bet^2\sigma^2_{n}/\sw=\bet^2\sigma^2_{n}/(4k_BT\,a_x)$; repo $\sigma_n=10$\,nm $\Rightarrow\sigma^2_{n}=10^{-4}\,\mu$m$^2$, $\bet^2=0.09$, $4k_BT=1.713\!\times\!10^{-2}$, $a_x=a_{\mathrm{nom}}/c_\perp$, $a_{\mathrm{nom}}=0.0147$):
+\begin{center}\small
+\begin{tabular}{lcccccc}
+\toprule
+$\bar h$ (active region, gate at $1.5$) & 1.5 & 2.0 & 3.0 & 5.0 & 10.0 & far ($c_\perp\!=\!1$)\\
+\midrule
+$c_\perp$ & 3.21 & 2.13 & 1.57 & 1.29 & 1.13 & 1.00\\
+$\sw=4k_BT\,a_x\ (\mu$m$^2)$ & $7.9\mathrm e{-5}$ & $1.18\mathrm e{-4}$ & $1.61\mathrm e{-4}$ & $1.95\mathrm e{-4}$ & $2.23\mathrm e{-4}$ & $2.52\mathrm e{-4}$\\
+$r=\bet^2\sigma^2_{n}/\sw$ & $11.5\%$ & $7.6\%$ & $5.6\%$ & $4.6\%$ & $4.0\%$ & $3.6\%$\\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{empheq}[box=\fbox]{equation*}
+r\in[3.6\%,\,11.5\%]\ \text{over the active region};\quad r\ \textbf{grows toward the wall}\ (\sw=4k_BT\,a_x\ \text{shrinks as }a_x\!=\!a_{\mathrm{nom}}/c_\perp\!\downarrow)
+\end{empheq}
+\textbf{Recommendation: DEFER.} $S$ perturbs only the $\bet^2\sigma^2_{n}$ piece, itself $r\!\le\!11.5\%$ of the thermal $Q_{33}$; the net effect on $\hat a_x$ is $O(r)$ on a minor term (second order). The current code already lumps $\bet^2\sigma^2_{n}$ into $Q_{33}$ as \emph{independent} noise; the augmentation inherits that, unchanged. \emph{Correction to seed}: the seed states $r\approx1\%$ far field and ``less near wall''; the repo $10$\,nm sensor gives $r\approx3.6\%$ far field and $r$ \emph{rises} toward the wall ($1\%$ would need a ${\sim}5$\,nm sensor). Bound is safe either way; only the monotonic direction and level differ.
+
+% ------------------------------------------------------
+\hd{5. Observability, initialization, composition}
+\textbf{Observability.} $m_1,m_2$ are unmeasured noise states, seen through the $-\bet$ couplings on the $\delta x_3$ row propagating down the delay chain $\delta x_3\!\to\!\delta x_2\!\to\!\delta x_1\!\to\!y_1$ (the same mechanism by which the AR(1) $v$-state reaches $y_2$). No PE requirement --- the coupling is structural.
+
+\textbf{Initialization.} $w$ white, zero-mean:
+\[ \hat m_1(0)=\hat m_2(0)=0,\qquad P_{m_1m_1}(0)=P_{m_2m_2}(0)=\sw(0)=4k_BT\,\hat a_x(0),\qquad P_{m\bullet}(0)=0\ (\text{zero cross}). \]
+DARE seed: extend the existing $\delta x/a$ (or $\delta x/\sigma$) seed by 2 rows/cols, $m$-block $=\sw(0)\mathbf I_2$, zero cross; per-axis $\delta x_3$ chain so each axis carries its own $m_1,m_2$.
+
+\textbf{Composition.}
+\begin{itemize}[leftmargin=1.4em,topsep=2pt,itemsep=3pt]
+\item \emph{$\perp$ AR(1) $v$-state}: different noise ($w=a f_T$ vs the EWMA noise $w_v$), different channel ($m$'s reach $y_1$, $v$ reaches $y_2$). Blocks stack: append $v$ \emph{and} $m_1,m_2$ independently.
+\item \emph{$\perp$ gamma-split}: $m$'s couple to $\sigma$ (via $\kappa\bet$), never to $\gamma$; the noiseless-$\gamma$ proof is preserved ($\gamma$ row/col zero in the $m$-block).
+\end{itemize}
+
+% ------------------------------------------------------
+\hd{6. What the fix buys (pre-registered, falsifiable)}
+\begin{center}\small
+\begin{tabular}{lcc}
+\toprule
+quantity & before (M0) & after (predicted) \\
+\midrule
+innovation $\rho(1)$ & $+0.320$ & $\approx 0$ (whitened) \\
+innovation $\rho(2)$ & $+0.258$ & $\approx 0$ \\
+$P_{33}$ honesty $=P_{33}/\mathrm{Var}(e_{\delta x_3})$ & ${\sim}0.4$ & ${\sim}1$ \\
+$P_{44}$ honesty $=P_{44}/\mathrm{Var}(e_{a_x})$ & $0.415$ & ${\sim}1$ \\
+gain std (A2, $z$, osc) & $2.53\%$ & modest, ${\le}10\text{--}15\%$ \emph{relative} (unproven) \\
+gain bias (A2) & $-0.37\%$ & ${\approx}$ unchanged \\
+\bottomrule
+\end{tabular}
+\end{center}
+\textbf{(a) Whitening.} Modeling the MA(2) exactly makes the innovation sequence white (KF whiteness restored); the $\rho(1),\rho(2)$ fingerprint is the acceptance target.
+
+\textbf{(b) $P$ calibration.} The colored-as-white model over-counts independent information at DC by
+\[ 1+2\big(\rho(1)+\rho(2)\big) = 1+2(0.3305+0.2542) = 2.17,
+\qquad 1/2.17 = 0.46 \approx \text{measured honesty }0.415, \]
+so removing the over-count drives \emph{both} $P_{33}$ and $P_{44}$ honesty to ${\sim}1$ (the exact weld $P_{44}=a'^2_xP_{33}$, parent, ties them). Residual $0.46\!\to\!0.415$ is the $\delta x^{d}_{\delta af}$ term $+$ second order.
+
+\textbf{(c) What it does NOT buy.} The information floor (CRLB) is model-independent: correct bookkeeping fixes the filter's \emph{self-assessment} ($P$, innovation whiteness), not the achievable spread. Expected std change is modest (${\le}10\text{--}15\%$, \emph{unproven}); bias essentially unchanged. Honesty $\ne$ accuracy.
+
+% ------------------------------------------------------
+\hd{7. Validation plan (for the future implementation)}
+\begin{enumerate}[leftmargin=1.6em,topsep=2pt,itemsep=3pt]
+\item \textbf{Gate-1 knob-off bit-identity}: augmentation behind a knob (default off) $\Rightarrow$ 66-array diff $=0$ vs M0.
+\item \textbf{Innovation-whiteness (primary acceptance)}: measured $y_1$ innovation ACF $\rho(1),\rho(2)\!\to\!0$ (from $+0.32,+0.26$); the $\S 0$ table is the pre-registered target.
+\item \textbf{Honesty}: $P_{33}/\mathrm{Var}(e_{\delta x_3})$ and $P_{44}/\mathrm{Var}(e_{a_x})\to{\sim}1$ (from ${\sim}0.4$).
+\item \textbf{20-seed five-metric paired vs M0}: bias, std, div-count, level, honesty.
+\item \textbf{Descent-segment RMSE $[0.5,1.5)$s discriminator}: whether the descent wander ($1.40$ vs $2.61\%$) was bookkeeping-caused or the legitimate price of listening. \emph{Pre-register both}: (i) wander $\downarrow$ toward $1.40\%$ $\Rightarrow$ it was mis-booked colored noise (augmentation earns it back); (ii) wander unchanged $\Rightarrow$ it is the real cost of a live $y_1$ chain. \textbf{Both outcomes acceptable} --- the discriminator informs the descent-gating decision ($\S$gamma-split option (ii)), not a pass/fail.
+\end{enumerate}
+
+\textbf{Scope.} This augmentation is orthogonal to (and stacks with) the AR(1) $y_2$ and the gamma-split; it does not implement anything --- it is the exact-bookkeeping foundation the later composition rests on.
+
+\end{document}

@@ -1,0 +1,249 @@
+% ======================================================
+% Compile: xelatex gamma_split_draft.tex
+% DRAFT (scratch, not repo). Log-gain level/shape split for the 4-state eq17
+% taylor EKF: ln a_i = gamma + sigma_i, gamma shared across axes (Stokes
+% isotropy), sigma_i = -ln c_i(hbar) the per-axis wall shape.
+% Style mirrors 4state_del_hd.tex (monochrome, \fbox on key results, terse,
+% math-only). Preamble copied verbatim so it compiles on the fontset=none box.
+% Notation clash warning: gamma (log level, this file) vs gamma_N (bulk drag,
+% the parent doc). Always subscript the drag as gamma_N.
+% ======================================================
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{enumitem}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+\usepackage{graphicx}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+\newcommand{\Fdet}{F_{\!\mathrm{det}}}
+\newcommand{\Fram}{F_{\!\mathrm{ram}}}
+
+\begin{document}
+
+\begin{center}\textbf{\large Log-gain level/shape split for the 4-state taylor EKF}\\[0.3ex]
+{\small $\ln a_i = \gamma + \sigma_i$ ; \ $\gamma$ shared (Stokes isotropy), \ $\sigma_i=-\ln c_i(\bar h)$ per-axis shape ; \ builds on \texttt{4state\_del\_hd.tex}}\end{center}
+
+\hd{Reparametrization}
+Per-axis motion gain $a_i[k] = \dfrac{T_s}{\gamma_N\, c_i(\bar h[k])}$. Take logs:
+\begin{empheq}[box=\fbox]{equation*}
+\ln a_i[k] = \underbrace{\ln\!\big(T_s/\gamma_N\big)}_{\gamma\ (\text{shared, }=\ln a_{\mathrm{nom}})}
+\;+\; \underbrace{\big(-\ln c_i(\bar h[k])\big)}_{\sigma_i[k]\ (\text{per-axis shape})},
+\qquad
+\kappa_i[k] := \frac{a'_i}{a_i} = \frac{d\sigma_i}{dh} = -\frac{K_{h,i}(\bar h)}{R}
+\end{empheq}
+$a_{\mathrm{nom}}=T_s/\gamma_N$, $\gamma_N=6\pi\eta R$ (bulk Stokes drag), $K_{h,i}=\frac1{c_i}\frac{dc_i}{d\bar h}$ (wall sensitivity, as in the parent doc). $\gamma$ carries \emph{no} $\bar h$-dependence and is common to $x,y,z$: the same bead in the same fluid has one bulk drag $\gamma_N$ --- this is Stokes isotropy (physics), \emph{not} an assumed functional form for $c_i(\bar h)$. All wall/height dependence lives in $\sigma_i$; all axis coupling to the level lives in the single $\gamma$.
+
+Estimated gain and its sensitivities are evaluated at the estimate:
+\[ \hat a_i = e^{\hat\gamma+\hat\sigma_i}, \qquad
+\frac{\partial a_i}{\partial\sigma_i}=\frac{\partial a_i}{\partial\gamma}=a_i,
+\qquad e_{a_i} := a_i-\hat a_i \approx a_i\big(e_{\sigma_i}+e_\gamma\big)\ \ (\text{1st order}). \]
+
+% ------------------------------------------------------
+\hd{1. Exact ln-space transport (frozen-$\kappa$ + its curvature cost)}
+With $a_i=a(h)$ along the wall-normal height $h$, the log-gain transport over a step is a \emph{path integral} of $\kappa$:
+\[ \ln a[k{+}1]-\ln a[k] = \int_{h[k]}^{h[k+1]}\!\frac{a'(h)}{a(h)}\,dh = \int_{h[k]}^{h[k+1]}\!\kappa(h)\,dh. \]
+Expand about $h[k]$ with $\Delta h[k]=h[k{+}1]-h[k]$:
+\begin{empheq}[box=\fbox]{equation*}
+\Delta\sigma[k] = \kappa[k]\,\Delta h[k] \;+\; \underbrace{\tfrac12\,\kappa'[k]\,\Delta h^2[k]}_{\text{curvature error}} \;+\; O(\Delta h^3),
+\qquad \kappa' = \frac{d^2\ln a}{dh^2} = \frac{a''}{a}-\kappa^2
+\end{empheq}
+\textbf{Frozen-$\kappa$ assumption}: $\kappa[k{+}1]\!\approx\!\kappa[k]$, i.e.\ drop $\tfrac12\kappa'\Delta h^2$. Cost is bounded by $\tfrac12|\kappa'|\,\Delta h_{\max}^2$ per step, biasing $\sigma$ during fast wall approach.
+
+\textbf{What ln wins --- first-order conditioning (not curvature).} The genuine ln advantage is that $\kappa\Delta h$ is a \emph{fractional} step and stays $O(\text{few}\%)$ even where $a$ changes by a decade across the dip, so one linearization is uniformly valid across the wall approach, whereas $a'\Delta h$ (absolute) is not; and the level error is quarantined into $\gamma$ ($\S$2). \textbf{It does \emph{not} win on curvature for this mobility.} The exponential special case $a\!\sim\!e^{\kappa h}\Rightarrow\kappa'=0$ (ln exact) does \emph{not} apply near the wall: the repo $c_\perp$ makes $a=a_{\mathrm{nom}}/c_\perp$ \emph{concave-decreasing} ($a''<0$ at every $\bar h$), so $\kappa'=a''/a-\kappa^2<0$ and $|\kappa'|=|a''/a|+\kappa^2$ --- the ln-space fractional curvature is \emph{strictly larger} than a-space $|a''/a|$ by $\kappa^2$. Quantified in $\S$1b; the descent-exit spread is \emph{not} reduced by moving to ln.
+
+\textbf{Deterministic drift is handled in either space} by the ``known'' feedforward (exact difference of true log-levels, no Euler error):
+\[ \Delta\hat\sigma_{\mathrm{det}}[k] = \ln\frac{a_{\mathrm{det}}[k]}{a_{\mathrm{det}}[k{-}1]}. \]
+So the $\sim\!3.6\%$ raw-$a'\Delta h$ Euler drift is removed regardless. The residual descent-exit issue is the \emph{stochastic} slip curvature ($\S$1b), not this deterministic drift.
+
+% ------------------------------------------------------
+\hd{1b. Descent-exit curvature --- the A2/A3 level-spread mechanism (measured)}
+\textbf{Finding} (20-seed, A2/A3 ar1$+$fdet, v-drift attribution): $\mathrm{std}(e_{a_x})$ at $t{=}1.5$\,s is $6.86\%$ (A2) / $3.01\%$ (A3), built \emph{entirely in the descent}, slip-dominated (slip $6.31$ vs pos $2.02$, nearly uncorrelated). The linear v-budget channels $V_1/V_2/C_3$ resolve only $\sim\!1.8\%$; the remaining $\sim\!6\%$ is the \emph{nonlinear} residual $\big(\text{exact slip}-v_{\mathrm{lin}}\big)$ --- first-order (frozen-slope) transport of the seed-varying slip $\delta x$ through the high-curvature near-wall region at $46$\,nm/step. Per-sample curvature error (fractional): a-space $\tfrac12(a''/a)\delta x^2$, ln-space $\tfrac12\kappa'\delta x^2$.
+
+\textbf{a-space vs ln-space curvature, evaluated on the repo $c_\perp$} ($a''/a=(K_h^2{-}K_h')/R^2$, $\kappa'=-K_h'/R^2$; $a''<0$ throughout $\Rightarrow$ ln always worse by $\kappa^2$):
+\begin{center}\small
+\begin{tabular}{lccccccc}
+\toprule
+$\bar h$ & 1.11 & 1.20 & 1.50 & 2.00 & 3.00 & 5.00 & 10.0\\
+\midrule
+$c_\perp$ & 10.53 & 6.35 & 3.21 & 2.13 & 1.57 & 1.29 & 1.13\\
+$|a''/a|\,R^2$ (a-space) & 16.29 & 6.91 & 1.68 & 0.478 & 0.112 & 0.022 & 0.003\\
+$|\kappa'|\,R^2$ (ln-space) & 79.83 & 23.45 & 3.45 & 0.744 & 0.145 & 0.025 & 0.003\\
+ratio ln$/$a $=1{+}\kappa^2/|a''/a|$ & 4.90 & 3.40 & 2.06 & 1.56 & 1.29 & 1.14 & 1.06\\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{empheq}[box=\fbox]{equation*}
+\text{ln-transport \emph{increases} the near-wall curvature error by }1+\frac{\kappa^2}{|a''/a|}\in[1.06,\,4.9]:\ \ \text{it does \emph{not} fix the descent-exit spread.}
+\end{empheq}
+
+\textbf{Design options for $\gamma$ under $Q_\gamma=0$}:
+\begin{itemize}[leftmargin=1.4em,topsep=2pt,itemsep=3pt]
+\item[(i)] \emph{ln-transport only} --- \textbf{rejected} as the curvature fix: worsens the transport by $\kappa^2$ (table). Keep ln for its $\S$2 structural wins, not for descent-exit.
+\item[(ii)] \emph{Defer $\gamma$ updates during descent} (learn $\gamma$ only in osc/far-field, gate on $|\Delta h_d|$ or $\bar h$) --- \textbf{recommended}. The split isolates the descent curvature into $\sigma$ (the noise-driven shape); gating $y_2\!\to\!\gamma$ during descent keeps the curvature-corrupted samples out of the level. Cross-cycle accumulation still gives $2.63\%/\sqrt{n_{\mathrm{cyc}}}\!\to\!\sim\!0.4\text{--}0.5\%$ at $60$\,s ($n_{\mathrm{cyc}}\!\approx\!58$), so descent-harvesting is a \emph{bonus, not a necessity}.
+\item[(iii)] \emph{Second-order correction} $+\tfrac12(a''/a)\,\delta\hat x_3^2$ in \emph{a-space} (the smaller curvature; $a''$ available now from the repo $K_h'$) --- optional add-on to (ii) if descent info is later wanted. Uses a squared estimate (bias $\propto P_{33}$, correctable). Do \emph{not} do this in ln-space.
+\end{itemize}
+\textbf{Recommendation}: (ii) as primary; (iii) in a-space only if descent-harvesting is needed. The bound above is the justification for \emph{not} choosing (i).
+
+% ------------------------------------------------------
+\hd{2. Level invariance --- A3 (estimate-based $a'$) vs A2 (oracle $a'$)}
+Let $g:=a/\hat a$ be a (constant) multiplicative level error, $\hat a = a/g$. A3 reads the slope off the wall model at the estimate, $a'_{\mathrm{A3}}=-\hat a\,K_h/R$.
+
+\textbf{a-space} (additive increment $\Delta a=a'\Delta h$): using $a'_{\mathrm{A3}}$,
+\[
+\begin{aligned}
+\Delta a_{\mathrm{A3}} &= -\hat a\,\tfrac{K_h}{R}\,\Delta h = \tfrac1g\,\Delta a_{\mathrm{true}}
+\quad(\text{increment wrong by }1/g,\ \textbf{accumulates}), \\
+\Delta a_{\mathrm{A2}} &= -a\,\tfrac{K_h}{R}\,\Delta h = \Delta a_{\mathrm{true}}\qquad(\text{correct, but needs true }a).
+\end{aligned}
+\]
+So in a-space the practical slope (A3, uses $\hat a$) leaks the level error into the transport; only the oracle (A2, needs the truth) is clean.
+
+\textbf{ln-space} (fractional increment $\Delta\sigma=\kappa\Delta h$): $\kappa_{\mathrm{A3}}=a'_{\mathrm{A3}}/\hat a=-K_h/R$ --- the $\hat a$ \emph{cancels}.
+\begin{empheq}[box=\fbox]{equation*}
+\Delta\sigma = -\frac{K_h(\bar h)}{R}\,\Delta h \quad\text{(independent of the gain level)};
+\qquad \hat a=a/g \;\Rightarrow\; \hat\sigma = \sigma_{\mathrm{true}},\ \ \hat\gamma = \gamma_{\mathrm{true}}-\ln g
+\end{empheq}
+A constant level error is a pure DC offset $-\ln g$ \emph{quarantined into $\gamma$}; the shape transport $\sigma$ is untouched. Ln-space thus gives A3's practicality (slope from $\hat a$, no oracle) with A2's level immunity.
+
+\textbf{The C3 self-anchor drift channel does not exist in the ln-split (measured, headline).} In a-space the v-budget carries a self-anchor term $C_3=\sum \Delta a'_x\,\delta\hat x_3$ with $a'_x=-\hat a_x K_h/R$ (slope built \emph{from} the estimate). Convicted empirically: in A3 (estimate-based $a'$) $C_3$ drives a hard systematic $-0.48\%$/cycle at $-22\sigma$; in A2 (oracle $a'$) $C_3$ is not significant ($\approx0$). A3 also carries a genuine 4th channel --- same-step $\Delta a'/$innovation coupling residual, $+0.587\pm2.334$ in the descent (small mean, large variance).
+\begin{empheq}[box=\fbox]{equation*}
+\kappa=-K_h(\bar h_{\mathrm{meas}})/R\ \text{contains no }\hat a_x
+\;\Rightarrow\; \text{the }C_3\text{ self-anchor drift is \emph{structurally absent} in the ln-split.}
+\end{empheq}
+\textbf{Residual coupling that remains}: $\Delta\kappa=-K_h'(\bar h_{\mathrm{meas}})\,\Delta\bar h_{\mathrm{meas}}/R$ --- driven \emph{only} by the measured height sweeping the wall (exogenous), not by $\Delta\hat a_x$ (endogenous). So the systematic per-cycle drift is gone; only a zero-mean-ish coupling from the trajectory's $\bar h$ time-variation is left. \emph{Caveat}: A3's self-anchoring is not pure loss --- in a-space it \emph{buys} a halved descent-exit variance ($3.01\%$ vs A2's $6.86\%$) by letting $a'$ track. The ln-split removes the $C_3$ bias but does not inherit that variance reduction, which must instead come from $\S$1b option (ii)/(iii).
+
+% ------------------------------------------------------
+\hd{3. State, error dynamics and $\mathbf F_e$ ($z$ axis)}
+State $\mathbf x_e=[\,\delta x_1,\ \delta x_2,\ \delta x_3,\ \sigma,\ \gamma\,]^{\mathsf T}$ (append $v$ for the colored-$y_2$ AR(1) as in the parent doc). Using $e_{a_x}=a(e_\sigma+e_\gamma)$ and the fdet linearization ($\mathbf F_e$ built from the deterministic mirror $\Fdet$, $\Fram e_{a_x}\!\to\!$ noise):
+
+\textbf{$\delta x_3$ error} \ ($\delta x[k{+}1]=\lc\delta x-\Fdet\,e_{a_x}-\tilde\varepsilon$):
+\[ e_{\delta x_3}[k{+}1] = \lc\,e_{\delta x_3} - \Fdet\,a\,\big(e_\sigma+e_\gamma\big) - \varepsilon - (\text{gain}\cdot\text{innov}) \]
+
+\textbf{$\sigma$ error} \ (divide the a-space gain recursion by $a$; $\Delta\sigma=\kappa\Delta h$ with $\kappa a=a'$):
+\[ e_\sigma[k{+}1] = \big(1+\kappa\Fdet a\big)e_\sigma + \big(\kappa\Fdet a\big)e_\gamma + (1-\lc)\kappa\,e_{\delta x_3} + \kappa\,\varepsilon - (\text{gain}\cdot\text{innov}) \]
+
+\textbf{$\gamma$ error} \ (noiseless constant): $\;e_\gamma[k{+}1]=e_\gamma[k]-(\text{gain}\cdot\text{innov}).$
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf F_e[k]=
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0\\
+0 & 0 & 1 & 0 & 0\\
+0 & 0 & \lc & -\Fdet a & -\Fdet a\\
+0 & 0 & (1-\lc)\kappa & 1+\kappa\Fdet a & \kappa\Fdet a\\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\qquad (a=\hat a=e^{\hat\gamma+\hat\sigma},\ \ \kappa a=a')
+\end{empheq}
+Consistency with the parent a-space row 4 $=[0\,0\,(1{-}\lc)a'\;1{+}a'\Fdet]$: rows 3,4 above are the parent rows 3,4 with the gain error resolved into $a(e_\sigma+e_\gamma)$ and the $\sigma$-row divided by $a$ (since $e_\sigma=e_a/a$); the ``$1$'' is the $\sigma$-integrator. The a-space $[0\,0\,0\,1]$ collapse is $\gamma$-blind; here the level gets its own row/column.
+
+\textbf{Output} \ ($y_1$ delayed position error; $y_2=a_{xm}$ the log-linearized gain measurement):
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf H=\begin{bmatrix}1&0&0&0&0\\[0.2ex]0&0&0&a&a\end{bmatrix}
+\qquad (\partial a/\partial\sigma=\partial a/\partial\gamma=a:\ y_2\ \text{sees only the sum }\sigma+\gamma)
+\end{empheq}
+
+% ------------------------------------------------------
+\hd{4. Rank-1 process noise; $\gamma$ is noiseless (proof + drift bound)}
+A single closed-loop residual $\varepsilon[k]$ drives the whole update: $\delta x_3$ gets $-\varepsilon$, $\sigma$ gets $+\kappa\varepsilon$, $\gamma$ gets $0$:
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf q[k]=\varepsilon[k]\,\mathbf v,\quad \mathbf v=[\,0,\,0,\,-1,\,\kappa,\,0\,]^{\mathsf T}
+\;\Rightarrow\;
+\mathbf Q=\sigma_\varepsilon^2\,\mathbf v\mathbf v^{\mathsf T},\quad
+\begin{cases}
+Q_{33}=\sigma_\varepsilon^2,\ \ Q_{3\sigma}=-\kappa\sigma_\varepsilon^2,\ \ Q_{\sigma\sigma}=\kappa^2\sigma_\varepsilon^2\\[0.4ex]
+Q_{\gamma\bullet}=Q_{\bullet\gamma}=0\ \ (\forall)
+\end{cases}
+\end{empheq}
+with $\sigma_\varepsilon^2=\gamma_\varepsilon(0)=(1+2(1-\lc)^2)\,\sigma^2_{\delta h}$, \ $\sigma^2_{\delta h}=4k_BT\,a$ (parent doc).
+
+\textbf{Proof $v_\gamma=0$.} $\gamma=\ln(T_s/\gamma_N)$ with $T_s$ exact and $\gamma_N=6\pi\eta R$ set by fluid viscosity and bead radius. The stochastic drivers $f_T$ (thermal force) and $n_x$ (sensor noise) enter $\delta x$ and, via the wall-distance-dependent mobility, $\sigma$; \emph{neither perturbs the bulk drag $\gamma_N$.} Hence the noise projection onto $\gamma$ is identically zero --- structural, not an approximation. The only physical driver of $\gamma$ is a change in $\eta$ (temperature) or $R$ (bead), both slow and exogenous.
+
+\textbf{Temperature-drift bound.} $c(\bar h)$ is $T$-independent (geometry), so
+\[ \frac{d\ln a}{dT} = -\frac{d\ln\gamma_N}{dT} = -\frac1\eta\frac{d\eta}{dT}\Big|_{\text{water}} \approx +2.3\%/\mathrm{K}. \]
+Over a run: $|\Delta\gamma|\le |d\ln a/dT|\cdot\Delta T_{\mathrm{run}}$. A stabilized stage $\Delta T_{\mathrm{run}}\le 0.1$\,K $\Rightarrow |\Delta\gamma|\le 0.23\%$, negligible against the few-\% $\sigma$-level. A per-step floor, if ever needed on an uncontrolled long run, is $Q_\gamma=(0.023\,\dot T\,T_s)^2\!\approx\!2\times10^{-14}$ for $\dot T\le0.01$\,K/s. \textbf{Conclusion}: $Q_\gamma=0$ is justified for $T_{\mathrm{run}}\lesssim60$\,s under $\Delta T\le0.1$\,K; revisit only for uncontrolled/long runs.
+
+% ------------------------------------------------------
+\hd{5. Diffuse-$\gamma$ initialization}
+$\sigma(0)$ is known tightly from the wall model at the measured height ($\hat\sigma_i(0)=-\ln c_i(\bar h_{\mathrm{meas}}(0))$); $\gamma$ is exactly the unknown to be learned, so it starts diffuse. Two encodings:
+\begin{itemize}[leftmargin=1.4em,topsep=2pt,itemsep=3pt]
+\item \textbf{Exact diffuse (information filter)}: $\mathbf Y(0)=\mathbf P^{-1}(0)$ with $Y_{\gamma\gamma}=0$ (zero information). Numerically ideal (never forms a huge $P$) but needs an information-form rewrite the current covariance/Joseph code does not use.
+\item \textbf{Large-$P$ numeric (recommended)}: append $\gamma$ as a new row/col to the DARE-seeded $\delta x/\sigma$ block with $P_{\sigma\gamma}(0)=P_{\delta x,\gamma}(0)=0$ and $P_{\gamma\gamma}(0)=\sigma_{\gamma,0}^2$.
+\end{itemize}
+\begin{empheq}[box=\fbox]{equation*}
+\sigma_{\gamma,0}=2\!-\!3\ \text{(ln-units)}\ \Rightarrow\ P_{\gamma\gamma}(0)=4\!-\!9,
+\qquad\text{Joseph-form measurement update}
+\end{empheq}
+\textbf{Key numerical point.} $\gamma$ lives in \emph{log} space, natural scale $O(1)$ (a factor-$e$ uncertainty is $\sigma_\gamma=1$); a ``diffuse'' $\sigma_{\gamma,0}=2\!-\!3$ (factor $e^2\!-\!e^3$) is already enormous yet keeps $P$ well-conditioned --- no $10^6$ blow-ups, so covariance form + Joseph update suffices and the information-filter rewrite is unnecessary. Interaction with the code's 2-step init hold ($\delta x_m\!\equiv\!0$ for $k\le d$): $y_2$ is frozen during the hold, so $\gamma$ simply stays diffuse until the buffer fills; first useful $\gamma$ update is at $k=d{+}1$.
+
+% ------------------------------------------------------
+\hd{6. Identifiability of the split}
+\textbf{(i) Observable combination.} Both the control law ($\hat a=e^{\hat\gamma+\hat\sigma}$) and $\mathbf H$ row 2 ($[\,0\,0\,0\,a\,a\,]$) see only $\sigma+\gamma$. At a single instant $\sigma,\gamma$ are \emph{not} separable.
+
+\textbf{(ii) Separators (dynamic).}
+\emph{Q-structure}: $\sigma$ is noise-driven ($Q_{\sigma\sigma}=\kappa^2\sigma_\varepsilon^2$), $\gamma$ noiseless. $P_{\gamma\gamma}$ only ever \emph{decreases} (updates), while $P_{\sigma\sigma}$ is continuously replenished: the filter assigns the persistent/integrated part of the gain to $\gamma$, the fluctuating part to $\sigma$.
+\emph{$\kappa(\bar h)$ time-variation}: the $\sigma$-row entries $(1-\lc)\kappa$ and $q_\sigma=\kappa\varepsilon$ are $\kappa$-weighted; as the trajectory sweeps the dip $\kappa$ changes, so $\sigma$ enters the $y_2$ sequence with a time-varying signature the constant $\gamma$ cannot mimic.
+
+\textbf{(iii) Hold / far field ($\kappa\to0$) --- benign, no divergence.} Split the $(\sigma,\gamma)$ plane into sum $e_s=e_\sigma+e_\gamma$ and difference $e_d=e_\sigma-e_\gamma$. When $\kappa=0$: the $\delta x_3$ row feeds $-\Fdet a\,e_s$ (\emph{sum only}, so $e_d$ is unobserved via $y_1$); $q_\sigma=\kappa\varepsilon=0$ and the $\sigma$-row loses its $(\sigma\!\leftarrow\!\delta x_3)$ return path, so
+\[ e_d[k{+}1]=e_d[k]\quad(\text{integrator, \emph{zero} process noise}) \;\Rightarrow\; P_{dd}\ \text{constant: bounded, non-increasing --- no runaway.} \]
+The sum $e_s$ stays observable through $y_2$, so $\hat a$ remains well-estimated; only the split freezes. When $\kappa\!\ne\!0$, $q_\sigma$ excites $e_d$ \emph{and} the $(\sigma\!\leftarrow\!\delta x_3)$ path makes it observable through $y_1$ --- separation resumes. (This is a covariance-flow statement; we do \emph{not} claim a Gramian rank result.)
+
+% ------------------------------------------------------
+\hd{7. Shared-$\gamma$ three-axis filter}
+State: three per-axis blocks $[\delta x_1,\delta x_2,\delta x_3,\sigma]_i$ ($i\!\in\!\{x,y,z\}$) $+$ one shared $\gamma$ $=13$ states. Covariance is \textbf{arrowhead}:
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf P=\begin{bmatrix}
+\mathbf B_x & 0 & 0 & \mathbf c_x\\
+0 & \mathbf B_y & 0 & \mathbf c_y\\
+0 & 0 & \mathbf B_z & \mathbf c_z\\
+\mathbf c_x^{\mathsf T} & \mathbf c_y^{\mathsf T} & \mathbf c_z^{\mathsf T} & p_\gamma
+\end{bmatrix}
+\quad(\mathbf B_i\ 4\!\times\!4,\ \mathbf c_i\ 4\!\times\!1)
+\end{empheq}
+Off-block ($x$--$y$--$z$) cross terms are zero \emph{except through the $\gamma$ arrow}. Each axis has its own $y_{2,i}=a_{xm,i}$ with its own $R_{22,i}\propto(\hat a_i+\xi_i)^2$ ($\xi_i$ per-axis sensor floor, from the parent $R_{22}$ chain). The shared $\gamma$ update is the precision-weighted fusion of the three level innovations, weights $\sim 1/R_{22,i}$ \emph{arising automatically} from the Kalman update on the arrowhead --- a cleaner $a_{xm}$ (smaller $R_{22,i}$) pulls $\gamma$ more. Three independent measurements of one $\gamma\Rightarrow$ up to $\sqrt3$ variance reduction (equal precision), precision-weighted otherwise.
+
+\textbf{$x,y$ ln-split rows.} For $i\!\in\!\{x,y\}$ the gain argument is the wall-normal height (a $z$ quantity), so $a_i$ fluctuates through $\delta x_z$, not $\delta x_i$. Exact (coupled) form: $\sigma_i$ couples to $\delta x_{3,z}$. In the decoupled implementation (matching the current code) the $z$ transport enters as a \emph{known input} $u_i[k]=\kappa_i(\Delta h_d+(1-\lc)\delta\hat x_{3,z})$ and the noise is the $z$ residual:
+\[ \sigma_i[k{+}1]=\sigma_i[k]+u_i[k]+\kappa_i\,\varepsilon_z[k]:\quad
+\text{row}_{\sigma_i}=[\,0\ 0\ 0\ 1\mid\gamma\!:\!0\,],\ \ Q_{\sigma_i\sigma_i}=\kappa_i^2\sigma^2_{\varepsilon,z} \]
+(the a-space $[0\,0\,0\,1]$, $Q_{44}=a_i'^2\sigma^2_{\varepsilon,z}$, divided by $a_i$). The $x,y$ \emph{position} rows still couple to the shared $\gamma$ through their own gain error:
+\[ \text{row}_{\delta x_{3,i}}=[\,0\ 0\ \lc\ -F_{\!\mathrm{det},i}\,a_i\mid\gamma\!:\!-F_{\!\mathrm{det},i}\,a_i\,], \]
+so $y_{1,i}$ carries (weak) $\gamma$ information. The three $y_2$ channels are the intended dominant $\gamma$ supply --- but see the $y_2$ dead-channel risk ($\S$8): in the current welded structure $y_2$ is inert, and the split \emph{bets} that breaking the weld re-animates it for $\gamma$.
+
+% ------------------------------------------------------
+\hd{8. Risks (honest)}
+\begin{itemize}[leftmargin=1.4em,topsep=2pt,itemsep=4pt]
+\item \textbf{Early lock-in.} With $Q_\gamma=0$, $P_{\gamma\gamma}$ is monotone $\downarrow$ and the $\gamma$-gain decays $\sim\!1/k$; $\gamma$ commits early. Any \emph{systematic} level error in the early $y_2$ then becomes \emph{permanent} (no process noise to re-adapt). Load-bearing open item: the $a_{xm}$ inversion $a_{xm}=(\hat\sigma^2_{\delta x_r}-C_n\sigma^2_{n_x})/(C_{dpmr}4k_BT)$ \emph{assumes $g=1$} ($\hat a=a$); its level fidelity at $g\ne1$ is currently \textbf{assumed, not derived}. If $a_{xm}$ is level-biased, $\gamma$ inherits it forever. \emph{Mitigations}: small $Q_\gamma$ floor (permanence $\to$ slow RW); defer $\gamma$-commit until a $\kappa$-rich sweep; fade-in the $\gamma$ gain.
+\item \textbf{Descent-exit spread --- diagnosed ($\S$1b), handled by gating not by ln.} The $\sim\!6\%$ (A2) descent-exit spread is now a named mechanism: first-order (frozen-slope) \emph{transport curvature} of the seed-varying slip through the near-wall region. It is \emph{not} a $Q_\gamma$ question and \emph{not} fixed by ln-transport (which worsens it by $\kappa^2$). Handled by deferring $\gamma$ updates during descent ($\S$1b option (ii)); the curvature lives in $\sigma$, gated out of $\gamma$.
+\item \textbf{$y_2$ may be a dead channel.} knife-3 (set $y_2$ fully off) left all five metrics \emph{unchanged} in the ar1$+$fdet baseline: in the current welded structure $y_2$ is inert (the AR(1) $v$-state absorbs its content; the filter is not listening). The split's premise is that breaking the $P_{44}=a'^2P_{33}$ weld lets $y_2$ move $\gamma$ --- but $y_2$'s honest per-step independent fraction is only $\sim\!1/146$ (colored). So $\gamma$'s value from $y_2$ comes \emph{only} from $Q_\gamma=0$ accumulation and 3-axis pooling, never per-step strength. \emph{If} re-animation fails, $\gamma$ must lean on $y_1$ (weak, $\S$7) $+$ cross-axis $y_1$ pooling $+$ ln-transport --- a materially weaker supply. This is the single biggest bet in the design.
+\item \textbf{A4 self-diff noise $\to\sigma$ only.} The self-difference $\hat a'$ noise is a slope/shape quantity and enters $\sigma$; $\gamma$ is \emph{first-order shielded}. A benefit: the split protects the level from slope-estimation noise.
+\end{itemize}
+
+% ------------------------------------------------------
+\hd{Pre-registered predictions (falsifiable)}
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+metric & current (weld) & single-axis split, $4$\,s & shared-$\gamma$ split, $4$\,s\\
+\midrule
+A2/A3 level std & $2.0\!-\!2.2\%$ & $\sim\!1.3\%$ & $\sim\!1.0\!-\!1.2\%$\\
+scaling & --- & \multicolumn{2}{c}{$\propto 1/\sqrt{T_{\mathrm{run}}}$ ($\gamma$ noiseless integrator)}\\
+\bottomrule
+\end{tabular}
+\end{center}
+Mechanism: breaking the exact weld $P_{44}=a'^2P_{33}$ gives the level its own covariance, so the $y_1$ channel (currently muted for the level) contributes and $\gamma$ integrates information; $\sqrt3$ from the shared-$\gamma$ fusion. \textbf{Falsifier}: the planned $30\!-\!60$\,s run must show level std $\downarrow$ as $1/\sqrt{T}$; if it plateaus, the cause is one of (a) $y_2$ stays dead post-weld-break (no re-animation, $\S$8), (b) $Q_\gamma\ne0$ in reality (temperature drift), or (c) the $a_{xm}$ level is biased at $g\ne1$ (early lock-in on a wrong $\gamma$, $\S$8). The CRLB long-run curve ($0.42\%$ at $60$\,s) is the target; a common-mode bias floor (rms flat while std tracks CRLB) would indict (c).
+
+\end{document}
