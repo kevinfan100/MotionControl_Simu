@@ -351,6 +351,19 @@ function simOut = run_pure_simulation(config, opts)
         ctrl_const.use_selfmod = logical(config.use_selfmod);
     end
 
+    % 4state a'-as-state (aprime_source='state', 5state_taylor_aprime.pdf):
+    % Q55 scale, a' prior variance, and the learn-gate start time. Default off
+    % (only active with use_taylor_gain + aprime_source='state').
+    if isfield(config, 'aprime_state_kappa') && ~isempty(config.aprime_state_kappa)
+        ctrl_const.aprime_state_kappa = config.aprime_state_kappa;
+    end
+    if isfield(config, 'aprime_state_P0') && ~isempty(config.aprime_state_P0)
+        ctrl_const.aprime_state_P0 = config.aprime_state_P0;
+    end
+    if isfield(config, 'aprime_learn_t0') && ~isempty(config.aprime_learn_t0)
+        ctrl_const.aprime_learn_t0 = config.aprime_learn_t0;
+    end
+
     % TEMP (chat 2026-07-05): 4state_selfdet gate+EWMA knobs; remove with the variant.
     if isfield(config, 'selfdet_gate_thresh') && ~isempty(config.selfdet_gate_thresh)
         ctrl_const.selfdet_gate_thresh = config.selfdet_gate_thresh;
@@ -454,6 +467,7 @@ function simOut = run_pure_simulation(config, opts)
         diag_log.Q77               = zeros(N, 3);
         diag_log.var_da_ram        = zeros(N, 3);   % Q44 driver (gain process-noise) time series
         diag_log.a_prime_used      = zeros(N, 3);   % taylor-gain slope a' time series
+        diag_log.P_aprime          = zeros(N, 3);   % a'-state variance P(5,5) (z; aprime_source='state')
         diag_log.a_hat             = zeros(N, 3);
         diag_log.x_D_hat           = zeros(N, 3);
         diag_log.delta_a_hat       = zeros(N, 3);
@@ -683,6 +697,7 @@ function simOut = run_pure_simulation(config, opts)
             diag_log.Q77(k, :)               = diag_k.Q77.';
             if isfield(diag_k, 'var_da_ram'); diag_log.var_da_ram(k, :) = diag_k.var_da_ram.'; end
             if isfield(diag_k, 'a_prime_used'); diag_log.a_prime_used(k, :) = diag_k.a_prime_used.'; end
+            if isfield(diag_k, 'P_aprime'); diag_log.P_aprime(k, :) = diag_k.P_aprime.'; end
             diag_log.a_hat(k, :)             = diag_k.a_hat.';
             diag_log.x_D_hat(k, :)           = diag_k.x_D_hat.';
             diag_log.delta_a_hat(k, :)       = diag_k.delta_a_hat.';

@@ -94,6 +94,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     persistent t_warmup_kf h_bar_safe R_OFF use_am_lpf a_det_lp amlpf_var_factor use_deblur use_aprime_ff use_q44_cap use_q44_ar1 use_exact_fe44
     persistent use_taylor_gain aprime_source ap_beta ap_gate_um ap_clamp_pos ap_pos_only  % taylor-gain suite (4state_del_hd.tex taylor section)
     persistent aprime_eval_xhat                                               % EXPERIMENT (chat 2026-07-13): a' at x_hat = p_d - dxhat3 instead of p_d
+    persistent n_aug ap_kappa ap_P55_0 ap_learn_t0                            % 5state a'-as-state (5state_taylor_aprime.pdf): slope promoted to state 5 (z only)
     persistent a_prime_diff                                                   % 'diff' EWMA slope state (selfrw convention)
     persistent sigma2_n_s a_x_init enable_wall w_hat_n pz_wall
 
@@ -203,12 +204,34 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
             aprime_source = 'known';
         end
         if use_taylor_gain
-            assert(any(strcmp(aprime_source, {'known', 'ahat', 'diff'})), ...
+            assert(any(strcmp(aprime_source, {'known', 'ahat', 'diff', 'state'})), ...
                    'motion_control_law_eq17_4state:badAprimeSource', ...
-                   'aprime_source must be ''known''|''ahat''|''diff'', got ''%s''.', aprime_source);
+                   'aprime_source must be ''known''|''ahat''|''diff''|''state'', got ''%s''.', aprime_source);
             assert(~use_q44_ar1 && ~use_q44_cap && ~use_aprime_ff && ~use_deblur, ...
                    'motion_control_law_eq17_4state:taylorComboUnsupported', ...
                    'use_taylor_gain cannot combine with use_q44_ar1/use_q44_cap/use_aprime_ff/use_deblur.');
+        end
+        % --- 5state a'-as-state knobs (5state_taylor_aprime.pdf) ---
+        %   Only aprime_source='state' promotes a' to a 5th state (z axis only;
+        %   x/y keep an inert slot 5). Everything else stays 4-dimensional.
+        if isfield(ctrl_const, 'aprime_state_kappa') && ~isempty(ctrl_const.aprime_state_kappa)
+            ap_kappa = ctrl_const.aprime_state_kappa;
+        else
+            ap_kappa = 1;                          % O(1) a'' bound scale in Q55
+        end
+        if isfield(ctrl_const, 'aprime_state_P0') && ~isempty(ctrl_const.aprime_state_P0)
+            ap_P55_0 = ctrl_const.aprime_state_P0;
+        else
+            ap_P55_0 = (0.1 * a_nom_p / R_radius)^2;   % default a' prior variance
+        end
+        if isfield(ctrl_const, 'aprime_learn_t0') && ~isempty(ctrl_const.aprime_learn_t0)
+            ap_learn_t0 = ctrl_const.aprime_learn_t0;  % [s] freeze state 5 until t >= this
+        else
+            ap_learn_t0 = 0;
+        end
+        n_aug = 4;
+        if use_taylor_gain && strcmp(aprime_source, 'state')
+            n_aug = 5;                             % z-axis a'-as-state active
         end
         if isfield(ctrl_const, 'aprime_diff_beta') && ~isempty(ctrl_const.aprime_diff_beta)
             ap_beta = ctrl_const.aprime_diff_beta;
@@ -273,8 +296,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         end
 
         % --- 0F. EKF state init (a_x in slot 4; rest zero) ---
-        x_e_per_axis = zeros(4, 3);
-        x_e_per_axis(4, :) = a_x_init.';        % slot 4 = a_x
+        x_e_per_axis = zeros(n_aug, 3);
+        x_e_per_axis(4, :) = a_x_init.';        % slot 4 = a_x; slot 5 (if present) = a' = 0
 
         % --- 0G. Riccati Pf (DARE steady state at h_init, positioning f_d=0) ---
         one_minus_lc = 1 - lambda_c;
@@ -297,7 +320,17 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
             R22_ss = amlpf_var_factor * K_var * IF_ss * (a_init_ax + xi_per_axis(ax))^2 ...
                      + r22_delay_factor * d_delay * var_da_init;   % telescoped delay-sum (audit 2026-07-10)
             R_ss = [sigma2_n_s(ax), 0; 0, R22_ss];
-            P_per_axis{ax} = solve_dare_kf_local(F_e_ss, H_ss, Q_ss, R_ss);
+            P_dare = solve_dare_kf_local(F_e_ss, H_ss, Q_ss, R_ss);
+            if n_aug == 5
+                % Embed the 4-state DARE steady state; seed slot 5 (a') prior
+                % with P55_0 (a' is being learned, not at steady state).
+                P5 = zeros(5);
+                P5(1:4, 1:4) = P_dare;
+                P5(5, 5)     = ap_P55_0;
+                P_per_axis{ax} = P5;
+            else
+                P_per_axis{ax} = P_dare;
+            end
         end
 
         % --- 0H. IIR states (prefill default) ---
@@ -517,6 +550,13 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
             case 'ahat'         % known shape, level self-anchored to the estimate
                 a_prime = local_a_prime_known(pd, w_hat_n, pz_wall, R_radius, ...
                                               enable_wall, a_hat);
+            case 'state'        % 5th-state slope (z, posterior[k-1]); x/y = known
+                                % formula (their slot 5 is inert). During the
+                                % learn gate x_e(5,3)=0 (frozen), so z's taylor
+                                % coupling collapses to a plain RW gain.
+                a_prime = local_a_prime_known(pd, w_hat_n, pz_wall, R_radius, ...
+                                              enable_wall, a_det_k);
+                a_prime(3) = x_e_per_axis(5, 3);
             otherwise           % 'diff': model-free per-step self-diff, selfrw
                                 % convention (chat 2026-07-07): backward raw
                                 % slope (a_hat[k]-a_hat[k-1])/dh_d[k-1], gated
@@ -555,6 +595,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
     var_da_inc = zeros(3, 1);   % true increment var Var(delta_a_ram), for Q33/R22
     Q33_vec    = zeros(3, 1);   % Var(epsilon) per axis (taylor Q needs Q33_z cross-axis)
     t_now = (k_step - 1) * Ts;
+    learn_gate_on = (n_aug == 5) && (t_now < ap_learn_t0);   % freeze a'-state (slot 5)
     for ax = 1:3
         a_hat_i = a_hat(ax);
         if use_q44_cap
@@ -643,10 +684,27 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         Q_per_axis{3}(4, 3) = -a_prime(3) * Q33_z;
     end
 
+    % --- a'-state process noise Q55 (5state_taylor_aprime.pdf):
+    %     Q55[k] = kappa^2 * a_hat_z^2 / (h_d - h_wall)^4 * dh_d^2. Only the z
+    %     axis has an active slope state; x/y slot 5 is inert (Q55 = 0). Frozen
+    %     to 0 during the learn gate (Dh_d=0 => Q55=0 also holds during a hold). ---
+    if n_aug == 5
+        hd_wall_dist = dot(pd, w_hat_n) - pz_wall;      % desired height above wall [um]
+        Q55_z = 0;
+        if ~learn_gate_on && hd_wall_dist > 0
+            Q55_z = ap_kappa^2 * a_hat(3)^2 / hd_wall_dist^4 * dh_d_step^2;
+        end
+        Q_per_axis{1}(5, 5) = 0;
+        Q_per_axis{2}(5, 5) = 0;
+        Q_per_axis{3}(5, 5) = Q55_z;
+    end
+
     % ------------------------------------------------------------------
     % [5] EKF predict + update per axis
     % ------------------------------------------------------------------
-    H_full = [1 0 0 0; 0 0 0 1];
+    H_full = zeros(2, n_aug);   % [1 0 0 0 (0); 0 0 0 1 (0)] -- state 5 (a') unobserved
+    H_full(1, 1) = 1;
+    H_full(2, 4) = 1;
     H_y1   = H_full(1, :);
 
     K_a_y2_v  = zeros(3, 1);
@@ -669,7 +727,24 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         end
         % 4-state F_e has no delta_a_x column, so dF_dx = (1-lc)*F_2 does not
         % appear; only F_1 (-> F_dx) is needed.
-        if use_taylor_gain && ax == 3
+        if n_aug == 5
+            % 5-state a'-as-state (5state_taylor_aprime.pdf). z axis carries the
+            % active slope with the sweep coupling F_e(4,5)=Dh_d; x/y keep an
+            % inert slot 5 (row 4 = [0 0 0 1 0], row 5 = [0 0 0 0 1]).
+            if ax == 3
+                F_dx_i   = f_d(ax) + one_minus_lc * F_1_i;
+                fe43_i   = one_minus_lc * a_prime(3);
+                a_pole_i = 1 + a_prime(3) * F_dx_i;
+                if learn_gate_on
+                    fe45_i = 0;                 % freeze a'-state during learn gate
+                else
+                    fe45_i = dh_d_step;         % sweep coupling Dh_d[k]
+                end
+                F_e = build_F_e_5state(lambda_c, f_d(ax), F_1_i, a_pole_i, fe43_i, fe45_i);
+            else
+                F_e = build_F_e_5state(lambda_c, f_d(ax), F_1_i);   % x/y inert slot 5
+            end
+        elseif use_taylor_gain && ax == 3
             % Taylor-gain z row 4 = [0 0 (1-lc)a' 1+a'F_dx] (4state_del_hd.tex taylor section)
             F_dx_i   = f_d(ax) + one_minus_lc * F_1_i;
             fe43_i   = one_minus_lc * a_prime(3);
@@ -727,10 +802,16 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         else
             x4_pred = x_curr(4) + da_x_pred(ax) + da_ram_pred_i;
         end
-        x_pred = [x_curr(2); ...
-                  x_curr(3); ...
-                  lambda_c * x_curr(3); ...
-                  x4_pred];
+        if n_aug == 5
+            % slot 5 (a') is a pure integrator in the mean (row 5 = [0 0 0 0 1]);
+            % its wander is injected via Q55 only.
+            x_pred = [x_curr(2); x_curr(3); lambda_c * x_curr(3); x4_pred; x_curr(5)];
+        else
+            x_pred = [x_curr(2); ...
+                      x_curr(3); ...
+                      lambda_c * x_curr(3); ...
+                      x4_pred];
+        end
         P_pred = F_e * P_curr * F_e' + Q_per_axis{ax};
         P_pred = 0.5 * (P_pred + P_pred');
 
@@ -772,9 +853,14 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         if G_flags(1, ax)
             K_kf(4, :) = 0;
         end
+        % a'-state (slot 5): frozen for x/y always, and for z during the learn
+        % gate (precedent: the G1 gain freeze zeroes K row 4).
+        if n_aug == 5 && (ax ~= 3 || learn_gate_on)
+            K_kf(5, :) = 0;
+        end
 
         x_post = x_pred + K_kf * innov;
-        ImKH   = eye(4) - K_kf * H_use;
+        ImKH   = eye(n_aug) - K_kf * H_use;
         P_post = ImKH * P_pred * ImKH' + K_kf * R_use * K_kf';   % Joseph form
         P_post = 0.5 * (P_post + P_post');
 
@@ -820,10 +906,14 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
 
     if nargout >= 3
         P_a_v = zeros(3, 1); P_dx_v = zeros(3, 1); P_dx1_v = zeros(3, 1);
+        P_aprime_v = zeros(3, 1);           % P(5,5): z only (zeros for x/y & 4-state)
         for ax = 1:3
             P_a_v(ax)   = P_per_axis{ax}(4, 4);
             P_dx_v(ax)  = P_per_axis{ax}(3, 3);
             P_dx1_v(ax) = P_per_axis{ax}(1, 1);
+        end
+        if n_aug == 5
+            P_aprime_v(3) = P_per_axis{3}(5, 5);
         end
         diag = empty_diag_4state();
         diag.sigma2_dxr_hat = sigma2_dxr_hat_new;
@@ -856,6 +946,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, 
         diag.delta_x_hat_3        = x_e_per_axis(3, :).';   % current tracking-error estimate
         diag.P_dx1                = P_dx1_v;
         diag.a_prime_used         = a_prime;                % taylor-gain slope (zeros if off)
+        diag.P_aprime             = P_aprime_v;             % a'-state variance P(5,5) (z; zeros otherwise)
     end
 end
 
@@ -879,6 +970,29 @@ function F_e = build_F_e_4state(lambda_c, f_d_i, F_1_i, a_pole, fe43)
            0 0 1        0; ...
            0 0 lambda_c Fe3_a; ...
            0 0 fe43     a_pole];
+end
+
+
+function F_e = build_F_e_5state(lambda_c, f_d_i, F_1_i, a_pole, fe43, fe45)
+%BUILD_F_E_5STATE  5x5 error-dynamics with a' promoted to state 5.
+%   (5state_taylor_aprime.pdf). Cols: 1=dx1 2=dx2 3=dx3 4=a_x 5=a'_x.
+%   Row 3 = [0 0 lc -F_dx 0]  (F_dx = f_d[k] + (1-lc)*F_1).
+%   Row 4 = [0 0 fe43 a_pole fe45]:
+%       fe43   = (1-lc)*a'      deviation coupling
+%       a_pole = 1 + a'*F_dx    gain-error self-pole
+%       fe45   = Dh_d[k]        sweep coupling (0 for x/y or during learn gate)
+%   Row 5 = [0 0 0 0 1]        a' random walk (driven by Q55 only).
+%   Defaults (x/y inert slot 5): a_pole=1, fe43=0, fe45=0 -> row 4 = [0 0 0 1 0].
+    if nargin < 4 || isempty(a_pole); a_pole = 1; end
+    if nargin < 5 || isempty(fe43);   fe43 = 0;   end
+    if nargin < 6 || isempty(fe45);   fe45 = 0;   end
+    one_minus_lc = 1 - lambda_c;
+    Fe3_a = -f_d_i - one_minus_lc * F_1_i;     % col 4 (a_x): -F_dx
+    F_e = [0 1 0        0      0; ...
+           0 0 1        0      0; ...
+           0 0 lambda_c Fe3_a  0; ...
+           0 0 fe43     a_pole fe45; ...
+           0 0 0        0      1];
 end
 
 
@@ -986,4 +1100,5 @@ function d = empty_diag_4state()
     d.P_dx1                = zeros(3, 1);
     d.a_ctrl_used          = zeros(3, 1);
     d.a_prime_used         = zeros(3, 1);
+    d.P_aprime             = zeros(3, 1);   % a'-state variance (driver compat)
 end
