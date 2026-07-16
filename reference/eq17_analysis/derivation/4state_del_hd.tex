@@ -573,4 +573,64 @@ $V_1{+}V_2{+}C_3 - v = 7\times10^{-14}$). At $t{=}4$\,s: $V_2\,{+}0.378$, $V_1\,
 $v\,{+}0.227$\,nm/pN --- $v$ comes from $y_2$ ($a_{xm}$); $y_1$ cancels about $1/3$.}
 \end{minipage}
 
+\newpage
+\hd{Solution family --- the transport fixes the shape, the level is free}
+
+\textbf{Coordinates} $(e_{\delta x_3},\, e_{a_x}) \to (e_{\delta x_3},\, v)$
+(substitute $e_{a_x} = -a'_x\, e_{\delta x_3} - v$ into the two error rows; $a'_x$ frozen):
+\[
+\begin{bmatrix} e_{\delta x_3} \\[0.3ex] v \end{bmatrix}[k+1]
+=
+\begin{bmatrix} \lc + a'_x F_{dx}[k] & \;F_{dx}[k] \\[0.3ex] 0 & 1 \end{bmatrix}
+\begin{bmatrix} e_{\delta x_3} \\[0.3ex] v \end{bmatrix}[k]
++
+\begin{bmatrix} -\varepsilon[k] \\[0.3ex] 0 \end{bmatrix}
++
+\begin{bmatrix} -\,\ell_{31}\,e_{y_1} - \ell_{32}\,e_{y_2} \\[0.3ex]
+\;\;\;g_1\,e_{y_1} + g_2\,e_{y_2} \end{bmatrix}
+\]
+\[
+\text{triangular} \;\Rightarrow\;
+\mathrm{eig} = \{\,\lc + a'_x F_{dx},\; 1\,\};
+\qquad
+\text{rank-1 } Q:\ -\varepsilon \text{ on } e_{\delta x_3},\ \text{exactly } 0 \text{ on } v
+\]
+
+\textbf{Measurements off} ($\ell_{ij} = 0$):
+\[
+v[k+1] = v[k]
+\quad\Longrightarrow\quad
+\hat a_x[k] = a_{x_{det}}[k] - a'_x\,\delta\hat x_3[k] + v[0],
+\qquad \forall\, v[0]
+\]
+
+\textbf{Same test, AR(1) form} ($C := \hat a_x - a_{x_{det}}$;
+$a_{x_{det}}[k+1] = a_{x_{det}}[k] + \Delta a_x[k]$):
+\[
+\hat a_x[k+1] = \lc\,\hat a_x[k] + (1-\lc)\,a_{x_{det}}[k] + \Delta a_x[k]
+\quad\Longrightarrow\quad
+C[k+1] = \lc\, C[k] \;\to\; 0
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\text{taylor: }
+\hat a_x[k] \in \big\{\, a_{x_{det}}[k] - a'_x\,\delta\hat x_3[k] + v \;:\; v \in \mathbb{R} \,\big\},
+\qquad
+v \leftarrow \big\{\, \hat a_x[0],\;\; g_1\, e_{y_1},\;\; g_2\, e_{y_2} \,\big\}
+\end{empheq}
+
+\medskip
+\textbf{Declaration table} (error directions of the triangular form):
+\begin{center}
+\begin{tabular}{lcccl}
+\toprule
+direction & pole & noise & path to $y$ & $\ell = 0$ fate \\
+\midrule
+$e_{\delta x_1},\ e_{\delta x_2}$ & $0$ & $0$ & $y_1$ direct & shifted out \\
+$e_{\delta x_3}$ & $\lc + a'_x F_{dx}$ & $-\varepsilon$ & delay chain $\to y_1$ & decays \\
+$v$ & $1$ & $0$ & $F_{dx} \to e_{\delta x_3} \to y_1$;\quad $-v \subset e_{a_x} \to y_2$ & frozen at $v[0]$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
 \end{document}
