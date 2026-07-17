@@ -1,0 +1,252 @@
+% ======================================================
+% Compile: xelatex 5state_aprime_var_centered.tex
+% Path:    reference/eq17_analysis/derivation/5state_aprime_var_centered.tex
+% Reference-centered a'_hdm channel for the 5-state EKF
+%   x = [dh1, dh2, dh3, a_h, a'_hd]  (companion: 5state_aprime_var_esti.tex).
+% The blind EWMA mean tracker is REPLACED by subtraction of a maintained
+% deterministic reference a_det_hat (= taylor-chain a_xdet; no wall model),
+% which removes the W1 (dwell-only) restriction: valid for ANY h_d(t).
+% Simplified version 2026-07-16: single axis z, first-order Taylor,
+% sensor-noise subtraction and reference-error quantification -> pending list.
+% ======================================================
+% fontset=none: no CJK text; compiles anywhere.
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{array,booktabs}
+\usepackage{graphicx}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\ap}{a'_{hd}}
+\newcommand{\aph}{\hat a'_{hd}}
+\newcommand{\apm}{a'_{hdm}}
+\newcommand{\apmh}{\hat a'_{hdm}}
+\newcommand{\eap}{e_{a'_h}}
+\newcommand{\adet}{a_{det}}
+\newcommand{\adeth}{\hat a_{det}}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+
+\begin{document}
+
+\hd{0. Definitions}
+
+\[
+h[k] = h_d[k] - \delta h[k], \qquad
+\Delta h_d[k] = h_d[k+1] - h_d[k]
+\]
+\[
+\ap[k] := \left.\frac{d a_h}{d h}\right|_{h_d[k]}, \qquad
+\adet[k] := a_h\big(h_d[k]\big), \qquad
+a_r[k] := a_h[k] - \adet[k]
+\]
+\[
+\delta h[k+1] = \lc\,\delta h[k] - F_{dh}[k]\,e_{a_h}[k] - \varepsilon_h[k]
+\]
+\[
+s[k] := a_{sig}[k] - \adeth[k]
+\qquad (a_{sig} = \text{source signal, \S4};\ \adeth = \text{maintained reference, \S2})
+\]
+
+\hd{1. True --- pointwise, any trajectory}
+
+\[
+\begin{aligned}
+a_h[k+1] &= a_h\big(h_d[k] + \Delta h_d[k] - \lc\,\delta h[k]
+            + F_{dh}[k]\,e_{a_h}[k] + \varepsilon_h[k]\big) \\
+&\approx a_h[k] + \ap[k]\,\Delta h_d[k] + (1-\lc)\,\ap[k]\,\delta h[k]
++ \ap[k]\,F_{dh}[k]\,e_{a_h}[k] + \ap[k]\,\varepsilon_h[k]
+\end{aligned}
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\ap[k+1] = a'_h\big(h_d[k] + \Delta h_d[k]\big) \approx \ap[k]
+\end{empheq}
+
+\begin{empheq}[box=\fbox]{equation*}
+a_r[k] = a_h[k] - \adet[k] = -\,\ap[k]\,\delta h[k]
+\qquad \text{(pointwise; holds for every $h_d(t)$)}
+\end{empheq}
+
+True-signal statistic (sign prior $\ap>0$):
+\[
+\apm[k] := +\sqrt{\;\mathrm{Var}\big(a_r[k]\big) \;/\; \mathrm{Var}\big(\delta h[k]\big)\;}
+= \ap[k]
+\qquad\qquad
+\ap[k+1] = \beta\,\ap[k] + (1-\beta)\,\apm[k]
+\]
+
+\hd{2. Reference $\adeth$ --- maintained, no wall model}
+
+\[
+\adeth[k+1] = \adeth[k] + \aph[k]\,\Delta h_d[k],
+\qquad \adeth[0] = a_{nom} \ \ \text{(far field)}
+\]
+
+Reference error $e_{det} := \adet - \adeth$ (first order, $\adet[k+1] = \adet[k] + \ap\,\Delta h_d$):
+\[
+e_{det}[k+1] = e_{det}[k] + \eap[k]\,\Delta h_d[k]
+\]
+Constant part of $e_{det}$: cancels in every variance below.
+Increment part: driven by $\eap\,\Delta h_d$ only $\Rightarrow$ vanishes as
+$\aph \to \ap$ (self-limiting; quantification pending, P1).
+
+\hd{3. Construction --- no mean-tracker stage}
+
+\[
+s[k] = a_{sig}[k] - \adeth[k]
+\qquad\qquad
+\begin{aligned}
+\hat\sigma^2_{s}[k+1] &= (1-a_{cov})\,\hat\sigma^2_{s}[k] + a_{cov}\,s^2[k+1] \\
+\hat\sigma^2_{\delta h}[k+1] &= (1-a_{cov})\,\hat\sigma^2_{\delta h}[k] + a_{cov}\,\delta h_m^2[k+1]
+\end{aligned}
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\apmh[k] := +\sqrt{\;\hat\sigma^2_{s}[k] \;/\; \hat\sigma^2_{\delta h}[k]\;}
+\end{empheq}
+
+The deterministic level is removed by exact subtraction, not by filtering:
+no $\Delta h_d \approx 0$ assumption enters anywhere below.
+
+\hd{4. Source content of $s$}
+
+Measurement source ($a_{sig} = a_{xm}$; signal written by physics, $\kappa = 1$):
+\[
+a_{xm}[k] = a_h[k-d] + n_2[k]
+\]
+\[
+s[k] = -\,\ap[k]\,\delta h[k-d] + n_2[k]
++ \underbrace{\big(\adet[k-d] - \adeth[k]\big)}_{e_{det}\ (\text{P1})}
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\apmh[k] = \ap[k-d] + n_{var}[k],
+\qquad \mathrm E[n_{var}]=0,\ \ \mathrm{Var}(n_{var}) = R_{var}
+\qquad (\kappa = 1)
+\end{empheq}
+
+Estimator source ($a_{sig} = \hat a_h$; signal written by the estimator itself):
+\[
+s[k] = \hat a_h[k] - \adeth[k] = -\,\aph[k]\,\delta\hat h_3[k] + (\text{corrections})
+\]
+\[
+\Rightarrow\quad
+\apmh \approx \aph \qquad (\kappa \approx 0,\ \text{ruled out; companion doc \S3})
+\]
+
+\hd{5. Esti}
+
+\begin{empheq}[box=\fbox]{align*}
+\hat a_h[k+1]    &= \hat a_h[k] + \aph[k]\,\Delta h_d[k]
+                   + (1-\lc)\,\aph[k]\,\delta\hat h[k] \\
+\aph[k+1] &= \beta\,\aph[k] + (1-\beta)\,\apmh[k]
+\end{empheq}
+
+\hd{6. Error}
+
+\[
+e_{a_h} = a_h - \hat a_h, \qquad \eap = \ap - \aph, \qquad e_h = \delta h - \delta\hat h
+\]
+Aligned $\beta$-forms subtracted ($\apm - \apmh = -\,n_{var}$ at $\kappa=1$):
+\[
+\eap[k+1]
+= \beta\,\eap[k] + (1-\beta)\,\big(\apm[k] - \apmh[k]\big)
+= \beta\,\eap[k] - (1-\beta)\,n_{var}[k]
+\]
+
+\begin{empheq}[box=\fbox]{align*}
+e_{a_h}[k+1]  &= \big(1 + \aph[k]\,F_{dh}[k]\big)\,e_{a_h}[k]
+                + \Delta h_d[k]\,\eap[k]
+                + (1-\lc)\,\aph[k]\,e_h[k]
+                + \aph[k]\,\varepsilon_h[k] \\[2pt]
+\eap[k+1] &= \beta\,\eap[k] - (1-\beta)\,n_{var}[k]
+\end{empheq}
+
+\hd{7. $\mathbf F_e$}
+
+\[
+x_e = [\,\delta h_1,\ \delta h_2,\ \delta h_3,\ e_{a_h},\ \eap\,]^{\mathsf T}
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf F_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lc & -F_{dh}[k] & 0 \\
+0 & 0 & (1-\lc)\,\aph[k] & 1+\aph[k]F_{dh}[k] & \Delta h_d[k] \\
+0 & 0 & 0 & 0 & \beta
+\end{bmatrix}
+\end{empheq}
+
+\[
+q[k] = \big[\,0,\ 0,\ -\varepsilon_h[k],\ \aph[k]\,\varepsilon_h[k],\
+-(1-\beta)\,n_{var}[k]\,\big]^{\mathsf T}
+\]
+
+\hd{8. Assumptions and pending items}
+
+\[
+\text{A1: } \ap,\ \sigma^2_{\delta h}\ \text{quasi-static in the variance window (slow, $K_h$-scale)}
+\qquad
+\text{A2: } \mathrm E[\delta h]=0
+\]
+\[
+\text{A3: } \delta h \sim \mathcal N(0,\sigma^2_{\delta h})
+\qquad
+\text{A4: } \ap > 0
+\qquad
+\text{(no } \Delta h_d \approx 0 \text{ assumption)}
+\]
+
+Pending:
+P1 $e_{det}$ increment terms (self-limiting, $\propto \eap\,\Delta h_d$);
+P2 denominator sensor-noise subtraction ($\hat\sigma^2_{\delta h} - C_n\sigma^2_n$);
+P3 numerator noise statistics ($n_2$ / $R_{22}$ chain) $\to R_{var}$;
+P4 descent-lag mean of $\delta h$ (A2 violation bookkeeping);
+P5 $\beta$ from $R_{var}$ and drift budget; $Q_{55} = (1-\beta)^2 R_{var} + (\text{drift})$.
+
+\hd{9. Simulation}
+
+\begin{center}
+\includegraphics[width=0.78\textwidth]{figures/fig_varcentered_c1_overlay.png}
+\end{center}
+\textit{C1, \S1--3 on true signals $+$ oracle reference, 1\,Hz full trajectory:
+osc ratio $1.11\pm0.03$, corr $0.94$ (estimator construction on the same
+scenario: $13.5$ / $0.29$) --- W1 removed by exact subtraction.}
+
+\begin{center}
+\includegraphics[width=0.78\textwidth]{figures/fig_varcentered_c3_arms.png}
+\end{center}
+\textit{C3, measurement source $s = a_{xm} - \hat a_{det}[k-d]$, frozen arms:
+$\apmh \approx 0.15$--$0.20$ independent of both $\aph$ and $\ap$ ---
+$R_{var} \sim 200\times \ap^2$ noise floor (P3), channel buried
+($\kappa = 1$ structurally, SNR $\approx 1/200$).}
+
+\begin{center}
+\includegraphics[width=0.78\textwidth]{figures/fig_varcentered_c4_shadow.png}
+\end{center}
+\textit{C4, shadow EWMA: self-consistent online reference diverges during the
+descent (always-positive $\apmh$ $\Rightarrow$ positive feedback in the
+$\hat a_{det}$ recursion, both sources $t\approx0.75$\,s); oracle-decoupled
+reference stays at the noise floor.}
+
+\begin{center}
+\includegraphics[width=0.78\textwidth]{figures/fig_varcentered_c5_closedloop.png}
+\end{center}
+\textit{C5, closed loop ($\aph$ fed back to all three $a'$ use points):
+divergence at $t=0.651$\,s.}
+
+\end{document}
