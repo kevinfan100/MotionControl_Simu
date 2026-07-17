@@ -1,0 +1,287 @@
+% ======================================================
+% Compile: xelatex 5state_aprime_var_esti.tex
+% Path:    reference/eq17_analysis/derivation/5state_aprime_var_esti.tex
+% a'_hdm channel for the 5-state EKF x = [dh1, dh2, dh3, a_h, a'_hd]
+% (user manuscript "Parameter Estimation 2026.07.13").
+% ESTIMATOR-signal source; first-order Taylor only (a'' and higher omitted).
+% Math-only per user 2026-07-16: no L / g / convolution (kappa = lumped,
+% measured); self-reference via predict-only limit; simulation figures at end
+% (E1 anchor / E2 frozen arms + floor / 1 Hz shadow / closed loop).
+% Full L/g/telescoping chain: git history of this file (2026-07-15).
+% Companion: 5state_aprime_var_centered.tex (any-trajectory version).
+% ======================================================
+% fontset=none: no CJK text; compiles anywhere.
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{array,booktabs}
+\usepackage{graphicx}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\ap}{a'_{hd}}
+\newcommand{\aph}{\hat a'_{hd}}
+\newcommand{\apm}{a'_{hdm}}
+\newcommand{\apmh}{\hat a'_{hdm}}
+\newcommand{\eap}{e_{a'_h}}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+
+\begin{document}
+
+\hd{0. Definitions}
+
+\[
+h[k] = h_d[k] - \delta h[k], \qquad
+\Delta h_d[k] = h_d[k+1] - h_d[k]
+\]
+\[
+\ap[k] := \left.\frac{d a_h}{d h}\right|_{h_d[k]}, \qquad
+a_r[k] := a_h[k] - a_h\big(h_d[k]\big)
+\]
+\[
+\delta h[k+1] = \lc\,\delta h[k] - F_{dh}[k]\,e_{a_h}[k] - \varepsilon_h[k]
+\]
+
+\hd{1. True}
+
+\[
+\begin{aligned}
+a_h[k+1] &= a_h\big(h_d[k] + \Delta h_d[k] - \lc\,\delta h[k]
+            + F_{dh}[k]\,e_{a_h}[k] + \varepsilon_h[k]\big) \\
+&\approx a_h[k] + \ap[k]\,\Delta h_d[k] + (1-\lc)\,\ap[k]\,\delta h[k]
++ \ap[k]\,F_{dh}[k]\,e_{a_h}[k] + \ap[k]\,\varepsilon_h[k]
+\end{aligned}
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\ap[k+1] = a'_h\big(h_d[k] + \Delta h_d[k]\big) \approx \ap[k]
+\end{empheq}
+
+\begin{empheq}[box=\fbox]{equation*}
+a_r[k] = a_h[k] - a_h\big(h_d[k]\big) = -\,\ap[k]\,\delta h[k]
+\end{empheq}
+
+\[
+\apm[k] := +\sqrt{\;\mathrm{Var}\big(a_r[k]\big) \;/\; \mathrm{Var}\big(\delta h[k]\big)\;}
+= \ap[k]
+\qquad (\ap>0)
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\ap[k+1] = \beta\,\ap[k] + (1-\beta)\,\apm[k], \qquad \apm \equiv \ap
+\end{empheq}
+
+\hd{2. $\apmh[k]$}
+
+\[
+\begin{aligned}
+\overline a_h[k+1] &= (1-a_{var})\,\overline a_h[k] + a_{var}\,\hat a_h[k+1], &
+\hat a_r[k] &= \hat a_h[k] - \overline a_h[k] \\
+\hat\sigma^2_{\hat a_r}[k+1] &= (1-a_{cov})\,\hat\sigma^2_{\hat a_r}[k] + a_{cov}\,\hat a_r^2[k+1] & & \\[2pt]
+\overline{\delta\hat h}[k+1] &= (1-a_{var})\,\overline{\delta\hat h}[k] + a_{var}\,\delta\hat h_3[k+1], &
+\delta\hat h_r[k] &= \delta\hat h_3[k] - \overline{\delta\hat h}[k] \\
+\hat\sigma^2_{\delta\hat h}[k+1] &= (1-a_{cov})\,\hat\sigma^2_{\delta\hat h}[k] + a_{cov}\,\delta\hat h_r^2[k+1] & &
+\end{aligned}
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\apmh[k] := +\sqrt{\;\hat\sigma^2_{\hat a_r}[k] \;/\; \hat\sigma^2_{\delta\hat h}[k]\;}
+\end{empheq}
+
+\hd{3. Self-reference and lumped fidelity $\kappa$}
+
+$u \equiv 0$ (predict only), $\Delta h_d = 0$:
+\[
+\hat a_h[k+1] = \hat a_h[k] + (1-\lc)\,\aph[k]\,\delta\hat h_3[k],
+\qquad
+(1-\lc)\,\delta\hat h_3[j] = \delta\hat h_3[j] - \delta\hat h_3[j+1]
+\]
+\[
+\Rightarrow\quad
+\hat a_h[k] = \hat a_h[k_0] + \aph\,\big(\delta\hat h_3[k_0] - \delta\hat h_3[k]\big)
+\quad\Rightarrow\quad
+\hat a_r[k] = -\,\aph[k]\,\delta\hat h_r[k]
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\apmh[k] \equiv \aph[k] \qquad \forall\,\aph
+\end{empheq}
+
+$u \neq 0$ ($u_r$ = accumulated corrections in $\hat a_r$; truth enters $u_r$
+only through $\nu_2[k] \approx -\,\eap\,\delta h_r[k-d] + n_2[k]$):
+\[
+\hat a_r[k] = -\,\aph[k]\,\delta\hat h_r[k] + u_r[k]
+\]
+\[
+\mathrm E[\hat a_r^2]
+= \aph^2\,\sigma^2_{\delta h}
+\;-\; 2\,\aph\,\mathrm E[\delta\hat h_r\,u_r]
+\;+\; \sigma^2_u,
+\qquad \sigma^2_u := \mathrm E[u_r^2]
+\]
+\[
+\mathrm E[\delta\hat h_r\,u_r] =: -\,\kappa\,\eap\,\sigma^2_{\delta h}
+\qquad (\text{def.\ of } \kappa)
+\]
+\[
+\frac{\mathrm E[\hat a_r^2]}{\sigma^2_{\delta h}}
+= \aph^2 \;+\; \underbrace{2\,\aph\,\kappa\,\eap}_{\text{truth}}
+\;+\; \underbrace{\sigma^2_u/\sigma^2_{\delta h}}_{\text{correction noise}}
+\]
+\[
+\sqrt{\aph^2+\epsilon} \approx \aph + \frac{\epsilon}{2\aph}:
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\apmh[k] = \aph[k] + \kappa[k]\,\eap[k] + n_{var}[k]
+\end{empheq}
+
+\[
+n_{var}[k] = b_u + w[k]
+\]
+\[
+b_u := \frac{\sigma^2_u}{2\,\aph\,\sigma^2_{\delta h}}
+\qquad (\text{floor rectification; measured } \apmh^2-\aph^2 = 1.02\times10^{-7}
+\Rightarrow b_u \approx +0.02\,\aph)
+\]
+\[
+w[k]: \ \text{finite-window sampling noise of } \hat\sigma^2_{\hat a_r},\,
+\hat\sigma^2_{\delta\hat h},
+\qquad \mathrm E[w]=0, \quad \mathrm{Var}(w) = R_{var}
+\]
+
+$R_{var}$ (delta method on ratio $+$ square root, with
+$\mathrm{Var}(\hat\sigma^2) = a_{cov}\,IF\,(\sigma^2)^2$):
+\[
+\mathrm{relvar}\big(\apmh\big)
+= \tfrac{1}{4}\Big[\,\mathrm{relvar}\big(\hat\sigma^2_{\hat a_r}\big)
++ \mathrm{relvar}\big(\hat\sigma^2_{\delta\hat h}\big)
+- 2\,\mathrm{relcov}\,\Big]
+\]
+\begin{empheq}[box=\fbox]{equation*}
+R_{var} \approx \frac{a_{cov}}{4}\,
+\big(\,IF_{\hat a_r} + IF_{\delta\hat h} - 2\,IF_{\times}\,\big)\,\aph^2
+\end{empheq}
+\[
+IF_{*} = 1 + 2\sum_{j\ge1} \rho_{*}(j)\,(1-a_{cov})^{j},
+\qquad
+\rho_{x^2}(j) = \rho_x^2(j)\ \ (\text{Gaussian}),
+\qquad
+\rho_{\delta h}: \ \lc\ \text{family}
+\]
+
+\[
+\apmh[k] = \kappa[k]\,\ap[k] + \big(1-\kappa[k]\big)\,\aph[k] + n_{var}[k]
+\]
+\[
+\kappa = 1:\ \apmh - \aph = \eap + n_{var}
+\qquad\qquad
+\kappa \to 0:\ \apmh \equiv \aph
+\]
+
+Measured (frozen $\aph \in \{0.5,1,2\}\times\ap$, hold $\bar h=2.0$, 8 seeds):
+\[
+\kappa_{emp} = +0.03 \pm 0.04, \qquad
+\apmh^2 - \aph^2 = 1.02\times10^{-7}\ \text{arm-constant}
+\ \Rightarrow\ \kappa \approx 0
+\]
+
+\hd{4. Esti}
+
+\begin{empheq}[box=\fbox]{align*}
+\hat a_h[k+1]    &= \hat a_h[k] + \aph[k]\,\Delta h_d[k]
+                   + (1-\lc)\,\aph[k]\,\delta\hat h[k] \\
+\aph[k+1] &= \beta\,\aph[k] + (1-\beta)\,\apmh[k]
+\end{empheq}
+
+\hd{5. Error}
+
+\[
+e_{a_h} = a_h - \hat a_h, \qquad \eap = \ap - \aph, \qquad e_h = \delta h - \delta\hat h
+\]
+\[
+\big(\,\apm - \apmh = (1-\kappa)\,\eap - n_{var}\,\big):
+\]
+\[
+\begin{aligned}
+\eap[k+1] &= \big[\,\beta\,\ap[k] + (1-\beta)\,\apm[k]\,\big]
+\;-\; \big[\,\beta\,\aph[k] + (1-\beta)\,\apmh[k]\,\big] \\
+&= \beta\,\eap[k] + (1-\beta)\,\big(\apm[k] - \apmh[k]\big)
+ = \big[\,1-(1-\beta)\,\kappa\,\big]\,\eap[k] - (1-\beta)\,n_{var}[k]
+\end{aligned}
+\]
+
+\begin{empheq}[box=\fbox]{align*}
+e_{a_h}[k+1]  &= \big(1 + \aph[k]\,F_{dh}[k]\big)\,e_{a_h}[k]
+                + \Delta h_d[k]\,\eap[k]
+                + (1-\lc)\,\aph[k]\,e_h[k]
+                + \aph[k]\,\varepsilon_h[k] \\[2pt]
+\eap[k+1] &= \big[\,1 - (1-\beta)\,\kappa[k]\,\big]\,\eap[k]
+             - (1-\beta)\,n_{var}[k]
+\end{empheq}
+
+\hd{6. $\mathbf F_e$}
+
+\[
+x_e = [\,\delta h_1,\ \delta h_2,\ \delta h_3,\ e_{a_h},\ \eap\,]^{\mathsf T}
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf F_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lc & -F_{dh}[k] & 0 \\
+0 & 0 & (1-\lc)\,\aph[k] & 1+\aph[k]F_{dh}[k] & \Delta h_d[k] \\
+0 & 0 & 0 & 0 & 1-(1-\beta)\,\kappa[k]
+\end{bmatrix}
+\end{empheq}
+
+\[
+q[k] = \big[\,0,\ 0,\ -\varepsilon_h[k],\ \aph[k]\,\varepsilon_h[k],\
+-(1-\beta)\,n_{var}[k]\,\big]^{\mathsf T}
+\]
+
+\hd{7. $Q_{55}$}
+
+Row-5 process noise (from the $\eap$ recursion / $q[k]$):
+\[
+q_5[k] = -(1-\beta)\,n_{var}[k]
+\qquad\Longrightarrow\qquad
+\boxed{\;Q_{55} := \mathrm{Var}(q_5) = (1-\beta)^2\,R_{var}\;}
+\]
+
+\hd{8. Simulation}
+
+\begin{center}
+\includegraphics[width=0.9\textwidth]{figures/fig_varesti_recovery.png}
+\end{center}
+\textit{Recovery test (hold $\bar h = 2.0$, all corrections on, shadow).
+Top: wrong-initialized $\aph \in \{0.5,1,2\}\times\ap$ all settle on the
+signal author's value (the controller's known $a'$) --- copying, not measuring
+(\S3; with the author frozen at a wrong value, $\apmh$ follows that value
+instead, $\kappa_{emp} \approx 0$).
+Bottom: $\hat a_z$ with wrong init recovers through the independent $y_2$
+(genuine restoring force, $63\%$ in $0.41$\,s).}
+
+\begin{center}
+\includegraphics[width=0.9\textwidth]{figures/fig_varesti_closedloop_hold.png}
+\end{center}
+\textit{Closed loop in a hold ($\aph$ fed back, $\Delta h_d = 0$): truth is not
+a fixed point --- both arms (init $= \ap$ and $0.5\times$) drift to a common
+wrong attractor $\approx 3\times\ap$ (bounded, $+2\%/\mathrm s$, no descent
+amplification). $\hat a_z$ and tracking stay protected by the independent
+$y_2$ ($1.01\times$, $22$\,nm).}
+
+\end{document}
