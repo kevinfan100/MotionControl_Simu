@@ -1,0 +1,217 @@
+% ======================================================
+% Compile: xelatex 5state_aprime_var_chain.tex
+% Path:    reference/eq17_analysis/derivation/5state_aprime_var_chain.tex
+% EWMA transfer-chain statistics of a'_hdm under a MOVING trajectory
+% (Dh_d != 0): route and notation follow 5state_aprime_var_esti.tex
+% (0 Def / 1 True / 2 a'_hdm / 3 transfer -> E[a'_hdm] / 4 Esti / 5 Error
+% / 6 Simulation E1S). New symbols kept minimal: lambda_leak, A_h, f only.
+% F_e / Q55: esti Sec.6-7 unchanged (not repeated here).
+% ======================================================
+% fontset=none: no CJK text; compiles anywhere.
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{array,booktabs}
+\usepackage{graphicx}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\ap}{a'_{hd}}
+\newcommand{\aph}{\hat a'_{hd}}
+\newcommand{\apm}{a'_{hdm}}
+\newcommand{\apmh}{\hat a'_{hdm}}
+\newcommand{\eap}{e_{a'_h}}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+
+\begin{document}
+
+\hd{0. Definitions}
+
+\[
+h[k] = h_d[k] - \delta h[k], \qquad
+\Delta h_d[k] = h_d[k+1] - h_d[k]
+\]
+\[
+\ap[k] := \left.\frac{d a_h}{d h}\right|_{h_d[k]}, \qquad
+a_r[k] := a_h[k] - a_h\big(h_d[k]\big)
+\]
+\[
+h_d(t) = h_0 + A_h\,\sin(2\pi f t)
+\]
+\[
+a_{var} = a_{cov} = 0.05, \qquad
+T_s = 1/1600, \qquad
+\beta = 1 - T_s/\tau,\ \tau = 0.35\,\mathrm s
+\;\Rightarrow\; \beta = 0.99821
+\]
+
+\hd{1. True}
+
+\[
+a_h[k+1] \approx a_h[k] + \ap[k]\,\Delta h_d[k] + (1-\lc)\,\ap[k]\,\delta h[k]
++ \ap[k]\,F_{dh}[k]\,e_{a_h}[k] + \ap[k]\,\varepsilon_h[k]
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\ap[k+1] \approx \ap[k], \qquad
+a_r[k] = -\,\ap[k]\,\delta h[k]
+\end{empheq}
+
+\[
+\apm[k] := +\sqrt{\;\mathrm{Var}\big(a_r[k]\big) \;/\; \mathrm{Var}\big(\delta h[k]\big)\;}
+= \ap[k]
+\qquad (\ap>0)
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\ap[k+1] = \beta\,\ap[k] + (1-\beta)\,\apm[k], \qquad \apm \equiv \ap
+\end{empheq}
+
+\hd{2. $\apmh[k]$}
+
+\[
+\begin{aligned}
+\overline a_h[k+1] &= (1-a_{var})\,\overline a_h[k] + a_{var}\,\hat a_h[k+1], &
+\hat a_r[k] &= \hat a_h[k] - \overline a_h[k] \\
+\hat\sigma^2_{\hat a_r}[k+1] &= (1-a_{cov})\,\hat\sigma^2_{\hat a_r}[k] + a_{cov}\,\hat a_r^2[k+1] & & \\[2pt]
+\overline{\delta\hat h}[k+1] &= (1-a_{var})\,\overline{\delta\hat h}[k] + a_{var}\,\delta\hat h_3[k+1], &
+\delta\hat h_r[k] &= \delta\hat h_3[k] - \overline{\delta\hat h}[k] \\
+\hat\sigma^2_{\delta\hat h}[k+1] &= (1-a_{cov})\,\hat\sigma^2_{\delta\hat h}[k] + a_{cov}\,\delta\hat h_r^2[k+1] & &
+\end{aligned}
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\apmh[k] := +\sqrt{\;\hat\sigma^2_{\hat a_r}[k] \;/\; \hat\sigma^2_{\delta\hat h}[k]\;}
+\end{empheq}
+
+\hd{3. Transfer under $\Delta h_d \neq 0$ and $\mathrm E[\apmh]$}
+
+\[
+a_h\big(h_d(t)\big) - a_h(h_0) \approx \ap\,A_h\,\sin(2\pi f t)
+\qquad (\text{deterministic component of } \hat a_h)
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\lambda_{leak} \approx \frac{2\pi f\,T_s}{a_{var}}
+\qquad (2\pi f T_s \ll a_{var} \ll 1)
+\end{empheq}
+
+\[
+\text{leaked sinusoid in } \hat a_r:\ \text{amplitude } \lambda_{leak}\,\ap A_h,
+\quad \text{power } \lambda_{leak}^2\,\ap^2 A_h^2/2
+\]
+\[
+\mathrm E[\hat\sigma^2_{\hat a_r}]
+= \underbrace{\aph^2\,\sigma^2_{\delta h}}_{\text{self}}
++ \underbrace{\sigma^2_u}_{\text{corrections}}
++ \underbrace{\lambda_{leak}^2\,\ap^2 A_h^2/2}_{\text{leak}},
+\qquad
+\mathrm E[\hat\sigma^2_{\delta\hat h}] = \sigma^2_{\delta h}
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\mathrm E[\apmh]^2 \approx
+\frac{\aph^2\,\sigma^2_{\delta h} + \sigma^2_u
++ \lambda_{leak}^2\,\ap^2 A_h^2/2}{\sigma^2_{\delta h}}
+\end{empheq}
+
+\[
+\Delta h_d = 0:\ \mathrm E[\apmh] \to
+\sqrt{\aph^2 + \sigma^2_u/\sigma^2_{\delta h}};
+\qquad
+\aph \to 0:\ \mathrm E[\apmh] \to \sigma_u/\sigma_{\delta h}
+\]
+\[
+\text{leak-dominated:}\quad
+\mathrm E[\apmh] \to \frac{\lambda_{leak}\,A_h}{\sqrt2\,\sigma_{\delta h}}\;\ap
+\]
+
+\hd{4. Esti}
+
+\begin{empheq}[box=\fbox]{align*}
+\hat a_h[k+1]    &= \hat a_h[k] + \aph[k]\,\Delta h_d[k]
+                   + (1-\lc)\,\aph[k]\,\delta\hat h[k] \\
+\aph[k+1] &= \beta\,\aph[k] + (1-\beta)\,\apmh[k]
+\end{empheq}
+
+\hd{5. Error}
+
+\[
+\apmh[k] = \aph[k] + \kappa[k]\,\eap[k] + n_{var}[k], \qquad
+\mathrm E[n_{var}] = \mathrm E[\apmh] - \aph \quad (\text{\S3})
+\]
+\[
+\Delta h_d = 0:\ \mathrm E[n_{var}] \approx \frac{\sigma^2_u}{2\aph\sigma^2_{\delta h}};
+\qquad
+\Delta h_d \neq 0:\ \mathrm E[n_{var}] \approx
+\frac{\sigma^2_u + \lambda_{leak}^2\,\ap^2 A_h^2/2}{2\aph\sigma^2_{\delta h}}
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\eap[k+1] = \big[\,1 - (1-\beta)\,\kappa[k]\,\big]\,\eap[k]
+- (1-\beta)\,n_{var}[k]
+\end{empheq}
+
+\[
+\kappa > 0:\;\; \eap^{ss} = -\,\mathrm E[n_{var}]/\kappa;
+\qquad
+\kappa = 0:\;\; \eap[k+1] = \eap[k] - (1-\beta)\,n_{var}[k]
+\;\;(\text{integrator})
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\beta \ \text{sets speed/smoothing only:}\quad
+\text{pole} = 1-(1-\beta)\,\kappa, \qquad
+\kappa,\ \mathrm E[n_{var}] \ \text{are } \beta\text{-invariant}
+\end{empheq}
+
+\[
+T_s/(1-\beta) = \tau\ \text{(response)}, \qquad
+\mathrm{Var}(\aph) \approx \tfrac{1-\beta}{2}\,IF_{var}\,R_{var}
+\quad (\beta \to 1)
+\]
+
+\hd{6. $\mathbf F_e$}
+
+\[
+x_e = [\,\delta h_1,\ \delta h_2,\ \delta h_3,\ e_{a_h},\ \eap\,]^{\mathsf T}
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf F_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lc & -F_{dh}[k] & 0 \\
+0 & 0 & (1-\lc)\,\aph[k] & 1+\aph[k]F_{dh}[k] & \Delta h_d[k] \\
+0 & 0 & 0 & 0 & 1-(1-\beta)\,\kappa[k]
+\end{bmatrix}
+\end{empheq}
+
+\[
+q[k] = \big[\,0,\ 0,\ -\varepsilon_h[k],\ \aph[k]\,\varepsilon_h[k],\
+-(1-\beta)\,n_{var}[k]\,\big]^{\mathsf T}
+\]
+
+\hd{7. Simulation (E1S, 1 Hz sweep, seed 1)}
+
+\begin{center}
+\includegraphics[width=0.9\textwidth]{figures/fig_varchain_e1s_sweep.png}
+\end{center}
+\textit{E1S (1 Hz sweep, seed 1): raw $\apmh$ (orange) reads
+$11.7\times$ truth (leak formula $\approx 10\times$); the a$'$-as-state
+route (red, $F_{45}=\Delta h_d$, no var statistic) stays at truth scale;
+tracking unharmed ($26.5$ vs $26.2$\,nm).}
+
+\end{document}
