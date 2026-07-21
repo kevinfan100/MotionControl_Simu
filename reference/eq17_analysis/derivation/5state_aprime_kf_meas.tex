@@ -1,0 +1,219 @@
+% ======================================================
+% Compile: xelatex 5state_aprime_kf_meas.tex
+% Path:    reference/eq17_analysis/derivation/5state_aprime_kf_meas.tex
+% DRAFT (2026-07-20). a' as a PROPER KF state updated by the y2 measurement
+% (NOT an external EWMA bolt-on). The residual-gain relation a_r = -a'*dh is
+% placed in the MEASUREMENT Jacobian H(2,5), so y2 directly corrects a' via the
+% Kalman gain. Route/notation follow 5state_aprime_var_esti.tex; the single
+% structural change is Sec.2: a' update = Kalman gain, replacing esti's
+% beta-EWMA of a'_hdm. New symbols kept minimal: a_det (desired-height gain),
+% DH_d (d-step commanded sweep). y2 g-bias (H(2,4) mirror) EXCLUDED per user.
+% ======================================================
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{array,booktabs}
+\usepackage{graphicx}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{2pt}
+\setlength{\belowdisplayshortskip}{2pt}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\ap}{a'}
+\newcommand{\aph}{\hat a'}
+\newcommand{\adet}{a_{d}}
+\newcommand{\adeth}{\hat a_{d}}
+\newcommand{\eap}{e_{a'}}
+\newcommand{\ead}{e_{a_d}}
+\newcommand{\eh}{e_{h}}
+\newcommand{\DHd}{\Delta H_d}
+\newcommand{\Dh}{\Delta h_d}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+
+\begin{document}
+
+\begin{center}\textbf{\large 5-state EKF: $a'$ as a measured state ($y_2$ update, no bolt-on)}\end{center}
+\vspace{-0.4em}
+\begin{center}\small DRAFT --- route follows \texttt{5state\_aprime\_var\_esti.tex};
+Sec.\,2 replaces the $\beta$-EWMA of $a'_{hdm}$ with a Kalman update of $a'$.\end{center}
+
+\hd{0. Definitions}
+
+\[
+h[k] = h_d[k] - \delta h[k], \qquad
+\Dh[k] = h_d[k{+}1] - h_d[k], \qquad
+\DHd[k] = h_d[k] - h_d[k{-}d]
+\]
+\[
+\adet[k] := a_h\big(h_d[k]\big), \qquad
+\ap[k] := \left.\frac{d a_h}{d h}\right|_{h_d[k]}, \qquad
+a_r[k] := a_h\big(h[k]\big) - \adet[k]
+\]
+\[
+\delta h[k+1] = \lc\,\delta h[k] - F_{dh}[k]\,\ead[k] - \varepsilon_h[k]
+\]
+$\adet$ = gain at the desired height (deterministic, trajectory-driven);
+$\ap$ = its slope; $a_r$ = residual gain from the tracking error;
+$\DHd$ = known $d$-step commanded sweep. $\delta h_1 := \delta h[k{-}d]$ (oldest,
+measured), $\delta h_2 := \delta h[k{-}1]$, $\delta h_3 := \delta h[k]$.
+
+\hd{1. True}
+
+First-order Taylor of the gain at the actual (perturbed) height:
+\[
+a_h\big(h[k]\big) = a_h\big(h_d[k] - \delta h[k]\big)
+\approx \adet[k] - \ap[k]\,\delta h[k]
+\]
+
+\begin{empheq}[box=\fbox]{equation*}
+a_r[k] = -\,\ap[k]\,\delta h[k], \qquad \ap[k+1] \approx \ap[k]
+\end{empheq}
+
+The desired-height gain drifts with the commanded sweep:
+\begin{empheq}[box=\fbox]{equation*}
+\adet[k+1] = \adet[k] + \ap[k]\,\Dh[k]
+\end{empheq}
+
+The second measurement reads the \emph{actual} gain $d$ steps ago. Substituting
+$\adet[k{-}d] = \adet[k] - \ap\,\DHd[k]$ (from the sweep, $\ap$ slow) and
+$\delta h[k{-}d] = \delta h_1$:
+\[
+y_2[k] = a_h\big(h[k{-}d]\big) = \adet[k{-}d] - \ap\,\delta h[k{-}d] + \nu_2[k]
+\]
+\begin{empheq}[box=\fbox]{equation*}
+y_2[k] = \adet[k] \;-\; \ap[k]\,\big(\DHd[k] + \delta h_1[k]\big) \;+\; \nu_2[k]
+\end{empheq}
+$a'$ enters $y_2$ \emph{explicitly}, multiplying the total height offset
+$\DHd+\delta h_1$ (commanded sweep $+$ thermal tracking error). This is the
+relation the var-channel used implicitly; here it is kept as a measurement.
+
+\hd{2. Estimator ($a'$ inside the KF)}
+
+State $\ (5\times1)$:
+\[
+x = [\,\delta h_1,\ \delta h_2,\ \delta h_3,\ \adet,\ \ap\,]^{\mathsf T}
+\]
+
+\textbf{Predict} (deterministic map; $\Dh,\DHd$ known from the trajectory):
+\[
+\begin{aligned}
+\delta h_1[k{+}1] &= \delta h_2[k], &
+\delta h_2[k{+}1] &= \delta h_3[k], &
+\delta h_3[k{+}1] &= \lc\,\delta h_3[k], \\
+\adet[k{+}1] &= \adet[k] + \aph[k]\,\Dh[k], &
+\ap[k{+}1] &= \ap[k]. & &
+\end{aligned}
+\]
+
+\textbf{Measurement} ($y_1$ = delayed position error, $y_2$ = gain gauge):
+\[
+y_1[k] = \delta h_1[k] + n_x[k], \qquad
+y_2[k] = \adet[k] - \ap[k]\big(\DHd[k]+\delta h_1[k]\big) + \nu_2[k]
+\]
+\[
+H_1 = [\,1,\ 0,\ 0,\ 0,\ 0\,]
+\]
+\begin{empheq}[box=\fbox]{equation*}
+H_2[k] = \big[\,-\aph[k],\ \ 0,\ \ 0,\ \ 1,\ \ -\big(\DHd[k]+\delta\hat h_1[k]\big)\,\big]
+\end{empheq}
+
+\textbf{Update} (standard EKF; $H=[H_1;H_2]$, $R=\mathrm{diag}(\sigma^2_{n},\,R_2)$):
+\begin{empheq}[box=\fbox]{align*}
+K[k] &= P^{-}H^{\mathsf T}\big(HP^{-}H^{\mathsf T}+R\big)^{-1}, \qquad
+x^{+} = x^{-} + K\big(y - Hx^{-}\big)
+\end{empheq}
+
+\textbf{Why $a'$ is now genuinely in the KF.} The gain-row of $K$ is
+\[
+K_5 = \frac{\big[P^{-}H^{\mathsf T}\big]_5}{S}
+    = \frac{P^{-}_{55}\,H_2(5) + P^{-}_{54}\,H_2(4) + \dots}{S},
+\qquad H_2(5) = -(\DHd+\delta\hat h_1) \neq 0 .
+\]
+$a'$ carries its \emph{own} measurement entry $P^{-}_{55}H_2(5)$ (direct
+correction), not only the cross-covariance $P^{-}_{54}$. This replaces the esti
+recursion $\ap[k{+}1]=\beta\,\ap[k]+(1{-}\beta)\,a'_{hdm}[k]$ (a $\beta$-EWMA of
+a variance ratio computed \emph{outside} the filter): $a'$ now updates from the
+$y_2$ innovation like any other state.
+
+\hd{3. Error dynamics}
+
+$\eh = \delta h - \delta\hat h$, $\ead = \adet - \adeth$, $\eap = \ap - \aph$.
+Predict (before correction):
+\[
+\ead[k{+}1] = \ead[k] + \Dh[k]\,\eap[k], \qquad
+\eap[k{+}1] = \eap[k],
+\]
+so an $a'$ error feeds the level error at rate $\Dh$ (the sweep coupling).
+Linearizing the $y_2$ innovation about the current estimates:
+\[
+\nu_2 = \ead - \big(\DHd+\delta\hat h_1\big)\,\eap - \aph\,e_{h,1} + \nu_2^{\,\mathrm{noise}} .
+\]
+The closed loop is the usual EKF contraction
+\begin{empheq}[box=\fbox]{equation*}
+e[k+1] = \big(I - K[k]H[k]\big)\,F_e[k]\,e[k] + q[k]
+\end{empheq}
+with $e=[\delta h_1,\delta h_2,\delta h_3,\ead,\eap]^{\mathsf T}$. Because
+$H_2(5)\neq0$, the correction $(I-KH)$ acts on $\eap$ \emph{directly} through the
+$y_2$ innovation --- the mechanism the bolt-on lacked.
+
+\hd{4. $\mathbf F_e$ and $\mathbf H$}
+
+\[
+F_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lc & -F_{dh}[k] & 0 \\
+0 & 0 & 0 & 1 & \Dh[k] \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix},
+\qquad
+H[k] =
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\
+-\aph[k] & 0 & 0 & 1 & -\big(\DHd[k]+\delta\hat h_1[k]\big)
+\end{bmatrix}
+\]
+Time-varying entries: $F_e(3,4)=-F_{dh}[k]$, $F_e(4,5)=\Dh[k]$ (sweep coupling,
+predict), and the whole of $H_2[k]$ (measurement coupling). Row $5$ of $F_e$ is a
+pure integrator; $a'$ acquires dynamics only through the measurement, not a
+process pole.
+
+\hd{5. Observability and caveats}
+
+\textbf{Two channels in one entry.}
+$H_2(5) = -(\DHd+\delta\hat h_1)$: the commanded sweep $\DHd$ (deterministic,
+present only in motion) and the thermal tracking error $\delta\hat h_1$
+(stochastic, present in holds). Both routes to $a'$ live in the single
+measurement entry.
+
+\textbf{Bilinear EKF.} $y_2$ contains the product $\ap\,\delta h_1$; both
+$H_2(1)=-\aph$ and $H_2(5)=-(\DHd+\delta\hat h_1)$ come from it, so $a'$ and
+$\delta h_1$ are coupled in the same measurement. Identifiability (does an
+innovation load onto $\eap$ or $e_{h,1}$?) is set by the covariance and must be
+checked --- in a pure hold ($\DHd=0$) both are read from the same thermal product.
+
+\textbf{Hold floor unchanged.} $\DHd=0 \Rightarrow H_2(5)=-\delta\hat h_1$, so
+$a'$ observability scales with the thermal amplitude $\sim\!\sqrt{\mathrm{Var}(\delta h)}$
+over a finite dwell --- a CRLB floor, independent of this reformulation.
+
+\textbf{Not self-referential.} $y_2=a_{xm}$ is a real measurement carrying
+$-\ap_{\mathrm{true}}\,\delta h$; the innovation delivers genuine truth to $a'$,
+unlike the var-channel's self-constructed $\hat a_r$ (which returns $\aph$).
+
+\hd{6. Open (to fill next)}
+
+Closed-loop variance (Lyapunov on $e$), $Q_{55}$ process noise, and the
+$R_2$ / $y_2$-noise model are deferred. The identifiability check (Sec.\,5) and
+a hold/osc simulation come before locking these.
+
+\end{document}
