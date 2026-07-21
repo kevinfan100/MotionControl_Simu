@@ -7,6 +7,11 @@
 % innovation correction L51*e_y1 + L52*e_y2. Style/route follow
 % 5state_aprime_var_esti.tex: 0 Def / 1 True (beta appears here) / 2 a'_hdm /
 % 3 Esti (co-update) / 4 Error / 5 F_e / 6 Q,R / 7 Simulation.
+% Extended (2026-07-21): 8.1 rewritten in math and MERGED with the first-hold
+% oscillation (unobservable a' -> wander -> poisons a_hat_z via predict injection
+% + Q44); 8.2 in math (a_d-state / kfmeas + C2 channel). A dither section was
+% drafted and REMOVED -- the pilot confirmed dither's a'-Fisher scaling law but
+% showed it does NOT clean a_hat_z (decoupled from the downstream a_xm floor).
 % ======================================================
 \documentclass[11pt,a4paper,fontset=none]{ctexart}
 
@@ -261,58 +266,71 @@ is the sole curvature prior. This is the blue line: $\hat a_z$ on truth
 \end{quote}
 
 \medskip
-\hd{8.1 Why $\hat a_z$ jitters, and how to reduce it}{a leak-free gain integrator anchored by a noisy $a_{xm}$}
+\hd{8.1 $\hat a_z$ jitter, and its first-hold amplification when $\ap$ is unobservable}{a leak-free gain integrator; the sole measurement $a_{xm}$ sets a floor that an unobservable $\ap$ exceeds}
 
-The gain state $a_h$ is a \emph{leak-free integrator} ($F_e(4,4)\approx1$, no
-reversion): its only anchor is $y_2=a_{xm}$, itself a finite-window variance
-inversion with relative std $0.37$--$0.54$; and its predict injects thermal noise
-through $(1-\lc)\aph\,\dxh_3$. So even when the true gain is constant, $\hat a_z$
-wanders $\sim5\%$ around it:
-\begin{center}\small
-\begin{tabular}{lccc}
-\toprule
-segment & true $a_z$ (nm/pN) & $\langle|\hat a_z-a_z|\rangle$ (nm/pN) & rel. \\
-\midrule
-hold (far wall) & $13.96$ & $0.73$ & $5.2\%$ \\
-descent & $12.29$ & $0.71$ & $5.8\%$ \\
-osc (near wall) & $9.23$ & $0.51$ & $5.5\%$ \\
-hold (near wall) & $6.92$ & $0.30$ & $4.3\%$ \\
-\bottomrule
-\end{tabular}
-\end{center}
-The absolute wander tracks the gain (largest far from the wall, where $a_{xm}$'s
-noise $\propto a$ is larger). The balance is a $Q_{44}/R_2$ tension: raising
-$Q_{44}$ tracks a changing gain (motion) but amplifies the $a_{xm}$ noise;
-lowering it smooths but lags. With $a_{xm}$ the \emph{only} gain measurement,
-smooth-and-responsive cannot both hold --- the residual $\sim5\%$ is a CRLB floor.
+Gain: a leak-free integrator, one noisy measurement, two $\aph$-driven inputs:
+\[
+F_e(4,4)\approx1,\qquad \text{measurement } y_2=a_{xm}\ (\text{rel.\ std }0.37\text{--}0.54),
+\]
+\[
+\hat a_z[k{+}1]=\hat a_z[k]+\underbrace{(1{-}\lc)\,\aph\,\dxh_3[k]}_{\text{(B) predict injection}}+\cdots,
+\qquad
+\underbrace{Q_{44}=\aph{}^{2}Q_{33}}_{\text{(Q) process noise}} .
+\]
 
-\textbf{How to reduce it.} (i) Give the gain a reversion instead of a free
-integrator: the \texttt{kfmeas} $a_d$-state (deterministic predict
-$a_d+\aph\Delta h_d$) cuts the \emph{predict-side} wander $\sim30\times$
-($2.74\%\to0.09\%$), though the measurement-anchored jitter remains. (ii) Lengthen
-the $a_{xm}$ window (smaller $a_{cov}$) to quiet the ruler, at the cost of lag.
-(iii) Break the floor only with \emph{more information} --- an independent gain
-channel or trajectory dither; tuning $Q_{44}/R_2$ alone merely slides along the
-smooth-vs-responsive trade-off.
+$\ap$ enters $y_2$ \emph{only} through the gain, with regressor $\varphi$; hence its Fisher information and CRLB:
+\[
+\varphi[k]:=\Delta h_d[k]+(1-\lc)\dxh_3[k],\qquad e_{a_h}[k{+}1]\supset\varphi[k]\,e_{\ap}[k],
+\]
+\[
+\mathcal I(\ap)=\frac{1}{S_2}\sum_k\varphi^2[k],\qquad \mathrm{Var}(\aph)\ge\mathcal I^{-1}(\ap)\qquad(\text{CRLB}).
+\]
+\begin{empheq}[box=\fbox]{equation*}
+\text{far hold: }\Delta h_d=0\Rightarrow \varphi=(1{-}\lc)\dxh_3\Rightarrow \mathcal I(\ap)\!\to\!0\Rightarrow \aph\ \text{drifts}\ (\aph\!\to\!6\text{--}13\ \text{vs}\ \ap\!\approx\!0)
+\end{empheq}
+
+The drifting $\aph$ drives both inputs; the gain jitter scales with them:
+\[
+\text{(B): } \sigma_{\rm inj}=(1{-}\lc)\,|e_{\ap}|\,\sigma_{\delta h}\ /\text{step};
+\qquad
+\text{(Q): } P_{44}\!\propto\!Q_{44}\!\propto\!\aph{}^{2}\Rightarrow L_4\!\propto\!P_{44}\Rightarrow \mathrm{Var}(\hat a_z)|_{\rm meas}\!\sim\!L_4^2R_2 .
+\]
+\begin{empheq}[box=\fbox]{equation*}
+\aph\!\to\!0\Rightarrow\text{(B),(Q)}\!\to\!0\Rightarrow \mathrm{std}(\hat a_z)=0.015;
+\qquad
+\aph\ \text{drifting}\Rightarrow \mathrm{std}(\hat a_z)=0.61\ (40\times).
+\end{empheq}
+
+The $\sim\!5\%$ far-wall hold jitter ($\langle|\hat a_z-a_z|\rangle=0.73$ nm/pN) is thus the \emph{removable} $\aph$-drift, not the $a_{xm}$ floor ($0.015$, frozen $\aph$). First-hold fix: disable the $\aph$-update where $\mathcal I(\ap)\!\to\!0$ (freeze during the hold, resume at the first motion); accurate-$\hat a_z$ levers in \S8.2.
 
 \medskip
-\hd{8.2 If accurate $\hat a_z$ is the goal}{a charter-compliant, derivable optimization path}
+\hd{8.2 Two charter-legal fixes for accurate $\hat a_z$}{(a) a reverting $a_d$-state removes the drift; (b) an independent $c$-free channel $C_2$ passes the $a_{xm}$ floor}
 
-Under the charter ($c(\bar h)$ unknown; only $a_{nom},R,T_s$, the wall position,
-and the commanded trajectory are usable), two legal levers remain:
+Charter: $c(\bar h)$ unknown; only $a_{nom},R,T_s$, wall position, commanded trajectory usable.
 
-\emph{(a) Structural --- free and already derived.} Adopt the \texttt{kfmeas}
-$a_d$-state: its predict $a_d+\aph\,\Delta h_d$ uses \emph{only} the commanded
-$\Delta h_d$ and the estimated $\aph$, assumes no $c(\bar h)$, and is the validated
-$\sim30\times$ predict-wander reduction ($2.74\%\!\to\!0.09\%$). This removes the
-leak-free random walk at zero information cost.
+\textbf{(a) $a_d$-state (\texttt{kfmeas}): reversion, not a free integrator.}
+\[
+a_d:=a_h(h_d)\ (\text{desired-height gain}),\qquad
+a_d[k{+}1]=a_d[k]+\aph\,\Delta h_d[k]\ \ (\text{deterministic, exogenous}) .
+\]
+\begin{empheq}[box=\fbox]{equation*}
+\hat a_z=a_d-\aph\,\dxh_3;\qquad
+\text{predict-side drift }2.74\%\to0.09\%\ (\sim30\times),\ \text{no }c(\bar h) .
+\end{empheq}
 
-\emph{(b) Information --- to pass the CRLB floor.} The measurement-anchored jitter
-is set by $a_{xm}$ being the \emph{sole} gain channel; it falls only with an
-independent, $c$-free channel (a derived deterministic residual, unbiased slope
-$0.90$--$0.94$) or trajectory dither (the trajectory is ours to design). Both are
-derivable and assume no wall-function form; tuning $a_{cov}/Q_{44}/R_2$ only trades
-jitter for lag and cannot pass the floor.
+\textbf{(b) $C_2$: a second gain channel, independent of $a_{xm}$.}
+A gain error produces a \emph{systematic} tracking residual:
+\[
+f_d=\tfrac{1}{\hat a}\{\cdots\}
+\ \Rightarrow\
+\delta x_{md}\ \propto\ \frac{a-\hat a}{\hat a},
+\qquad
+y_3:=\delta x_{md}\ (\text{deterministic residual, } =p_{md}) .
+\]
+\begin{empheq}[box=\fbox]{equation*}
+\mathbb E[y_3]=\kappa_{C_2}\,(a-\hat a),\quad \kappa_{C_2}\approx0.90\text{--}0.94\ (\text{unbiased, }c\text{-free}),\quad \text{floor}\sim9.4\%\,a/0.5\text{s} .
+\end{empheq}
+$C_2$ measures the gain error directly, independent of $a_{xm}$; $a_{cov}/Q_{44}/R_2$ tuning only trades jitter for lag and cannot pass the $a_{xm}$-only floor.
 
 % ==================================================================
 \hd{9. Appendix: the self-copy $\apmh\equiv\aph$ ($\kappa\approx0$)}{why the var-ratio carries no truth}
