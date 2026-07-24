@@ -1,0 +1,131 @@
+% ======================================================
+% Compile: xelatex 6state_curvature_taylor.tex
+% Path:    reference/eq17_analysis/derivation/6state_curvature_taylor.tex
+% 6-state curvature-Taylor eq17 model: 2nd-order Taylor of the gain about the
+% DESIRED trajectory. a' evolves via the curvature a'' (a'[k+1]=a'+Dh_d*a''),
+% a'' is the frozen top state. Extends 4state_taylor_gain one Taylor order up.
+% Process noise is rank-1 thermal (q = eps*[0;0;-1;a';a'';a''']). Style mirrors
+% 4state_taylor_gain / 4state_del_hd (monochrome, \fbox on key results, terse).
+% Base chain (control law, eps, output): 4state_del_hd.tex / 4state_taylor_gain.tex.
+% ======================================================
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{graphicx}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.5em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{7pt}
+\setlength{\belowdisplayskip}{7pt}
+\setlength{\abovedisplayshortskip}{4pt}
+\setlength{\belowdisplayshortskip}{4pt}
+
+\newcommand{\lc}{\lambda_c}
+\newcommand{\Dh}{\Delta h_d}
+\newcommand{\Fdx}{F_{dx}}
+\newcommand{\ap}{{a'}}
+\newcommand{\app}{{a''}}
+\newcommand{\appp}{{a'''}}
+\newcommand{\hd}[1]{\par\medskip\noindent\underline{\textbf{#1}}\par\nobreak\vspace{0.2ex}}
+
+\begin{document}
+
+\begin{center}\large\textbf{6-state curvature-Taylor model: $a'$ driven by the curvature $a''$}\end{center}
+
+\hd{0. Definitions}
+\[ x[k{+}1]=x[k]+a_x[k]\{f_{dx}[k]+f_T[k]\}+\delta x_D[k],\quad a_x=\Delta t/\gamma(h),\quad \delta x_D\equiv0 \]
+\[ \delta x_m[k]=\delta x[k{-}d]+n_x[k],\qquad \delta x=x_d-x,\qquad h=h_d-\delta x,\qquad \Dh[k]=h_d[k{+}1]-h_d[k] \]
+\[ \delta x[k{+}1]=\lc\,\delta x[k]-\Fdx[k]\,e_{a_x}[k]-\varepsilon[k],\qquad
+   \Fdx=f_{dx}+(1{-}\lc)\!\sum_{i=1}^d f_{dx}[k{-}i] \]
+\[ \varepsilon=\delta x_T^{d}-\delta x_{\delta af}^{d}+(1{-}\lc)n_x,\qquad
+   \sigma^2_\varepsilon:=\gamma_\varepsilon(0)=\big(1+2(1{-}\lc)^2\big)\sigma^2_{\delta h}\;(=Q_{33}),\quad
+   \sigma^2_{\delta h}:=4k_BT\,a_x \]
+\[ \mathbf x_e=[\,\delta x_1,\delta x_2,\delta x_3,\;a_x,\;\ap,\;\app\,]^{\!\top},\qquad
+   e_{a_x}=a_x-\hat a_x,\ e_{\ap}=\ap-\hat\ap,\ e_{\app}=\app-\hat\app \]
+
+\hd{1. Gain model (2nd-order Taylor about the desired trajectory)}
+$x[k{+}1]=x_d[k{+}1]-\delta x[k{+}1]$; expand $a_x$ and $\ap$ about the desired height, drop $O(\delta x^2)$:
+\begin{empheq}[box=\fbox]{align*}
+a_x[k{+}1]&=a_{x_{det}}[k{+}1]-\ap\,\delta x[k{+}1], & a_{x_{det}}[k{+}1]&=a_{x_{det}}[k]+\ap\,\Dh[k]\\
+\ap[k{+}1]&=\ap_{det}[k{+}1]-\app\,\delta x[k{+}1], & \ap_{det}[k{+}1]&=\ap_{det}[k]+\app\,\Dh[k]\\
+\app[k{+}1]&\approx\app[k]=:\app && &
+\end{empheq}
+\[ \ap=-\frac{a_x}{c}\frac{K_h}{R},\qquad
+   \app=-\frac{a_x}{R^2}\big(K_h'-K_h^2\big),\qquad
+   K_h=\frac1c\frac{dc}{d\bar h},\ \ K_h'=\frac{dK_h}{d\bar h} \]
+
+\hd{2. True recursion} \; (substitute $a_{det}=a+\text{(slope)}\cdot\delta x$, then $\delta x[k{+}1]$; each level mirrors the one below)
+\begin{empheq}[box=\fbox]{align*}
+a_x[k{+}1]&=a_x+\ap\,\Dh+(1{-}\lc)\ap\,\delta x+\ap\,\Fdx\,e_{a_x}+\ap\,\varepsilon\\
+\ap[k{+}1]&=\ap+\app\,\Dh+(1{-}\lc)\app\,\delta x+\app\,\Fdx\,e_{a_x}+\app\,\varepsilon\\
+\app[k{+}1]&=\app+\appp\,\varepsilon \qquad(\text{frozen: sweep }\appp\Dh\to\text{feedforward, keep thermal }\appp\varepsilon)
+\end{empheq}
+
+\hd{3. Estimator (predict + update)} \; ($E\{e_{a_x}\}{=}0,\ E\{\varepsilon\}{=}0$; $\delta x\to\delta\hat x_3$)
+\begin{empheq}[box=\fbox]{gather*}
+\delta\hat x_1[k{+}1]=\delta\hat x_2,\quad \delta\hat x_2[k{+}1]=\delta\hat x_3,\quad \delta\hat x_3[k{+}1]=\lc\,\delta\hat x_3\\[2pt]
+\hat a_x[k{+}1]=\hat a_x+\hat\ap\,\Dh+(1{-}\lc)\hat\ap\,\delta\hat x_3\\[2pt]
+\hat\ap[k{+}1]=\hat\ap+\hat\app\,\Dh+(1{-}\lc)\hat\app\,\delta\hat x_3\qquad
+\hat\app[k{+}1]=\hat\app
+\end{empheq}
+\[ \hat{\mathbf x}[k]=\hat{\mathbf x}[k|k{-}1]+\mathbf L[k]\big(\mathbf y[k]-\mathbf H\,\hat{\mathbf x}[k|k{-}1]\big),\qquad
+   \mathbf H=\begin{bmatrix}1&0&0&0&0&0\\0&0&0&1&0&0\end{bmatrix} \]
+
+\hd{4. Error dynamics} \; (True $-$ Estimator; keep leading order, $O(\app\,\delta x)$ and up dropped)
+\begin{empheq}[box=\fbox]{align*}
+e_{\delta x_3}[k{+}1]&=\lc\,e_{\delta x_3}-\Fdx\,e_{a_x}-\varepsilon\\
+e_{a_x}[k{+}1]&=(1{+}\ap\Fdx)\,e_{a_x}+(1{-}\lc)\ap\,e_{\delta x_3}+\Dh\,e_{\ap}+\underbrace{\ap\,\varepsilon}_{q_4}\\
+e_{\ap}[k{+}1]&=(1{+}\app\Fdx)\,e_{\ap}+(1{-}\lc)\app\,e_{\delta x_3}+\Dh\,e_{\app}+\underbrace{\app\,\varepsilon}_{q_5}\\
+e_{\app}[k{+}1]&=e_{\app}+\underbrace{\appp\,\varepsilon}_{q_6}
+\end{empheq}
+
+\hd{5. $\mathbf F_e$ \; (Cols: $\delta x_1,\delta x_2,\delta x_3,a_x,\ap,\app$)}
+\begin{empheq}[box=\fbox]{equation*}
+\mathbf F_e[k]=\begin{bmatrix}
+0&1&0&0&0&0\\
+0&0&1&0&0&0\\
+0&0&\lc&-\Fdx&0&0\\
+0&0&(1{-}\lc)\ap&1{+}\ap\Fdx&\Dh&0\\
+0&0&(1{-}\lc)\app&\app\Fdx&1&\Dh\\
+0&0&0&0&0&1
+\end{bmatrix}
+\end{empheq}
+Leading order ($\app,\appp$ small): row 5 $\to[\,0\,0\,0\,0\,1\,\Dh\,]$, so the hierarchy is a
+$\Dh$-coupled chain $a_x\!\leftarrow\!\ap\!\leftarrow\!\app$. In a hold $\Dh{=}0$: $\ap[k{+}1]{=}\ap$,
+$\app$ decoupled $\Rightarrow$ no drift (the IRW's fatal $F_e(5,6){=}1$ becomes $\Dh$).
+
+\hd{6. Process noise (rank-1 thermal)} \; (one $\varepsilon$ lifts through the curve derivatives)
+\[ \mathbf q[k]=\varepsilon[k]\,[\,0,\,0,\,-1,\;\ap,\;\app,\;\appp\,]^{\!\top}
+   \quad\Rightarrow\quad
+   \mathbf Q[k]=\sigma^2_\varepsilon\,\hat{\mathbf q}\,\hat{\mathbf q}^{\!\top},\ \
+   \hat{\mathbf q}=[\,0,0,-1,\ap,\app,\appp\,]^{\!\top} \]
+\begin{empheq}[box=\fbox]{equation*}
+Q_{33}=\sigma^2_\varepsilon,\quad
+Q_{44}={\ap}^2\sigma^2_\varepsilon,\quad
+Q_{55}={\app}^2\sigma^2_\varepsilon,\quad
+Q_{66}={\appp}^2\sigma^2_\varepsilon
+\qquad(\text{off-diag }Q_{ij}=\hat q_i\hat q_j\,\sigma^2_\varepsilon)
+\end{empheq}
+$\appp=d\app/d\bar h\cdot(1/R)$ (curve 3rd derivative). Deterministic sweeps
+($\ap\Dh,\app\Dh$) are feedforward (\S3), \emph{not} $Q$.
+
+\hd{7. Initial covariance (wall-aware) \& acquisition}
+General onset handling for the whole Taylor hierarchy: each wall-derivative state
+starts at its far-field value ($\to0$) with a prior equal to its far-field magnitude
+$\Rightarrow$ no pent-up uncertainty released when $\Dh$ opens observability.
+\begin{empheq}[box=\fbox]{equation*}
+P_{55,0}=[\ap(\bar h_{init})]^2,\qquad
+P_{66,0}=[\app(\bar h_{init})]^2
+\qquad(\bar h_{init}\ \text{far}\Rightarrow\ \ap,\app\!\to\!0\Rightarrow\ \text{pinned})
+\end{empheq}
+$c$-free form: small constants at the natural scales $\ap\!\sim\!a_{nom}/R$,
+$\app\!\sim\!a_{nom}/R^2$ (start-far confidence). Acquisition: $\ap,\app$ estimated
+as states (curvature model, $c$-free), or evaluated from the curve (oracle, \S1).
+
+\end{document}
