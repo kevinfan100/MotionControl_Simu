@@ -10,8 +10,10 @@ slprj/
 # 測試結果
 test_results/
 
-# 臨時測試腳本
+# 臨時測試腳本 + scratch 資料/圖(不進 git)
 temp_*.m
+temp_*.mat
+temp_*.png
 
 # 臨時驗證文件
 IIR_filter.mlx
