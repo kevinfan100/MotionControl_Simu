@@ -16,11 +16,22 @@
 %          (Q/R left as symbols, as in the baseline).
 % Style mirrors 6state_curvature_hd / 5state_derivation (monochrome, \fbox on key
 % results, run-in bold-underline \hd headings).
-% ---- BUILD STATUS: Stage E COMPLETE (sections 1-13; F_e + Q + R). Q Path C strict:
+% ---- BUILD STATUS: Stage F (sections 1-14; F_e + Q + R + p prior). Q Path C strict:
 %      Q33=4kBT a_h, Q44=a_h'^2 Q33, Q34=-a_h' Q33, Q55=0 (rank-1 gain block; MA-tail
-%      inflation -> closed-loop variance, not Q). R1=sig_nh^2; R2=a_cov*IF_var*(a_h+xi)^2
-%      (ported IIR chi-sq readout, C_dpmr=2+1/(1-lc^2), C_n=2/(1+lc), xi=(C_n/C_dpmr)
-%      sig_nh^2/(4kBT)); curvature-Jensen bias + d-step q4 accumulation deferred.
+%      inflation -> closed-loop variance, not Q).
+%      Stage F fixed the y2 channel: a_hm is an EXACT AR(1) filter of the single-sample
+%      readout u[k] with pole 1-a_cov, so feeding a_hm as a white measurement over-stated
+%      its information by (2-a_cov)/a_cov (=39 at a_cov=0.05; measured 33.6). y2 is now
+%      the WHITENED increment y2 = a_hm[k]-(1-a_cov)a_hm[k-1] = a_cov*u[k], H row 2 scaled
+%      by a_cov, R2 = a_cov(2-a_cov)*R2_int + a_cov^2*(sum (d-j+1)^2)*Q44. Acceptance test
+%      (passed): every result is a_cov-invariant. Also added the p prior
+%      sqrt(P55[0])=0.035, derived from the TWO ASYMPTOTIC ANCHORS (Brenner
+%      lubrication h->1 and method-of-reflections h->inf both force p=1, verified
+%      p_eff = 0.9994 / 1.0001), so the prior only covers the interpolation gap
+%      max|p_eff-1| = 0.034 -- domain-wide, trajectory-independent, and it does
+%      NOT require knowing c(h_bar), only the two published asymptotics.
+%      Pending: C_dpmr/C_n restatement (code uses the full-a_pd closed form, not the
+%      a_pd->0 one this file used to quote); curvature-Jensen bias.
 % ---- (earlier) Stage D (sections 1-11; ends at boxed 5x5 F_e). A: motion
 %      error -> delta_h[k+1] = lc*delta_h - F_dh*e_ah - eps_h. B: gain sub-state [a_h, p],
 %      slope a_h' = s_h[k]/R, s_h[k] := da_h/dh_bar = (p/(h_bar-1)) a_h(a_o-a_h)/a_o
@@ -177,16 +188,25 @@ p[k+1] &= p[k]
 
 \noindent State vector: $\;\mathbf x[k] = [\,\delta h_1,\ \delta h_2,\ \delta h_3,\ a_h,\ p\,]^\top[k]$.
 
-\hd{Output equation} \;{\small ($a_{hm}$ observes $a_h[k{-}d]$; leading-order delay back-off, $\DHb = (h_d[k]-h_d[k-d])/R$)}
+\hd{Output equation} \;{\small (leading-order delay back-off, $\DHb = (h_d[k]-h_d[k-d])/R$)}
+
+The gain readout is \emph{not} a white measurement of $a_h$. Write the single-sample readout
+\[ u[k] := \frac{\delta h_r^2[k] - C_n\sigma_{n_h}^2}{C_{dpmr}\,4k_BT}, \qquad \mathbb{E}\,u[k] = a_h[k-d]. \]
+Subtracting and dividing by constants leaves the $\hat\sigma^2_{\delta h_r}$ EWMA recursion invariant, so $a_{hm}$ is an \emph{exact} AR(1) filter of $u$:
+\begin{empheq}[box=\fbox]{equation*}
+a_{hm}[k] = (1-a_{cov})\,a_{hm}[k-1] + a_{cov}\,u[k], \qquad \text{pole } \phi = 1-a_{cov}.
+\end{empheq}
+Feeding $a_{hm}$ itself as a white measurement counts the same noise $\sum_\tau \phi^\tau$ times over, i.e.\ over-states its information by $(1+\phi)/(1-\phi) = (2-a_{cov})/a_{cov}$. The increment cancels the pole exactly, with no free parameter:
 \[
 \begin{cases}
 y_1[k] = \delta h_m[k] = \delta h_1[k] + \underbrace{n_h[k]}_{r_1[k]} \\[1.6ex]
-y_2[k] = \underbrace{a_h[k-d] + n_a[k]}_{a_{hm}[k]} \approx a_h[k] - \sh[k]\,\DHb[k] + \underbrace{n_a[k]}_{r_2[k]}
+y_2[k] = a_{hm}[k] - (1-a_{cov})\,a_{hm}[k-1] = a_{cov}\,u[k], \qquad \mathbb{E}\,y_2[k] = a_{cov}\,a_h[k-d]
 \end{cases}
 \]
+\[ a_h[k-d] \approx a_h[k] - \sh[k]\,\DHb[k] \qquad \text{(same leading-order back-off)} \]
 \[ \mathbf{y}[k] = \mathbf{H}\,\mathbf{x}[k] + \mathbf{r}[k], \qquad
-\mathbf{H} = \begin{bmatrix} 1 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 1 & -\DHb\,\dfrac{\sh[k]}{p} \end{bmatrix} \]
-{\small $y_2$ observes $a_h$ directly ($H_{24}{=}1$; $O(\DHb)$ correction dropped); $p$ enters only through the delay, $H_{25} = -\DHb\,\sh[k]/p$. Curvature bias $\tfrac12 a_h''\sigma_h^2$ in $a_{hm}$ folded into $r_2/R_2$ (deferred).}
+\mathbf{H} = \begin{bmatrix} 1 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & a_{cov} & -a_{cov}\DHb\,\dfrac{\sh[k]}{p} \end{bmatrix} \]
+{\small Row 2 is the earlier row scaled by $a_{cov}$: $y_2$ still observes $a_h$ directly ($O(\DHb)$ correction to $H_{24}$ dropped) and $p$ still enters only through the delay. Whitening also removes the EWMA group delay $(1-a_{cov})/a_{cov} \approx 19$ steps, which the $d$-step back-off alone did not cover --- $u[k]$ is the instantaneous readout, so only the $d$-step sensor delay is left. Curvature bias $\tfrac12 a_h''\sigma_h^2$ in $u$ folded into $r_2/R_2$ (deferred).}
 
 \hd{Estimator (model)} \;{\small ($\hat a_h$ swept by $\hat s_h[k]$; $\hat p$ random walk)}
 \[ e_{\delta h_1} = \delta h_1 - \delta\hat h_1, \quad \eah = a_h - \hat a_h, \quad \ep = p - \hat p \]
@@ -236,15 +256,35 @@ Q_{55} &= 0 \quad(\text{$p$ constant; optional floor }\sigma_p^2\text{ if slow d
 {\small The MA-tail inflation of $\sigma_{th}^2$ (past thermal, cross-step correlated) is the standard correlated-noise KF trade-off, carried by the closed-loop variance, not $Q$ (as in the baseline Path C).}
 
 \hd{Measurement noise $R$} \;{\small ($\mathbf R = \mathrm{diag}(R_1,R_2)$)}
-$R_1 = \sigma_{n_h}^2$ (sensor noise on $\delta h_m$). $a_{hm}$ is the IIR variance-ratio gain readout (paper 2025 Eq.9--13): from the random tracking-error component $\delta h_r$,
+$R_1 = \sigma_{n_h}^2$ (sensor noise on $\delta h_m$). For $y_2$ start from the \emph{marginal} variance of the un-whitened readout $a_{hm}$, which is the baseline $R_2$ chain unchanged (identical IIR readout, $a_x\!\to\!a_h$): from the random tracking-error component $\delta h_r$,
 \[ \hat\sigma^2_{\delta h_r}[k] = C_{dpmr}\,4k_BT\,a_h[k] + C_n\,\sigma_{n_h}^2, \qquad
-   C_{dpmr} = 2 + \tfrac{1}{1-\lc^2}, \quad C_n = \tfrac{2}{1+\lc}, \]
-\[ a_{hm}[k] = \frac{\hat\sigma^2_{\delta h_r}[k] - C_n\sigma_{n_h}^2}{C_{dpmr}\,4k_BT}. \]
-The EWMA (coefficient $a_{cov}$) forming $\hat\sigma^2_{\delta h_r}$ propagates a $\chi^2$ variance $\mathrm{Var}(\hat\sigma^2_{\delta h_r}) = a_{cov}\,\mathrm{IF}_{var}\,(\sigma^2_{\delta h_r})^2$ ($\mathrm{IF}_{var}$ = MA(2) inflation), so the linear inversion gives
+   \mathrm{Var}\big(a_{hm}[k]\big) = R_2^{\rm int}[k] := K_{var}\,\mathrm{IF}_{var}\,\big(a_h[k] + \xi\big)^2, \]
+\[ K_{var} = \frac{2a_{cov}}{2-a_{cov}}, \qquad
+   \xi := \frac{C_n}{C_{dpmr}}\,\frac{\sigma_{n_h}^2}{4k_BT}. \]
+For the AR(1) recursion above the stationary variance is $\mathrm{Var}(a_{hm}) = a_{cov}\mathrm{Var}(u)/(2-a_{cov})$, so the whitened increment $y_2 = a_{cov}u$ satisfies $\mathrm{Var}(y_2) = a_{cov}(2-a_{cov})\,\mathrm{Var}(a_{hm})$, giving
 \begin{empheq}[box=\fbox]{equation*}
-R_2[k] = a_{cov}\,\mathrm{IF}_{var}\,\big(a_h[k] + \xi\big)^2, \qquad \xi := \frac{C_n}{C_{dpmr}}\,\frac{\sigma_{n_h}^2}{4k_BT}.
+R_2[k] = a_{cov}(2-a_{cov})\,R_2^{\rm int}[k] \;+\; a_{cov}^2\Big(\textstyle\sum_{j=1}^{d}(d{-}j{+}1)^2\Big)\,Q_{44}[k]
 \end{empheq}
-{\small Ported from the baseline $R_2$ chain (identical IIR readout, $a_x\!\to\!a_h$). Deferred additions, both small, folded into $R_2$ later: (i) the $a_{hm}$ curvature/Jensen bias $\tfrac12 a_h''\sigma_h^2$ from the thermal excursion $\sigma_h^2$; (ii) the $d$-step accumulation of $q_4$ ($\sim\!\sum Q_{44}$, the delay-propagation analogue of the baseline's $+5Q_{77}$).}
+{\small Substituting $K_{var}$ collapses the first term to $2a_{cov}^2\,\mathrm{IF}_{var}(a_h+\xi)^2$. $R_2^{\rm int}$ is the marginal variance of $a_{hm}$'s error and already carries $u$'s own residual colour through $\mathrm{IF}_{var}$, so the map $a_{cov}(2-a_{cov})$ is all that converts marginal to whitened. The $d$-step $q_4$ accumulation (delay-propagation analogue of the baseline's $+5Q_{77}$) rides on $y_2 = a_{cov}u$ and so scales by $a_{cov}^2$. Net effect versus feeding $a_{hm}$ white: the KF's per-sample information drops by $(2-a_{cov})/a_{cov}$, and $a_{cov}$ --- an internal IIR parameter --- stops leaking into results, which is the acceptance test for this section. Deferred: the $a_{hm}$ curvature/Jensen bias $\tfrac12 a_h''\sigma_h^2$ from the thermal excursion $\sigma_h^2$.}
+
+{\small \textbf{Pending (not re-derived here)}: $C_{dpmr}$, $C_n$ are the full-$a_{pd}$ closed forms implemented in \texttt{build\_eq17\_\allowbreak 6state\_\allowbreak constants} ($3.1610$, $1.1093$ at $\lc{=}0.7$, $a_{pd}{=}0.05$). The $a_{pd}\!\to\!0$ simplification $2+1/(1-\lc^2)$, $2/(1+\lc)$ quoted in earlier drafts of this file is stale --- using it would bias $a_{hm}$ by $-20\%$.}
+
+\hd{Prior on $p$} \;{\small (initial $P_{55}$ --- pinned by two asymptotic limits, not fitted to $c$)}
+$p$ is only weakly observable ($H_{25} = O(\DHb)$), so $P_{55}[0]$ sets how far $\hat p$ can be pushed by $y_2$ noise before real information arrives. It must therefore state a genuine belief about $p$ --- and that belief does not require knowing $c(\bar h)$: it follows from the two regimes in which sphere--wall drag is known analytically.
+
+\emph{Near wall (lubrication).} Brenner's solution for a sphere approaching a plane diverges as $c_\perp \to 1/(\bar h-1)$ for $\bar h \to 1$. Matching that divergence in $c_\perp = 1 + K/(\bar h-1)^p$ forces $p = 1$.
+
+\emph{Far field (method of reflections).} $c_\perp - 1 = \tfrac{9}{8}\bar h^{-1} + O(\bar h^{-3})$, and $\bar h - 1 \to \bar h$, so again $p = 1$.
+
+$p=1$ is therefore not a fit but the exponent both analytically known regimes demand. Equating the model slope with the true one, $\sh = \tfrac{p}{\bar h-1}\tfrac{a_h(\ao-a_h)}{\ao}$ versus $da_h/d\bar h = -\ao c'/c^2$, defines the exponent the real curve requires at each height,
+\[ p_{\rm eff}(\bar h) := -\,c'(\bar h)\,\frac{\bar h - 1}{c(\bar h)-1}, \]
+which the two limits pin at $p_{\rm eff}(1^+) = p_{\rm eff}(\infty) = 1$ (numerically $0.9994$ and $1.0001$). The prior then only has to cover how far the interpolation between the two anchors strays; for the Brenner/Goldman series that excursion is $\max_{\bar h}|p_{\rm eff}-1| = 0.034$ at $\bar h = 1.22$, over the \emph{whole} domain. Hence
+\begin{empheq}[box=\fbox]{equation*}
+\sqrt{P_{55}[0]} = 0.035 \qquad (\perp\text{ axis, all }\bar h).
+\end{empheq}
+{\small Being domain-wide, this prior needs no recomputation when the trajectory changes. The \emph{structure} of the argument (both ends pinned at $p=1$) uses only the two published asymptotics; the \emph{width} $0.034$ is read off the series in use, and is the one modelling input that remains.
+
+The $\parallel$ axes have no near-wall anchor: Goldman's result there is \emph{logarithmic}, not a power law, so $p_{\rm eff}(1^+)\to 0$ (numerically $0.0055$ at $\bar h = 1.001$) while $p_{\rm eff}(\infty) = 1$; over $\bar h\in[2,22]$ it sweeps $0.717\to0.979$. The ansatz has nothing to pin near the wall --- a structural failure of the power law for $\parallel$, not something a wider prior repairs. The $\parallel$ axes are outside the scope of this 1-D wall-normal derivation.}
 
 \newpage
 \begin{center}

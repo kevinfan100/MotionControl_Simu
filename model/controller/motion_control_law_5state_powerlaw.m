@@ -30,26 +30,44 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
 %       f_dh[k]  = a_ctrl^-1 { Delta_h_d^d[k]
 %                              + (1-lc)[delta_h_m[k] - sum_i a_ctrl[k-i] f_dh[k-i]] }
 %       Delta_h_d^d[k] = Delta_h_d[k] + (1-lc) sum_{i=1}^d Delta_h_d[k-i].
-%   Measurements:
+%   Measurements. a_xm is NOT a white measurement of a_h: it is an EXACT AR(1)
+%   filter of the single-sample gain readout u[k] with pole 1-a_cov,
+%       a_xm[k] = (1-a_cov)*a_xm[k-1] + a_cov*u[k],   E[u[k]] = a_h[k-d],
+%   so feeding a_xm itself over-states its information by (2-a_cov)/a_cov
+%   (=39 at a_cov=0.05). The KF is fed the WHITENED increment instead:
 %       y1 = delta_h_m = delta_h_1 + n_h
-%       y2 = a_xm      = a_h[k-d] + n_a  (IIR variance-ratio, paper-2025 Eq.9-13)
-%   H = [1 0 0 0      0        ;
-%        0 0 0 1  -Delta_Hbar_d*(s_h/p)]   (Delta_Hbar_d = (h_d[k]-h_d[k-d])/R).
+%       y2 = a_xm[k] - (1-a_cov)*a_xm[k-1] = a_cov*u[k],  E[y2] = a_cov*a_h[k-d]
+%   H = [1 0 0    0             0                  ;
+%        0 0 0  a_cov  -a_cov*Delta_Hbar_d*(s_h/p)]  (Delta_Hbar_d=(h_d[k]-h_d[k-d])/R)
+%   Whitening also removes the EWMA group delay ((1-a_cov)/a_cov ~ 19 steps),
+%   which the d-step back-off alone did not cover.
 %   F_e (5x5) is built by local_build_F_e (rows exactly per the boxed spec).
 %
 %   Q (Path C strict, rank-1 gain block + Q33):
 %       Q33 = 4*kB*T*a_h ,  Q44 = a_h'^2*Q33 ,  Q34 = Q43 = -a_h'*Q33 ,  Q55 = 0.
-%   R (isolated so R2 can be swapped later):
+%   R (isolated in one function):
 %       R1 = sigma2_n_h (sensor variance on delta_h_m),
-%       R2 = compute_R2_placeholder(...)  (PLACEHOLDER, IIR chi-squared R2).
+%       R2 = compute_R2_whitened(...)  (variance of the whitened y2 increment).
 %
 %   ctrl_const is the offline-scalars struct from build_eq17_6state_constants
 %   (dimension-agnostic; only slot 5 differs from the aprime sibling). Optional
 %   knobs:
 %       .Q55_floor   tiny floor on Q(5,5) for conditioning   (default 0)
 %       .Pf_a_frac   sqrt(Pf(4,4))/a_h init frac             (default 0.3)
-%       .Pf_p_std    sqrt(Pf(5,5)) init exponent std         (default 0.3)
+%       .Pf_p_std    sqrt(Pf(5,5)) init exponent std         (default 0.035)
 %       .p_init      initial exponent estimate               (default 1, Brenner)
+%
+%   Pf_p_std default 0.035 is NOT tuned, and does NOT require knowing c(h_bar).
+%   p = 1 is pinned by two analytically known regimes: Brenner lubrication
+%   (c_perp -> 1/(h_bar-1) as h_bar -> 1) and the far-field reflection series
+%   (c_perp - 1 = (9/8)/h_bar). Both force p = 1, verified numerically as
+%   p_eff(1+) = 0.9994 and p_eff(inf) = 1.0001, so the prior only covers the
+%   interpolation gap between the two anchors: max|p_eff - 1| = 0.034 at
+%   h_bar = 1.22, over the WHOLE domain (hence trajectory-independent).
+%   The parallel axes have no near-wall anchor -- Goldman's near-wall law is
+%   logarithmic, p_eff(1+) -> 0 -- so neither this prior nor Q55 = 0 transfers
+%   to them; that is a structural failure of the power law for x/y, not a prior
+%   width issue.
 %
 %   a_ctrl_override (3x1, optional): feed the model/true gain to the CONTROL LAW
 %   (open-loop estimability A/B); the EKF still estimates a_h / p from a_xm.
@@ -91,6 +109,7 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
     persistent P_per_axis          % cell{3} of 5x5 covariance
     persistent dx_bar_m            % 3x1 IIR LP mean of delta_h_m [um]
     persistent sigma2_dxr_hat      % 3x1 EWMA variance of dx_r    [um^2]
+    persistent a_xm_km1            % 3x1 a_xm[k-1], for the whitening increment
     persistent pd_km1 pd_km2       % trajectory delay buffers (pd[k-1], pd[k-2])
     persistent f_d_km1 f_d_km2     % past control buffers (Sigma f_dh[k-i])
     persistent a_ctrl_km1 a_ctrl_km2        % control-law gain history
@@ -133,7 +152,9 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
         % Power-law knobs (defaults keep it conservative per the anti-blowup note).
         Q55_floor = get_field_default(ctrl_const, 'Q55_floor', 0);
         Pf_a_frac = get_field_default(ctrl_const, 'Pf_a_frac', 0.3);
-        Pf_p_std  = get_field_default(ctrl_const, 'Pf_p_std', 0.3);
+        % 0.035 = the interpolation gap between the two p=1 asymptotic anchors
+        % (see the header note); a prior, not a knob, and domain-wide.
+        Pf_p_std  = get_field_default(ctrl_const, 'Pf_p_std', 0.035);
         p_init    = get_field_default(ctrl_const, 'p_init', 1.0);   % Brenner
 
         % d-step delay R2 factor: 7-state "5*Q77" generalized to sum_{j=1}^d (d-j+1)^2
@@ -188,13 +209,16 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
             P5 = zeros(5);
             P5(1:3, 1:3) = P3;
             P5(4, 4) = (Pf_a_frac * a_init_ax)^2;   % ~(0.3*a_h)^2, modest
-            P5(5, 5) = Pf_p_std^2;                  % ~(0.3)^2 on exponent
+            P5(5, 5) = Pf_p_std^2;                  % (0.035)^2 = anchor interp. gap
             P_per_axis{ax} = P5;
         end
 
         % --- 0G. IIR states (prefill to the closed-loop dx_r variance) ---
         dx_bar_m = zeros(3, 1);
         sigma2_dxr_hat = 4 * kBT * a_h_init * C_dpmr + C_n * sigma2_n_s;
+        % the prefill above is exactly a_xm[0] = a_h_init, so seed the whitening
+        % delay slot with it (first increment is then noise-only, not a step).
+        a_xm_km1 = a_h_init;
 
         % --- 0H. Delay buffers ---
         pd_km1  = pd;
@@ -284,7 +308,11 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
     dx_r = delta_x_m - dx_bar_m_new;
     sigma2_dxr_hat_new = (1 - a_cov) * sigma2_dxr_hat + a_cov * dx_r.^2;
     a_xm = (sigma2_dxr_hat_new - C_n * sigma2_n_s) / (C_dpmr * 4 * kBT);   % 3x1 [um/pN]
-    a_meas = a_xm;
+    % a_xm is an EXACT AR(1) filter of the single-sample readout u[k] with pole
+    % 1-a_cov (subtracting/dividing by constants leaves the EWMA recursion
+    % invariant). Feed the KF the WHITENED increment y2 = a_cov*u[k] so the pole
+    % is cancelled and a_cov stops leaking into the estimates.
+    a_meas = a_xm - (1 - a_cov) * a_xm_km1;      % 3x1 = y2 (whitened) [um/pN]
 
     % ------------------------------------------------------------------
     % [2] Control law (eq17 implementable; NO disturbance term)
@@ -335,11 +363,11 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
         Q_i(5, 5) = Q55_floor;
         Q44_v(ax) = Q_i(4, 4);
 
-        % --- R: R1 sensor, R2 PLACEHOLDER (isolated) ---
+        % --- R: R1 sensor, R2 for the whitened y2 increment (isolated) ---
         R1_i = sigma2_n_s(ax);
-        R2_i = compute_R2_placeholder(a_h_i, sigma2_n_s(ax), IF_abc, C_dpmr, C_n, ...
-                                      K_var, amlpf_var_factor, xi_per_axis(ax), kBT, ...
-                                      Q_i(4, 4), delay_R2_factor);
+        R2_i = compute_R2_whitened(a_h_i, sigma2_n_s(ax), IF_abc, C_dpmr, C_n, ...
+                                   K_var, amlpf_var_factor, xi_per_axis(ax), kBT, ...
+                                   Q_i(4, 4), delay_R2_factor, a_cov);
 
         % --- Gates (OR): warm-up / a_xm NaN guard / near wall ---
         G1 = (t_now < t_warmup_kf);
@@ -381,10 +409,12 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
         P_upd  = 0.5 * (P_upd + P_upd');
         K_dx_y1_v(ax) = K1(3);
 
-        % (b) y2 = a_xm observes a_h[k-d]; skipped when gated (KF ignores y_2)
+        % (b) y2 = whitened a_xm increment, observes a_cov*a_h[k-d];
+        %     skipped when gated (KF ignores y_2). a_xm_km1 is still shifted every
+        %     step below, so the increment stays valid when the gate reopens.
         if ~gate_off(ax)
-            H25 = -Delta_Hbar_d * s_h_over_p;               % H(2,5)
-            H2  = [0 0 0 1 H25];
+            H25 = -Delta_Hbar_d * s_h_over_p;               % H(2,5)/a_cov
+            H2  = a_cov * [0 0 0 1 H25];
             S2  = H2 * P_upd * H2' + R2_i;
             K2  = (P_upd * H2') / S2;
             if freeze_gain; K2(4:5) = 0; end
@@ -412,6 +442,7 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
     a_ctrl_km2 = a_ctrl_km1; a_ctrl_km1 = a_ctrl;
     dx_bar_m = dx_bar_m_new;
     sigma2_dxr_hat = sigma2_dxr_hat_new;
+    a_xm_km1 = a_xm;
     k_step = k_step + 1;
 
     % ------------------------------------------------------------------
@@ -514,19 +545,29 @@ function F_e = local_build_F_e(lambda_c, F_dh, s_h, s_a, s_h_over_p, Delta_hbar_
 end
 
 
-function R2 = compute_R2_placeholder(a_h, sigma2_n, IF_abc, C_dpmr, C_n, ...
-                                     K_var, amlpf_var_factor, xi, kBT, Q44, delay_factor)
-%COMPUTE_R2_PLACEHOLDER  a_xm measurement-noise variance R(2,2).
+function R2 = compute_R2_whitened(a_h, sigma2_n, IF_abc, C_dpmr, C_n, ...
+                                 K_var, amlpf_var_factor, xi, kBT, Q44, ...
+                                 delay_factor, a_cov)
+%COMPUTE_R2_WHITENED  R(2,2) for the WHITENED a_xm increment y2 = a_cov*u[k].
+%   Spec: 5state_powerlaw_hd.tex, "Measurement noise R".
 %
-%   TODO: replace with the 5state_powerlaw_hd R derivation (in progress). This is
-%   the eq17 7-state / 5state_aprime IIR chi-squared R2 verbatim (a_x -> a_h):
+%   R2_intrinsic is the eq17 7-state / 5state_aprime IIR chi-squared chain
+%   (a_x -> a_h) and equals the MARGINAL variance of a_xm's error:
 %       R2_intrinsic = amlpf_var_factor * K_var * IF_eff(a_h) * (a_h + xi)^2
-%   plus the d-step delay term (7-state "5*Q77" structure with Q77 -> Q44):
-%       R2_delay = delay_factor * Q44.
-%   Isolated here so the swap touches ONE function only.
+%   with K_var = 2*a_cov/(2-a_cov). It already carries u's own residual colour
+%   through IF_eff, so the only conversion needed is marginal -> whitened.
+%
+%   For the AR(1) x[k] = (1-a_cov)*x[k-1] + a_cov*u[k] the stationary variance is
+%       Var(x) = a_cov*Var(u)/(2-a_cov)   =>   Var(a_cov*u) = a_cov*(2-a_cov)*Var(x)
+%   The d-step q4 accumulation (7-state "5*Q77" structure with Q77 -> Q44) rides
+%   on y2 = a_cov*u and so picks up a_cov^2.
+%
+%   Feeding a_xm directly instead would over-state the per-sample information by
+%   (2-a_cov)/a_cov (=39 at a_cov=0.05; measured 33.6 from the a_xm error ACF,
+%   fitted pole 0.9457 vs 1-a_cov=0.95).
     IF_eff = if_eff_eval(IF_abc, C_dpmr, C_n, kBT, a_h, sigma2_n);
     R2_intrinsic = amlpf_var_factor * K_var * IF_eff * (a_h + xi)^2;
-    R2 = R2_intrinsic + delay_factor * Q44;
+    R2 = a_cov * (2 - a_cov) * R2_intrinsic + a_cov^2 * delay_factor * Q44;
 end
 
 
