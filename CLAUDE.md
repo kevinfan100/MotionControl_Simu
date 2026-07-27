@@ -68,37 +68,15 @@ V5/V7 cross-branch 研究 (`reference/eq6_analysis/q66_value_dominance.md`) 發�
 
 ## 專案結構
 
-```
-MotionControl_Simu/
-├── model/                            # 核心模型
-│   ├── calc_simulation_params.m         # 模擬參數計算 + Bus Object 定義
-│   ├── system_model.slx                 # Simulink 主模型
-│   ├── config/                        # 參數配置 (含 apply_qr_preset)
-│   ├── wall_effect/                   # Wall Effect (含 K_h analytical derivatives)
-│   ├── thermal_force/                 # 熱力（布朗運動）模組
-│   ├── trajectory/                    # 軌跡模組 (含 ramp_descent)
-│   ├── controller/                    # 控制器模組
-│   │   ├── motion_control_law.m         # dispatcher (switch on controller_type)
-│   │   ├── motion_control_law_eq6.m     # Paper 2025 Eq.6
-│   │   ├── motion_control_law_eq17.m + _eq17_core.m
-│   │   ├── motion_control_law_23state.m # legacy
-│   │   ├── build_eq17_constants.m       # eq17 offline scalars
-│   │   └── calc_ctrl_params.m
-│   ├── dual_track/                    # 純 MATLAB driver (跨 controller, 與 Simulink 並行)
-│   └── diag/                          # closed-loop variance oracles (per-controller)
-├── test_script/                      # 模擬入口 + build_helpers/ + unit_tests/ + integration/
-├── agent_docs/                       # 技術文件 (shared/ + eq17/ + eq6_or_23state/)
-├── reference/                        # 參考文件
-│   ├── shared/                       # 跨 controller 共通推導 (writeup_architecture.tex)
-│   ├── eq6_analysis/                 # eq6 specific (含 archive/historical_notes + V5_V7_study)
-│   ├── eq17_analysis/                # eq17 specific (含 archive/sessions/suppress_xD_study)
-│   ├── system_figs/                  # 系統圖根集 (C_del_x, total_block_diagram, ...)
-│   ├── controller_paper_source/      # Estimation_and_Control 論文源碼
-│   ├── thesis/                       # 參考論文 PDF
-│   └── branch-stories/               # sigma.md + eq17.md (歷史故事索引)
-├── test_results/                     # 模擬結果（不納入 Git）
-└── .claude/
-```
+主要目錄 `ls` 可見：`model/`（含 `controller/`, `wall_effect/`, `trajectory/`,
+`thermal_force/`, `config/`）、`test_script/`、`agent_docs/`、`reference/`、`test_results/`。
+
+以下幾點 `ls` 看不出來：
+
+- `model/dual_track/` — 純 MATLAB driver，跨 controller，與 Simulink 並行（見 Detailed Docs）
+- `model/diag/` — closed-loop variance oracles (per-controller)
+- `reference/shared/writeup_architecture.tex` — 跨 controller 共通推導 SSOT
+- `reference/branch-stories/` — sigma.md + eq17.md 歷史故事索引
 
 歷史分支以 archive tag 凍結:
 - `archive/sigma-pre-cleanup` → 整理前 sigma HEAD (origin remote)
@@ -109,19 +87,22 @@ MotionControl_Simu/
 
 ## Detailed Docs
 
+`@` 前綴 = 每個 session 開場自動載入；無前綴 = 指標，需要時才讀。
+歷史紀錄與 legacy 分支文件一律不加 `@`（省 context，內容仍完整保留）。
+
 ### 跨 controller 共用
 - @agent_docs/shared/simulink-architecture.md — Simulink 方塊圖、Block 模式、Solver、ToWorkspace
 - @agent_docs/shared/math-model.md — 座標系統、單位、系統方程、Gamma_inv
 - @agent_docs/shared/analysis-guide.md — GUI 分析 Tabs、建議測試參數
-- @agent_docs/shared/dual-track-simulation-design.md — pure-MATLAB vs Simulink 雙 track 設計
+- agent_docs/shared/dual-track-simulation-design.md — pure-MATLAB vs Simulink 雙 track 設計決策 (已實作)
 
 ### eq17 controller
 - @agent_docs/eq17/eq17-architecture.md — eq17 7-state EKF + Eq.17 控制律設計
-- @agent_docs/eq17/eq17-verification.md — eq17 phase 0-9 驗證脈絡
+- agent_docs/eq17/eq17-verification.md — eq17 task 01-04 驗證編年史 (2026-04, 歷史紀錄)
 
 ### eq6 (Paper 2025 Eq.6) 與 legacy 23-state
-- @agent_docs/eq6_or_23state/ekf-matrix-guide.md — 23-state EKF 矩陣完整文件
-- @agent_docs/eq6_or_23state/ekf-qr-analysis.md — 23-state Q/R 分析 (pointer to writeup)
-- @agent_docs/eq6_or_23state/kf-observer-analysis.md — KF observer 分析
-- @agent_docs/eq6_or_23state/literature-review.md — 文獻 review
-- @agent_docs/eq6_or_23state/verification-notes.md — 驗證筆記
+- agent_docs/eq6_or_23state/ekf-matrix-guide.md — 23-state EKF 矩陣完整文件
+- agent_docs/eq6_or_23state/ekf-qr-analysis.md — 23-state Q/R 分析 (pointer to writeup)
+- agent_docs/eq6_or_23state/kf-observer-analysis.md — KF observer 分析
+- agent_docs/eq6_or_23state/literature-review.md — 文獻 review
+- agent_docs/eq6_or_23state/verification-notes.md — 驗證筆記

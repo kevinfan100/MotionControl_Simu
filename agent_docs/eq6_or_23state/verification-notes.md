@@ -52,7 +52,7 @@ matches Task 1b's known ~1 pt Σ_aug over-prediction.
 Caveat: bias_factor uses Σ_th only. For measurement noise case (non-free-space),
 a separate factor for C_np_eff term would be needed.
 
-Artifacts: `reference/qr_analysis/task1b_report.md`, `task1c_report.md`,
+Artifacts: `reference/eq6_analysis/archive/verification/task1b_report.md`, `task1c_report.md`,
 `test_script/analyze_task1b_iir_bias.m`, `build_bias_factor_lookup.m`,
 `verify_task1c_correction.m`.
 
@@ -126,7 +126,7 @@ Artifacts: `task1d_diagnostic_report.md`, `task1e_design.md`,
 
 ## 相關文件索引
 
-- agent_docs/kf-observer-analysis.md — KF observer 完整推導
-- agent_docs/literature-review.md — 文獻調查
-- reference/qr_analysis/verification_report.md — 驗證報告和數據
-- reference/qr_analysis/temp_variance_recursion.tex — Σ_e recursion 數學推導
+- agent_docs/eq6_or_23state/kf-observer-analysis.md — KF observer 完整推導
+- agent_docs/eq6_or_23state/literature-review.md — 文獻調查
+- reference/eq6_analysis/archive/verification/verification_report.md — 驗證報告和數據
+- `temp_variance_recursion.tex` — Σ_e recursion 數學推導（**檔案已不在 `reference/` 下，去向未確認**）

@@ -318,14 +318,27 @@ K_h,i'(h̄) := dK_h,i/dh̄ = C_i''/C_i − K_h,i²    二階敏感度修正
 
 ---
 
-## 8. 實作對應檔案（規劃，尚未建立）
+## 8. 實作對應檔案
 
-| 模組 | 檔案路徑 |
-|---|---|
-| 控制律 + EKF 一體化 | `model/controller/motion_control_law_eq17_7state.m` |
-| 參數計算 | `model/controller/calc_ctrl_params.m`（既存，需擴充） |
-| 觀測性檢查 | `test_script/check_observability_eq17.m` ✓（5+7-state 各驗證） |
-| Q/R 設計 | `test_script/compute_qr_eq17.m` |
-| 端到端驗證 | `test_script/verify_eq17_7state.m` |
+> **本節為 2026-04 的規劃，與最終實作不符**（2026-07-26 核對）。
+> 下表 5 個路徑中，只有 `calc_ctrl_params.m` 存在；其餘 4 個從未建立，
+> 實作走了不同的命名與拆分方式。以 `model/controller/` 的實際檔案為準。
 
-對應 simulation 設定變更：`config.controller_type = 'eq17_7state'`（命名待定）。
+原規劃（未落地，保留為歷史）：
+
+| 模組 | 規劃路徑 | 實況 |
+|---|---|---|
+| 控制律 + EKF 一體化 | `model/controller/motion_control_law_eq17_7state.m` | **不存在** |
+| 參數計算 | `model/controller/calc_ctrl_params.m` | 存在 |
+| 觀測性檢查 | `test_script/check_observability_eq17.m` | **不存在**（實際：`test_script/integration/check_observability_5state_aprime.m`）|
+| Q/R 設計 | `test_script/compute_qr_eq17.m` | **不存在** |
+| 端到端驗證 | `test_script/verify_eq17_7state.m` | **不存在**（實際：`test_script/integration/verify_eq17_4state.m` 等）|
+
+實際落地的 eq17 家族（`model/controller/`）：
+`motion_control_law_eq17.m` + `_eq17_core.m`（Simulink dispatcher `controller_type=17` 走這條）、
+`_eq17_4state.m`、`_eq17_4state_para.m`、`_eq17_5state.m`、`_eq17_5state_aprime.m`、
+`_eq17_6state.m`、`_eq17_gscalar.m`、`motion_control_law_5state_powerlaw.m`，
+常數建構 `build_eq17_constants.m` / `build_eq17_6state_constants.m`。
+
+執行路徑：dispatcher 只認 `controller_type` ∈ {6, 17, 23}；上列 4/5/6-state 與 powerlaw
+變體由 `model/dual_track/run_pure_simulation.m` 以 `config.eq17_variant` 字串選擇，不走 dispatcher。

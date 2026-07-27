@@ -1,7 +1,11 @@
 # Hybrid Simulation Design: Pure-MATLAB Dev Engine + Simulink Oracle
 
 Date: 2026-04-28
-Status: 設計討論結束，未實作。等使用者 review 後進入 implementation plan 階段。
+Status: **已實作**。本檔保留為當初的設計決策紀錄（決策一~六的理由）。
+實作落在 `model/dual_track/`（非本文寫的 `model/pure_matlab/`）：
+`run_pure_simulation.m` + `step_dynamics.m` + `README.md`。
+下文「新增檔案」與「verify_equivalence.m 設計」兩節描述的是當初規劃，**與最終實作有出入**，
+以 `model/dual_track/` 的實際 code 為準。
 
 ---
 
@@ -142,13 +146,16 @@ test_*_unit.m                pure vs slx 通過 gate           run_simulation.m
 
 ## 新增檔案 (最小集)
 
+> 以下為 2026-04-28 的規劃。**實際落地路徑是 `model/dual_track/`**；
+> `verify_equivalence.m` 至今未建立（equivalence gate 尚未實作）。
+
 ```
-model/pure_matlab/
-  run_pure_simulation.m       # pure-MATLAB driver, 取代 sim('system_model') 的 time-stepping loop
-  step_dynamics.m             # 連續動力學一步 (ode4 step=10 µs, 62 substeps per Ts)
+model/pure_matlab/           →  實際: model/dual_track/
+  run_pure_simulation.m       # pure-MATLAB driver, 取代 sim('system_model') 的 time-stepping loop   [已建立]
+  step_dynamics.m             # 連續動力學一步 (ode4 step=10 µs, 62 substeps per Ts)                 [已建立]
 
 test_script/
-  verify_equivalence.m        # pure vs slx 一致性 gate (兩階段)
+  verify_equivalence.m        # pure vs slx 一致性 gate (兩階段)                                      [未建立]
   unit_tests/
     test_ekf.m                # 7-state EKF 單元測試
     test_trajectory.m         # (optional) trajectory 單元測試

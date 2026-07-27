@@ -1,5 +1,11 @@
 # Eq.17 + 7-state EKF Verification Notes
 
+> **歷史編年史（2026-04-28 ~ 04-29，task 01–04）**。內容停在 7-state 階段，
+> 之後主線已演進到 4/5/6-state 與 5-state power-law（見 `reference/eq17_analysis/` 與
+> auto-memory 索引）。本檔內的檔案路徑（如 `motion_control_law_eq17_7state.m`、
+> `model/pure_matlab/`）反映當時狀態，**多數已不存在**；不要當現況指引用。
+> 為省 context，本檔不再由 CLAUDE.md 自動載入。
+
 **累積式驗證紀錄**。本檔追蹤 `test/eq17-5state-ekf` 分支上每個驗證 task 的結果、與 paper 對照、以及跨 task 的關鍵發現。
 
 對應架構文件：[`eq17-architecture.md`](eq17-architecture.md)
