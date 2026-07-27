@@ -41,7 +41,8 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
 %        0 0 0  a_cov  -a_cov*Delta_Hbar_d*(s_h/p)]  (Delta_Hbar_d=(h_d[k]-h_d[k-d])/R)
 %   Whitening also removes the EWMA group delay ((1-a_cov)/a_cov ~ 19 steps),
 %   which the d-step back-off alone did not cover.
-%   F_e (5x5) is built by local_build_F_e (rows exactly per the boxed spec).
+%   F_e (5x5) is built by local_build_F_e from the DETERMINISTIC control mirror
+%   F_dh_det (delta_h_m := 0), not the realised f_d -- see [2b] in the body.
 %
 %   Q (Path C strict, rank-1 gain block + Q33):
 %       Q33 = 4*kB*T*a_h ,  Q44 = a_h'^2*Q33 ,  Q34 = Q43 = -a_h'*Q33 ,  Q55 = 0.
@@ -53,7 +54,8 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
 %   (dimension-agnostic; only slot 5 differs from the aprime sibling). Optional
 %   knobs:
 %       .Q55_floor   tiny floor on Q(5,5) for conditioning   (default 0)
-%       .Pf_a_frac   sqrt(Pf(4,4))/a_h init frac             (default 0.3)
+%       .Pf_a_frac   sqrt(Pf(4,4))/a_h init frac    (default 5/h_bar_0^2,
+%                    i.e. matched to the asymptotic seed's own accuracy)
 %       .Pf_p_std    sqrt(Pf(5,5)) init exponent std         (default 0.035)
 %       .p_init      initial exponent estimate               (default 1, Brenner)
 %
@@ -110,6 +112,7 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
     persistent dx_bar_m            % 3x1 IIR LP mean of delta_h_m [um]
     persistent sigma2_dxr_hat      % 3x1 EWMA variance of dx_r    [um^2]
     persistent a_xm_km1            % 3x1 a_xm[k-1], for the whitening increment
+    persistent fdet_km1 fdet_km2   % noise-free control mirror, own history
     persistent pd_km1 pd_km2       % trajectory delay buffers (pd[k-1], pd[k-2])
     persistent f_d_km1 f_d_km2     % past control buffers (Sigma f_dh[k-i])
     persistent a_ctrl_km1 a_ctrl_km2        % control-law gain history
@@ -151,7 +154,7 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
 
         % Power-law knobs (defaults keep it conservative per the anti-blowup note).
         Q55_floor = get_field_default(ctrl_const, 'Q55_floor', 0);
-        Pf_a_frac = get_field_default(ctrl_const, 'Pf_a_frac', 0.3);
+
         % 0.035 = the interpolation gap between the two p=1 asymptotic anchors
         % (see the header note); a prior, not a knob, and domain-wide.
         Pf_p_std  = get_field_default(ctrl_const, 'Pf_p_std', 0.035);
@@ -172,18 +175,41 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
             enable_wall = false;
         end
 
-        % --- 0D. Far-field gain + wall-aware a_h[0] seeding (one-time nominal;
-        %         the ongoing estimation never re-reads c(h_bar)) ---
+        % --- 0D. Far-field gain + a_h[0] seeding from the FAR-FIELD ASYMPTOTE.
+        %   c(h_bar) is NEVER read, here or later. The seed uses only the
+        %   leading method-of-reflections term -- the same published asymptote
+        %   that pins p = 1 in the gain model:
+        %       c_perp ~ 1 + (9/8)/h_bar ,   c_para ~ 1 + (9/16)/h_bar
+        %   and h_bar_0, i.e. the wall position, which is assumed known.
+        %   Accuracy at the start height (verified against the exact curve):
+        %       h_bar_0    50     22.2      10       5
+        %       err       0.05%   0.25%   1.23%   4.91%     ~ 1.25/h_bar_0^2
+        %   versus 2.3% / 5.3% / 12.6% / 28.5% for the flat a_nom assumption.
         a_nom_p = Ts / gamma_N_p;      % a_o = far-field gain [um/pN]
+        h_bar_init = Inf;
         if enable_wall && isfield(params, 'common') && isfield(params.common, 'p0')
             p0_init    = params.common.p0(:);
             h_init_um  = dot(p0_init, w_hat_n) - pz_wall;
             h_bar_init = max(h_init_um / R_radius, 1.001);
-            [c_para0, c_perp0] = calc_correction_functions(h_bar_init);
-            a_h_init   = [a_nom_p / c_para0; a_nom_p / c_para0; a_nom_p / c_perp0];
+            a_h_init   = [a_nom_p / (1 + (9/16) / h_bar_init); ...
+                          a_nom_p / (1 + (9/16) / h_bar_init); ...
+                          a_nom_p / (1 + (9/8)  / h_bar_init)];
         else
             a_h_init    = [a_nom_p; a_nom_p; a_nom_p];
         end
+
+        % Pf_a_frac must MATCH the seed's own accuracy, not be loosened to buy
+        % correction room: an over-tight prior converges far too slowly (5.33%
+        % init error under a 1% prior moved only 0.9% in 12 s), an over-loose
+        % one lets the noisy a_xm pull the estimate around. The asymptotic seed
+        % above is good to ~1.25/h_bar_0^2, so the default is that residual with
+        % a 4x safety factor. Far from the wall this is a tight, honest prior.
+        if isfinite(h_bar_init)
+            Pf_a_default = min(max(5 / h_bar_init^2, 0.002), 0.3);
+        else
+            Pf_a_default = 0.02;       % no wall: a_h[0] = a_nom is exact
+        end
+        Pf_a_frac = get_field_default(ctrl_const, 'Pf_a_frac', Pf_a_default);
 
         % gain floor used to keep 1/a_ctrl and Q33 well-conditioned (numerical
         % safety only; physically a_h stays a_nom/c > 0).
@@ -225,6 +251,8 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
         pd_km2  = pd;
         f_d_km1 = zeros(3, 1);
         f_d_km2 = zeros(3, 1);
+        fdet_km1 = zeros(3, 1);
+        fdet_km2 = zeros(3, 1);
         a_ctrl_km1 = a_h_init;  a_ctrl_km2 = a_h_init;
         k_step = 1;
 
@@ -329,6 +357,32 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
                          - one_minus_lc * sum_a_fd_past);
 
     % ------------------------------------------------------------------
+    % [2b] Deterministic mirror of the control law (delta_h_m := 0, running on
+    %   its OWN history). Purely trajectory-driven, hence EXOGENOUS.
+    %   F_e must use THIS, not the realised f_d: the error dynamics
+    %       delta_h[k+1] = lc*delta_h - F_dh*e_ah - eps_h
+    %   is exact with the realised force, but handing that F_dh to the KF makes
+    %   F_e a random matrix sharing the thermal noise of eps_h. P and K then
+    %   become innovation-correlated and E[K*innov] != 0 -- a RECTIFICATION that
+    %   is one-signed regardless of the noise sign, so it accumulates instead of
+    %   averaging out. Measured with the realised f_d: y1 dragged a_hat down by
+    %   24.3% of a_true over 12 s of positioning, monotonically. With the mirror
+    %   the same contribution is +0.0%. See 5state_powerlaw_hd.tex, F_e section.
+    % ------------------------------------------------------------------
+    if d_delay == 2
+        sum_af_det = a_ctrl_km1 .* fdet_km1 + a_ctrl_km2 .* fdet_km2;
+    else
+        sum_af_det = a_ctrl_km1 .* fdet_km1;
+    end
+    f_det = inv_a_ctrl .* (pd_kp1 - lambda_c * pd - one_minus_lc * pd_km_d ...
+                           - one_minus_lc * sum_af_det);
+    if d_delay == 2
+        F_dh_det = f_det + one_minus_lc * (fdet_km1 + fdet_km2);
+    else
+        F_dh_det = f_det + one_minus_lc * fdet_km1;
+    end
+
+    % ------------------------------------------------------------------
     % [3] Per-axis slope, Q, R, gate; then EKF predict + sequential 1-D update.
     % ------------------------------------------------------------------
     I5 = eye(5);
@@ -377,11 +431,7 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
         gate_off(ax) = G1 || G2 || G3;
 
         % --- F_dh (col-4 sensitivity) and F_e (5x5) ---
-        if d_delay == 2
-            F_dh = f_d(ax) + one_minus_lc * (f_d_km1(ax) + f_d_km2(ax));
-        else
-            F_dh = f_d(ax) + one_minus_lc * f_d_km1(ax);
-        end
+        F_dh = F_dh_det(ax);      % EXOGENOUS regressor (see [2b])
         F_e = local_build_F_e(lambda_c, F_dh, s_h, s_a, s_h_over_p, ...
                               Delta_hbar_d, R_radius);
 
@@ -439,6 +489,7 @@ function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p
     % ------------------------------------------------------------------
     pd_km2 = pd_km1; pd_km1 = pd;
     f_d_km2 = f_d_km1; f_d_km1 = f_d;
+    fdet_km2 = fdet_km1; fdet_km1 = f_det;
     a_ctrl_km2 = a_ctrl_km1; a_ctrl_km1 = a_ctrl;
     dx_bar_m = dx_bar_m_new;
     sigma2_dxr_hat = sigma2_dxr_hat_new;

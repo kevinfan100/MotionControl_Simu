@@ -245,6 +245,21 @@ e_{\delta h_3}[k+1] &= \lc\,e_{\delta h_3} - \Fdh\,\eah - \underbrace{\varepsilo
 \end{bmatrix}
 \end{empheq}
 \[ \mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k] - \mathbf{L}[k]\,\mathbf{H}\,\mathbf{e}[k] + \mathbf{q}[k] \]
+
+\hd{Which $\Fdh$ enters $\mathbf F_e$} \;{\small (the dynamics above are exact; the KF's precondition is not)}
+The boxed motion error is exact with the \emph{realised} $f_{dh}$. Handing that same $\Fdh$ to the filter is nevertheless illegitimate: a KF's gain recursion assumes $\mathbf F_e[k]$ is independent of the noises, and
+\[ f_{dh}[k] \;\ni\; (1-\lc)\,\hat a_h^{-1}\,\delta h_m[k] = (1-\lc)\,\hat a_h^{-1}\big(\delta h[k-d] + n_h[k]\big), \]
+so $\Fdh$ carries the very thermal history and sensor noise that sit in $\varepsilon_h$. Then $\mathbf P$ and $\mathbf L$ become innovation-correlated and $\mathbb E[\mathbf L\,\mathrm{innov}] \neq 0$ --- a \emph{rectification}: a noise multiplied by itself is one-signed whatever the noise does, so it accumulates instead of averaging out, and the minus sign of $F_{e,34}$ sends $\hat a_h$ downward. Measured in far-field positioning with the realised force, the $y_1$ channel dragged $\hat a_h$ down by $24.3\%$ of $a_h$ over $12$\,s, monotonically and without settling; the drift scales with $(1-\lc)$ and is insensitive to $\sigma_{n_h}$ (an $80\times$ sweep moves it $2\%$), as the thermal---not sensor---path predicts.
+
+Split the force into its exogenous mean and its noise-driven remainder,
+\[ \Fdh = \Fdh^{\rm det} + \Fdh^{\rm noise}, \qquad
+   f^{\rm det}_{dh}[k] = \hat a_h^{-1}\Big\{\Delta h_d^{d}[k] - (1-\lc)\textstyle\sum_{i=1}^{d}\hat a_h[k-i] f^{\rm det}_{dh}[k-i]\Big\}, \]
+i.e.\ the control law with $\delta h_m := 0$, run on its own history: purely trajectory-driven, hence exogenous. The mean enters the Jacobian; the remainder is a multiplicative noise whose variance belongs in $Q_{33}$:
+\begin{empheq}[box=\fbox]{equation*}
+F_{e,34} = -\Fdh^{\rm det}[k], \qquad
+\Delta Q_{33} = \mathrm{Var}\big(\Fdh^{\rm noise}\big)\,\mathbb E\big[e_{a_h}^2\big].
+\end{empheq}
+{\small $\Delta Q_{33} \sim [(1{-}\lc)\sigma_{\delta h_m}/\hat a_h]^2\,\mathbb E[e_{a_h}^2] \approx 3\times10^{-7}\,\mu\mathrm{m}^2$ against $Q_{33} = 4k_BT a_h \approx 2.4\times10^{-4}\,\mu\mathrm{m}^2$ --- three orders down, so it is dropped. With $F_{e,34} = -\Fdh^{\rm det}$ the same $y_1$ contribution measures $+0.0\%$ and $\hat a_h$ stops drifting. Where the trajectory is stationary $\Fdh^{\rm det} = 0$ and $y_1$ carries no gain information at all --- correct, since with no commanded motion the only gain information is the fluctuation statistics, which is precisely what $y_2$ reads.}
 {\small $\mathbf q = [\,0,0,q_3,q_4,0\,]^\top$: $q_3{=}-\varepsilon_h$, $q_4{=}(\sh[k]/R)\varepsilon_h = \aph[k]\varepsilon_h$ (rank-1 gain block, fully correlated $q_4{=}-\aph[k]\,q_3$); $Q$ values below. Leading order keeps each channel's leading term ($F_{e,44}$'s $\Dhb\,s_a$, and $p$'s sole plant path $F_{e,45}{=}\Dhb\,\sh[k]/p$) but drops the same-order correction to the already-$O(1)$ $H_{24}{=}1$.}
 
 \hd{Process noise $Q$} \;{\small (Path C strict: only the current white thermal drives $Q$; the $\varepsilon_h$ MA($d$) tail $\to$ closed-loop variance, $n_h\to R_1$)}
@@ -282,6 +297,14 @@ which the two limits pin at $p_{\rm eff}(1^+) = p_{\rm eff}(\infty) = 1$ (numeri
 \begin{empheq}[box=\fbox]{equation*}
 \sqrt{P_{55}[0]} = 0.035 \qquad (\perp\text{ axis, all }\bar h).
 \end{empheq}
+\hd{Seeding $a_h[0]$} \;{\small (no $c(\bar h)$ anywhere, at init or later)}
+The far-field anchor used above also seeds the gain: $c_\perp \simeq 1 + \tfrac98/\bar h_0$, $c_\parallel \simeq 1 + \tfrac{9}{16}/\bar h_0$, needing only $\bar h_0$ (the wall position, assumed known).
+\begin{empheq}[box=\fbox]{equation*}
+a_h[0] = \frac{\ao}{1 + \tfrac98/\bar h_0}\ (\perp), \qquad
+\sqrt{P_{44}[0]}/a_h = 5/\bar h_0^{2}.
+\end{empheq}
+{\small Against the exact curve the seed errs $0.05/0.25/1.23/4.91\%$ at $\bar h_0 = 50/22.2/10/5$ (i.e.\ $\simeq 1.25/\bar h_0^2$), versus $2.3/5.3/12.6/28.5\%$ for the flat $\ao$ assumption. $P_{44}[0]$ is that residual with a $4\times$ margin --- it must \emph{match} the seed, not be inflated to buy correction room: a $5.33\%$ seed error under a $1\%$ prior moved only $0.9\%$ in $12$\,s, while the matched pairs converge.}
+
 {\small Being domain-wide, this prior needs no recomputation when the trajectory changes. The \emph{structure} of the argument (both ends pinned at $p=1$) uses only the two published asymptotics; the \emph{width} $0.034$ is read off the series in use, and is the one modelling input that remains.
 
 The $\parallel$ axes have no near-wall anchor: Goldman's result there is \emph{logarithmic}, not a power law, so $p_{\rm eff}(1^+)\to 0$ (numerically $0.0055$ at $\bar h = 1.001$) while $p_{\rm eff}(\infty) = 1$; over $\bar h\in[2,22]$ it sweeps $0.717\to0.979$. The ansatz has nothing to pin near the wall --- a structural failure of the power law for $\parallel$, not something a wider prior repairs. The $\parallel$ axes are outside the scope of this 1-D wall-normal derivation.}
