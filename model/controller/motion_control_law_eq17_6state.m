@@ -1,3 +1,4 @@
+% STATUS: ACTIVE-baseline (Vpersonal 6-state = 結構主基準)
 function [f_d, ekf_out, diag] = motion_control_law_eq17_6state(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override)
 %MOTION_CONTROL_LAW_EQ17_6STATE Per-axis 6-state EKF controller
 %   (RevisedControl_Vpersonal: paper 2023 Eq.17, disturbance pre-combined).

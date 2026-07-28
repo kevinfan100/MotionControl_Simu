@@ -105,8 +105,7 @@ function simOut = run_pure_simulation(config, opts)
     clear motion_control_law motion_control_law_23state ...
           motion_control_law_eq6 motion_control_law_eq17 motion_control_law_eq17_core ...
           motion_control_law_eq17_6state motion_control_law_eq17_5state ...
-          motion_control_law_eq17_5state_aprime ...
-          motion_control_law_eq17_4state motion_control_law_eq17_gscalar ...
+          motion_control_law_eq17_4state ...
           trajectory_generator calc_thermal_force;
 
     % ------------------------------------------------------------------
@@ -204,6 +203,12 @@ function simOut = run_pure_simulation(config, opts)
     is_5state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '5state');
     is_4state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state');
     is_vpersonal = is_6state || is_5state || is_4state;   % share prefill defaults + constants builder
+    if isfield(config, 'eq17_variant') && ~isempty(config.eq17_variant) && ~is_vpersonal
+        error('run_pure_simulation:unknownVariant', ...
+              ['Unknown config.eq17_variant ''%s''. Supported: ''4state''|''5state''|''6state''.\n' ...
+               'Archived variants (5state_aprime, gscalar, TEMP forks) were retired 2026-07-28 -- ' ...
+               'see reference/eq17_analysis/archive/MOVED.md.'], config.eq17_variant);
+    end
     if opts.use_true_gain && ~is_vpersonal
         error('run_pure_simulation:useTrueGainUnsupported', ...
               'opts.use_true_gain=true requires config.eq17_variant=''6state'', ''5state'' or ''4state''.');
@@ -477,8 +482,6 @@ function simOut = run_pure_simulation(config, opts)
         diag_log.delta_x_hat_3     = zeros(N, 3);   % current tracking-error estimate (slot 3)
         diag_log.P_dx1             = zeros(N, 3);
         diag_log.a_ctrl_used       = zeros(N, 3);
-        diag_log.s_hat             = zeros(N, 1);   % gscalar: scalar gain estimate
-        diag_log.var_s             = zeros(N, 1);   % gscalar: Var(s_hat) = 1/I_g
     end
 
     % ------------------------------------------------------------------
@@ -628,8 +631,6 @@ function simOut = run_pure_simulation(config, opts)
             if isfield(diag_k, 'delta_x_hat_3'); diag_log.delta_x_hat_3(k, :) = diag_k.delta_x_hat_3.'; end
             diag_log.P_dx1(k, :)             = diag_k.P_dx1.';
             diag_log.a_ctrl_used(k, :)       = diag_k.a_ctrl_used.';
-            if isfield(diag_k, 's_hat'); diag_log.s_hat(k) = diag_k.s_hat; end
-            if isfield(diag_k, 'var_s'); diag_log.var_s(k) = diag_k.var_s; end
         end
 
         % --- (k) Update unit-delay for next step's controller input

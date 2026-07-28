@@ -42,7 +42,7 @@ base_config.n_cycles  = 3;
 base_config.trajectory_type = 'osc';
 
 base_config.ctrl_enable = true;
-base_config.controller_type = 7;         % 7-state EKF (derivation target)
+base_config.controller_type = 6;         % eq6 (7-state EKF, derivation target)
 base_config.lambda_c = 0.7;
 base_config.a_pd  = 0.05;
 base_config.a_prd = 0.05;

@@ -1,3 +1,4 @@
+% STATUS: FALSIFIED (support of 5state_aprime) -- see memory project_aprime_var_esti_2026-07-15
 function F_e = build_F_e_5state_aprime(lambda_c, f_d_i, F_1_i, dFh_i, Delta_h_d, dxh3_selfmod)
 %BUILD_F_E_5STATE_APRIME  5x5 error-dynamics matrix (per axis); slot 5 = a'_x.
 %   Standalone so the L0 Jacobian check can exercise the EXACT matrix the

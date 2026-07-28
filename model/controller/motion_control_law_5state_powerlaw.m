@@ -1,3 +1,4 @@
+% STATUS: ACTIVE (gain-law mainline, co-equal with expgain) -- spec 5state_powerlaw_hd.tex; driver test_script/integration/run_5state_powerlaw.m
 function [f_d, ekf_out, diag] = motion_control_law_5state_powerlaw(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override)
 %MOTION_CONTROL_LAW_5STATE_POWERLAW Per-axis 5-state EKF eq17 controller whose
 %   motion gain a_h follows a two-parameter POWER-LAW (gain level a_h + exponent

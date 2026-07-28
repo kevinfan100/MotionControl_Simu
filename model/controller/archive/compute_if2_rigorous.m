@@ -1,3 +1,4 @@
+% STATUS: SUPERSEDED (am_lpf study shelved) -- see memory project_am_lpf_study_2026-06-17
 function IF2 = compute_if2_rigorous(a_vec, sigma2_nx, lambda_c, a_pd, a_cov, a_det, kBT)
 %COMPUTE_IF2_RIGOROUS  a-dependent 2nd-stage color-inflation IF2 for a_m_det R22.
 %   (am_lpf_r22_design.md §3.3 — rigorous L1 replacement for the AR(1) approx

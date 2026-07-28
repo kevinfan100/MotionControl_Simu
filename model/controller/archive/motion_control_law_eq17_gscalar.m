@@ -1,3 +1,4 @@
+% STATUS: SUPERSEDED-BY level_knives config (2026-07-14) -- see memory project_gscalar_2026-06-22
 function [f_d, ekf_out, diag] = motion_control_law_eq17_gscalar(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override)
 %MOTION_CONTROL_LAW_EQ17_GSCALAR  Scalar-gain (pooled) eq17 controller.
 %   The per-axis EKF gain state is REMOVED. The motion gain factorizes exactly

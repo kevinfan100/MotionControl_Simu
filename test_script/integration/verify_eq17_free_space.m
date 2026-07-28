@@ -95,7 +95,7 @@ for idx = 1:n_lc
     config.n_cycles  = 3;
 
     config.ctrl_enable     = true;
-    config.controller_type = 7;
+    config.controller_type = 17;
     config.lambda_c        = lc;
 
     config.thermal_enable    = true;

@@ -1,3 +1,4 @@
+% STATUS: ACTIVE-baseline (structural base of 4state / 5state_aprime)
 function [f_d, ekf_out, diag] = motion_control_law_eq17_5state(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override)
 %MOTION_CONTROL_LAW_EQ17_5STATE Per-axis 5-state EKF controller
 %   (RevisedControl_Vpersonal, disturbance state REMOVED).

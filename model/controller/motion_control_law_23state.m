@@ -1,3 +1,4 @@
+% STATUS: LEGACY (paper full-state; dispatcher case 23, Simulink track only)
 function [f_d, ekf_out] = motion_control_law_23state(del_pd, pd, p_m, params)
 %MOTION_CONTROL_LAW_23STATE Discrete-time motion control with 23-state EKF
 %

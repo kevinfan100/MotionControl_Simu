@@ -1,3 +1,4 @@
+% STATUS: ACTIVE (gain-law mainline 7b differential arm) -- spec 5state_expgain_hd.tex; driver test_script/integration/run_5state_expgain.m
 function [f_d, ekf_out, diag] = motion_control_law_5state_expgain(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override)
 %MOTION_CONTROL_LAW_5STATE_EXPGAIN  Per-axis 5-state EKF eq17 controller whose
 %   motion gain follows a SATURATING EXPONENTIAL law

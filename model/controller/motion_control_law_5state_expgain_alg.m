@@ -1,3 +1,4 @@
+% STATUS: ACTIVE (gain-law mainline 7a algebraic arm; defect-1 fix) -- code ahead of tex, see CLAUDE.md mainline section
 function [f_d, ekf_out, diag] = motion_control_law_5state_expgain_alg(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override)
 %MOTION_CONTROL_LAW_5STATE_EXPGAIN_ALG  ALGEBRAIC-gain variant of the 5-state
 %   exponential-gain eq17 controller. PROTOTYPE for the 7a/7b decision; the

@@ -110,7 +110,7 @@ function r = run_one(scenario, variant, seed, idx, n_total, T_sim, t_warmup)
     config.n_cycles = 1;
     config.trajectory_type = 'positioning';
     config.ctrl_enable = true;
-    config.controller_type = 7;
+    config.controller_type = 6;
     config.lambda_c = 0.7;
     % a_cov per-variant (overrides default)
     if isfield(variant, 'a_cov')

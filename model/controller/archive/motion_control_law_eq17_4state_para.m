@@ -1,3 +1,4 @@
+% STATUS: SUPERSEDED-BY gain-law function estimation (powerlaw/expgain) -- see memory project_aprime_paramodel_integrated_2026-06-29
 function [f_d, ekf_out, diag] = motion_control_law_eq17_4state_para(del_pd, pd, p_m, params, ctrl_const)
 %MOTION_CONTROL_LAW_EQ17_4STATE_PARA  Integrated para-c 4-state EKF (EXPLORATORY).
 %

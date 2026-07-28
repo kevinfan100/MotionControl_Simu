@@ -3,7 +3,7 @@
 % Runs the complete motion control simulation with thesis-style visualization.
 
 clear; close all; clc;
-clear motion_control_law motion_control_law_23state motion_control_law_7state trajectory_generator;
+clear motion_control_law motion_control_law_23state motion_control_law_eq6 motion_control_law_eq17 motion_control_law_eq17_core trajectory_generator;
 
 [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
 project_root = fileparts(script_dir);
@@ -38,7 +38,7 @@ config.trajectory_type = 'osc';      % 'osc' or 'positioning'
 
 % --- Controller ---
 config.ctrl_enable = true;           % Enable closed-loop control
-config.controller_type = 7;          % 23 or 7 (controller type selection)
+config.controller_type = 17;         % 6 (eq6) / 17 (eq17) / 23 (legacy 23-state)
 config.lambda_c = 0.7;              % Closed-loop pole (0 < lambda_c < 1)
 config.a_pd  = 0.05;                % EMA: LP smoothing
 config.a_prd = 0.05;                % EMA: HP residual mean
@@ -179,7 +179,7 @@ error_z = (p_m_log(3,:) - p_d_log(3,:)) * 1000;
 error_3d = vecnorm(p_m_log - p_d_log, 2, 1);
 
 % EKF diagnostic extraction (closed-loop only)
-is_7state = config.controller_type == 7;
+is_7state = ismember(config.controller_type, [6, 17]);   % both run the 7-state per-axis EKF
 if is_closed_loop
     ekf_log = simOut.ekf_out';             % [4 x N]
 

@@ -50,7 +50,7 @@ config.t_hold = 0;
 config.n_cycles = 1;
 config.frequency = 1;                    % unused with amplitude=0
 config.ctrl_enable = true;
-config.controller_type = 7;
+config.controller_type = 6;
 config.lambda_c = lc;
 config.thermal_enable = true;
 config.meas_noise_enable = false;

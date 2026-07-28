@@ -1,3 +1,4 @@
+% STATUS: FALSIFIED -- see memory project_aprime_var_esti_2026-07-15 / project_asstate_verify_2026-07-20 (var-ratio 全滅, hold 死路)
 function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_aprime(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override)
 %MOTION_CONTROL_LAW_EQ17_5STATE_APRIME Per-axis 5-state EKF that ESTIMATES the
 %   gain slope a'_x (general / unknown wall effect). See

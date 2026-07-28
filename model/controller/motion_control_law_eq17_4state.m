@@ -1,3 +1,4 @@
+% STATUS: ACTIVE-baseline (production 4-state, taylor+ar1+fdet config) -- see memory project_level_knives_2026-07-14
 function [f_d, ekf_out, diag] = motion_control_law_eq17_4state(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override, a_true_k)
 %MOTION_CONTROL_LAW_EQ17_4STATE Per-axis 4-state EKF controller
 %   (RevisedControl_Vpersonal, disturbance state removed + gain RATE fed

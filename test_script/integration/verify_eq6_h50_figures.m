@@ -28,7 +28,7 @@ config.frequency = 1;
 config.n_cycles = 1;
 config.trajectory_type = 'positioning';
 config.ctrl_enable = true;
-config.controller_type = 7;
+config.controller_type = 6;
 config.lambda_c = 0.7;
 config.a_cov = 0.005;
 config.a_pd = 0.05; config.a_prd = 0.05;
