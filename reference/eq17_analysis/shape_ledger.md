@@ -1,0 +1,64 @@
+# Shape Ledger — gain-law 形式統一對照
+
+> **定案門檻（freeze gate）**：任一形式要從 co-equal 升為唯一定案，需同時滿足——
+> (i) **缺陷 2 解決**（運動時讀數 +4~5% 走共用讀數鏈，未解前 B 層數字全部被污染）；
+> (ii) **margin ≥ 3×**（= bound ÷ √P[0]；目標 sup|θ_eff−1| ~0.01 級，讓指數從
+> nuisance 變可辨識參數）；(iii) **三層指標填滿、無 TODO**。
+> 達標前 powerlaw 與 expgain 維持**對等並行**（使用者裁決 2026-07-28）。
+>
+> 新形狀加一欄，跑同一批腳本即可比。指標定義不得為單一形式客製。
+
+更新紀律：形狀、prior、或讀數鏈任何改動後，重跑對應腳本並更新本表（含日期）。
+
+## A 形狀層（離線，`test_script/integration/verify_shape_exponent_bound.m`）
+
+指數定義：Ψ := 1 − a_h/a_o，θ_eff = −dlnΨ/dφ 從精確修正曲線讀回。
+
+| 指標 | taylor 階梯 | powerlaw (p) | expgain (b)（7a=7b 同形狀） |
+|---|---|---|---|
+| sup\|θ_eff−1\| ⊥ 全域 | n/a（無形狀參數） | **0.034** @h̄=1.217 | 0.094 @h̄=1.424 |
+| sup\|θ_eff−1\| ⊥ h̄≥2 | n/a | 0.024 | 0.082 |
+| sup\|θ_eff−1\| ∥ 全域 | n/a | 0.994（近壁發散） | 0.778 |
+| sup\|θ_eff−1\| ∥ h̄≥2 | n/a | 0.283 | **0.034** |
+| √P[0]（prior，兩漸近錨） | n/a | 0.035 | 0.10 |
+| margin（⊥） | n/a | 1.03× **TIGHT** | 1.06× **TIGHT** |
+| ∥ 軸可用性 | n/a | **FAIL**（Goldman 對數非冪次，無近壁錨） | h̄≥2 可用（margin 2.9×） |
+
+（數字：`5state_expgain_hd.tex` Stage 2b，2026-07-28 版）
+
+## B 濾波層（閉迴路 sim，6-seed，canonical hold→descend→1Hz osc）
+
+| 指標 | taylor 階梯 | powerlaw | expgain 7b | expgain 7a |
+|---|---|---|---|---|
+| descent peak \|a_hat 誤差\| (z) | —（基準見 level_knives） | TODO | 11.03% | **5.05%** |
+| osc 偏差 a_hat/aT (z, 6-seed) | — | 1.0178 | 1.0238 | 1.0220 |
+| tracking std (z) | — | 23.77 nm | ~24.2 nm | 24.24 nm |
+| a_hat/aT 穩態 (z / x / y) | — | 0.943 / 0.756 / 0.756 | TODO | TODO |
+| 參數誠實度（實誤差 ÷ 宣稱 √P） | — | p̂: 0.4 | b̂: 2.2×（過信） | b̂: **0.97×** |
+| 跨 seed 散佈（b̂/p̂） | — | TODO | 0.0484 | 0.0272 |
+
+（來源：memory project-powerlaw-r2-whitening-2026-07-27、project-expgain-impl-two-defects-2026-07-28）
+
+## C 前提稽核（yes/no；「數字好看但前提作弊」防線）
+
+| 前提 | powerlaw | expgain 7b | expgain 7a |
+|---|---|---|---|
+| y₂ 白化（AR(1) 修正） | ✓ production | knob（acov 測試以白化臂 PASS） | knob（同左） |
+| F_dh 確定性鏡像（fdet） | ✓ | ✓（drift 測試 PASS） | ✓ |
+| per-axis A² 種子 prior | ✗（單一 scalar，x/y 鬆 4×） | ✗（Pf_ao_frac 寫死 0.01；公差鏈應 2.8%） | ✗（同左） |
+| a_cov 不變性 | PASS（verify_powerlaw_regress_A12） | PASS 0.02%（verify_5state_expgain_acov） | PASS 0.00% |
+| P[0] 預算（V3） | TODO | PASS | PASS |
+| run-time c-free | ✓ | ✓ | ✓ |
+
+## 未解主項（兩形式共用）
+
+**缺陷 2**：運動時變異數讀數 +4~5%（隨頻率、a_pd 時間常數增長；與高度／增益擺幅／
+a_cov／â／增益模型寫法全部無關——七項否證見 memory project-expgain-impl-two-defects）。
+→ 重推 `derivation/Cdpmr_Cn_derivation.tex`；證據腳本 `test_script/scratch/`
+（temp_diag_powerlaw_cdpmr / cdpmr2 / temp_verify_powerlaw_claims）。
+
+## 形式沿革（一行版）
+
+taylor 階梯（逐階加 state，無限 regress）→ curvature 6-state（a'' 當 state，穩住但仍 regress）
+→ **2-參數 gain law**（07-24 powerlaw；07-27 expgain；07-28 7a 代數式修缺陷 1）。
+歷史推導在 `derivation/archive/`。

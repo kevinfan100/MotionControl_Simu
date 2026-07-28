@@ -47,3 +47,26 @@ test_script/temp_{checkcode_dither,dither_check}.m → 刪 (快照在 026189f)
 test_script/*.png/.mat 10 個輸出 → 刪 (可由已入版控的產生器重生, 未快照)
 reference/eq17_analysis/derivation/figures/aprime_hd_oracle_compare.png → 刪 (產生器在 2026-07-23-curvature-aprime2nd/)
 ```
+
+## Stage 3 — 已否證線整線下沉（2026-07-28）
+
+```
+model/controller/motion_control_law_eq17_gscalar.m        → model/controller/archive/
+model/controller/motion_control_law_eq17_5state_aprime.m  → model/controller/archive/
+model/controller/build_F_e_5state_aprime.m                → model/controller/archive/
+model/controller/motion_control_law_eq17_4state_para.m    → model/controller/archive/
+model/controller/compute_if2_rigorous.m                   → model/controller/archive/
+test_script/integration/{verify_eq17_5state_aprime_L0,L1,selfmod_L0,selfmod_L1,verify_5state_aprime_selfmod_signflip,check_observability_5state_aprime,verify_aprime_Qprime_assumptions,verify_aprime_blackbox_*x6,verify_eq17_gscalar_suite,verify_para_integrated,plot_para_aprime,verify_r22_amlpf_6state,run_amlpf_rerun_6state,plot_amlpf_compare_6state}.m → test_script/integration/archive/
+test_script/unit_tests/verify_eq17_unit_gscalar_recursion.m → test_script/unit_tests/archive/
+model/dual_track/run_pure_simulation.m 的 '5state_aprime'/'gscalar'/9 個 TEMP variant 分支 → 移除（未知 variant 現在直接 error）
+```
+
+## Stage 4 — 推導與文件下沉（2026-07-28）
+
+```
+derivation/{5state_aprime_var_esti,var_centered,var_chain,mirror,coupdate,axm_num,kf_meas,selfmod,unified,observability}.tex(+pdf) → derivation/archive/
+derivation/{5state_est_aprime,aprime_blackbox_regression,5state_vs_6state_aprime,6state_curvature_hd,6state_curvature_taylor,4state_para_c,4state_del_hd_thetafit}.tex(+pdf) → derivation/archive/
+derivation/{phase1..7_*.md x8, Q66_OL_R22_derivation.md, drafts/} → derivation/archive/
+eq17_analysis/{design_v2,gain_compare_plan,gain_compare_plan_round2,gain_compare_design,4state_adet_aprime_nocheat_status,aprime_estimation_status,task01_math_observability_report,asstate_verify_report,c1c2_unknownc_audit_plan,eq17_6state_review_findings}.md → eq17_analysis/archive/sessions/
+agent_docs/eq6_or_23state/*.md (5 支) → agent_docs/archive/
+```

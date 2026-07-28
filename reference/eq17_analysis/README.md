@@ -1,71 +1,43 @@
 # reference/eq17_analysis/
 
-Paper 2023 Eq.17 d-step delay-compensated controller — design, derivation,
-verification, and investigation log.
+eq17 研究線（paper 2023 Eq.17 d-step 延遲補償控制律）的推導、驗證與調查記錄。
+現役主線 = **估測函數**（gain-law 函數常數估測，powerlaw／expgain 對等並行）——
+章程見 repo 根 `CLAUDE.md`「研究主線」節。
+
+## 從哪裡開始
+
+| 要做什麼 | 讀哪裡 |
+|---|---|
+| 了解主線現況與入口 | `agent_docs/eq17/mainline-gainlaw.md`（每 session 自動載入） |
+| 兩形式對照、定案門檻 | **`shape_ledger.md`** |
+| 6-state KF flow 結構 SSOT | `kf_canonical_spec.md`（Vpersonal-aligned，living document） |
+| powerlaw 線最新交接 | `powerlaw_handoff_2026-07-27.md` |
+| 推導文件 | `derivation/README.md`（現役 15 支索引 + archive 死因表） |
+| 舊路徑對照（2026-07-28 大整理） | `archive/MOVED.md` |
 
 ## Layout
 
 ```
 eq17_analysis/
-├── README.md                          (this file)
-├── design_v2.md                       canonical design spec (paper Eq.17 with
-│                                       Σ f_d retained + x_D additive)
-├── task01_math_observability_report.md  observability rank/structure result
+├── README.md                     (this file)
+├── shape_ledger.md               兩形式統一指標對照 + freeze gate
+├── kf_canonical_spec.md          6-state KF flow SSOT
+├── powerlaw_handoff_2026-07-27.md  powerlaw 線交接（R2 白化/fdet/init 三修正）
+├── gain_compare_findings.md      gain_compare 資料集索引（test_results/gain_compare/）
 │
-├── derivation/   Phase 1-7 step-by-step derivation chain
-│   ├── phase1_Fe_derivation.md           F_e Row 3 + structural columns
-│   ├── phase2_C_dpmr_C_n_derivation.md   C_dpmr, C_n closed-form
-│   ├── phase2_IF_var_dpr_derivation.md   IF_var, dpr correlation
-│   ├── phase3_algebraic_verification.md  cross-check of phases 1+2
-│   ├── phase4_observability_rank.md      rank-test design + theory
-│   ├── phase5_Q_matrix_derivation.md     Q assembly (Q33, Q66, Q77 physics)
-│   ├── phase6_R_matrix_derivation.md     R assembly + 3-guard logic
-│   ├── phase7_lyapunov_bench.md          closed-loop variance oracle spec
-│   │   --- compiled standalone derivations (paper-style .tex/.pdf) ---
-│   ├── Fe_H_derivation.{tex,pdf}         F_e/H exact form (eta_R, F_1/F_2)
-│   ├── Cdpmr_Cn_derivation.{tex,pdf}     alpha-dependent C_dpmr/C_n closed form
-│   ├── R22_derivation.{tex,pdf}          R(2,2) residue/Parseval exact rho_dpmr
-│   └── Q66_OL_R22_derivation.{pdf,md}    Q66 OL thermal (z) + R22 EWMA inflation
-│                                         (.md = code map + verification)
+├── derivation/                   現役推導 15 支 tex（見其 README）
+│   └── archive/                  已否證/被取代 17 支 + phase1-7 md + drafts/
 │
-├── verification/   Phase 8 (Wave 1-3 + Stage 10) + Phase 9
-│   ├── phase8_e2e_h50_results_v4.md      canonical 5-seed h=50 results
-│   ├── phase9_validation_report.md       Phase 9 Layer 1 R(2,2) validation
-│   ├── development_log_phase8.md         synthesis of 7 Phase 8 reports
-│   ├── phase9_predictions.mat            production (verify scripts load)
-│   └── phase9_stageI_acf_diagnosis.mat   production (calc_ctrl_params X2a)
+├── archive/
+│   ├── MOVED.md                  2026-07-28 整理的舊→新路徑對照表
+│   ├── scratch/                  結案診斷腳本（7 組日期主題，各含 README）
+│   └── sessions/                 歷史 session 報告與已執行完的 plan
 │
-├── investigations/   Specific finding documents
-│   ├── xD_suppression_finding.md         x_D not acting as thermal compensator
-│   ├── Q66_physical_test_report.md
-│   ├── cdpmr_closed_form_verify_5seed.md
-│   ├── near_wall_gap.md                  synthesis: h_bar<2 divergence + K_h cap fix
-│   └── development_log_iir_prefill.md    synthesis: 5-round IIR prefill validation
-│
-├── figures/   Active figure dumps per scenario
-│   ├── positioning_h50/                  canonical h=50
-│   ├── motion_z_ramp_50to{5,10}/         ramp scenarios
-│   ├── motion_z_osc/                     oscillation
-│   ├── paper_compare/                    cross-paper compare
-│   ├── suppress_xD_ramp_acov005/         Stage 2 finding (+diagnostic/)
-│   ├── iir_prefill/                      iir prefill validation
-│   └── theory/                           design / theory figures
-│
-└── archive/   Historical originals (don't read first; use synthesis above)
-    └── sessions/                         design.md v1, phase8 wave reports,
-                                          near-wall report originals, iir prefill
-                                          source reports, plus suppress_xD_study/
-                                          and figures_pre_phase9/ subdir tree
+├── verification/                 2026-04/05 phase8/9 驗證（凍結）
+├── investigations/               2026-04/05 專題調查（凍結）
+├── figures/                      phase8/9 時代場景圖（凍結）
+└── L0_basis_oracle/              L0 python oracle（時代不明，UNCERTAIN）
 ```
 
-## Where to start
-
-- **What is this controller?** → `design_v2.md`
-- **How was Q/R derived?** → `derivation/phase5` (Q) + `derivation/phase6` (R)
-- **Does it work at h=50?** → `verification/phase8_e2e_h50_results_v4.md`
-- **Phase 9 R(2,2) story?** → `verification/phase9_validation_report.md`
-- **Why does it diverge near wall?** → `investigations/near_wall_gap.md`
-- **Why IIR prefill?** → `investigations/development_log_iir_prefill.md`
-- **What did Phase 8 actually go through?** → `verification/development_log_phase8.md`
-
-For original source documents (verbatim) see `archive/sessions/`.
+對照組 eq6 線：`../eq6_analysis/`（自有 README 與 archive 結構）。
+跨 controller 共通推導：`../shared/writeup_architecture.tex`。

@@ -1,3 +1,5 @@
+% STATUS: SUPPORT -- delta_x_m -> a_xm processing chain
+% ERRATUM (2026-07-27): the white-noise treatment of a_xm downstream is falsified -- a_xm is an AR(1) output (pole 1-a_cov); production feeds the whitened increment y2 = a_xm[k]-(1-a_cov)a_xm[k-1]. See 5state_powerlaw_hd.tex and memory project-powerlaw-r2-whitening-2026-07-27.
 % ======================================================
 % Compile: xelatex pm_to_axm_derivation.tex
 % Path:    reference/eq17_analysis/derivation/pm_to_axm_derivation.tex
