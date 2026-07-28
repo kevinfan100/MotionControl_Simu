@@ -52,8 +52,8 @@ config.epsilon = 0.01;              % Anisotropy threshold for theta_m
 %   R: measurement noise scaling (2x1 diagonal)
 %       [position, gain]
 %   Pf_init: initial forecast covariance (7x1 diagonal)
-config.Qz_diag_scaling = [0; 0; 1e4; 1e-1; 0; 1e-4; 0];
-config.Rz_diag_scaling = [1e-2; 1e0];
+% 2026-07-29: 舊 7x1/2x1 覆蓋 (7-state 時代) 與現行 bus 尺寸 (9x1/6x1) 不合,
+% 改用 user_config() 預設 (不在此覆蓋)。舊值: Qz=[0;0;1e4;1e-1;0;1e-4;0], Rz=[1e-2;1e0]。
 config.Pf_init_diag    = [0; 0; 1e-4; 1e-4; 0; 10*(0.0147)^2; 0];
 config.beta   = 0.5;                % z-axis disturbance/gain coupling
 config.lamdaF = 1.0;                % Forgetting factor (1.0 = no forgetting)

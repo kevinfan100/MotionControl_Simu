@@ -121,8 +121,10 @@ function params = calc_simulation_params(config)
     elems_traj(5).Dimensions = [1 1]; elems_traj(5).DataType = 'double';
     elems_traj(6) = Simulink.BusElement; elems_traj(6).Name = 'n_cycles';
     elems_traj(6).Dimensions = [1 1]; elems_traj(6).DataType = 'double';
-    elems_traj(7) = Simulink.BusElement; elems_traj(7).Name = 'trajectory_type';
+    elems_traj(7) = Simulink.BusElement; elems_traj(7).Name = 't_descend_override';
     elems_traj(7).Dimensions = [1 1]; elems_traj(7).DataType = 'double';
+    elems_traj(8) = Simulink.BusElement; elems_traj(8).Name = 'trajectory_type';
+    elems_traj(8).Dimensions = [1 1]; elems_traj(8).DataType = 'double';
 
     TrajBus = Simulink.Bus;
     TrajBus.Elements = elems_traj;
@@ -186,6 +188,12 @@ function params = calc_simulation_params(config)
     elems_ctrl(27).Dimensions = [3 1]; elems_ctrl(27).DataType = 'double';
     elems_ctrl(28) = Simulink.BusElement; elems_ctrl(28).Name = 'IIR_bias_factor';
     elems_ctrl(28).Dimensions = [3 1]; elems_ctrl(28).DataType = 'double';
+    elems_ctrl(29) = Simulink.BusElement; elems_ctrl(29).Name = 'C_dpmr_eff_per_axis';
+    elems_ctrl(29).Dimensions = [3 1]; elems_ctrl(29).DataType = 'double';
+    elems_ctrl(30) = Simulink.BusElement; elems_ctrl(30).Name = 'C_np_eff_per_axis';
+    elems_ctrl(30).Dimensions = [3 1]; elems_ctrl(30).DataType = 'double';
+    elems_ctrl(31) = Simulink.BusElement; elems_ctrl(31).Name = 'IF_eff_calibrated_per_axis';
+    elems_ctrl(31).Dimensions = [3 1]; elems_ctrl(31).DataType = 'double';
 
     CtrlBus = Simulink.Bus;
     CtrlBus.Elements = elems_ctrl;
