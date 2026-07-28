@@ -8,5 +8,5 @@
 3. **熱點檔**(`model/controller/*.m`、`model/dual_track/run_pure_simulation.m`):動工前 pull、push 前再 pull;同一時段避免兩機同時修改,以「已 push」作為交接訊號。
 4. **Production bug 不過夜**:發現即修,同一 session 內 commit + push(防止兩機重複修復同一個 bug)。
 5. **Knob/變數命名**:新增 controller knob 或 config 欄位前,先查 MEMORY.md 近期另一機的條目,避免同義異名。
-6. **文件 SSOT**:每個主題以唯一一份 .tex 為準(基礎鏈 = `4state_del_hd.tex`;taylor gain = `4state_taylor_gain.tex`)。要修改另一機建立的 SSOT,先在 memory 留異議記錄再動手。
+6. **文件 SSOT**:每個主題以唯一一份 .tex 為準(基礎鏈 = `4state_del_hd.tex`;taylor gain = `4state_taylor_gain.tex`;powerlaw = `5state_powerlaw_hd.tex`;expgain = `5state_expgain_hd.tex`;兩形式對照 = `reference/eq17_analysis/shape_ledger.md`)。要修改另一機建立的 SSOT,先在 memory 留異議記錄再動手。
 7. **Memory 慣例**:MEMORY.md 每條一行、標機器與日期;跨機待辦寫在「待辦方向」區並指定執行機器;定期檢查 Obsidian conflicted copies。

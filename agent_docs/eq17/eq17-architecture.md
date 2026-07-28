@@ -340,5 +340,7 @@ K_h,i'(h̄) := dK_h,i/dh̄ = C_i''/C_i − K_h,i²    二階敏感度修正
 `_eq17_6state.m`、`_eq17_gscalar.m`、`motion_control_law_5state_powerlaw.m`，
 常數建構 `build_eq17_constants.m` / `build_eq17_6state_constants.m`。
 
-執行路徑：dispatcher 只認 `controller_type` ∈ {6, 17, 23}；上列 4/5/6-state 與 powerlaw
-變體由 `model/dual_track/run_pure_simulation.m` 以 `config.eq17_variant` 字串選擇，不走 dispatcher。
+執行路徑：dispatcher 只認 `controller_type` ∈ {6, 17, 23}；上列 4/5/6-state 變體由
+`model/dual_track/run_pure_simulation.m` 以 `config.eq17_variant` 字串選擇，不走 dispatcher。
+**powerlaw／expgain 不在 variant switch 裡**——由 `test_script/integration/` 的專屬 driver
+（`run_5state_powerlaw.m`／`run_5state_expgain.m`）直接呼叫（2026-07-28 核對）。
