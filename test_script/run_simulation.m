@@ -38,7 +38,9 @@ config.trajectory_type = 'osc';      % 'osc' or 'positioning'
 
 % --- Controller ---
 config.ctrl_enable = true;           % Enable closed-loop control
-config.controller_type = 17;         % 6 (eq6) / 17 (eq17) / 23 (legacy 23-state)
+config.controller_type = 6;          % 6 (eq6, Simulink 驗證健康 253nm) / 17 (eq17: 編譯可跑但
+                                     %   Simulink 下數值發散 -- 從未在 dispatcher 化後驗證過,
+                                     %   eq17 研究請走 pure-MATLAB track) / 23 (legacy, 編譯 OK)
 config.lambda_c = 0.7;              % Closed-loop pole (0 < lambda_c < 1)
 config.a_pd  = 0.05;                % EMA: LP smoothing
 config.a_prd = 0.05;                % EMA: HP residual mean

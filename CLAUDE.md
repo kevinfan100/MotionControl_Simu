@@ -37,7 +37,7 @@
 |---|---|---|
 | 估測函數（主線） | `test_script/integration/run_5state_powerlaw.m`／`run_5state_expgain.m` | 直接呼叫，不經 dispatcher |
 | pure-MATLAB 基準 | `model/dual_track/run_pure_simulation.m` | `config.eq17_variant` ∈ {4state, 5state, 6state} |
-| Simulink | `test_script/run_simulation.m` → `model/system_model.slx` | `config.controller_type` ∈ {6, 17, 23} |
+| Simulink | `test_script/run_simulation.m` → `model/system_model.slx` | `config.controller_type` ∈ {6, 17, 23}；6 已驗證健康，17 編譯可跑但數值未驗（⚠ 發散，eq17 走 pure track），23 編譯 OK |
 
 ---
 
