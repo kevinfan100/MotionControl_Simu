@@ -1,5 +1,4 @@
 {
-  "autoMemoryDirectory": "~/ClaudeVault/auto-memory/motioncontrol-simu",
   "permissions": {
     "allow": [
       "mcp__matlab__check_matlab_code",
@@ -22,7 +21,9 @@
       "Bash(mv:*)",
       "Bash(python:*)",
       "mcp__perplexity__perplexity_ask",
-      "WebFetch(domain:pubs.acs.org)"
+      "WebFetch(domain:pubs.acs.org)",
+      "Read(//tmp/**)",
+      "Bash(xelatex:*)"
     ],
     "deny": [],
     "ask": []
@@ -50,5 +51,6 @@
         ]
       }
     ]
-  }
+  },
+  "autoMemoryDirectory": "~/ClaudeVault/auto-memory/motioncontrol-simu"
 }
