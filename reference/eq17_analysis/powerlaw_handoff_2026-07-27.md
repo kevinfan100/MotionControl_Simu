@@ -228,14 +228,16 @@ y2                          白化增量
 
 ## 9. 重現方式
 
-Scratch harness（`.gitignore` 擋著，不跨機器）：
+> 2026-07-28 整理：全部進版控（舊 temp 路徑對照見 `archive/MOVED.md`）。
 
 ```
-test_script/temp_smoke_5state_powerlaw.m     canonical scenario，產推導文件那張圖的資料
-test_script/temp_plot_5state_powerlaw.m      產 figures/powerlaw_5state_sim.png（4 格）
-test_script/temp_regress_powerlaw_final.m    產線 regression + a_cov 不變性驗收
-test_script/temp_mcl_powerlaw_diag.m         instrumented fork（9 個 knob + P45/K2 分解 log）
-test_script/temp_run_powerlaw_diag.m         上面那支的 driver
+test_script/integration/run_5state_powerlaw.m             driver（原 temp_run_5state_powerlaw）
+test_script/integration/smoke_5state_powerlaw.m           canonical scenario，產推導文件那張圖的資料
+test_script/integration/plot_5state_powerlaw.m            產 figures/powerlaw_5state_sim.png
+test_script/integration/verify_powerlaw_regress_final.m   產線 regression + a_cov 不變性驗收
+test_script/integration/verify_powerlaw_regress_A12.m     A1/A2 修復的驗收（a_cov 不變性）
+test_script/integration/plot_p_prior_origin.m             p prior 0.035 來源圖
+test_script/integration/verify_blocal_exp.m               產 figures/blocal_exp_check.png
+test_script/scratch/temp_mcl_powerlaw_diag.m              instrumented fork（9 knob + P45/K2 分解 log）
+test_script/scratch/temp_run_powerlaw_diag.m              上面那支的 driver
 ```
-
-⚠ 前兩支是**已 commit 的推導文件那張圖的產生器**，卻被 gitignore 擋著。清 temp 檔時不要掃掉。
