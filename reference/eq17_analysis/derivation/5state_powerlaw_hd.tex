@@ -30,6 +30,16 @@
 %      p_eff = 0.9994 / 1.0001), so the prior only covers the interpolation gap
 %      max|p_eff-1| = 0.034 -- domain-wide, trajectory-independent, and it does
 %      NOT require knowing c(h_bar), only the two published asymptotics.
+%      SSOT for the GENERAL form of this argument (why an approximate shape's
+%      exponent has no true value, so its prior can only come from the exponent's
+%      own variation; why a varying exponent must be fixed by a new shape and not
+%      by Q55 > 0) is 5state_expgain_hd.tex Stage 2b -- do not restate it here.
+%      Reproduce the numbers with test_script/integration/verify_shape_exponent_bound.m.
+%      This shape's verdict from that script: sup|p_eff-1| = 0.0343 (perp, at
+%      h_bar = 1.217) against the shipped prior 0.035 -> margin 1.02x, TIGHT.
+%      Note perp is where the power law WINS: 0.034 vs 0.094 for the exponential
+%      shape.  It loses on parallel (0.283 vs 0.034 over h_bar >= 2), because
+%      c_para stays finite at contact and so has no near-wall anchor at all.
 %      Pending: C_dpmr/C_n restatement (code uses the full-a_pd closed form, not the
 %      a_pd->0 one this file used to quote); curvature-Jensen bias.
 % ---- (earlier) Stage D (sections 1-11; ends at boxed 5x5 F_e). A: motion
