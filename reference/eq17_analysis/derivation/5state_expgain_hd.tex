@@ -70,10 +70,25 @@
 %    already carried by -B_hat*e_ah).  It buys only 1.41x (0.483% -> 0.343%, both
 %    zero-mean; the Jensen bias of using hbar_d is 0.0023%) while a'_h's own model
 %    truncation against the true c_perp is 2.43% RMS -- 5-7x larger.  Reverted.
-% ---- BUILD STATUS: COMPLETE.  Stages 1-6: motion error / gain model / true state
-%      eq / output eq + H / estimator + error dynamics + F_e / Q,R.  y2 is the direct
-%      (un-whitened) gain readout; F_e row 4 multiplier is Dhbar_d + (1-lc)dh3_hat;
-%      hat usage: true values in the physical equations, estimates in H / F_e. ----
+% ---- BUILD STATUS: COMPLETE.  Stages 1-6: motion error / gain model / shape
+%      acceptance (2b) / true state eq / output eq + H / estimator + error dynamics
+%      + F_e / Q,R.  y2 is the direct (un-whitened) gain readout; F_e row 4
+%      multiplier is Dhbar_d + (1-lc)dh3_hat; hat usage: true values in the physical
+%      equations, estimates in H / F_e. ----
+%  * Stage 2b defines b_eff (the exponent the true curve demands at each height) and
+%    turns sup|b_eff - 1| into the acceptance test for the SHAPE, and into the only
+%    defensible source for sqrt(P55[0]).  Numbers are from an offline sweep of the
+%    exact correction polynomials (0.0942 perp / 0.778 para whole-domain, 0.0816 /
+%    0.0342 for hbar >= 2).  REPRODUCE / RE-RUN AFTER ANY SHAPE CHANGE:
+%       test_script/integration/verify_shape_exponent_bound.m   (tracked, not temp_*)
+%    It prints this table, the anchor values at both ends, the coherent-vs-diffusive
+%    Q55 comparison, the A^2/hbar_0^2 seed rule, and a PASS/TIGHT/FAIL verdict of
+%    each shipped prior against its own bound.
+%    It also records WHY the fix for a varying b is a new shape and not Q55 > 0: the
+%    variation is commanded (prop. to Dhbar_d), hence coherent (~N), while a random
+%    walk diffuses (~sqrt N) and falls 5x short over the canonical descent.
+%  * Pf_b_std = 0.10 in the controller currently clears the perp bound by only 1.06x.
+%    If the shape is re-derived, re-run the sweep and re-set the prior from it.
 % ======================================================
 \documentclass[11pt,a4paper,fontset=none]{ctexart}
 
@@ -219,6 +234,102 @@ b[k{+}1] &= b[k], \\
 \varphi(\hbn) &= \ln\hbn, &
 B[k] &= b\,\varphi'(\hb[k]) = b/\hb[k]. &&
 \end{empheq}
+
+% ======================================================
+% Stage 2b --- Shape acceptance: what pins b = 1, and how wide its prior must be
+% ======================================================
+
+\hd{Local exponent demanded by the true curve}
+
+The gain law asserts that the normalised gain deficit is a pure exponential in $\varphi$:
+\[ \Psi(\hbn) := 1 - \frac{a_h(\hbn)}{\ao} = e^{-b\varphi(\hbn)},
+   \qquad\text{true value}\quad
+   \Psi_{\rm true}(\hbn) = 1 - \frac{1}{c(\hbn)} = \frac{c-1}{c} \]
+
+so $b$ is \emph{by construction} a slope in $(\ln\Psi,\varphi)$ coordinates. Reading that
+slope off the true curve gives the exponent the truth demands at each height:
+\[ b = -\frac{d\ln\Psi}{d\varphi}
+   \qquad\Longrightarrow\qquad
+   b_{\rm eff}(\hbn) := -\frac{1}{\varphi'(\hbn)}\,\frac{d}{d\hbn}\ln\frac{c-1}{c}
+   = -\,\frac{\hbn\,c'(\hbn)}{c(\hbn)\,\big[c(\hbn)-1\big]} \]
+
+Were the shape exact, $b_{\rm eff}$ would be constant. \textbf{Its variation is the model
+error}, and it is the only quantity that can set the prior on $b$: $b$ is a parameter of an
+approximate shape, not a physical constant, so ``how wrong is $\hat b[0]=1$'' has no meaning
+beyond ``how far does $b_{\rm eff}$ stray from $1$ over the reachable domain''.
+
+\hd{Two limits pin $b = 1$} \;{\small (both read off the published asymptotics; $c$ itself is never needed at run time)}
+\[
+\begin{aligned}
+\hbn\to1:&\quad c \to \tfrac{K}{\hbn-1} \;\Rightarrow\; \ln\Psi \simeq -\tfrac{\hbn-1}{K},
+  \;\; \varphi \simeq \hbn-1 &&\Rightarrow\quad b_{\rm eff} \to 1/K \\
+\hbn\to\infty:&\quad c-1 = A\hbn^{-1}+A^2\hbn^{-2}+\dots \;\Rightarrow\; \Psi = A\hbn^{-1}+O(\hbn^{-3}),
+  \;\; \ln\Psi = \ln A - \varphi &&\Rightarrow\quad b_{\rm eff} \to 1
+\end{aligned}
+\]
+
+The far-field anchor is coefficient-free ($A$ is additive in $\ln\Psi$, so it drops out of the
+slope), and the $O(\hbn^{-2})$ terms cancel identically in $\Psi=(c-1)/c$ --- which is why the
+exponential shape is \emph{more} accurate far from the wall than the power law
+($b_{\rm eff}=0.9983$ vs $p_{\rm eff}=1.0042$ at $\hbn=22.2$). The near-wall anchor is
+\emph{weaker} than the power law's: it returns $1/K$, so it pins $b=1$ only because Brenner
+lubrication carries unit coefficient $K=1$, whereas the power law's near-wall anchor gives $1$
+for any $K$.
+
+\hd{Acceptance criterion} \;{\small (evaluated offline once on the exact correction polynomials; the controller carries only the resulting number)}
+
+\begin{center}
+{\small
+\begin{tabular}{llcccc}
+\toprule
+ & & \multicolumn{2}{c}{$\perp$ \; ($c_\perp$)} & \multicolumn{2}{c}{$\parallel$ \; ($c_\parallel$)} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}
+shape & exponent & all $\hbn$ & $\hbn\ge2$ & all $\hbn$ & $\hbn\ge2$ \\
+\midrule
+power law \; $c-1 = K(\hbn-1)^{-p}$ & $p$ & 0.034 & 0.024 & 0.994 & 0.283 \\
+exponential \; $\Psi = \hbn^{-b}$   & $b$ & 0.094 & 0.082 & 0.778 & \textbf{0.034} \\
+\bottomrule
+\end{tabular}}
+\end{center}
+{\small Tabulated: $\sup|\text{exponent}-1|$. The exponential shape trades $\perp$ accuracy
+($2.8$--$3.4\times$ worse) for $\parallel$ viability ($8.3\times$ better over the working range),
+which is what lets one gain law serve all three axes; the power law has no near-wall anchor for
+$\parallel$ at all, since $c_\parallel$ stays finite at contact.}
+
+Since $b$ is modelled as constant, $P_{55}[0]$ is the entire budget the filter may spend on it
+($Q_{55}=0$ and $\mathbf F_e$ row 5 $=[0\,0\,0\,0\,1]$ give
+$\mathbb E[(\hat b_\infty-\hat b_0)^2] = P_{55}[0]-P_{55}[\infty]$). The shape is therefore
+acceptable exactly when that budget covers its own mismatch:
+
+\begin{empheq}[box=\fbox]{equation*}
+\sup_{\hbn}\,\big|\,b_{\rm eff}(\hbn) - 1\,\big| \;\;\lesssim\;\; \sqrt{P_{55}[0]}
+\qquad\Longleftrightarrow\qquad
+Q_{55} = 0 \;\text{is honest}
+\end{empheq}
+
+{\small \textbf{Current status.} $\sqrt{P_{55}[0]} = 0.10$ against $0.0942$ for $\perp$: the
+criterion is met with a factor $1.06$, i.e.\ no margin. (The power law on $\perp$ sat at
+$0.035$ against $0.034$ --- the same tightness.) A shape whose exponent varied by, say,
+$0.01$ would let the prior shrink by an order of magnitude and turn $b$ from a nuisance
+parameter into an identified one.}
+
+\hd{Why a non-zero $Q_{55}$ is the wrong repair}
+
+If $b_{\rm eff}$ varies with height, the true exponent moves as
+\[ b_{\rm true}[k{+}1] - b_{\rm true}[k] = \frac{db_{\rm eff}}{d\hbn}\,\Dhb[k] \]
+which is \emph{deterministic and commanded}: $\Dhb$ is the trajectory increment, known exactly
+and noise-free. Such a term belongs in the prediction as a feedforward on row 5, not in $Q$.
+Modelling it as a random walk, $Q_{55}[k] = \kappa_b^2\,\Dhb^2[k]$ with
+$\kappa_b := \sup|db_{\rm eff}/d\hbn| = 0.032$ ($\perp$, $\hbn\ge2$), does keep the correct
+trajectory gating --- $Q_{55}=0$ while holding, since $b_{\rm true}$ does not move when the
+probe does not --- but it diffuses as $\sqrt N$ where the true drift accumulates as $N$: over
+the canonical descent $\hbn: 22.2\to2$ in $N=1600$ steps it supplies
+$\kappa_b\sqrt N\,\Dhb = 0.016$, while $b_{\rm eff}$ actually travels
+$0.9983\to0.9184 = 0.080$ --- short by $5\times$ even with $\kappa_b$ taken as a supremum.
+Inflating $\kappa_b$ only contaminates the hold phases without restoring the shape. The exact
+feedforward needs $db_{\rm eff}/d\hbn$, i.e.\ $c$ itself, which this gain law exists to avoid;
+estimating it instead adds a state and reopens the Taylor-ladder regress the two-parameter law
+was introduced to close. The criterion above is therefore stated on the shape, never on $Q$.
 
 % ======================================================
 % Stage 3 --- True state equation
