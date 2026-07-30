@@ -10,6 +10,17 @@
 | `5state_powerlaw_hd.tex` | powerlaw 形式：c = 1 + K/(h̄−1)^p；Stage F 含 R₂ 白化、p prior、fdet、漸近種子 |
 | `5state_expgain_hd.tex` | expgain 形式：a_h = a_o[1−h̄^(−b)]，φ=ln h̄；Stage 2b = 形狀驗收判準 SSOT。⚠ 正文停在 7b，code 以 7a 為準 |
 
+## 形狀選擇（2026-07-30，gain-law 線）
+
+| 檔 | 內容 |
+|---|---|
+| `gainlaw_shape_selection.tex` | **形式定案 SSOT**：Form A（投影片 `1−e^{−(b/(p+1))g^(p+1)}`）vs Form B（`1−[b/(g+b)]^p`）；兩端極限、best-case fit（A 4.256% / B 0.429%）、b–p 耦合（corr 0.986）。真值＝Brenner 級數 |
+| `aprime_jacobian_AB.tex` | **Jacobian SSOT**：兩形式的 a′ 與 J_b／J_p／J_ws，對數微分法，六條皆符號驗證。含 FPGA 運算成本對照 |
+| `../two_sphere_truth_source.md` | 彎壁（細胞）真值的外部來源與轉錄驗證（Jeffrey & Onishi 1984） |
+
+證據腳本在 `test_script/scratch/gainlaw_*.m`、`build_truth_two_sphere.m`、
+`verify_gainlaw_curved_wall.m`；文件中每個數字都由它們產生。
+
 ## SSOT 基礎鏈（雙機規約 rule 6）
 
 | 檔 | 內容 |

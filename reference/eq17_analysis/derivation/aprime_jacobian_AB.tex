@@ -1,0 +1,310 @@
+% STATUS: ACTIVE | SSOT for the gain-rate Jacobians of BOTH gain-law forms.
+%          Section 4-5 (Form A) is the whole of the former aprime_jacobian_bwp.tex,
+%          carried over unchanged; that file was never tracked and was removed
+%          on 2026-07-30 once its content lived here.
+% ======================================================
+% Compile: xelatex aprime_jacobian_AB.tex
+% Path:    reference/eq17_analysis/derivation/aprime_jacobian_AB.tex
+% Purpose: First-order expansion of a'(.) about the estimates, and the Jacobians
+%          w.r.t. every free parameter, for the two candidate gain laws of
+%          gainlaw_shape_selection.tex:
+%            Form A (slide)  a = 1 - exp[-(b/(p+1)) (w-w_s)^(p+1)]
+%            Form B          a = 1 - [ b / ((w-w_s) + b) ]^p
+%          Notation kept fully expanded, as in that file: no substitution
+%          variables appear in the output, only the macros that expand to them.
+%
+% ---- CONVENTION (this is the point the two forms used to disagree on) ----
+%   w_s is the CONTACT position, nominal 1, per the slide's "w_s - 1: unknown
+%   surface position".  Form A satisfies this by construction (a = 0 at w = w_s).
+%   Form B holds it because b sits inside the bracket as a LENGTH: at w = w_s
+%   the bracket is b and a = 1 - (b/b)^p = 0 for ANY p.  Written bare as
+%   1 - lam_amp (w-w_s)^(-b) the contact sits at w_s + lam_amp^(1/b) instead and
+%   the fitted w_s reads -0.063, which is not a surface position; see the audit
+%   note in gainlaw_shape_selection.tex.  The amplitude writing
+%   1 - lam_amp[(w-w_s)+lam_amp^(1/b)]^(-b) with lam_amp = lam^b is the same
+%   family but needs a fractional power and drags ln(lam)/b^2 terms into every
+%   Jacobian; the length writing below does not.
+%
+% ---- VERIFICATION ----
+%   Every Jacobian below was checked symbolically (MATLAB, assume lam,b > 0 and
+%   w - w_s > 0): the difference between the claimed expression and
+%   diff(log(a'), x) simplifies to exactly 0 for all six.  Two identities worth
+%   remembering, both exact and both specific to Form B:
+%       da/dw_s = -a'                     (shifting the wall shifts the curve)
+%       dln a'/db = p/b - (p+1)/[(w-w_s)+b]              (no log, no fractional power)
+%
+% ---- IMPLEMENTATION NOTE (10 kHz FPGA loop) ----
+%   Form A needs pow, exp and log; Form B needs pow and log; Form B at p = 1
+%   needs none of them -- a' = b/[(w-w_s)+b]^2 and both Jacobians are
+%   rational.  See the last section.
+%   All six Jacobians re-verified symbolically in the length writing: every
+%   difference against diff(log(a'),x) simplifies to exactly 0.
+% ======================================================
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{empheq}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{array,booktabs}
+\usepackage{titlesec}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+% --- Macros expand to the FULL symbols; no abbreviation appears in the output ---
+\newcommand{\wt}{\left(\bar w_d-\bar w_s\right)}
+\newcommand{\wh}{\left(\bar w_d-\hat{\bar w}_s\right)}
+\newcommand{\wtb}{\bar w_d-\bar w_s}
+\newcommand{\whb}{\bar w_d-\hat{\bar w}_s}
+\newcommand{\bt}{\left[\bar w_d-\bar w_s+b\right]}
+\newcommand{\bh}{\left[\bar w_d-\hat{\bar w}_s+\hat b\right]}
+\newcommand{\ap}{\bar a'}
+
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection}{0.8em}{}
+
+\begin{document}
+
+\section{Definitions}
+
+\begin{align}
+\text{Form A:}\qquad
+\bar a &= 1-e^{-\frac{b}{p+1}\wt^{\,p+1}}
+\\[0.4em]
+\ap\!\left(\wtb,\;b,\;p\right)
+&= b\cdot\wt^{\,p}\cdot e^{-\frac{b}{p+1}\wt^{\,p+1}}
+\\[0.4em]
+\ap\!\left(\whb,\;\hat b,\;\hat p\right)
+&= \hat b\cdot\wh^{\,\hat p}\cdot e^{-\frac{\hat b}{\hat p+1}\wh^{\,\hat p+1}}
+\end{align}
+
+\begin{align}
+\text{Form B:}\qquad
+\bar a &= 1-\left[\frac{b}{\bt}\right]^{p}
+\\[0.4em]
+\ap\!\left(\wtb,\;b,\;p\right)
+&= p\,b^{\,p}\cdot\bt^{-p-1}
+\\[0.4em]
+\ap\!\left(\whb,\;\hat b,\;\hat p\right)
+&= \hat p\,\hat b^{\,\hat p}\cdot\bh^{-\hat p-1}
+\end{align}
+
+\begin{gather}
+\bar w_d-\bar w_s>0,
+\qquad
+\bar w_d-\hat{\bar w}_s>0
+\\[0.4em]
+b>0,\quad \hat b>0,
+\qquad
+p>-1,\quad \hat p>-1
+\end{gather}
+
+Both forms place contact at $\bar w_d=\bar w_s$:
+\begin{gather}
+\bar a\Big|_{\bar w_d=\bar w_s}=1-e^{0}=0
+\qquad\text{(Form A)}
+\\[0.4em]
+\bar a\Big|_{\bar w_d=\bar w_s}
+=1-\left[\frac{b}{b}\right]^{p}
+=1-1^{p}=0
+\qquad\text{(Form B, any }p\text{)}
+\end{gather}
+
+\section{Parameter errors}
+
+\begin{equation}
+e_{b}=b-\hat b,
+\qquad
+e_{p}=p-\hat p,
+\qquad
+e_{w_s}=\bar w_s-\hat{\bar w}_s,
+\qquad
+e_{\bar w_d}\equiv 0
+\end{equation}
+
+\begin{equation}
+\bm{e}_A=\begin{bmatrix}e_{b}&e_{w_s}&e_{p}\end{bmatrix}^{\!\top},
+\qquad
+\bm{e}_B=\begin{bmatrix}e_{b}&e_{p}&e_{w_s}\end{bmatrix}^{\!\top}
+\end{equation}
+
+\section{First-order expansion}
+
+\begin{multline}
+\ap\!\left(\wtb,\;b,\;p\right)-\ap\!\left(\whb,\;\hat b,\;\hat p\right)\\[0.3em]
+= J_b\!\left(\whb,\;\hat b,\;\hat p\right)e_{b}
++ J_{w_s}\!\left(\whb,\;\hat b,\;\hat p\right)e_{w_s}
++ J_p\!\left(\whb,\;\hat b,\;\hat p\right)e_{p}
++ \mathcal{O}\!\left(\left\|\bm{e}_A\right\|^2\right)
+\end{multline}
+
+\begin{multline}
+\ap\!\left(\wtb,\;b,\;p\right)-\ap\!\left(\whb,\;\hat b,\;\hat p\right)\\[0.3em]
+= J_b\!\left(\whb,\;\hat b,\;\hat p\right)e_{b}
++ J_p\!\left(\whb,\;\hat b,\;\hat p\right)e_{p}
++ J_{w_s}\!\left(\whb,\;\hat b,\;\hat p\right)e_{w_s}
++ \mathcal{O}\!\left(\left\|\bm{e}_B\right\|^2\right)
+\end{multline}
+
+\begin{equation}
+\frac{\partial \ap}{\partial x}
+= \ap \cdot \frac{\partial \ln \ap}{\partial x}
+\end{equation}
+
+\newpage
+
+\section{Form A: derivatives of the logarithm}
+
+\begin{equation}
+\ln \ap\!\left(\wtb,\;b,\;p\right)
+= \ln b + p \ln\wt - \frac{b}{p+1}\wt^{\,p+1}
+\end{equation}
+
+\begin{align}
+\frac{\partial \ln \ap}{\partial b}
+&= \frac{1}{b}
+ - \frac{\partial}{\partial b}\left[\frac{b}{p+1}\wt^{\,p+1}\right]
+\nonumber\\[0.4em]
+&= \frac{1}{b}-\frac{1}{p+1}\wt^{\,p+1}
+\end{align}
+
+\begin{align}
+\frac{\partial \ln \ap}{\partial \bar w_s}
+&= p\cdot\frac{-1}{\wt}
+ - \frac{b}{p+1}\,(p+1)\wt^{\,p}\cdot(-1)
+\nonumber\\[0.4em]
+&= -\frac{p}{\wt}+b\wt^{\,p}
+\end{align}
+
+\begin{align}
+\frac{\partial}{\partial p}\wt^{\,p+1}
+&= \frac{\partial}{\partial p}\,e^{(p+1)\ln\wt}
+ = \wt^{\,p+1}\ln\wt
+\\[0.8em]
+\frac{\partial}{\partial p}\left[\frac{b}{p+1}\wt^{\,p+1}\right]
+&= b\,\frac{\wt^{\,p+1}\ln\wt\,(p+1)-\wt^{\,p+1}}{(p+1)^2}
+\nonumber\\[0.4em]
+&= \frac{b}{p+1}\wt^{\,p+1}\left[\ln\wt-\frac{1}{p+1}\right]
+\\[0.8em]
+\frac{\partial \ln \ap}{\partial p}
+&= \ln\wt-\frac{b}{p+1}\wt^{\,p+1}\left[\ln\wt-\frac{1}{p+1}\right]
+\nonumber\\[0.4em]
+&= \left[1-\frac{b}{p+1}\wt^{\,p+1}\right]\ln\wt
+   +\frac{b}{(p+1)^2}\wt^{\,p+1}
+\end{align}
+
+\section{Form A: Jacobians}
+
+\begin{empheq}[box=\fbox]{align}
+J_b\!\left(\whb,\hat b,\hat p\right)
+&= \ap\!\left(\whb,\hat b,\hat p\right)\cdot
+   \left[\frac{1}{\hat b}-\frac{1}{\hat p+1}\wh^{\,\hat p+1}\right]
+\\[0.8em]
+J_{w_s}\!\left(\whb,\hat b,\hat p\right)
+&= \ap\!\left(\whb,\hat b,\hat p\right)\cdot
+   \left[\hat b\wh^{\,\hat p}-\frac{\hat p}{\wh}\right]
+\\[0.8em]
+J_p\!\left(\whb,\hat b,\hat p\right)
+&= \ap\!\left(\whb,\hat b,\hat p\right)\cdot
+   \left[\left(1-\frac{\hat b}{\hat p+1}\wh^{\,\hat p+1}\right)\ln\wh\right.
+   \nonumber\\[0.2em]
+&\qquad\qquad\qquad\qquad
+   \left.+\frac{\hat b}{(\hat p+1)^2}\wh^{\,\hat p+1}\right]
+\end{empheq}
+
+\newpage
+
+\section{Form B: derivatives of the logarithm}
+
+$b$ is a length, so it enters the bracket additively:
+\begin{equation}
+\frac{\partial}{\partial b}\bt = 1,
+\qquad
+\frac{\partial}{\partial p}\bt = 0,
+\qquad
+\frac{\partial}{\partial \bar w_s}\bt = -1
+\end{equation}
+
+\begin{equation}
+\ln \ap\!\left(\wtb,\;b,\;p\right)
+= \ln p + p\ln b - (p+1)\ln\bt
+\end{equation}
+
+\begin{align}
+\frac{\partial \ln \ap}{\partial b}
+&= \frac{p}{b}-\frac{p+1}{\bt}
+\\[0.6em]
+\frac{\partial \ln \ap}{\partial p}
+&= \frac{1}{p}+\ln b-\ln\bt
+ = \frac{1}{p}+\ln\frac{b}{\bt}
+\\[0.6em]
+\frac{\partial \ln \ap}{\partial \bar w_s}
+&= -\frac{p+1}{\bt}\cdot(-1)
+ = \frac{p+1}{\bt}
+\end{align}
+
+\section{Form B: Jacobians}
+
+\begin{empheq}[box=\fbox]{align}
+J_b\!\left(\whb,\hat b,\hat p\right)
+&= \ap\!\left(\whb,\hat b,\hat p\right)\cdot
+   \left[\frac{\hat p}{\hat b}-\frac{\hat p+1}{\bh}\right]
+\\[0.8em]
+J_p\!\left(\whb,\hat b,\hat p\right)
+&= \ap\!\left(\whb,\hat b,\hat p\right)\cdot
+   \left[\frac{1}{\hat p}+\ln\frac{\hat b}{\bh}\right]
+\\[0.8em]
+J_{w_s}\!\left(\whb,\hat b,\hat p\right)
+&= \ap\!\left(\whb,\hat b,\hat p\right)\cdot
+   \frac{\hat p+1}{\bh}
+\end{empheq}
+
+\section{Form B: Jacobians of the gain itself}
+
+\begin{empheq}[box=\fbox]{align}
+\frac{\partial \bar a}{\partial b}
+&= -\,p\left[\frac{b}{\bt}\right]^{p}\frac{\wtb}{b\,\bt}
+\\[0.8em]
+\frac{\partial \bar a}{\partial p}
+&= \left[\frac{b}{\bt}\right]^{p}\ln\frac{\bt}{b}
+\\[0.8em]
+\frac{\partial \bar a}{\partial \bar w_s}
+&= -\,p\left[\frac{b}{\bt}\right]^{p}\frac{1}{\bt}
+ = -\ap\!\left(\wtb,b,p\right)
+\end{empheq}
+
+\section{Form B at $p=1$}
+
+\begin{gather}
+\bar a=\frac{\wtb}{\bt},
+\qquad
+\ap=\frac{b}{\bt^{2}}
+\\[0.6em]
+\frac{\partial \ap}{\partial b}
+=\frac{\left(\wtb\right)-b}{\bt^{3}},
+\qquad
+\frac{\partial \ap}{\partial \bar w_s}
+=\frac{2b}{\bt^{3}}
+\end{gather}
+
+\section{Evaluation cost}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+ & $\ap$ & transcendentals required \\
+\midrule
+Form A        & $b\wt^{\,p}e^{-\frac{b}{p+1}\wt^{\,p+1}}$ & \texttt{pow}, \texttt{exp}, \texttt{log} \\
+Form B        & $p\,b^{\,p}\bt^{-p-1}$                    & \texttt{pow}, \texttt{log} \\
+Form B, $p=1$ & $b\big/\bt^{2}$ & none (rational) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}
