@@ -17,6 +17,10 @@
 %
 %   ACCEPTANCE:  sup |exponent - 1|  <~  sqrt(P55[0])   <=>  Q55 = 0 is honest.
 %
+%   Form B branch (formB_ws.tex S10): same acceptance idea, generalized to
+%   sup |theta_eff - theta_0| with theta_0 the derived anchor (b0 = 9/8,
+%   p0 = 1); see the comment block ahead of the Form B table below.
+%
 %   Also checks the far-field seed rule used for a_h[0] and Pf_a_frac:
 %   c = 1/(1 - A/h + O(h^-3)) = 1 + A/h + A^2/h^2 + ..., so seeding with the
 %   leading term alone leaves a relative gain error of A^2/h_bar_0^2, i.e. the
@@ -34,15 +38,23 @@ A_PARA = 9/16;     % ... parallel
 N_SWEEP = 60000;
 H_MAX   = 500;
 H_WORK  = 2;       % working-range floor used by the near-wall gate
+B_FORMB_0 = A_PERP;  % Form B length anchor b0 = 9/8 (the same reflection coeff)
+P_FORMB_0 = 1;       % Form B exponent anchor p0 = 1 (far-field 1/w decay)
+H_FIT_LO  = 1.1;     % Form B minimax fit window (gainlaw_shape_selection.tex)
+H_FIT_HI  = 10;
 
 h = logspace(log10(1.001), log10(H_MAX), N_SWEEP);
 [p_perp, p_para, b_perp, b_para] = deal(zeros(size(h)));
+[bB_perp, pB_perp] = deal(zeros(size(h)));
 for i = 1:numel(h)
     [c_para, c_perp, dv] = calc_correction_functions(h(i), true);
     p_perp(i) = -dv.dc_perp_dh * (h(i) - 1) / max(c_perp - 1, eps);
     p_para(i) = -dv.dc_para_dh * (h(i) - 1) / max(c_para - 1, eps);
     b_perp(i) = -h(i) * dv.dc_perp_dh / (c_perp * max(c_perp - 1, eps));
     b_para(i) = -h(i) * dv.dc_para_dh / (c_para * max(c_para - 1, eps));
+    bB_perp(i) = (c_perp - 1) * (h(i) - 1);
+    pB_perp(i) = -((h(i) - 1) + B_FORMB_0) * dv.dc_perp_dh ...
+                 / (c_perp * max(c_perp - 1, eps));
 end
 work = h >= H_WORK;
 
@@ -102,6 +114,36 @@ check('expgain  Pf_b_std', 0.10,  max(abs(b_perp - 1)), 'perp, whole domain');
 check('powerlaw Pf_p_std', 0.035, max(abs(p_perp - 1)), 'perp, whole domain');
 fprintf('==================================================================\n');
 
+% ---- Form B (w_s writing): theta_eff for (b, p), level vs slope readings ----
+% Form B deficit: 1 - a_bar = (1 + (w-w_s)/b)^(-p); truth deficit (c-1)/c.
+% With w_s at its truth (= 1, the Tier-1 setup) the deficit still carries TWO
+% parameters, so each needs its own reading with the other pinned at its
+% anchor (g := w - 1, the gap):
+%   p (an exponent) -> log-log SLOPE of the deficit (house precedent: the
+%     expgain/powerlaw theta_eff above are both slope readings), b = 9/8
+%     pinned:   p_eff = -(g + 9/8) * c' / (c*(c-1))
+%   b (a length)    -> deficit LEVEL, p = 1 pinned; invert b/(g+b) for b:
+%                 b_eff = (c - 1) * g
+%     A slope reading for b would be degenerate: far-field the log-log slope
+%     tends to p for EVERY b -- it reads p's channel and misses even b's own
+%     far anchor, so it cannot price the b commitment. The level can.
+% Endpoints: b_eff 1 -> 9/8 and p_eff 9/8 -> 1 (contact -> far field): each
+% reading travels exactly the 12.5% anchor tension, so the global sup IS the
+% anchor tension -> sqrt(P_bb[0]) = sqrt(P_pp[0]) = 9/8 - 1 = 1/8 (S10).
+fit = h >= H_FIT_LO & h <= H_FIT_HI;
+fprintf('\n======== FORM B (w_s writing)  sup |theta_eff - theta_0|, perp ========\n');
+fprintf('%-35s %-3s %6s | %8s %9s %8s\n', ...
+        'reading', 'th', 'th_0', 'all', '[1.1,10]', '>=2');
+fprintf('%s\n', repmat('-', 1, 76));
+report_theta('level  b_eff = (c-1)(w-1)', 'b', B_FORMB_0, bB_perp, fit, work);
+report_theta('slope  p_eff = -(g+9/8)c''/(c(c-1))', 'p', P_FORMB_0, pB_perp, fit, work);
+fprintf('\nlocation of the worst deviation (whole domain):\n');
+locate_theta('b_eff', bB_perp, B_FORMB_0, h);
+locate_theta('p_eff', pB_perp, P_FORMB_0, h);
+fprintf('=> global sup at the contact end = anchor tension; sqrt(P_bb[0]) = sqrt(P_pp[0]) = %.4f (= 9/8 - 1)\n', ...
+        B_FORMB_0 - 1);
+fprintf('==========================================================================\n');
+
 
 function report(name, sym, v_perp, v_para, work)
     fprintf('%-26s %-4s | %8.4f %8.4f | %8.4f %8.4f\n', name, sym, ...
@@ -112,6 +154,16 @@ end
 function locate(name, v, h)
     [m, ix] = max(abs(v - 1));
     fprintf('  %-8s %.4f @ h_bar = %.3f\n', name, m, h(ix));
+end
+
+function report_theta(name, sym, th0, v, fit, work)
+    fprintf('%-35s %-3s %6.4f | %8.4f %9.4f %8.4f\n', name, sym, th0, ...
+            max(abs(v - th0)), max(abs(v(fit) - th0)), max(abs(v(work) - th0)));
+end
+
+function locate_theta(name, v, th0, h)
+    [m, ix] = max(abs(v - th0));
+    fprintf('  %-8s %.4f @ w_bar = %.3f\n', name, m, h(ix));
 end
 
 function check(name, prior, bound, where)
