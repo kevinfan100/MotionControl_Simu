@@ -1,7 +1,8 @@
 # Shape Ledger — gain-law 形式統一對照
 
 > **定案門檻（freeze gate）**：任一形式要從 co-equal 升為唯一定案，需同時滿足——
-> (i) **缺陷 2 解決**（運動時讀數 +4~5% 走共用讀數鏈，未解前 B 層數字全部被污染）；
+> (i) ~~缺陷 2 解決~~ **2026-08-01 改寫：y₂ 讀數 per-seed 慢波動（std 5–6%）獲誠實處理**
+> （舊缺陷 2 已撤案，見下「未解主項」節）；
 > (ii) **margin ≥ 3×**（= bound ÷ √P[0]；目標 sup|θ_eff−1| ~0.01 級，讓指數從
 > nuisance 變可辨識參數）；(iii) **三層指標填滿、無 TODO**。
 > 達標前 powerlaw 與 expgain 維持**對等並行**（使用者裁決 2026-07-28）。
@@ -50,12 +51,18 @@
 | P[0] 預算（V3） | TODO | PASS | PASS |
 | run-time c-free | ✓ | ✓ | ✓ |
 
-## 未解主項（兩形式共用）
+## 未解主項（讀數鏈共用；2026-08-01 改寫）
 
-**缺陷 2**：運動時變異數讀數 +4~5%（隨頻率、a_pd 時間常數增長；與高度／增益擺幅／
-a_cov／â／增益模型寫法全部無關——七項否證見 memory project-expgain-impl-two-defects）。
-→ 重推 `derivation/Cdpmr_Cn_derivation.tex`；證據腳本 `test_script/scratch/`
-（temp_diag_powerlaw_cdpmr / cdpmr2 / temp_verify_powerlaw_claims）。
+**缺陷 2 已撤案（2026-08-01）**：N=48 母體測試 osc 超額 +1.33%（CI 含零）、
+hold−osc 配對 −0.44% n.s.——「運動時 +4~5%」是 6-seed 高抽樣假象（慣用組 = 1-in-18，
+seed 11 = 母體最大值）。#5 重裁維持（調變機制配對處決 −0.11%±0.11%）、EWMA-lag
+定量處決（功率短 25×）。**Cdpmr_Cn 含運動重推無標的，勿再立案。**
+詳 memory project-formB-tier1-defect2-retraction-2026-08-01。
+
+**新主案 = y₂ 讀數 per-seed 慢波動**：std 5–6%（單 seed −10%~+12%，整 run 固定，
+與高度/運動無關 = 有限窗變異數估計本性）——放開參數時的棘輪燃料。
+殘留疑點：~+1.2% 靜態偏差（t≈1.9 未顯著，需 N~200）。
+**讀數鏈數字紀律：6-seed SEM ≈ 2.6%，本表 B 層 1% 級數字不得引用到兩位小數。**
 
 ## 形式沿革（一行版）
 

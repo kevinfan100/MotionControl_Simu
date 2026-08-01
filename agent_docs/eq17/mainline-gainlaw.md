@@ -25,11 +25,21 @@
 - a_cov 不變性 — `verify_5state_expgain_acov.m`／`verify_powerlaw_regress_A12.m`
 - P[0] 預算 — E[(x̂∞−x̂₀)²] ≤ P[0]−P[∞]
 
-## 現況（2026-07-28）
+## 第三形式：Form B（2026-07-31 起，w̄_s 能力線）
 
-- 缺陷 1（增益模型微分式積分截斷）已由 7a 代數式修復：descent peak 11.03% → 5.05%
-- **缺陷 2 = 未解主項**：運動時變異數讀數 +4~5%，隨頻率與 a_pd 時間常數增長、與形狀無關
-  → 下一步重推 `Cdpmr_Cn_derivation.tex`（現行假設穩態、僅噪聲驅動的閉迴路）；
-  證據腳本在 `test_script/scratch/`
+- gain law：ā = 1 − (1 + (w̄−w̄_s)/b)^(−p)，θ=(b,p,w̄_s) 錨 (9/8, 1, 1)；全正規化（/R、/a_o、f̄=a_o f）
+- controller `motion_control_law_formB_ws.m`（7-state、lock 旗標階梯）；driver `run_formB_ws.m`（包絡 prior run-time 自推）
+- 推導 `derivation/formB_ws.tex` + `formB_ws_ref.tex`（含 P[0] 包絡修訂、D3 Q 容器、末三頁 = c2/c3 進度圖）
+- Tier-1：anchor-lock desc 1.20%；注意「鎖錨勝」在 sim 為對答案（真值≈錨族），正確讀法 = 錨對時估測器仍被慢偏差拖壞 → c2/c3（估 w̄_s）為當前工作線
+
+## 現況（2026-08-01）
+
+- 缺陷 1 已由 7a 代數式修復（descent 11.03% → 5.05%）
+- **缺陷 2 已撤案**（2026-08-01，N=48：+1.33% n.s.、運動框架溶解、6-seed = 1-in-18 高抽樣；
+  詳 memory `project-formB-tier1-defect2-retraction-2026-08-01`）。**Cdpmr_Cn 含運動重推無標的，勿再立案**
+- **新主案 = y₂ 讀數 per-seed 慢波動 std 5–6%**（有限窗變異數估計本性）= c2/c3 seed 一致性的對手；
+  後續順序：y₂ 慢噪聲誠實處理 → ε_w MA(2) 共變異數（#3）→ w̄_s prior 重立 → 足夠 N 驗證 → S11
+- **讀數鏈數字紀律**：6-seed SEM ≈ 2.6%，1% 級宣稱需 N~200；07-28 頻率/a_pd 梯視為未解析
+- ⚠ 家族未修項：predict 一步時序 lead（formB 已修；expgain/powerlaw 同構未修）
 - 兩形式 prior margin 皆 TIGHT（1.02–1.06×）→ 對照與定案門檻見
   `reference/eq17_analysis/shape_ledger.md`

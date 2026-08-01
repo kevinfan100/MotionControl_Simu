@@ -20,14 +20,17 @@
    （工具 `test_script/integration/verify_shape_exponent_bound.m`；
    prior 設計方法 `reference/shared/param_prior_rules.md`）
 
-兩個**對等**形式（檔案級對應見 @agent_docs/eq17/mainline-gainlaw.md；
+三個形式（檔案級對應見 @agent_docs/eq17/mainline-gainlaw.md；
 對照與定案門檻見 `reference/eq17_analysis/shape_ledger.md`）：
 - **powerlaw** c = 1 + K/(h̄−1)^p —— ⊥ 最準；∥ 結構性失效
 - **expgain** a_h = a_o[1 − h̄^(−b)] —— 三軸可用；7a 代數式已修缺陷 1
   （⚠ tex 正文落後 code：仍 7b 微分式，code 以 `_5state_expgain_alg.m` 為準）
+- **Form B**（w̄_s 能力線）ā = 1 − (1+(w̄−w̄_s)/b)^(−p) —— `derivation/formB_ws.tex`；
+  當前工作線 = c2/c3（估 w̄_s）的 seed 一致性
 
-未解主項 = **缺陷 2**：運動時變異數讀數 +4~5%（兩形式共用讀數鏈）
-→ 重推 `reference/eq17_analysis/derivation/Cdpmr_Cn_derivation.tex`。
+未解主項（2026-08-01 改寫）= **y₂ 讀數 per-seed 慢波動**（std 5–6%，有限窗變異數估計本性）。
+舊「缺陷 2 運動時 +4~5%」已撤案（N=48 不顯著、6-seed 高抽樣假象；
+詳 memory `project-formB-tier1-defect2-retraction-2026-08-01`）；讀數鏈 1% 級宣稱需 N~200。
 
 ---
 
