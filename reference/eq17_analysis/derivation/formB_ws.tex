@@ -18,6 +18,7 @@
 \setlength{\mathindent}{0pt}
 \usepackage{geometry}
 \geometry{margin=2.0cm}
+\usepackage{graphicx}
 
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0.80em}
@@ -326,9 +327,10 @@ e_{y_2}[k] &= y_2[k] - \hat{\bar{a}}_w[k]
 
 \section{Process and measurement noise}
 
-\textbf{Process noise $Q$}\quad (only the current white thermal step
-enters $Q$: the past thermal steps in $\varepsilon_w$ are cross-step
-correlated, and $n_w$ already sits in $R_1$)
+\textbf{Process noise $Q$}\quad (full $\mathrm{Var}(\varepsilon_w)$
+container --- thermal history and $n_w$ feedthrough included, only the
+cross-step correlations of $\varepsilon_w$ dropped; revision 2026-08-01,
+supersedes the current-step-only container; see ref)
 
 \begin{align*}
 q_3[k] &= -\bar{a}_w[k]\,\bar{f}_T[k], \qquad
@@ -344,8 +346,13 @@ q_4[k] = \hat{\bar{a}}'[k]\,\bar{a}_w[k]\,\bar{f}_T[k]
 \end{align*}
 
 \begin{align*}
-Q_{33}[k] = \frac{4k_BT\,a_o}{R}\,\bar{a}_w[k], \qquad
-Q_{34}[k] = Q_{43}[k] = -\hat{\bar{a}}'[k]\,Q_{33}[k], \qquad
+Q_{33}[k]
+  &= \mathrm{Var}(\varepsilon_w[k])
+   = \frac{4k_BT\,a_o}{R}\,
+     \Bigl(\bar{a}_w[k]
+     + (1-\lambda_c)^2\sum_{i=1}^{d}\bar{a}_w[k-i]\Bigr)
+   + (1-\lambda_c)^2\,\sigma^2_{n_w} \\
+Q_{34}[k] &= Q_{43}[k] = -\hat{\bar{a}}'[k]\,Q_{33}[k], \qquad
 Q_{44}[k] = \hat{\bar{a}}'[k]^{2}\,Q_{33}[k]
 \end{align*}
 \begin{equation*}
@@ -386,6 +393,40 @@ R_2[k] = K_{var}\,IF_{var}\,\bigl(\bar{a}_w[k]+\xi\bigr)^{2}
 \end{equation*}
 
 ($C_{dpmr}$, $C_n$: \texttt{Cdpmr\_Cn\_derivation.tex} --- stationary,
-noise-only loop assumption: OPEN, defect 2; see ref)
+noise-only derivation; the former ``defect 2'' motion excess was RETRACTED
+2026-08-01 ($N{=}48$: $+1.33\%$ n.s.); the live open item is the per-seed
+finite-window readout fluctuation, std $5$--$6\%$; see ref)
+
+\clearpage
+
+\section*{Simulation figures}
+
+(canonical scenario, $z$ axis; per panel: gain tracking, relative gain error,
+free parameters)
+
+\begin{center}
+\includegraphics[width=0.49\linewidth]{figures/formB_c1_seed7.png}\hfill
+\includegraphics[width=0.49\linewidth]{figures/formB_c1_seed11.png}
+
+Config 1 --- estimate $(b, p)$, $w_s$ locked at 1: seed 7 (left) vs seed 11 (right).
+\end{center}
+
+\clearpage
+
+\begin{center}
+\includegraphics[width=0.49\linewidth]{figures/formB_c2_seed7.png}\hfill
+\includegraphics[width=0.49\linewidth]{figures/formB_c2_seed11.png}
+
+Config 2 --- $p$ locked at 1, estimate $(b, w_s)$: seed 7 vs seed 11.
+\end{center}
+
+\clearpage
+
+\begin{center}
+\includegraphics[width=0.49\linewidth]{figures/formB_c3_seed7.png}\hfill
+\includegraphics[width=0.49\linewidth]{figures/formB_c3_seed11.png}
+
+Config 3 --- estimate $(b, p, w_s)$: seed 7 vs seed 11.
+\end{center}
 
 \end{document}

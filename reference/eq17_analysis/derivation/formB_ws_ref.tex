@@ -449,14 +449,30 @@ dropped, same one-declaration convention as S6.
 
 \section*{S8 notes --- Process and measurement noise}
 
-\textbf{Declared exclusions (house-doc lineage).}
-(i) The past thermal steps
-$(1-\lambda_c)\sum \bar{a}_w[k-i]\bar{f}_T[k-i]$ are cross-step correlated
-and stay out of $Q$ --- the container is knowingly incomplete, the same
-declaration the house doc makes.
+\textbf{Declared exclusions (house-doc lineage; item (i) REVISED
+2026-08-01).}
+(i) ORIGINAL: the past thermal steps
+$(1-\lambda_c)\sum \bar{a}_w[k-i]\bar{f}_T[k-i]$ and the $n_w$
+feedthrough stayed out of $Q$ (house-doc declaration).  REVISED to the
+validated 3-component container (the D3 precedent of
+\texttt{reference/eq17\_analysis/kf\_canonical\_spec.md} \S5, Vpersonal
+lineage, empirically validated emp/closed $\approx 1.0$ on the 6-state):
+$Q_{33} = \mathrm{Var}(\varepsilon_w)$ in full --- current thermal step,
+thermal history at $(1-\lambda_c)^2$, and $(1-\lambda_c)^2\sigma^2_{n_w}$
+feedthrough --- with only the \emph{cross-step correlations} of
+$\varepsilon_w$ dropped (independence approximation; $\varepsilon_w$ is
+MA($d$) across steps, declared).  The 6-state's third component
+(randgain) does not apply to Form B: the gain-error-times-force channel
+lives coherently in $F_{dw}e_{\bar{a}_w}$ via the back-step, and the
+shape parameters carry no random walk.  Motivation for the revision: the
+2026-08-01 audit traced the descent-phase low-frequency leakage into the
+free parameters partly to the under-modelled (colored) $\varepsilon_w$;
+the rank-one gain block ($q_4 = -\hat{\bar{a}}' q_3$) is unaffected by
+the container's internal composition.
 (ii) $\varepsilon_w$ contains $(1-\lambda_c)n_w$, so
 $E[q_3\,r_1] = -(1-\lambda_c)\sigma^2_{n_w} \neq 0$ is dropped (the
-standard-KF independence assumption is kept).
+standard-KF independence assumption is kept; same treatment as the D3
+precedent; scoped out of the 2026-08-01 revision by user decision).
 (iii) Run time evaluates every $Q$ entry at the current estimate ---
 stated once here, fixing the evaluation-point asymmetry the house doc
 left undeclared.
@@ -464,19 +480,26 @@ left undeclared.
 S7's house back-off leaves that channel out of $\mathbf{H}$ (S7 notes;
 the house NOTES record this channel $1.3\times$ low).
 
-\textbf{OPEN --- defect 2 lives in the $\sigma^2_{\delta\bar{w}_r}$
-formula.}  $C_{dpmr}$, $C_n$ are derived
+\textbf{Defect 2: RETRACTED (2026-08-01).}  $C_{dpmr}$, $C_n$ are derived
 (\texttt{Cdpmr\_Cn\_derivation.tex}) for a \emph{stationary,
-noise-only-driven} closed loop.  Measured (2026-07-28): during commanded
-motion $\mathrm{Var}(\delta\bar{w}_r)$ exceeds the formula by $+4\sim5\%$,
-growing with command frequency ($0.25/0.5/1$\,Hz $\to$
-$+0.9/+2.4/+5.2\%$) and with the $a_{pd}$ EWMA time constant; stationary
-excess is only $+1.0\%$; seven falsifications excluded every other
-suspect.  The inversion therefore biases $y_2$ high by the same amount
-during motion, and everything downstream of $y_2$ inherits it (the
-$+1.2\%$ parked $\hat{a}_o$; the polluted B-layer numbers; the blocked
-freeze gate).  Re-deriving \texttt{Cdpmr\_Cn\_derivation.tex} with motion
-included is the mainline's first priority.
+noise-only-driven} closed loop, and the 2026-07-28 case held that
+commanded motion adds a $+4\sim5\%$ readout excess.  Re-adjudicated on
+the timing-fixed machinery: at $N{=}48$ seeds the oscillation-window
+excess is $+1.33\%$ (95\% CI $[-0.02, +2.67]\%$, contains zero) and the
+paired hold$-$osc difference is $-0.44\% \pm 0.90\%$ --- the motion-time
+framing dissolves; the old $+4.4\%$ was a 6-seed sampling artifact (the
+house seed set is a 1-in-18 high draw; seed 11 is the population
+maximum).  Mechanism executions on record: the seven 07-28
+falsifications stand; the gain-modulation candidate was killed by the
+paired far-field test (modulation power $\times 7219$ down, bias moved
+$-0.11\% \pm 0.11\%$); the EWMA-lag candidate was killed quantitatively
+($25\times$ power short, closure with the falsification ledger).  The
+\emph{live} open item is the per-seed finite-window readout fluctuation
+(std $5$--$6\%$, fixed per noise realization, independent of height and
+motion) --- the c2/c3 ratchet fuel; a possible $\sim{+}1.2\%$ stationary
+offset remains unresolved (needs $N\sim200$).  Readout-chain numbers
+from 6 seeds carry SEM $\approx 2.6\%$ and must not be quoted at the
+$1\%$ level.
 
 \textbf{The correct (whitened) $y_2$ treatment --- production default.}
 $\hat{\sigma}^2$ is an EWMA, so $y_2$ is AR(1) with pole $(1-a_{cov})$:
@@ -531,28 +554,160 @@ precedent).
 
 \section*{S10 notes --- Seeds and priors (not in the main file)}
 
-Contract, to be instantiated by the $P[0]$ six-step chain of
-\texttt{reference/shared/param\_prior\_rules.md} before any
-implementation:
-\begin{itemize}
-\item Seeds: $\hat{b}_w[0] = 9/8$, $\hat{p}_w[0] = 1$ (the two derived
+Instantiated 2026-07-31 via the $P[0]$ six-step chain of
+\texttt{reference/shared/param\_prior\_rules.md}; the $(b_w, p_w)$ widths
+below are derivation, not tuning.  Numeric tool: the Form B branch of
+\texttt{verify\_shape\_exponent\_bound.m}
+(\texttt{test\_script/integration/}).
+
+\textbf{Seeds.}  $\hat{b}_w[0] = 9/8$, $\hat{p}_w[0] = 1$ (the two derived
 anchors), $\hat{\bar{w}}_s[0] = 1$ (nominal contact);
 $\hat{\bar{a}}_w[0] = \bar{a}(\bar{w}_d[0]-\hat{\bar{w}}_s[0],
 \hat{b}_w[0], \hat{p}_w[0])$; $\delta\hat{\bar{w}}_j[0]$ from the first
 measurements (or $0$).
-\item $P[0]$ widths: $(b_w, p_w)$ funded by the $12.5\%$ anchor tension
-via a Form B $\theta_{\mathrm{eff}}$ construction (open task: the Form B
-analogue of the expgain $b_{\mathrm{eff}}$ definition);
-$\bar{w}_s-1$ width from approach/positioning calibration and the S11
-injection protocol; seed errors per-axis via the $A^2$ rule.  $a_o$ is
-not a state --- its $2.8\%$ tolerance is exercised by the S11 leakage
-test, not carried in $\mathbf{P}$.
-\item $Q_\theta = 0$ honesty condition:
+
+\textbf{Six-step chain, instantiated for $(b_w, p_w)$.}
+(1) $P[0] := E[(\text{true}-\text{seed})^2]$ (KF definition);
+(2) the seeds are the analytic anchors, so the ignorance source of the
+error is zero;
+(3) shape parameters have no true value --- the defensible substitute is
+$\theta_{\mathrm{eff}}(\bar{w})$, the value the truth curve demands at
+each height;
+(4) $Q_\theta = 0$ means one committed number serves the whole run, so
+the error at step $k$ is $|\theta_0 - \theta_{\mathrm{eff}}(\bar{w}[k])|$;
+(5) at $k=0$ the height is unknown and the trajectory sweeps the domain,
+so the honest bound is the global $\sup$;
+(6) $\sqrt{P[0]} = \sup|\theta_{\mathrm{eff}} - \theta_0|$.
+
+\textbf{$\theta_{\mathrm{eff}}$ constructions --- the reading choice.}
+Form B's deficit is $1-\bar{a} = (1+(\bar{w}-\bar{w}_s)/b)^{-p}$; the
+truth deficit is $(c-1)/c$.  With $\bar{w}_s$ at its truth ($=1$, the
+Tier-1 setup) the deficit still carries \emph{two} parameters, so each
+needs its own reading, the other pinned at its anchor
+($g := \bar{w}-1$, the gap):
+\begin{itemize}
+\item $p_{\mathrm{eff}}$ by deficit log-log \emph{slope}, $b = 9/8$
+pinned.  An exponent is a slope in log-log coordinates --- the house
+precedent: the expgain and powerlaw $\theta_{\mathrm{eff}}$ readings are
+both slope readings.  Against the shape coordinate $1+g/b$:
+\begin{equation*}
+p_{\mathrm{eff}}(\bar{w})
+  = -\bigl(g+\tfrac{9}{8}\bigr)\,\frac{c'}{c\,(c-1)} .
+\end{equation*}
+\item $b_{\mathrm{eff}}$ by deficit \emph{level}, $p = 1$ pinned.  $b$ is
+a length, not an exponent, and the slope reading is degenerate for it:
+far field the log-log slope tends to $p$ for \emph{every} $b$ --- it
+reads $p$'s channel and misses even $b$'s own far anchor, so it cannot
+price the $b$ commitment.  The level reading inverts the pinned-$p$
+deficit $b/(g+b)$ for $b$:
+\begin{equation*}
+b_{\mathrm{eff}}(\bar{w}) = (c-1)\,(\bar{w}-1) .
+\end{equation*}
+\end{itemize}
+
+\textbf{Endpoints and numbers} (plant truth $c_\perp$).
+$b_{\mathrm{eff}}: 1 \to 9/8$ and $p_{\mathrm{eff}}: 9/8 \to 1$ from
+contact to far field: each reading travels exactly the $12.5\%$ anchor
+tension of S1 (near-wall truth slope $1$ vs anchored model slope
+$p/b = 8/9$), surfacing at the contact end.
+\begin{center}
+\begin{tabular}{llccc}
+\toprule
+reading & $\theta_0$ & $\sup$ all & $\sup\ [1.1,10]$ &
+  $\sup\ \bar{w}\geq 2$ \\
+\midrule
+$b_{\mathrm{eff}}$ (level) & $9/8$ & $0.1244$ & $0.0798$ & $0.0157$ \\
+$p_{\mathrm{eff}}$ (slope) & $1$   & $0.1235$ & $0.0373$ & $0.0242$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+Both global sups sit at the contact end and are the anchor tension
+itself ($0.1244$/$0.1235$ differ from $1/8$ only through the sweep
+starting at $\bar{w} = 1.001$).
+
+\textbf{Decision} (user-approved 2026-07-31, SUPERSEDED by the revision
+below):
+\begin{equation*}
+\sqrt{P_{bb}[0]} = \sqrt{P_{pp}[0]} = \tfrac{1}{8} = 0.125
+\end{equation*}
+--- the global $\sup$, which is the anchor tension in closed form
+($9/8 - 1$); no truncation to a working range, per chain step (5).
+
+\textbf{Revision --- envelope domain} (user-approved 2026-08-01).
+Chain step (5)'s premise (``height unknown, sweeps the domain'') is
+false for a \emph{commanded} trajectory: the planned envelope is known
+before $k=0$.  Amended step (5): for a commanded trajectory the $\sup$
+domain is the planned envelope, widened by a derived tracking margin;
+the global $\sup$ remains the fallback when the envelope is unknown.
+The Tier-1 audit measured the consequence of the global width on this
+scenario: $5$--$8\times$ over-wide, giving the collinear ridge room to
+absorb low-frequency innovation content (rule 3's ``too loose gets
+dragged by noise'', observed as the seed-11 ratchet).  Envelope for the
+canonical scenario: commanded trough $2.0$ minus margin $0.1$ (measured
+true-trough undershoot $0.033$ plus measurement noise $\sim 0.05$,
+rounded up) to start height plus $1$:
+\begin{equation*}
+\sqrt{P_{bb}[0]} = 0.0157, \qquad \sqrt{P_{pp}[0]} = 0.0245
+\qquad (\text{envelope } [1.9,\ 22.3]).
+\end{equation*}
+Boundary sensitivity (floor $1.90/1.95/2.00$): $b$ $0.0157$ in all
+three --- its $\sup$ sits at the interior point $\bar{w}\approx 4.3$,
+boundary-immune; $p$ $0.0245/0.0244/0.0242$ --- its $\sup$ sits at the
+floor, $0.0003$ spread.  Ceiling $10/22.3/25$: no change in either.
+The driver derives the triple at run time from its own scenario config
+(zero tuning: envelope = config fact, $\sup$ = offline truth-curve
+evaluation); the controller defaults keep the global-$\sup$ fallback.
+
+\textbf{Tier-1 shape floor.}  With $\bar{w}_s$ locked at $1$, the
+$(b,p)$ minimax fit over $\bar{w}\in[1.1,10]$ against the plant truth
+reaches $\sup$ gain error $0.353\%$ at $(b,p) = (1.0354,\ 0.9500)$; the
+anchored seed $(9/8,\ 1)$ gives $\sup$ $0.66\%$.  The anchored-seed
+number is the shape floor used below: the gain error the seed pair
+carries beyond what parameter offsets explain --- derived, not a
+tunable.  Envelope revision (2026-08-01, domain-consistency fix for the
+audit's mixed-domain note): on the canonical envelope $[1.9, 22.3]$ the
+anchored-seed $\sup$ is $0.284\%$ at the interior point
+$\bar{w}\approx 3.47$ (boundary-immune; identical for floors
+$1.90/1.95/2.00$) --- the floor now lives on the same domain as the
+$P_{bb}/P_{pp}$ widths; $0.66\%$ remains the $[1.1,10]$ fallback
+record.
+
+\textbf{$P[0]$ cross-blocks at init.}  The gain seed is a deterministic
+function of the parameter seeds, so its error is the pushforward of
+theirs plus the shape floor:
+\begin{equation*}
+P_{\bar{a}\theta}[0] = \frac{\partial\bar{a}}{\partial\theta}\,
+  P_{\theta\theta}[0],
+\qquad
+P_{\bar{a}\bar{a}}[0]
+  = \frac{\partial\bar{a}}{\partial\theta}\,P_{\theta\theta}[0]\,
+    \frac{\partial\bar{a}}{\partial\theta}^{\!\top}
+  + (\text{shape floor})^2,
+\end{equation*}
+with the shape floor on the same domain as $P_{\theta\theta}[0]$
+(envelope: $0.00284$; global-fallback: $0.0066$),
+with the \emph{level} partials $\partial\bar{a}/\partial\theta =
+[\partial\bar{a}/\partial b,\ \partial\bar{a}/\partial p,\
+\partial\bar{a}/\partial\bar{w}_s]$ (note
+$\partial\bar{a}/\partial\bar{w}_s = -\bar{a}'$ exactly; these are NOT
+the S2 gain-rate Jacobians $J_\theta = \partial\bar{a}'/\partial\theta$
+--- the seed is computed by the law's level, so its error pushes forward
+through the level) evaluated at the start height and the seeds.
+
+\textbf{Remaining widths.}  $\bar{w}_s-1$ width from
+approach/positioning calibration and the S11 injection protocol (Tier-1
+locks $\hat{\bar{w}}_s$ at $1$).  $a_o$ is not a state --- its $2.8\%$
+tolerance is exercised by the S11 leakage test, not carried in
+$\mathbf{P}$.
+
+\textbf{Honesty and reporting.}  $Q_\theta = 0$ honesty condition:
 $\sup|\theta_{\mathrm{eff}}-\theta_0| \lesssim \sqrt{P[0]}$ (charter
-constraint 4).  Collinearity per the four rules: report $\hat{\bar{a}}$
+constraint 4) --- met with equality by construction on the chosen
+domain (after the envelope revision: on the planned envelope): the
+prior \emph{is} the $\sup$, i.e.\ TIGHT ($1.00\times$) by design.
+Collinearity per the four rules: report $\hat{\bar{a}}$
 only; never quote $\hat{b}_w$, $\hat{p}_w$ separately; Joseph/UD update;
 near-wall separate fit.
-\end{itemize}
 
 \section*{S11 notes --- Acceptance criteria (not in the main file)}
 
@@ -565,7 +720,14 @@ algebraic-evaluation oracle.
 expected to FAIL --- that failure is the fingerprint of the raw
 container, not of the filter).
 \item $P[0]$ budget:
-$E[(\hat{x}_\infty-\hat{x}_0)^2] \leq P[0]-P[\infty]$.
+$E[(\hat{x}_\infty-\hat{x}_0)^2] \leq P[0]-P[\infty]$.\\
+Calibrated reading (2026-08-01; the earlier per-seed hard $\leq 1$ was
+statistically miscalibrated --- for an honest filter the per-seed
+traversal ratio is $\sim\chi^2(1)$, so one of six seeds exceeds $1.89$
+with probability $\approx 0.67$): acceptance = the 6-seed \emph{mean}
+ratio $\leq 1 + 1.645\sqrt{2/6} = 1.949$ (one-sided $95\%$ under the
+saturated bound $E[\text{ratio}] \leq 1$); per-seed ratios are printed
+as diagnostics, flagged only above $\chi^2_1(0.99) = 6.635$.
 \item Shape bound: $\sup|\theta_{\mathrm{eff}}-\theta_0| \lesssim
 \sqrt{P[0]}$ with the Form B $\theta_{\mathrm{eff}}$.\\
 Tool: adapted \texttt{verify\_shape\_exponent\_bound.m}.
