@@ -23,7 +23,7 @@
 %     extra logs (N x 3, internal non-dimensional unless noted):
 %       a_bar_hat_out, p_hat_out, ws_hat_out, P_p_out / P_ws_out (sqrt of the
 %       posterior variances), Q33_out, a_bar_Q_out (the a_bar actually used to
-%       build Q33 this step), f_bar_out; P_full_out (N x 7 x 7 x 3, posterior
+%       build Q33 this step), f_bar_out; P_full_out (N x n x n x 3, n = 9 under ma2_aug, posterior
 %       P, internal non-dimensional) iff opts.log_P_full is true. Init-call
 %       rows carry the seeds for the parameter slots (expgain precedent), not
 %       unfilled zeros.
@@ -44,7 +44,9 @@ addpath(genpath(proj));
 
 % ---------------- Named constants (no magic numbers) ----------------
 SEED             = 7;         % canonical smoke seed (smoke_5state_expgain)
-N_STATES         = 7;         % [dw1 dw2 dw3 a_bar_w b_w p_w w_s]
+N_STATES         = 9;         % [dw1 dw2 dw3 a_bar_w b_w p_w w_s m1 m2]
+                              % (ma2_aug production default, 2026-08-01;
+                              %  set 7 when running with ma2_aug = false)
 WS_SEED          = 1;         % nominal contact position [units of R] (derived seed, S10)
 DIVERGE_LIMIT_UM = 0.5;       % house smoke divergence bound [um] (smoke_5state_expgain)
 LOCK_TOL         = 1e-12;     % frozen-slot drift tolerance (abs; slots are O(1))
@@ -149,7 +151,7 @@ Pfull = simOut.P_full_out;
 [N_steps, np1, np2, n_ax] = size(Pfull);
 ok_dims = (np1 == N_STATES) && (np2 == N_STATES) && (n_ax == 3);
 all_ok = all_ok && ok_dims;
-local_print_check('P_full_out dims are N x 7 x 7 x 3', ok_dims, ...
+local_print_check('P_full_out dims are N x n_state x n_state x 3', ok_dims, ...
                   sprintf('got %d x %d x %d x %d', N_steps, np1, np2, n_ax));
 
 p_finite = true;
