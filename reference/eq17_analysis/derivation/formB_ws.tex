@@ -568,6 +568,25 @@ Config 3 --- estimate $(b, p, w_s)$: seed 7 vs seed 11.
 \clearpage
 
 \begin{center}
+\includegraphics[width=0.49\linewidth]{figures/formB_c3_priorsweep_seed7.png}\hfill
+\includegraphics[width=0.49\linewidth]{figures/formB_c3_priorsweep_seed11.png}
+
+Config 3 with the $w_s$ prior width swept
+$\sqrt{P_{w_s}}[0] \in \{0.028,\ 0.111,\ 0.222\}$ (calibrated-grade /
+house placeholder / doubled): seed 7 (left) vs seed 11 (right).  The
+$\hat{\bar{w}}_s$ excursion scales with the claimed prior (seed-11 end
+deviation $-1.8\,/\,-16.5\,/\,-29.1\,\%$) and stays inside its own
+$\pm2\sqrt{P}$ band at every width ($\max|z| = 0.67\,/\,1.95\,/\,2.45$)
+--- the drag is the prior-funded posterior realization, not a filter
+defect, and a physically anchored (or calibrated) prior buys it down
+directly.  Caution: at $0.028$ the seed-11 realization migrates into the
+$b, p$ channels (traversal budget flags them) --- the noise exits
+through whichever parameter still has the widest prior.
+\end{center}
+
+\clearpage
+
+\begin{center}
 \includegraphics[width=0.49\linewidth]{figures/formB_c4_seed7.png}\hfill
 \includegraphics[width=0.49\linewidth]{figures/formB_c4_seed11.png}
 
@@ -581,12 +600,14 @@ Config 4 --- config 2 with the TRUE wall injected at $\bar{w}_s = 1.05$
 \includegraphics[width=0.49\linewidth]{figures/formB_c5_chain.png}\hfill
 \includegraphics[width=0.49\linewidth]{figures/formB_c5_operational.png}
 
-Config 5 --- $\bar{w}_s$ as a calibration constant: sequential posterior
-handoff (run $n$'s $(\hat{\bar{w}}_s, \sqrt{P_{w_s}})$ = run $n{+}1$'s
-prior), 6 chains $\times$ 8 runs, fresh noise each run, true wall $1.05$
-(left); operational run on the calibrated prior --- cross-chain
-$\hat{\bar{w}}_s$ error std $1.3\%$, descent peak $1.69\%$
-($\approx$ the config-1 locked floor) (right).
+Config 5 --- $\bar{w}_s$ as a calibration constant (S11 formal scale):
+sequential posterior handoff, 20 chains $\times$ 8 runs, fresh noise
+each run, true wall $1.05$ --- cross-chain spread $0.089 \to 0.020$
+tracking the claimed $\sqrt{P}$ throughout (left); operational runs on
+the calibrated prior --- $\hat{\bar{w}}_s$ error std $2.5\%$
+$\approx \sqrt{P}_{op}$, descent peak $2.27\%$ $=$ the
+$1\sigma$-wrong-wall locked floor $2.31 \pm 0.46\%$ (the derived
+expectation; exact-truth locked floor $1.21\%$) (right).
 \end{center}
 
 \clearpage

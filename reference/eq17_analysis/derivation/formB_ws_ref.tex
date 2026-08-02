@@ -878,4 +878,45 @@ $\hat{b}_w$, $\hat{p}_w$, $\hat{\bar{w}}_s$.
 class and confirm they are subdominant to the shape bound (item 4).
 \end{enumerate}
 
+\textbf{S11 calibration exam --- formal record (2026-08-02, exam v2
+PASS).}  Tools:\linebreak
+\texttt{run\_formB\_ws\_calibration.m} (chain protocol
+SSOT) and \texttt{verify\_formB\_s11\_calibration.m} (criteria
+pre-stated in-file).  Verdicts: V1$+$ recovery (20 chains, wall $1.05$)
+PASS $0.0055 \leq 0.0103$ against truth$+$transient; V1$-$ recovery
+(re-exam, 24 chains, wall $0.95$) PASS $0.0091 \leq 0.0104$ ---
+residual $+0.9\% \pm 0.5\%$ ($1.8\sigma$) noted as a sub-band
+observation, not actionable under zero tuning; V2 honesty PASS ($1.03$);
+V3a operational budget PASS ($0.87$); V3b operational tracking PASS ---
+desc $2.268\%$ against the derived $1\sigma$-wrong-wall locked floor
+$2.31 \pm 0.46\%$ (exact-truth floor $1.21\%$).  Criteria revisions on
+record: V1 verdicts are framed against truth PLUS the healthy transient
+$\delta\prod_k(1-\kappa_k)$ (the lawful prior-funded convergence
+remnant; the original zero-reference framing mislabeled it as bias),
+and V3b's reference is the $\pm\sqrt{P_{op}}$-wrong-wall locked arm
+(the original demanded exact-wall performance from a calibrated wall).
+
+\textbf{The V1$-$ ``stall'' post-mortem --- the session's ghost ledger.}
+The original V1$-$ FAIL spawned a hunt that closed with the stall
+itself dissolving: (i) frozen $y_2$ bias $6.1\%$ --- seeds-1:20
+sampling artifact (40 fresh seeds: corr $0.022$); (ii) the $17/68\%$
+asymmetric-closing signature --- noise (sign reversed on repeat);
+(iii) the $+5.4\times10^{-3}$ paired ``phantom push'' --- noise at
+$N{=}6$ ($t = 0.43$, leave-one-out sign flip) plus an $a_{cov}$ unit
+slip ($20\times$); (iv) the stall claim itself --- a zero-reference
+framing error ($t = 4.2$ against zero, $\sim 2.7\sigma$ against the
+healthy transient) on post-hoc-selected small-$N$ arms, REFUTED by the
+powered instrument (40 chains $\times$ 6 stages, inits spread across
+both sides of truth: per-stage $\kappa$ = claimed at every stage,
+pooled intercept $-0.0013 \pm 0.0017$, Gaussian residuals, endgame
+unbiased in every init bucket).  Independently, the full second-order
+(curvature) ledger was enumerated and exactly evaluated
+(\texttt{audit\_formB\_second\_order.m}, Joseph-identity $K$
+reconstruction to $10^{-18}$): the terms are real, direction-fixed up,
+$\propto P_{w_s}$ --- and total $+7\times10^{-5}$ per run, $1.3\%$ of
+the (spurious) target; the derived correction expressions are on file
+as an optional correctness patch.  Method lesson, fourth repetition:
+small-$N$ readout claims plus post-hoc selection manufacture
+mechanisms; power the statistics before hunting.
+
 \end{document}

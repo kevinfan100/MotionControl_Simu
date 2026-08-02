@@ -53,7 +53,12 @@
   x/y 增益健康 40×（desc 34.8→0.92%、hold −25→−0.04%），z 逐位不變，legacy `_nopar`；
   c6 圖頁 → **1b ✅ 判決 ws 維持 z-only**（x/y ws 資訊僅 z 的 6–7%/軸，
   功效分析否決融合；`par_ws_free` 留作重開儀器；Stage 2 取消；c7 圖頁）→
-  3 校正正名+S11 → 4 D3 prior 物理錨＋漂移 q（等使用者物理數）
+  **3 校正正名+S11 ✅（08-02，exam v2 全綠）**：chain 協議 SSOT
+  `run_formB_ws_calibration.m`＋考卷 `verify_formB_s11_calibration.m`；判準修訂
+  （V1 對「真值+健康暫態」、V3b 對「1σ-牆位鎖定地板」）；V1± / V2 / V3a / V3b 全 PASS；
+  V1− 殘餘 +0.9%±0.5% 帶內觀察項。**「停滯」= 本輪第四隻幽靈**（零基準框架錯 + 小 N
+  post-hoc；40 鏈儀器否決：κ=宣稱、零截距；二階曲率帳 +7e-5 = 1.3% 已豁免，修正式備查）→
+  4 D3 prior 物理錨＋漂移 q（等使用者物理數）
 - **讀數鏈數字紀律**：6-seed SEM ≈ 2.6%，1% 級宣稱需 N~200；07-28 頻率/a_pd 梯視為未解析
 - ⚠ 家族未修項：predict 一步時序 lead（formB 已修；expgain/powerlaw 同構未修）
 - 兩形式 prior margin 皆 TIGHT（1.02–1.06×）→ 對照與定案門檻見
