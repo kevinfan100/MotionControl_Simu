@@ -88,6 +88,28 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
 %            ancestor's sum (d-j+1)^2 = 5 factor)
 %   with xi_bar = (C_n/C_dpmr)*sigma2_nw/kappa_T (= sibling xi / a_o).
 %
+%   MA(2) AUGMENTATION (ctrl_const.ma2_aug, 2026-08-01). The Q33 container
+%   above models eps_w as WHITE with the full MA(2) variance, which
+%   underweights its DC power by (1+2*alpha)^2/(1+2*alpha^2) = 2.17 at
+%   lambda_c = 0.7. The exact fix carries the noise memory as states instead
+%   of approximating its spectrum:
+%       eps_w[k] = w_T[k] + alpha*(w_T[k-1] + w_T[k-2]) - alpha*n_w[k-d],
+%       alpha = 1 - lambda_c ,  Var(w_T[j]) = kappa_T*a_bar[j]
+%   Two memory states m_1[k] = w_T[k-1], m_2[k] = w_T[k-2] are appended at
+%   slots 8, 9, so the state becomes 9-dimensional per axis and the only
+%   remaining innovations are w_T[k] (variance kappa_T*a_bar_hat[k], the
+%   CURRENT step alone -- no history term) and n_w[k-d]. Then
+%       F_e(3,8) = F_e(3,9) = -alpha ,  F_e(4,8) = F_e(4,9) = +a_bar'*alpha
+%       row 8 = 0 ,  F_e(9,8) = 1
+%       Q = s2T*(g_T g_T') + s2n*(g_n g_n') ,
+%           g_T = [0 0 -1 a_bar' 0 0 0 1 0]' , g_n = alpha*[0 0 -1 a_bar' 0 0 0 0 0]'
+%   Q is RANK 2 and its off-diagonals are load-bearing: a diagonal-only Q
+%   would silently reproduce C(1) = alpha^2*s2T and C(2) = 0 instead of the
+%   correct C(1) = alpha*(1+alpha)*s2T and C(2) = alpha*s2T. P[0] correspondingly
+%   comes from a 5x5 DARE over [dw_1 dw_2 dw_3 m_1 m_2] mapped into slots
+%   [1 2 3 8 9]; the gain/theta block is untouched and starts uncorrelated
+%   with the memory states.
+%
 %   INIT (S10 contract + checklist; every number derived, none tuned):
 %       seeds  b = 9/8 (perp two-sphere reflection coefficient, Jeffrey &
 %              Onishi 1984; Tier-1 z-axis anchor, applied on all three axes --
@@ -129,6 +151,15 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
 %       .fe_row4_full  full row-4 multiplier M               (default true)
 %       .use_fdet      deterministic F_e regressor           (default true)
 %       .y2_off / .y1_gain_off   channel ablation            (default false)
+%       .q33_dc_match  DIAGNOSTIC: thermal Q33 x (1+2a)^2/(1+2a^2), a=1-lc
+%                      (eps_w MA(2) DC-matched white, arm (b))  (default false)
+%       .y2_echo_corr  y2 self-echo correction: H2 row x (1-S), S from the
+%                      exact mismatched-loop Lyapunov      (default TRUE,
+%                      production 2026-08-01; false = legacy echo-blind arm)
+%       .ma2_aug       exact MA(2) noise augmentation      (default TRUE,
+%                      production 2026-08-01; set false for the legacy
+%                      white-container regression arm)
+%                      MUTUALLY EXCLUSIVE with q33_dc_match
 %       .lock_b / .lock_p / .lock_ws   pin parameter at seed (default
 %                      false/false/TRUE -- Tier-1)
 %       .b_init / .p_init / .ws_init   seeds                 (default 9/8, 1, 1)
@@ -175,8 +206,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
     % ------------------------------------------------------------------
     % Persistent state  (all EKF/IIR quantities FULLY NORMALIZED)
     % ------------------------------------------------------------------
-    persistent x_e_per_axis        % 7x3 EKF state (col = axis); slots 4..7 = a_bar, b, p, w_s [-]
-    persistent P_per_axis          % cell{3} of 7x7 covariance [-]
+    persistent x_e_per_axis        % n_state x 3 EKF state (col = axis); slots 4..7 = a_bar, b, p, w_s [-]
+    persistent P_per_axis          % cell{3} of n_state x n_state covariance [-]
     persistent dw_bar_m            % 3x1 IIR LP mean of dw_m [-]
     persistent sigma2_dwr_hat      % 3x1 EWMA variance of dw_r [-]
     persistent a_wm_km1            % 3x1 a_bar_wm[k-1], whitening increment delay [-]
@@ -197,6 +228,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
     persistent enable_wall w_hat_n pz_wall
     persistent Q_theta_floor a_bar_floor b_clamp p_clamp ws_min ws_margin gap_floor
     persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off
+    persistent q33_dc_match q33_dc_fac
+    persistent y2_echo_corr S_echo_T S_echo_n
+    persistent ma2_aug alpha_ma2 n_state    % MA(2) noise-memory augmentation
     persistent lock_mask lock_state_idx
 
     % ------------------------------------------------------------------
@@ -237,6 +271,69 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         fe_row4_full = logical(get_field_default(ctrl_const, 'fe_row4_full', true));
         use_fdet     = logical(get_field_default(ctrl_const, 'use_fdet', true));
         y2_off       = logical(get_field_default(ctrl_const, 'y2_off', false));
+        % DIAGNOSTIC arm (b) of the eps_w MA(2) study (2026-08-01): scale the
+        % THERMAL part of Q33 to its DC-matched value S(0)/C(0) =
+        % (1+2a)^2/(1+2a^2), a = 1-lambda_c (2.1695 at lambda_c 0.7). The
+        % n_w share is genuinely white and stays unscaled. Default OFF; the
+        % honest fix is the exact MA(2) augmentation, not this knob.
+        q33_dc_match = logical(get_field_default(ctrl_const, 'q33_dc_match', false));
+        q33_dc_fac = 1;
+        if q33_dc_match
+            alpha_dc = 1 - lambda_c;
+            q33_dc_fac = (1 + 2*alpha_dc)^2 / (1 + 2*alpha_dc^2);
+        end
+        % y2 self-echo correction (2026-08-01): the variance readout measures
+        % the ACTUAL loop, which runs on the applied gain a_ctrl (= a_bar_hat),
+        % so the reading responds to a control-gain error with sensitivity S
+        % (loop-pole shift) and the innovation carries only (1-S) of the
+        % true-gain deviation. S from the exact 6-state Lyapunov covariance of
+        % the mismatched hold loop (states x, x[k-1], x[k-2], u[k-1], u[k-2],
+        % EWMA mean tracker; zero tuning; validated far-field S=0.319 vs
+        % paired-forcing measurement 0.323 +- 0.043). Per-step blend by the
+        % thermal/noise variance shares, S = (S_T*a_bar + S_n*xi)/(a_bar+xi).
+        y2_echo_corr = logical(get_field_default(ctrl_const, 'y2_echo_corr', true));
+        S_echo_T = 0; S_echo_n = 0;
+        if y2_echo_corr
+            assert(d_delay == 2, 'motion_control_law_formB_ws:echoDelay', ...
+                   'y2_echo_corr closed form is derived for d = 2.');
+            alE = 1 - lambda_c; epE = 1e-4;
+            vE = zeros(2, 3); gE_list = [1, 1/(1+epE), 1/(1-epE)];
+            for iN = 1:2
+                for iG = 1:3
+                    gE = gE_list(iG);
+                    AE = zeros(6); BqE = zeros(6,1); BnE = zeros(6,1);
+                    AE(1,1)=1; AE(1,3)=-gE*alE; AE(1,4)=-gE*alE; AE(1,5)=-gE*alE;
+                    BnE(1)=-gE*alE; BqE(1)=1;
+                    AE(2,1)=1; AE(3,2)=1;
+                    AE(4,3)=-alE; AE(4,4)=-alE; AE(4,5)=-alE; BnE(4)=-alE;
+                    AE(5,4)=1;
+                    AE(6,3)=a_pd; AE(6,6)=1-a_pd; BnE(6)=a_pd;
+                    if iN == 1; QE = BqE*BqE.'; extraE = 0;
+                    else;       QE = BnE*BnE.'; extraE = (1-a_pd)^2; end
+                    XE = reshape((eye(36) - kron(AE,AE)) \ QE(:), 6, 6);
+                    cE = zeros(1,6); cE(3) = 1-a_pd; cE(6) = -(1-a_pd);
+                    vE(iN,iG) = cE*XE*cE.' + extraE;
+                end
+            end
+            S_echo_T = (log(vE(1,2)) - log(vE(1,3))) / (2*epE);
+            S_echo_n = (log(vE(2,2)) - log(vE(2,3))) / (2*epE);
+        end
+        % Arm (c): exact MA(2) augmentation. Two noise-memory states carry
+        % w_T[k-1], w_T[k-2] so eps_w becomes white-driven by construction;
+        % it REPLACES the white Q33 container rather than rescaling it.
+        ma2_aug = logical(get_field_default(ctrl_const, 'ma2_aug', true));
+        if ma2_aug && q33_dc_match
+            error('motion_control_law_formB_ws:armConflict', ...
+                  ['ma2_aug and q33_dc_match are mutually exclusive arms of the ', ...
+                   'eps_w MA(2) study: the augmentation models the correlation ', ...
+                   'exactly, so there is no white container left to DC-match.']);
+        end
+        alpha_ma2 = 1 - lambda_c;
+        if ma2_aug
+            n_state = 9;
+        else
+            n_state = 7;
+        end
         y1_gain_off  = logical(get_field_default(ctrl_const, 'y1_gain_off', false));
         Q_theta_floor = get_field_default(ctrl_const, 'Q_theta_floor', 0);
 
@@ -304,7 +401,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         enable_seed = enable_wall && isfinite(w_bar_seed);
 
         % --- 0I. EKF state + covariance init (non-diagonal gain/theta block) ---
-        x_e_per_axis = zeros(7, 3);
+        x_e_per_axis = zeros(n_state, 3);
         P_per_axis   = cell(3, 1);
         a_bar_seed_v = zeros(3, 1);
         P_aa_v       = zeros(3, 1);
@@ -328,13 +425,34 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
             G_lvl = [dA_db, dA_dp, dA_dws] .* free_mask_row;
             Ptt   = [Pf_b_std(ax)^2, Pf_p_std(ax)^2, Pf_ws_std(ax)^2] .* free_mask_row;
 
-            P7 = zeros(7);
-            % Same Q33 container as run time (S8 revision 2026-08-01),
-            % evaluated at the seed where the whole history equals the seed.
-            Q3 = zeros(3);
-            Q3(3, 3) = kappa_T * a_bar_seed * (1 + d_delay * (1 - lambda_c)^2) ...
-                       + (1 - lambda_c)^2 * sigma2_n_nd(ax);
-            P7(1:3, 1:3) = solve_dare_kf_local(F3, H3, Q3, sigma2_n_nd(ax));
+            P7 = zeros(n_state);
+            if ma2_aug
+                % Position + noise-memory block from a 5x5 DARE over
+                % [dw_1 dw_2 dw_3 m_1 m_2] with the SAME rank-2 Q the run-time
+                % loop uses (thermal + n_w feedthrough), evaluated at the seed
+                % gain; mapped into the 9-slot layout [1 2 3 8 9].
+                s2T_seed = kappa_T * a_bar_seed;
+                g5T = [0; 0; -1; 1; 0];
+                g5n = [0; 0; -alpha_ma2; 0; 0];
+                F5  = [0 1 0 0 0; ...
+                       0 0 1 0 0; ...
+                       0 0 lambda_c -alpha_ma2 -alpha_ma2; ...
+                       0 0 0 0 0; ...
+                       0 0 0 1 0];
+                H5  = [1 0 0 0 0];
+                Q5  = s2T_seed * (g5T * g5T.') + sigma2_n_nd(ax) * (g5n * g5n.');
+                P5  = solve_dare_kf_local(F5, H5, Q5, sigma2_n_nd(ax));
+                ma2_idx = [1, 2, 3, 8, 9];
+                P7(ma2_idx, ma2_idx) = P5;
+            else
+                % Same Q33 container as run time (S8 revision 2026-08-01),
+                % evaluated at the seed where the whole history equals the seed.
+                Q3 = zeros(3);
+                Q3(3, 3) = q33_dc_fac * kappa_T * a_bar_seed ...
+                               * (1 + d_delay * (1 - lambda_c)^2) ...
+                           + (1 - lambda_c)^2 * sigma2_n_nd(ax);
+                P7(1:3, 1:3) = solve_dare_kf_local(F3, H3, Q3, sigma2_n_nd(ax));
+            end
             P7(4, 4)   = sum(G_lvl.^2 .* Ptt) + Pf_a_floor(ax)^2;     % P_aa
             P7(4, 5:7) = G_lvl .* Ptt;                                % P_a_theta
             P7(5:7, 4) = (G_lvl .* Ptt).';
@@ -349,6 +467,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
             % chol PD check on the free-state submatrix (locked rows/cols are
             % exact zeros by construction, so the full matrix is only PSD).
             free_idx = [1:4, 4 + find(~lock_mask).'];
+            if ma2_aug
+                free_idx = [free_idx, 8, 9];
+            end
             [~, chol_flag] = chol(P7(free_idx, free_idx));
             if chol_flag ~= 0
                 error('motion_control_law_formB_ws:P0NotPD', ...
@@ -409,9 +530,16 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
             diag.Pf_theta_std = [Pf_b_std, Pf_p_std, Pf_ws_std];
             % logging-contract additions (smoke/normalization ladder)
             % Q33 container at the seed (full Var(eps_w), S8 revision):
-            % history == seed on the init call.
-            diag.Q33     = kappa_T * a_bar_seed_v * (1 + d_delay * (1 - lambda_c)^2) ...
+            % history == seed on the init call. With ma2_aug the container is
+            % Q(3,3) of the augmented rank-2 Q (current thermal step only, the
+            % history having moved into the memory states).
+            if ma2_aug
+                diag.Q33 = kappa_T * a_bar_seed_v + alpha_ma2^2 * sigma2_n_nd;
+            else
+                diag.Q33 = q33_dc_fac * kappa_T * a_bar_seed_v ...
+                               * (1 + d_delay * (1 - lambda_c)^2) ...
                            + (1 - lambda_c)^2 * sigma2_n_nd;
+            end
             diag.a_bar_Q = a_bar_seed_v;             % current-step a_bar in Q33
             diag.f_bar   = zeros(3, 1);              % no force on the init call
             diag.P_full  = cat(3, P_per_axis{1}, P_per_axis{2}, P_per_axis{3});
@@ -531,11 +659,13 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
     %     scalar updates (Joseph form). Split filter form, mirroring the
     %     expgain siblings (kf_canonical_spec Sec.1 skeleton).
     % ------------------------------------------------------------------
-    I7 = eye(7);
+    I7 = eye(n_state);
     t_now = (k_step - 1) * Ts;
 
     K_a_y2_v   = zeros(3, 1);
     K_dx_y1_v  = zeros(3, 1);
+    dws_y1_v   = zeros(3, 1);   % logging only: ws update via y1, K1(7)*innov1
+    dws_y2_v   = zeros(3, 1);   % logging only: ws update via y2, K2(7)*innov2
     innov_y2_v = zeros(3, 1);
     innov_y1_v = zeros(3, 1);   % logging only (whiteness diagnostic)
     gate_off   = false(3, 1);
@@ -575,25 +705,42 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         % correlations of eps_w are dropped (declared, ref S8 note (i)).
         % History comes from the clamped posterior gains a_bar_hat[k-i];
         % the buffers still hold [k-1]/[k-2] here (they roll in [4]).
-        if d_delay == 2
-            a_bar_hist = a_ctrl_km1(ax) + a_ctrl_km2(ax);
+        if ma2_aug
+            % Exact MA(2): the memory states carry w_T[k-1], w_T[k-2], so the
+            % only injections left are the CURRENT thermal step and the n_w
+            % feedthrough. Rank-2 by construction; the off-diagonals Q(3,8)
+            % and Q(4,8) are what reproduce C(1) and C(2) correctly.
+            s2T_i = kappa_T * a_bar_i;
+            s2n_i = sigma2_n_nd(ax);
+            gT = zeros(n_state, 1);
+            gT(3) = -1;
+            gT(4) = a_prime_i;
+            gT(8) = 1;
+            gn = zeros(n_state, 1);
+            gn(3) = -alpha_ma2;
+            gn(4) = a_prime_i * alpha_ma2;
+            Q_i = s2T_i * (gT * gT.') + s2n_i * (gn * gn.');
         else
-            a_bar_hist = a_ctrl_km1(ax);
+            if d_delay == 2
+                a_bar_hist = a_ctrl_km1(ax) + a_ctrl_km2(ax);
+            else
+                a_bar_hist = a_ctrl_km1(ax);
+            end
+            Q33 = q33_dc_fac * kappa_T * (a_bar_i + one_minus_lc^2 * a_bar_hist) ...
+                  + one_minus_lc^2 * sigma2_n_nd(ax);
+            Q_i = zeros(n_state);
+            Q_i(3, 3) = Q33;
+            Q_i(3, 4) = -a_prime_i * Q33;
+            Q_i(4, 3) = -a_prime_i * Q33;
+            Q_i(4, 4) = a_prime_i^2 * Q33;
         end
-        Q33 = kappa_T * (a_bar_i + one_minus_lc^2 * a_bar_hist) ...
-              + one_minus_lc^2 * sigma2_n_nd(ax);
-        Q_i = zeros(7);
-        Q_i(3, 3) = Q33;
-        Q_i(3, 4) = -a_prime_i * Q33;
-        Q_i(4, 3) = -a_prime_i * Q33;
-        Q_i(4, 4) = a_prime_i^2 * Q33;
         for j = 1:3
             if ~lock_mask(j)
                 Q_i(4 + j, 4 + j) = Q_theta_floor;   % conditioning only, default 0
             end
         end
         Q44_v(ax) = Q_i(4, 4);
-        Q33_v(ax) = Q33;
+        Q33_v(ax) = Q_i(3, 3);
         a_barQ_v(ax) = a_bar_i;      % the a_bar actually used to build Q33
 
         % --- R (R2 at the ESTIMATE a_bar_hat, never the raw readout) ---
@@ -635,6 +782,25 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
                   x_curr(5); ...
                   x_curr(6); ...
                   x_curr(7)];
+        if ma2_aug
+            % Deterministic MA(2) memory feedthrough: the -alpha*(m1+m2) share
+            % of eps_w is now KNOWN state, so it leaves the noise and enters
+            % the prediction. Rows 8/9 shift the memory chain (m1 <- w_T[k],
+            % zero mean; m2 <- m1).
+            m_sum = x_curr(8) + x_curr(9);
+            x_pred(3) = x_pred(3) - alpha_ma2 * m_sum;
+            x_pred(4) = x_pred(4) + a_prime_i * alpha_ma2 * m_sum;
+            x_pred = [x_pred; 0; x_curr(8)];
+
+            F_aug = zeros(n_state);
+            F_aug(1:7, 1:7) = F_e;
+            F_aug(3, 8) = -alpha_ma2;
+            F_aug(3, 9) = -alpha_ma2;
+            F_aug(4, 8) = a_prime_i * alpha_ma2;
+            F_aug(4, 9) = a_prime_i * alpha_ma2;
+            F_aug(9, 8) = 1;            % row 8 stays all-zero (m1 <- pure noise)
+            F_e = F_aug;
+        end
         P_pred = F_e * P_curr * F_e' + Q_i;
         P_pred = 0.5 * (P_pred + P_pred');
         P_pred = freeze_locked_P(P_pred, lock_state_idx);
@@ -642,8 +808,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         % --- Sequential 1-D measurement updates (R diagonal => exact) ---
         freeze_gain = G1;
 
-        % (a) y1 = dw_m observes dw_1
-        H1 = [1 0 0 0 0 0 0];
+        % (a) y1 = dw_m observes dw_1 (memory states are unobserved: zeros)
+        H1 = [1, zeros(1, n_state - 1)];
         S1 = H1 * P_pred * H1' + R1_i;
         K1 = (P_pred * H1') / S1;
         if freeze_gain || y1_gain_off; K1(4:7) = 0; end
@@ -655,6 +821,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         P_upd  = ImKH1 * P_pred * ImKH1' + K1 * R1_i * K1';   % Joseph form
         P_upd  = 0.5 * (P_upd + P_upd');
         K_dx_y1_v(ax) = K1(3);
+        dws_y1_v(ax)  = K1(7) * innov1;
 
         % (b) y2 = gain readout (whitened increment by default).
         %     a_wm_km1 is shifted every step regardless, so the increment
@@ -662,13 +829,23 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         if ~gate_off(ax) && ~y2_off
             % H row 2 (spec S7): [0 0 0 1 -Grad*J_b -Grad*J_p -Grad*J_ws];
             % dy2/da_bar is exactly 1.
-            H2 = H2_scale * [0, 0, 0, 1, ...
+            echo_fac = 1;
+            if y2_echo_corr
+                S_i = (S_echo_T * a_bar_i + S_echo_n * xi_bar(ax)) ...
+                      / (a_bar_i + xi_bar(ax));
+                echo_fac = 1 - S_i;
+            end
+            H2 = H2_scale * echo_fac * [0, 0, 0, 1, ...
                              -Grad_wbar_d * J_b_i, ...
                              -Grad_wbar_d * J_p_i, ...
-                             -Grad_wbar_d * J_ws_i];
+                             -Grad_wbar_d * J_ws_i, ...
+                             zeros(1, n_state - 7)];
             % NONLINEAR predicted measurement (S7 innovation line); H2*x_upd
-            % would be wrong here -- see the header.
-            y2_pred = H2_scale * (x_upd(4) - a_prime_i * Grad_wbar_d);
+            % would be wrong here -- see the header. The echo share S of the
+            % reading tracks the APPLIED gain (= the estimate), so the
+            % prediction keeps the full a_bar_hat term and only the true-gain
+            % back-off scales by (1-S).
+            y2_pred = H2_scale * (x_upd(4) - echo_fac * a_prime_i * Grad_wbar_d);
             S2  = H2 * P_upd * H2' + R2_i;
             K2  = (P_upd * H2') / S2;
             if freeze_gain; K2(4:7) = 0; end
@@ -680,6 +857,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
             P_upd  = 0.5 * (P_upd + P_upd');
             K_a_y2_v(ax)   = K2(4);
             innov_y2_v(ax) = innov2;
+            dws_y2_v(ax)   = K2(7) * innov2;
         end
 
         % --- Validity clamps (numerical guards, not tuning). Locked slots
@@ -748,6 +926,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         diag.innovation_y1  = innov_y1_v;   % [-] normalized; whiteness diagnostic
         diag.K_kf_a_y2      = K_a_y2_v;
         diag.K_kf_dx_y1     = K_dx_y1_v;
+        diag.dws_y1         = dws_y1_v;    % [-] ws increment from the y1 update
+        diag.dws_y2         = dws_y2_v;    % [-] ws increment from the y2 update
         diag.P_a            = P_a_v * a_disp^2;       % (um/pN)^2
         diag.P_a_nd         = P_a_v;                  % [-] (a_bar^2 units)
         diag.P_dx           = P_dx_v * R_radius^2;    % [um^2]
@@ -950,6 +1130,8 @@ function d = empty_diag_formB()
     d.innovation_y1     = zeros(3, 1);
     d.K_kf_a_y2         = zeros(3, 1);
     d.K_kf_dx_y1        = zeros(3, 1);
+    d.dws_y1            = zeros(3, 1);
+    d.dws_y2            = zeros(3, 1);
     d.P_a               = zeros(3, 1);
     d.P_a_nd            = zeros(3, 1);
     d.P_dx              = zeros(3, 1);

@@ -97,7 +97,8 @@ function out = run_formB_ws(opts, test_opts)
 %       simOut = run_formB_ws(cfg, opts)   % single seed, direct simOut
 %   cfg = full scenario config struct (detected by field 'trajectory_type');
 %   opts fields: .seed (default 7) .verbose .ctrl_const_override
-%   .a_ctrl_override .log_P_full (adds P_full_out, N x 7 x 7 x 3). The
+%   .a_ctrl_override .log_P_full (adds P_full_out, N x n x n x 3;
+%   n = 7, or 9 under ma2_aug). The
 %   canonical-arm asserts (h_min prior floor) apply only to the arm form.
 %
 %   See also: motion_control_law_formB_ws, run_5state_expgain
@@ -111,8 +112,10 @@ function out = run_formB_ws(opts, test_opts)
         if ~isfield(topts, 'ctrl_const_override'); topts.ctrl_const_override = struct(); end
         if ~isfield(topts, 'a_ctrl_override');     topts.a_ctrl_override = [];         end
         if ~isfield(topts, 'log_P_full');          topts.log_P_full = false;           end
+        if ~isfield(topts, 'ws_inject');           topts.ws_inject = 0;                end
         out = local_run_once(cfg_t, topts.seed, topts.ctrl_const_override, ...
-                             topts.verbose, topts.a_ctrl_override, topts.log_P_full);
+                             topts.verbose, topts.a_ctrl_override, topts.log_P_full, ...
+                             topts.ws_inject);
         return;
     end
 
@@ -122,6 +125,7 @@ function out = run_formB_ws(opts, test_opts)
     if ~isfield(opts, 'oracle_bp');   opts.oracle_bp   = [];    end
     if ~isfield(opts, 'wrong_seed');  opts.wrong_seed  = 0;     end
     if ~isfield(opts, 'a_cov_scale'); opts.a_cov_scale = 1;     end
+    if ~isfield(opts, 'ws_inject');   opts.ws_inject = 0;      end   % [R] TRUE wall offset, plant side only (S11 injection)
     if ~isfield(opts, 'seeds');       opts.seeds       = [];    end
     if ~isfield(opts, 'verbose');     opts.verbose     = false; end
     if ~isfield(opts, 'config_override');     opts.config_override     = struct(); end
@@ -247,7 +251,7 @@ function out = run_formB_ws(opts, test_opts)
     runs  = cell(n_seeds, 1);
     Mrows = zeros(n_seeds, 6);   % desc | osc | hold | bud_b | bud_p | nan
     for q = 1:n_seeds
-        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, false);
+        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, false, opts.ws_inject);
         m = local_run_metrics(s, cfg, AX_Z, OSC_SETTLE_S, HOLD_SETTLE_S);
         runs{q}     = s;
         Mrows(q, :) = [m.desc_peak_pct, m.osc_rms_pct, m.hold_mean_pct, ...
@@ -468,7 +472,8 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
 end
 
 
-function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_ctrl_override, log_P_full)
+function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_ctrl_override, log_P_full, ws_inject)
+if nargin < 7; ws_inject = 0; end
 %LOCAL_RUN_ONCE  One seed of the scenario. Fork of run_5state_expgain's body
 %   with the controller hard-dispatched to motion_control_law_formB_ws and the
 %   log schema extended by the p / w_s parameter rows.
@@ -522,6 +527,16 @@ function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_c
     R_drv       = P.common.R;
     a_nom_drv   = P.common.Ts / P.common.gamma_N;      % [um/pN] far-field
     wall_on_drv = isfield(P, 'wall') && P.wall.enable_wall_effect > 0.5;
+    % S11 injection: TRUE wall shifted by ws_inject*R on the PLANT side only;
+    % trajectory and controller keep the nominal frame, so the true contact
+    % sits at w_bar_s = 1 + ws_inject in the estimator's coordinates.
+    pz_plant = 0;
+    P_plant  = P;                    % plant-side params (shifted wall)
+    if wall_on_drv
+        pz_plant = P.wall.pz + ws_inject * R_drv;
+        P_plant.wall.pz = pz_plant;  % step_dynamics / calc_thermal_force see
+                                     % the TRUE wall; controller keeps P
+    end
     if wall_on_drv && isfield(P.wall, 'h_bar_min')
         h_bar_floor_drv = P.wall.h_bar_min;
     else
@@ -553,6 +568,8 @@ function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_c
     P_ws_out    = zeros(N, 3);
     innov_y2_out = zeros(N, 3);
     innov_y1_out = zeros(N, 3);
+    dws_y1_out = zeros(N, 3);
+    dws_y2_out = zeros(N, 3);
     K_a_y2_out   = zeros(N, 3);
     R2_out       = zeros(N, 3);
     dx_r_out     = zeros(N, 3);   % IIR residual the gain readout is built from [um]
@@ -562,7 +579,7 @@ function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_c
     a_bar_Q_out   = zeros(N, 3);  % a_bar used to build Q33 this step [-]
     f_bar_out     = zeros(N, 3);  % normalized force f_bar = a_o*f [-]
     if log_P_full
-        P_full_out = zeros(N, 7, 7, 3);   % posterior P, internal nondimensional
+        P_full_out = [];   % sized on first step (7 or 9 states, ma2_aug-dependent)
     end
 
     for k = 1:N
@@ -573,7 +590,7 @@ function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_c
         p_m_delayed = p_m_buffer(:, 1);
 
         if wall_on_drv
-            h_bar_true_k = max((dot(p_curr, P.wall.w_hat) - P.wall.pz) / R_drv, h_bar_floor_drv);
+            h_bar_true_k = max((dot(p_curr, P.wall.w_hat) - pz_plant) / R_drv, h_bar_floor_drv);
             [c_para_k, c_perp_k] = calc_correction_functions(h_bar_true_k);
             a_true_k = [a_nom_drv / c_para_k; a_nom_drv / c_para_k; a_nom_drv / c_perp_k];
             % true d a_h / d h_bar by central difference on the exact curve
@@ -596,13 +613,13 @@ function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_c
                                      p_m_delayed, P, ctrl_const, a_ov_k);
 
         if P.thermal.enable > 0.5
-            f_th_k = calc_thermal_force(p_curr, P);
+            f_th_k = calc_thermal_force(p_curr, P_plant);
         else
             f_th_k = zeros(3, 1);
         end
 
         F_total = f_d_k + f_th_k;
-        p_curr = step_dynamics(p_curr, F_total, P, Ts);
+        p_curr = step_dynamics(p_curr, F_total, P_plant, Ts);
 
         if config.meas_noise_enable
             n_meas = config.meas_noise_std(:) .* randn(3, 1);
@@ -635,6 +652,8 @@ function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_c
         P_ws_out(k, :)    = sqrt(max(diag_k.P_ws(:).', 0));
         innov_y2_out(k, :) = diag_k.innovation_y2(:).';
         innov_y1_out(k, :) = diag_k.innovation_y1(:).';
+        dws_y1_out(k, :) = diag_k.dws_y1(:).';
+        dws_y2_out(k, :) = diag_k.dws_y2(:).';
         K_a_y2_out(k, :)   = diag_k.K_kf_a_y2(:).';
         R2_out(k, :)       = diag_k.R2(:).';
         dx_r_out(k, :)     = diag_k.dx_r(:).';
@@ -644,7 +663,11 @@ function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_c
         a_bar_Q_out(k, :)   = diag_k.a_bar_Q(:).';
         f_bar_out(k, :)     = diag_k.f_bar(:).';
         if log_P_full
-            P_full_out(k, :, :, :) = reshape(diag_k.P_full, [1, 7, 7, 3]);
+            np = size(diag_k.P_full, 1);
+            if isempty(P_full_out)
+                P_full_out = zeros(N, np, np, 3);
+            end
+            P_full_out(k, :, :, :) = reshape(diag_k.P_full, [1, np, np, 3]);
         end
 
         pd_for_ctrl = pd_kp1;
@@ -669,6 +692,7 @@ function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_c
     simOut.ws_hat_out = ws_hat_out;
     simOut.h_bar_out  = h_bar_out;
     simOut.h_bar_true_out = h_bar_true_out;
+    simOut.ws_inject = ws_inject;
     simOut.h_bar_d_out = h_bar_d_out;
     simOut.gate_out   = gate_out;
     simOut.a_xm_out   = a_xm_out;
@@ -679,6 +703,8 @@ function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_c
     simOut.P_ws_out    = P_ws_out;
     simOut.innov_y2_out = innov_y2_out;
     simOut.innov_y1_out = innov_y1_out;
+    simOut.dws_y1_out = dws_y1_out;
+    simOut.dws_y2_out = dws_y2_out;
     simOut.K_a_y2_out   = K_a_y2_out;
     simOut.R2_out       = R2_out;
     simOut.dx_r_out     = dx_r_out;
