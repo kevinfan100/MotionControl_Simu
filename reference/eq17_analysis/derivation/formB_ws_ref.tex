@@ -591,6 +591,36 @@ gain law currently reuses the perpendicular anchors ($b = 9/8$ vs the
 parallel truth $9/16$), which biases the $x/y$ wall estimates to
 $\sim 0.6$ --- the stage-1 derivation of the development plan.
 
+\textbf{Parallel-axis law --- Stage 1a record (2026-08-02).}  The $x/y$
+filters ran the perpendicular law ($b = 9/8$, $p = 1$) against the
+parallel truth: $c_\parallel$ leaves contact with Goldman log behavior,
+which no Form B member reproduces --- the best representation slides its
+origin INSIDE the wall (``the parallel axis cannot report the wall'',
+independent finding of the shape-selection line,
+\texttt{gainlaw\_para\_origin\_shift.m}).  Consequences before the fix:
+$x/y$ gain estimation carried desc $34.8/34.1\%$, osc RMS
+$21.0/20.5\%$, hold $-25.0/-22.6\%$ (6-seed means), and their
+$\hat{\bar{w}}_s$ faithfully converged to the law's effective origin
+($\approx 0.6$), poisoning any cross-axis fusion.  Fix (S1 parallel
+block; \texttt{par\_law}, driver default true, \texttt{\_nopar} legacy
+arm): the driver derives $(b_\parallel, p_\parallel,
+\bar{w}_{s0,\parallel})$ at init by the 3-parameter minimax fit of the
+law to the parallel GAIN $1/c_\parallel$ (fitting the deficit instead
+diverges --- labelling trap) on the same planned envelope as the
+$(b,p)$ priors, plus boundary widths and the representation floor
+$P_{\bar{a}\bar{a},\parallel}[0]$; the $x/y$ slots $5$--$7$ are locked
+at the constants and their law origin rides the $z$ filter's
+$\hat{\bar{w}}_s$ one-way ($+\Delta_\parallel$).  Acceptance (all
+PASS): legacy arm bit-identical (3 axes); $z$ bit-identical with the
+law on; $x/y$ health desc $\to 0.92/0.86\%$, hold $\to
+-0.04/+0.01\%$ ($\sim 40\times$, doc page c6); under a $1.05$
+injection the $x/y$ residual ($+0.8\%$ hold) is the pushforward of
+$z$'s own $\hat{\bar{w}}_s$ error through
+$\partial\bar{a}/\partial\bar{w}_s$ --- the intended one-way coupling,
+not a defect.  The $x/y$ $\bar{w}_s$-information question (fusion,
+Stage 1b/2) is decided by experiment, with the derived systematic
+widths as the honest cap.
+
 \textbf{The correct (whitened) $y_2$ treatment --- production default.}
 $\hat{\sigma}^2$ is an EWMA, so $y_2$ is AR(1) with pole $(1-a_{cov})$:
 $K_{var}$ fixes the per-sample \emph{variance} but not the

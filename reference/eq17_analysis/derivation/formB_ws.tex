@@ -59,6 +59,42 @@ p = 1:\qquad
 \frac{d\bar{a}}{d\bar{w}} = \frac{b}{\bigl((\bar{w}-\bar{w}_s)+b\bigr)^{2}}
 \end{equation*}
 
+\textbf{Parallel-axis law}\quad (2026-08-02, Stage 1a.  The $x/y$ truth
+$c_\parallel$ leaves contact with Goldman log behavior --- no family
+member reproduces it, and the best representation places its origin
+INSIDE the wall: the parallel axes cannot report the physical wall.
+Constants derived at init from the planned envelope (offline
+truth-curve fit, the envelope-prior mechanism); the $x/y$ filters lock
+$(b, p, \bar{w}_s)$ and consume the SHARED wall estimate one-way from
+the $z$ filter; rationale, widths and health record in ref)
+
+\begin{align*}
+\bar{a}_\parallel
+  &= 1 - \Bigl(1 +
+    \frac{\bar{w} - (\hat{\bar{w}}_{s,z} + \Delta_\parallel)}
+         {b_\parallel}\Bigr)^{-p_\parallel},
+\qquad
+\Delta_\parallel := \bar{w}_{s0,\parallel} - 1 \\
+(b_\parallel,\ p_\parallel,\ \bar{w}_{s0,\parallel})
+  &= \arg\min\ \sup_{\text{envelope}}
+    \bigl|\bar{a}_\parallel - 1/c_\parallel\bigr|
+  = (0.5217,\ 0.9770,\ 0.5918)
+\quad (\sup\ 0.038\%)
+\end{align*}
+
+\begin{align*}
+P_{\bar{a}\bar{a},\parallel}[0] &= (\text{shape floor}_\parallel)^2, \\
+\text{floor}_\parallel
+  &= \sqrt{\textstyle\sup^2_{fit} + (\sup\bar{a}'\,\delta_{w_{s0}})^2
+    + (\sup|\tfrac{g}{b}\bar{a}'|\,\delta_b)^2
+    + (\sup|(1{-}\bar{a})\ln(1{+}\tfrac{g}{b})|\,\delta_p)^2}
+  = 0.0052
+\end{align*}
+
+(boundary widths $\delta_{b},\delta_{p},\delta_{w_{s0}}
+= 0.0104,\ 0.0061,\ 0.0147$ --- floor $\pm 0.1$ / ceiling refits;
+the $z$ law and the $z$ filter are untouched)
+
 \section{Gain rate and parameter Jacobians}
 
 \begin{align*}
@@ -551,6 +587,19 @@ prior), 6 chains $\times$ 8 runs, fresh noise each run, true wall $1.05$
 (left); operational run on the calibrated prior --- cross-chain
 $\hat{\bar{w}}_s$ error std $1.3\%$, descent peak $1.69\%$
 ($\approx$ the config-1 locked floor) (right).
+\end{center}
+
+\clearpage
+
+\begin{center}
+\includegraphics[width=0.49\linewidth]{figures/formB_c6_seed7.png}\hfill
+\includegraphics[width=0.49\linewidth]{figures/formB_c6_seed11.png}
+
+Config 6 --- Stage 1a, $x/y$ gain estimation before (perpendicular law,
+$b{=}9/8$) vs after (derived parallel law, S1 parallel block): 6-seed
+means desc $34.8/34.1 \to 0.92/0.86\,\%$, hold
+$-25.0/-22.6 \to -0.04/+0.01\,\%$; $z$ bit-identical.
+Seed 7 (left) vs seed 11 (right).
 \end{center}
 
 \end{document}
