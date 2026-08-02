@@ -621,6 +621,24 @@ not a defect.  The $x/y$ $\bar{w}_s$-information question (fusion,
 Stage 1b/2) is decided by experiment, with the derived systematic
 widths as the honest cap.
 
+\textbf{Stage 1b verdict --- $\bar{w}_s$ stays $z$-only (2026-08-02).}
+Duel instrument \texttt{par\_ws\_free} (x/y keep the parallel constants
+but estimate their OWN physical $\bar{w}_s$; regression bit-identical
+when off): over the canonical run the $x/y$ claimed $\sqrt{P_{w_s}}$
+contracts only $0.111 \to 0.106$, i.e.\ $I_{x}/I_z = 0.061$,
+$I_{y}/I_z = 0.071$ --- on the parallel axes $y_1$ carries no
+commanded-force regressor, so their only $\bar{w}_s$ channel is the
+weak (whitened, echo-discounted) $y_2$ column.  Power analysis kills
+the planned chain duel: the predicted fusion gain is
+$\sqrt{1 + I_x/I_z + I_y/I_z} - 1 \approx 6\%$ in $\sigma$, below a
+6-chain experiment's resolution (SEM $\sim 30\%$) and priced against
+importing the SHARED $\Delta_\parallel$ systematic ($\pm 0.015$,
+common to $x$ and $y$).  Verdict: $\bar{w}_s$ estimation stays
+$z$-only; the $x/y$ law origins keep the one-way $z$ feed; the
+shared-state fusion stage is dropped from the plan;
+\texttt{par\_ws\_free} is kept as the reopening instrument (doc page
+c7).
+
 \textbf{The correct (whitened) $y_2$ treatment --- production default.}
 $\hat{\sigma}^2$ is an EWMA, so $y_2$ is AR(1) with pole $(1-a_{cov})$:
 $K_{var}$ fixes the per-sample \emph{variance} but not the

@@ -179,6 +179,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
 %       .y2_echo_corr  y2 self-echo correction: H2 row x (1-S), S from the
 %                      exact mismatched-loop Lyapunov      (default TRUE,
 %                      production 2026-08-01; false = legacy echo-blind arm)
+%       .par_ws_free   Stage-1b duel: x/y estimate their OWN physical w_s
+%                      (law origin = own slot 7 + ws0_par-1; slot-7 lock
+%                      follows the global lock_ws)          (default false)
 %       .ma2_aug       exact MA(2) noise augmentation      (default TRUE,
 %                      production 2026-08-01; set false for the legacy
 %                      white-container regression arm)
@@ -263,7 +266,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
     persistent y2_echo_corr S_echo_T S_echo_n
     persistent ma2_aug alpha_ma2 n_state    % MA(2) noise-memory augmentation
     persistent lock_mask_g lock_mask_ax lock_state_idx_ax
-    persistent par_law b_par p_par ws0_par  % parallel-axis (x/y) gain law
+    persistent par_law b_par p_par ws0_par
+    persistent par_ws_free  % parallel-axis (x/y) gain law
 
     % Axis roles (world frame; the wall normal is the z axis by convention)
     AX_PAR = [1, 2];    % wall-parallel axes
@@ -392,6 +396,12 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
             p_par   = ctrl_const.p_par;
             ws0_par = ctrl_const.ws0_par;
         end
+        % Stage-1b duel knob: x/y keep the parallel constants (b, p locked)
+        % but estimate their OWN physical w_s (law origin = own slot 7 +
+        % (ws0_par - 1)), instead of riding the z posterior. Their slot-7
+        % lock then follows the global lock_ws flag.
+        par_ws_free = par_law && ...
+            logical(get_field_default(ctrl_const, 'par_ws_free', false));
 
         % --- 0C'. Lock flags (Tier ladder; default = Tier-1, w_s pinned).
         %     The three global flags apply to ALL axes; par_law adds a full
@@ -403,6 +413,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         lock_mask_ax = repmat(lock_mask_g, 1, 3);     % 3 params x 3 axes
         if par_law
             lock_mask_ax(:, AX_PAR) = true;
+            if par_ws_free
+                lock_mask_ax(3, AX_PAR) = lock_mask_g(3);
+            end
         end
         lock_state_idx_ax = cell(3, 1);
         for ax = 1:3
@@ -492,7 +505,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
                 % (z-axis) contact seed by ws0_par - 1.
                 law_b  = b_par;
                 law_p  = p_par;
-                law_ws = seed_ws(AX_PERP) + (ws0_par - 1);
+                if par_ws_free
+                    law_ws = seed_ws(ax) + (ws0_par - 1);
+                else
+                    law_ws = seed_ws(AX_PERP) + (ws0_par - 1);
+                end
             else
                 law_b  = seed_b(ax);
                 law_p  = seed_p(ax);
@@ -790,7 +807,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         if par_law && any(ax == AX_PAR)
             law_b  = b_par;
             law_p  = p_par;
-            law_ws = x_e_per_axis(7, AX_PERP) + (ws0_par - 1);
+            if par_ws_free
+                law_ws = ws_i + (ws0_par - 1);
+            else
+                law_ws = x_e_per_axis(7, AX_PERP) + (ws0_par - 1);
+            end
         else
             law_b  = b_i;
             law_p  = p_i;
