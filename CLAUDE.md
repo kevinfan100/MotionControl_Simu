@@ -28,9 +28,12 @@
 - **Form B**（w̄_s 能力線）ā = 1 − (1+(w̄−w̄_s)/b)^(−p) —— `derivation/formB_ws.tex`；
   當前工作線 = c2/c3（估 w̄_s）的 seed 一致性
 
-未解主項（2026-08-01 改寫）= **y₂ 讀數 per-seed 慢波動**（std 5–6%，有限窗變異數估計本性）。
-舊「缺陷 2 運動時 +4~5%」已撤案（N=48 不顯著、6-seed 高抽樣假象；
-詳 memory `project-formB-tier1-defect2-retraction-2026-08-01`）；讀數鏈 1% 級宣稱需 N~200。
+**單 run 濾波已完備（2026-08-01/02）**：MA(2) 增廣＋y₂ 自迴音修正（S=0.32）皆 production
+預設；innov_y₁ 白化、ŵ_s honesty 0.93、效率審計證明已在 CRLB（0.080 vs 界限 ~0.09）。
+**per-seed 散布 = 誠實後驗實現（物理），根治 = 校正鏈**（後驗遞移，c5：8 runs ±2.0%、
+作業 run desc 1.69% ≈ 鎖定地板）。當前開發 = 五 Stage 計畫（mainline 快照）：
+∥ 軸 Form B 推導（x/y 錨誤用 ⊥ 的 9/8，ŵ_s 偏 0.6）→ 三軸共享 ŵ_s（÷√3）→
+校正正名 S11 → D3 prior 物理錨＋漂移 q。舊「缺陷 2」與「y₂ 凍結偏差」皆已撤案。
 
 ---
 
