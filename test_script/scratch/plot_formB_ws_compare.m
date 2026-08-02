@@ -63,10 +63,17 @@ cfg_list = { ...
     struct('key', 'p3', 'var', 'out_p3', 'file', 'run_formB_ws_p3.mat', 'ov', ov_p3, ...
            'ws_panel', true, ...
            'series', {{'b_hat_out', 'b_{hat}', BLUE; 'p_hat_out', 'p_{hat}', P_HUE; ...
-                       'ws_hat_out', 'ws_{hat}', WS_HUE}}) };
+                       'ws_hat_out', 'ws_{hat}', WS_HUE}}), ...
+    struct('key', 'p4', 'var', 'out_p4', 'file', 'run_formB_ws_p4.mat', 'ov', ov_p2, ...
+           'ws_panel', true, 'ws_inject', 0.05, ...
+           'series', {{'b_hat_out', 'b_{hat}', BLUE; 'ws_hat_out', 'ws_{hat}', WS_HUE}}) };
+% doc c4 = config 2 with the TRUE wall injected at 1 + 0.05 (plant-side shift,
+% driver opts.ws_inject; S11 protocol) -- does the estimator find a real offset?
 
 for c = 1:numel(cfg_list)
     C = cfg_list{c};
+    if ~isfield(C, 'ws_inject'); C.ws_inject = 0; end
+    ws_true_c = P_ANCHOR + C.ws_inject;
     mat_file = fullfile(res_dir, C.file);
     if exist(mat_file, 'file')
         S = load(mat_file);  out = S.(C.var);
@@ -74,6 +81,7 @@ for c = 1:numel(cfg_list)
         fprintf('%s missing -- regenerating config %s (this OVERWRITES run_formB_ws_t1_y2on.mat; re-run arm 1 afterwards).\n', ...
                 mat_file, upper(C.key));
         o = struct(); o.ctrl_const_override = C.ov;
+        o.ws_inject = C.ws_inject;
         out = run_formB_ws(o);
         S = struct(C.var, out);  save(mat_file, '-struct', 'S');
     end
@@ -142,11 +150,15 @@ for c = 1:numel(cfg_list)
         if C.ws_panel
             ws_dev = 100 * (r.ws_hat_out(:, AX_Z) - P_ANCHOR);   % [% of R]
             ax4 = subplot(n_row, 1, 4); hold(ax4, 'on');
-            hz  = plot(ax4, t, zeros(size(t)), RED, 'LineWidth', 2.0);
+            hz  = plot(ax4, t, 100 * C.ws_inject * ones(size(t)), RED, 'LineWidth', 2.0);
+            if C.ws_inject ~= 0
+                plot(ax4, t, zeros(size(t)), 'k:', 'LineWidth', 1.4, 'HandleVisibility', 'off');
+            end
             hd  = plot(ax4, t, ws_dev, 'Color', WS_HUE, 'LineWidth', 2.0);
             ylabel(ax4, '(ws_{hat}-1)  [% of R]', 'FontSize', FS, 'FontWeight', 'bold');
             xlabel(ax4, 'time  [s]', 'FontSize', FS, 'FontWeight', 'bold');
-            legend([hz hd], {'true wall (ws = 1)', 'ws_{hat} deviation (diag only)'}, ...
+            legend([hz hd], {sprintf('true wall (ws = %g)', ws_true_c), ...
+                   'ws_{hat} deviation (diag only)'}, ...
                    'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', FS - 6);
             ylim(ax4, WS_DEV_YLIM); style_ax(ax4, FS); xlim(ax4, [t(1) t(end)]);
             add_phase(ax4, tb);
@@ -166,7 +178,7 @@ for c = 1:numel(cfg_list)
         fprintf('  seed %d: descent peak %.3f %%, osc RMS %.3f %%, hold mean %+.3f %%, b budget %.3f, p budget %.3f\n', ...
                 target, m(1), m(2), m(3), m(4), m(5));
         fprintf('  ws_hat range [%.4f %.4f], final %.4f (true wall = %g, departure %+.1f %%)\n', ...
-                min(ws), max(ws), ws(end), P_ANCHOR, 100 * (ws(end) - P_ANCHOR) / P_ANCHOR);
+                min(ws), max(ws), ws(end), ws_true_c, 100 * (ws(end) - ws_true_c) / ws_true_c);
         fprintf('  a_wm raw clipped above %g nm/pN on %.1f %% of samples\n', 24, 100 * mean(aXM * NM > 24));
     end
 end
