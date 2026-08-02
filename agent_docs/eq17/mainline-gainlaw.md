@@ -51,8 +51,9 @@
   Goldman 對數 ⇒ ∥ 原點必在牆內（x/y 不能報牆位）；driver init 包絡自推
   (b,p,ws0)_∥=(0.5217, 0.9770, 0.5918)、x/y 鎖 5–7 槽、原點單向掛 z 的 ŵ_s（+Δ_∥）；
   x/y 增益健康 40×（desc 34.8→0.92%、hold −25→−0.04%），z 逐位不變，legacy `_nopar`；
-  c6 圖頁 → 1b 融合對決實驗（z-only vs z+xy 鏈）→ 2 共享 ŵ_s → 3 校正正名+S11 →
-  4 D3 prior 物理錨＋漂移 q（等使用者物理數）
+  c6 圖頁 → **1b ✅ 判決 ws 維持 z-only**（x/y ws 資訊僅 z 的 6–7%/軸，
+  功效分析否決融合；`par_ws_free` 留作重開儀器；Stage 2 取消；c7 圖頁）→
+  3 校正正名+S11 → 4 D3 prior 物理錨＋漂移 q（等使用者物理數）
 - **讀數鏈數字紀律**：6-seed SEM ≈ 2.6%，1% 級宣稱需 N~200；07-28 頻率/a_pd 梯視為未解析
 - ⚠ 家族未修項：predict 一步時序 lead（formB 已修；expgain/powerlaw 同構未修）
 - 兩形式 prior margin 皆 TIGHT（1.02–1.06×）→ 對照與定案門檻見
