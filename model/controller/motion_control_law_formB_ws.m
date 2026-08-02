@@ -138,6 +138,29 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
 %   pinned at 0 (locked = treated as exactly known; freezing a NONZERO prior
 %   with the H column zeroed would secularly pump P44 through the F_e
 %   coupling with no measurement to drain it).
+%   Locks are PER AXIS (lock_mask_ax, 3 params x 3 axes): the global flags
+%   above apply to all three axes, and par_law adds a full lock on x/y.
+%
+%   PARALLEL-AXIS LAW (ctrl_const.par_law, 2026-08-02). The perpendicular
+%   truth c_perp is well represented by the anchored Form B law with its
+%   origin AT the wall; the parallel truth c_para is not -- its Goldman
+%   logarithm at contact forces the best Form B representative to sit with
+%   its origin INSIDE the wall. With par_law = true the two wall-parallel
+%   axes (x, y) therefore run a SEPARATE, fully determined law
+%
+%       a_bar_par(w_bar) = 1 - (1 + (w_bar - w_s_par)/b_par)^(-p_par) ,
+%       w_s_par = w_s_hat(z) + (ws0_par - 1)
+%
+%   with (b_par, p_par, ws0_par) supplied by the caller as an offline
+%   minimax fit of the law to 1/c_para on the planned height envelope
+%   (run_formB_ws.local_parallel_law_package; zero tuning, no run-time truth
+%   read). The origin is fed ONE-WAY from the z-axis w_s posterior of the
+%   previous step, so the parallel origin tracks a moving wall while the
+%   z filter stays bit-identical to the par_law = false arm. Slots 5-7 of
+%   the x/y filters are consequently LOCKED at (b_par, p_par, 1) -- the
+%   parameters are exact by construction, so their only prior mass is the
+%   representation floor Pf_a_floor_par, carried on P(4,4) with zero
+%   gain/theta cross terms.
 %
 %   Runtime validity clamps (numerical guards, not tuning; alg precedent):
 %   b_hat, p_hat clamped positive; ws_hat <= w_bar_d - ws_margin; a_bar_hat
@@ -162,6 +185,14 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
 %                      MUTUALLY EXCLUSIVE with q33_dc_match
 %       .lock_b / .lock_p / .lock_ws   pin parameter at seed (default
 %                      false/false/TRUE -- Tier-1)
+%       .par_law       x/y run the parallel-axis law            (default false;
+%                      run_formB_ws turns it ON. REQUIRES .b_par, .p_par,
+%                      .ws0_par, .Pf_a_floor_par -- see the block above)
+%       .b_par / .p_par / .ws0_par     parallel law constants; ws0_par is the
+%                      law origin when the physical wall sits at w_bar = 1
+%       .Pf_a_floor_par  sqrt P(4,4) seed floor on the x/y gain (the parallel
+%                      representation floor: fit sup + envelope-width
+%                      pushforwards, root-sum)
 %       .b_init / .p_init / .ws_init   seeds                 (default 9/8, 1, 1)
 %       .Pf_b_std / .Pf_p_std   sqrt P0 widths               (default 1/8, 1/8)
 %       .Pf_ws_std     sqrt P0 width of w_s; REQUIRED if lock_ws = false
@@ -231,7 +262,12 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
     persistent q33_dc_match q33_dc_fac
     persistent y2_echo_corr S_echo_T S_echo_n
     persistent ma2_aug alpha_ma2 n_state    % MA(2) noise-memory augmentation
-    persistent lock_mask lock_state_idx
+    persistent lock_mask_g lock_mask_ax lock_state_idx_ax
+    persistent par_law b_par p_par ws0_par  % parallel-axis (x/y) gain law
+
+    % Axis roles (world frame; the wall normal is the z axis by convention)
+    AX_PAR = [1, 2];    % wall-parallel axes
+    AX_PERP = 3;        % wall-normal axis; source of the shared w_s estimate
 
     % ------------------------------------------------------------------
     % [0] Initialization on first call
@@ -337,12 +373,41 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         y1_gain_off  = logical(get_field_default(ctrl_const, 'y1_gain_off', false));
         Q_theta_floor = get_field_default(ctrl_const, 'Q_theta_floor', 0);
 
-        % --- 0C. Lock flags (Tier ladder; default = Tier-1, w_s pinned) ---
+        % --- 0C. Parallel-axis law (x/y); constants are caller-supplied ---
+        par_law = logical(get_field_default(ctrl_const, 'par_law', false));
+        b_par = 0; p_par = 0; ws0_par = 1;
+        if par_law
+            par_fields = {'b_par', 'p_par', 'ws0_par', 'Pf_a_floor_par'};
+            for ip = 1:numel(par_fields)
+                if ~isfield(ctrl_const, par_fields{ip}) || isempty(ctrl_const.(par_fields{ip}))
+                    error('motion_control_law_formB_ws:missingParLaw', ...
+                          ['par_law = true requires ctrl_const.%s. The parallel ', ...
+                           'package (b_par, p_par, ws0_par, Pf_a_floor_par) is an ', ...
+                           'offline minimax fit to 1/c_para on the planned envelope; ', ...
+                           'derive it caller-side (run_formB_ws.local_parallel_law_package).'], ...
+                          par_fields{ip});
+                end
+            end
+            b_par   = ctrl_const.b_par;
+            p_par   = ctrl_const.p_par;
+            ws0_par = ctrl_const.ws0_par;
+        end
+
+        % --- 0C'. Lock flags (Tier ladder; default = Tier-1, w_s pinned).
+        %     The three global flags apply to ALL axes; par_law adds a full
+        %     (b, p, w_s) lock on x/y on top, so the mask is PER AXIS.
         lock_b  = logical(get_field_default(ctrl_const, 'lock_b',  false));
         lock_p  = logical(get_field_default(ctrl_const, 'lock_p',  false));
         lock_ws = logical(get_field_default(ctrl_const, 'lock_ws', true));
-        lock_mask = [lock_b; lock_p; lock_ws];        % param order b, p, w_s
-        lock_state_idx = 4 + find(lock_mask);         % state indices 5..7
+        lock_mask_g  = [lock_b; lock_p; lock_ws];     % param order b, p, w_s
+        lock_mask_ax = repmat(lock_mask_g, 1, 3);     % 3 params x 3 axes
+        if par_law
+            lock_mask_ax(:, AX_PAR) = true;
+        end
+        lock_state_idx_ax = cell(3, 1);
+        for ax = 1:3
+            lock_state_idx_ax{ax} = 4 + find(lock_mask_ax(:, ax));   % 5..7
+        end
 
         % --- 0D. Validity clamps (numerical guards only, not tuning) ---
         a_bar_floor = get_field_default(ctrl_const, 'a_bar_floor', 0.05);
@@ -381,8 +446,14 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         Pf_b_std   = expand3(get_field_default(ctrl_const, 'Pf_b_std',   anchor_tension_std));
         Pf_p_std   = expand3(get_field_default(ctrl_const, 'Pf_p_std',   anchor_tension_std));
         Pf_a_floor = expand3(get_field_default(ctrl_const, 'Pf_a_floor', seed_shape_floor));
+        if par_law
+            % x/y carry the PARALLEL representation floor instead; their
+            % (b, p, w_s) are exact by construction, so the level Jacobian
+            % pushforward below vanishes and P(4,4) is this floor alone.
+            Pf_a_floor(AX_PAR) = ctrl_const.Pf_a_floor_par;
+        end
         Pf_ws_std  = get_field_default(ctrl_const, 'Pf_ws_std', []);
-        if lock_mask(3)
+        if lock_mask_g(3)
             Pf_ws_std = zeros(3, 1);      % pinned = exactly known
         elseif isempty(Pf_ws_std)
             error('motion_control_law_formB_ws:missingWsPrior', ...
@@ -411,12 +482,25 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
 
         F3 = [0 1 0; 0 0 1; 0 0 lambda_c];
         H3 = [1 0 0];
-        free_mask_row = double(~lock_mask.');     % 1x3, param order b, p, w_s
 
         for ax = 1:3
-            gap_seed = max(w_bar_seed - seed_ws(ax), gap_floor);
+            is_par_ax = par_law && any(ax == AX_PAR);
+            % 1x3 free/locked selector, param order b, p, w_s (per axis)
+            free_mask_row = double(~lock_mask_ax(:, ax).');
+            if is_par_ax
+                % Parallel law: fixed constants, origin offset from the SHARED
+                % (z-axis) contact seed by ws0_par - 1.
+                law_b  = b_par;
+                law_p  = p_par;
+                law_ws = seed_ws(AX_PERP) + (ws0_par - 1);
+            else
+                law_b  = seed_b(ax);
+                law_p  = seed_p(ax);
+                law_ws = seed_ws(ax);
+            end
+            gap_seed = max(w_bar_seed - law_ws, gap_floor);
             [a_bar_seed, ~, ~, ~, ~, dA_db, dA_dp, dA_dws] = ...
-                local_gain_law_formB(gap_seed, seed_b(ax), seed_p(ax), enable_seed);
+                local_gain_law_formB(gap_seed, law_b, law_p, enable_seed);
             a_bar_seed = max(a_bar_seed, a_bar_floor);
             a_bar_seed_v(ax) = a_bar_seed;
 
@@ -466,7 +550,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
 
             % chol PD check on the free-state submatrix (locked rows/cols are
             % exact zeros by construction, so the full matrix is only PSD).
-            free_idx = [1:4, 4 + find(~lock_mask).'];
+            free_idx = [1:4, 4 + find(~lock_mask_ax(:, ax)).'];
             if ma2_aug
                 free_idx = [free_idx, 8, 9];
             end
@@ -478,9 +562,18 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
 
             P_per_axis{ax} = P7;
             x_e_per_axis(4, ax) = a_bar_seed;
-            x_e_per_axis(5, ax) = seed_b(ax);
-            x_e_per_axis(6, ax) = seed_p(ax);
-            x_e_per_axis(7, ax) = seed_ws(ax);
+            if is_par_ax
+                % Slots 5-7 are locked reporters here: the law constants and
+                % the nominal contact. The live parallel origin is taken from
+                % the z posterior every step, not from slot 7.
+                x_e_per_axis(5, ax) = b_par;
+                x_e_per_axis(6, ax) = p_par;
+                x_e_per_axis(7, ax) = ws_seed_nominal;
+            else
+                x_e_per_axis(5, ax) = seed_b(ax);
+                x_e_per_axis(6, ax) = seed_p(ax);
+                x_e_per_axis(7, ax) = seed_ws(ax);
+            end
         end
 
         % --- 0J. IIR states (prefill to the closed-loop dw_r variance) ---
@@ -513,10 +606,12 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
             diag.a_hat     = a_hat_phys;
             diag.a_hat_nd  = a_bar_seed_v * a_o;                  % [U4] legacy 1/pN
             diag.a_bar_hat = a_bar_seed_v;
-            diag.b_hat     = seed_b;
-            diag.p_hat     = seed_p;
-            diag.ws_hat    = seed_ws;
-            diag.delta_a_hat = seed_b;                            % driver-log alias
+            % report the ACTUAL seeded slots (x/y hold the parallel constants
+            % under par_law, the requested seeds otherwise)
+            diag.b_hat     = x_e_per_axis(5, :).';
+            diag.p_hat     = x_e_per_axis(6, :).';
+            diag.ws_hat    = x_e_per_axis(7, :).';
+            diag.delta_a_hat = diag.b_hat;                        % driver-log alias
             diag.sigma2_dxr_hat = sigma2_dwr_hat;
             diag.P_a  = P_aa_v * a_disp^2;                        % [U4] (um/pN)^2
             diag.P_a_nd = P_aa_v;
@@ -687,14 +782,28 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         % --- Gain rate + parameter Jacobians at (w_bar_d - ws_hat, b, p).
         %     The gain LEVEL is the state; the law supplies only a_bar' and
         %     the J's here (no re-anchoring of a_bar from theta).
-        gap_d = max(w_bar_d - ws_i, gap_floor);
+        %     On the wall-parallel axes under par_law the law constants are
+        %     the fixed parallel package and the origin is fed one-way from
+        %     the z-axis w_s posterior (as it stands now = the PREVIOUS call's,
+        %     since the axis loop reaches z last; the one-step lag is benign).
+        lm = lock_mask_ax(:, ax);
+        if par_law && any(ax == AX_PAR)
+            law_b  = b_par;
+            law_p  = p_par;
+            law_ws = x_e_per_axis(7, AX_PERP) + (ws0_par - 1);
+        else
+            law_b  = b_i;
+            law_p  = p_i;
+            law_ws = ws_i;
+        end
+        gap_d = max(w_bar_d - law_ws, gap_floor);
         [~, a_prime_i, J_b_i, J_p_i, J_ws_i] = ...
-            local_gain_law_formB(gap_d, b_i, p_i, enable_wall && isfinite(w_bar_d));
+            local_gain_law_formB(gap_d, law_b, law_p, enable_wall && isfinite(w_bar_d));
         % Locked parameters carry zero error: zero their J at the source
         % (this zeroes the H column AND the F_e row-4 column in one move).
-        if lock_mask(1); J_b_i  = 0; end
-        if lock_mask(2); J_p_i  = 0; end
-        if lock_mask(3); J_ws_i = 0; end
+        if lm(1); J_b_i  = 0; end
+        if lm(2); J_p_i  = 0; end
+        if lm(3); J_ws_i = 0; end
         a_prime_v(ax) = a_prime_i;
 
         % --- Q (7x7): rank-1 gain block + Q33 (spec S8, at the estimate) ---
@@ -735,7 +844,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
             Q_i(4, 4) = a_prime_i^2 * Q33;
         end
         for j = 1:3
-            if ~lock_mask(j)
+            if ~lm(j)
                 Q_i(4 + j, 4 + j) = Q_theta_floor;   % conditioning only, default 0
             end
         end
@@ -803,7 +912,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         end
         P_pred = F_e * P_curr * F_e' + Q_i;
         P_pred = 0.5 * (P_pred + P_pred');
-        P_pred = freeze_locked_P(P_pred, lock_state_idx);
+        P_pred = freeze_locked_P(P_pred, lock_state_idx_ax{ax});
 
         % --- Sequential 1-D measurement updates (R diagonal => exact) ---
         freeze_gain = G1;
@@ -813,7 +922,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         S1 = H1 * P_pred * H1' + R1_i;
         K1 = (P_pred * H1') / S1;
         if freeze_gain || y1_gain_off; K1(4:7) = 0; end
-        K1(lock_state_idx) = 0;
+        K1(lock_state_idx_ax{ax}) = 0;
         innov1 = delta_w_m(ax) - H1 * x_pred;
         innov_y1_v(ax) = innov1;          % logging only (whiteness diagnostic)
         x_upd  = x_pred + K1 * innov1;
@@ -849,7 +958,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
             S2  = H2 * P_upd * H2' + R2_i;
             K2  = (P_upd * H2') / S2;
             if freeze_gain; K2(4:7) = 0; end
-            K2(lock_state_idx) = 0;
+            K2(lock_state_idx_ax{ax}) = 0;
             innov2 = y2(ax) - y2_pred;
             x_upd  = x_upd + K2 * innov2;
             ImKH2  = I7 - K2 * H2;
@@ -864,16 +973,16 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         %     are never touched (K entries zeroed, predict identity), so
         %     they stay exactly at the seed.
         x_upd(4) = max(x_upd(4), a_bar_floor);
-        if ~lock_mask(1)
+        if ~lm(1)
             x_upd(5) = min(max(x_upd(5), b_clamp(1)), b_clamp(2));
         end
-        if ~lock_mask(2)
+        if ~lm(2)
             x_upd(6) = min(max(x_upd(6), p_clamp(1)), p_clamp(2));
         end
-        if ~lock_mask(3)
+        if ~lm(3)
             x_upd(7) = min(max(x_upd(7), ws_min), w_bar_d - ws_margin);
         end
-        P_upd = freeze_locked_P(P_upd, lock_state_idx);
+        P_upd = freeze_locked_P(P_upd, lock_state_idx_ax{ax});
 
         x_e_per_axis(:, ax) = x_upd;
         P_per_axis{ax} = P_upd;

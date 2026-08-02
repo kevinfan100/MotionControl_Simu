@@ -39,9 +39,25 @@ function out = run_formB_ws(opts, test_opts)
 %   scenario-dependent by construction and is printed, never asserted.
 %   Pf_ws_std stays 0.111 (calibration-based, not a theta_eff sup).
 %
+%   PARALLEL-AXIS LAW (opts.par_law, default TRUE, 2026-08-02): the x and y
+%   filters run their own Form B law instead of the perpendicular one. The
+%   parallel truth c_para is NOT representable by the anchored (b, p) = (9/8, 1)
+%   law -- its Goldman logarithm at contact pushes the best Form B
+%   representative's origin INSIDE the wall -- so the driver derives the
+%   parallel package (b_par, p_par, ws0_par) at run time by a 3-parameter
+%   minimax fit of the law to 1/c_para on the SAME planned envelope the (b, p)
+%   priors come from (local_parallel_law_package). Offline truth evaluation,
+%   zero tuning, and the controller stays run-time c-free. The x/y law origin
+%   then rides the z-axis w_s estimate (one-way feed), and slots 5-7 of the x/y
+%   filters are locked at the fitted constants, so their whole prior mass is
+%   the representation floor Pf_a_floor_par on P(4,4). par_law = false is the
+%   legacy arm (all three axes on the perpendicular law).
+%
 %   opts fields (defaults first):
 %       .tier        't1'    't1' = lock_ws true (w_s pinned at 1, first-test
 %                            ladder decision 2026-07-31); 't2' = w_s released
+%       .par_law     true    x/y run the derived parallel law (see above);
+%                            false = legacy all-perpendicular arm ('_nopar' tag)
 %       .y2_on       true    false = drop the gain-readout channel
 %                            (defect-1 fingerprint arm, S11 item 1: adding y2
 %                            must IMPROVE a_hat tracking)
@@ -121,6 +137,7 @@ function out = run_formB_ws(opts, test_opts)
 
     if nargin < 1 || isempty(opts); opts = struct(); end
     if ~isfield(opts, 'tier');        opts.tier        = 't1';  end
+    if ~isfield(opts, 'par_law');     opts.par_law     = true;  end
     if ~isfield(opts, 'y2_on');       opts.y2_on       = true;  end
     if ~isfield(opts, 'oracle_bp');   opts.oracle_bp   = [];    end
     if ~isfield(opts, 'wrong_seed');  opts.wrong_seed  = 0;     end
@@ -200,6 +217,17 @@ function out = run_formB_ws(opts, test_opts)
     ov.Pf_p_std   = sPpp_env;     % sup|p_eff - 1|   on the envelope
     ov.Pf_a_floor = floor_a_env;  % sup|a_anchored - 1/c| on the envelope
     ov.lock_ws = strcmpi(opts.tier, 't1');   % t1 = w_s pinned at 1
+
+    % Parallel-axis package on the SAME envelope (see the header block).
+    ov.par_law = opts.par_law;
+    par_pkg = [];
+    if opts.par_law
+        par_pkg = local_parallel_law_package(env_lo, env_hi);
+        ov.b_par          = par_pkg.b;
+        ov.p_par          = par_pkg.p;
+        ov.ws0_par        = par_pkg.ws0;
+        ov.Pf_a_floor_par = par_pkg.floor_a;
+    end
     if ~opts.y2_on
         ov.y2_off = true;                    % fingerprint arm
     end
@@ -227,6 +255,7 @@ function out = run_formB_ws(opts, test_opts)
     if opts.y2_on; tag = [tag '_y2on']; else; tag = [tag '_y2off']; end
     if ~isempty(opts.oracle_bp); tag = [tag '_oraclebp']; end
     if opts.wrong_seed;          tag = [tag '_wrongseed']; end
+    if ~opts.par_law;            tag = [tag '_nopar']; end
     if opts.a_cov_scale ~= 1;    tag = [tag sprintf('_acov%g', cfg.a_cov)]; end
 
     lastwarn('');
@@ -244,6 +273,13 @@ function out = run_formB_ws(opts, test_opts)
     fprintf(['ENVELOPE PRIORS on w_bar in [%.3f, %.3f]: sqrt_Pbb %.4f  sqrt_Ppp %.4f  ' ...
              'shape floor %.5f  (derived from the planned trajectory; global-sup fallback %.4f)\n'], ...
             env_lo, env_hi, sPbb_env, sPpp_env, floor_a_env, PRIOR_STD_BP);
+    if opts.par_law
+        fprintf('PAR LAW (x/y): b %.4f p %.4f ws0 %.4f (+-[%.4f %.4f %.4f]) floor %.4f sup %.3f%%\n', ...
+                par_pkg.b, par_pkg.p, par_pkg.ws0, par_pkg.width(1), par_pkg.width(2), ...
+                par_pkg.width(3), par_pkg.floor_a, 100 * par_pkg.fit_sup);
+    else
+        fprintf('PAR LAW (x/y): OFF -- x/y run the perpendicular law (legacy arm)\n');
+    end
     fprintf('%6s | %10s %10s %11s | %8s %8s | %4s\n', 'seed', ...
             'desc pk %', 'osc RMS %', 'hold mean %', 'b diag', 'p diag', 'NaN');
 
@@ -318,6 +354,7 @@ function out = run_formB_ws(opts, test_opts)
     out.opts    = opts;
     out.arm_tag = tag;
     out.seeds   = seeds;
+    out.par_pkg = par_pkg;      % [] when par_law is off
 
     here = fileparts(mfilename('fullpath'));
     out_dir = fullfile(here, '..', '..', 'test_results');
@@ -432,6 +469,104 @@ function [sPbb, sPpp, floor_a] = local_envelope_priors(h_lo, h_hi)
 
     a_anchored = 1 - (1 + (h - 1) / B_SEED).^(-P_SEED);
     floor_a    = max(abs(a_anchored - 1 ./ c));
+end
+
+
+function pkg = local_parallel_law_package(w_lo, w_hi)
+%LOCAL_PARALLEL_LAW_PACKAGE  Form B constants for the WALL-PARALLEL axes.
+%   pkg = local_parallel_law_package(w_lo, w_hi)
+%
+%   The perpendicular anchors (b, p, w_s) = (9/8, 1, 1) come from two
+%   asymptotic limits that both hold for c_perp. For c_para the near-wall
+%   limit is Goldman's logarithm, which no power of (1 + g/b) reproduces at
+%   contact, so the anchored law fails structurally on x/y (the standing
+%   powerlaw/expgain finding). What the parallel truth DOES admit is a Form B
+%   representative whose origin sits INSIDE the wall: with the origin free,
+%   the three-parameter minimax fit tracks 1/c_para to <0.04% over the whole
+%   working envelope. That representative is what the x/y filters run.
+%
+%   Everything here is offline: the truth curve is evaluated once per driver
+%   call on the planned envelope, exactly like local_envelope_priors, and only
+%   the resulting constants cross into the controller. Nothing is tuned -- the
+%   inputs are the envelope and the published c_para series.
+%
+%   pkg fields:
+%       .b .p .ws0    fitted law constants; ws0 is the law origin when the
+%                     physical wall sits at w_bar = 1, so the offset the
+%                     controller applies to its w_s estimate is ws0 - 1 [-]
+%       .width        1x3 [db dp dws0] envelope-boundary sensitivity: the
+%                     largest constant shift over three refits that move the
+%                     envelope ends by the same margins the scenario itself is
+%                     uncertain to
+%       .fit_sup      minimax residual sup|a_law - 1/c_para| on the envelope
+%       .floor_a      sqrt P(4,4) seed floor: root-sum of the fit residual and
+%                     the three width pushforwards through dA/dtheta -- the
+%                     gain error the x/y filters cannot represent away
+    N_FIT      = 8000;                 % grid; the sup is grid-independent here
+    TH_START   = [0.52, 0.98, 0.58];   % near the fitted optimum (simplex seed)
+    GAP_FLOOR  = 0.01;                 % law-argument floor, matches the
+                                       % controller's positivity guard
+    LO_PROBE   = 0.1;                  % boundary probe = ENV_LO_MARGIN
+    HI_PROBE   = 15;                   % far-end probe: where the envelope sups
+                                       % have already gone flat
+
+    assert(w_lo - LO_PROBE > 1, 'run_formB_ws:parProbeBelowContact', ...
+           'near-wall boundary probe w_bar = %.3f is not > 1 (c_para domain).', ...
+           w_lo - LO_PROBE);
+    assert(HI_PROBE > w_lo, 'run_formB_ws:parProbeDegenerate', ...
+           'far-end probe cap %.3f must exceed the envelope floor %.3f.', HI_PROBE, w_lo);
+
+    [th, sup] = local_fit_par_law(w_lo, w_hi, TH_START, N_FIT, GAP_FLOOR);
+
+    probes = [w_lo + LO_PROBE, w_hi; ...
+              w_lo - LO_PROBE, w_hi; ...
+              w_lo,            min(HI_PROBE, w_hi)];
+    dth = zeros(size(probes, 1), 3);
+    for j = 1:size(probes, 1)
+        dth(j, :) = local_fit_par_law(probes(j, 1), probes(j, 2), th, N_FIT, GAP_FLOOR) - th;
+    end
+    width = max(abs(dth), [], 1);
+
+    % Width pushforward onto the gain: the level Jacobians dA/dtheta of the
+    % SAME law the controller evaluates (local_gain_law_formB), on the grid.
+    w    = linspace(w_lo, w_hi, N_FIT).';
+    g    = max(w - th(3), GAP_FLOOR);
+    u    = 1 + g / th(1);
+    upow = u.^(-th(2));
+    a_prime = (th(2) / th(1)) * upow ./ u;      % |dA/dws|
+    dA_db   = (g / th(1)) .* a_prime;           % |dA/db|
+    dA_dp   = upow .* log(u);                   % |dA/dp|
+
+    pkg = struct();
+    pkg.b       = th(1);
+    pkg.p       = th(2);
+    pkg.ws0     = th(3);
+    pkg.width   = width;
+    pkg.fit_sup = sup;
+    pkg.floor_a = sqrt(sup^2 ...
+                       + (max(a_prime) * width(3))^2 ...
+                       + (max(dA_db)   * width(1))^2 ...
+                       + (max(abs(dA_dp)) * width(2))^2);
+end
+
+
+function [th, sup] = local_fit_par_law(w_lo, w_hi, th0, n_fit, gap_floor)
+%LOCAL_FIT_PAR_LAW  3-parameter minimax fit of the Form B law to 1/c_para.
+%   theta = [b, p, ws0]; the objective is the sup residual on [w_lo, w_hi],
+%   which is non-smooth, so fminsearch is restarted once from its own answer
+%   (a collapsed simplex cannot certify a minimax optimum).
+    w = linspace(w_lo, w_hi, n_fit).';
+    c = zeros(n_fit, 1);
+    for i = 1:n_fit
+        c(i) = calc_correction_functions(w(i));      % c_para (first output)
+    end
+    a_target = 1 ./ c;      % normalized parallel gain a/a_o = 1/c_para
+    obj = @(t) max(abs(1 - (1 + max(w - t(3), gap_floor) / t(1)).^(-t(2)) - a_target));
+    solver_opts = optimset('TolX', 1e-10, 'TolFun', 1e-12, ...
+                           'MaxFunEvals', 2e4, 'MaxIter', 2e4, 'Display', 'off');
+    th  = fminsearch(obj, th0, solver_opts);
+    th  = fminsearch(obj, th,  solver_opts);
+    sup = obj(th);
 end
 
 
