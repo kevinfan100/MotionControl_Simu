@@ -1,0 +1,123 @@
+% STATUS: SHELVED -- beta_w readout-bias state, removed from formB_ws.tex /
+%   formB_ws_ref.tex on 2026-08-01 (user decision) after the y2_off ablation
+%   showed y_2 is NOT the c2/c3 ratchet fuel (see memory
+%   project-formb-y2off-ablation-pivot-2026-08-01). The derivation is correct
+%   and buys y_2-channel (hold-window readout) honesty only; revive by pasting
+%   back if beta_w is ever implemented. Never committed to the live docs.
+% ======================================================
+% Snippet archive -- NOT standalone-compilable (no preamble).
+% ======================================================
+
+% ---------- was: formB_ws.tex, section S8b ----------
+
+\section*{S8b --- Readout-bias state $\beta_w$}
+
+\textbf{Augmentation}\quad ($\beta_w$ = fractional run-DC bias of the
+$y_2$ readout, one per axis, constant over the run; container decision
+2026-08-01; prior derivation, evaluation point and acceptance in ref)
+
+\begin{align*}
+\mathbf{x} \to
+\begin{bmatrix} \mathbf{x} \\ \beta_w \end{bmatrix},
+\qquad
+\beta_w[k+1] = \beta_w[k],
+\qquad
+\mathbf{F}_e \to
+\begin{bmatrix} \mathbf{F}_e & \mathbf{0} \\ \mathbf{0}^{\top} & 1
+\end{bmatrix},
+\qquad
+\mathbf{q} \to \begin{bmatrix} \mathbf{q} \\ 0 \end{bmatrix},
+\qquad
+Q_{\beta\beta} = 0
+\end{align*}
+
+\textbf{Measurement with bias}\quad (a fractional fluctuation $m$ of
+$\hat{\sigma}^2_{\delta\bar{w}_r}$ enters the S8 readout inversion as
+$(\bar{a}_w+\xi)\,m$; $\beta_w$ is its run-DC)
+
+\begin{align*}
+\hat{\sigma}^2_{\delta\bar{w}_r}
+  = \sigma^2_{\delta\bar{w}_r}\,(1+m)
+\quad&\Longrightarrow\quad
+y_2[k] = \bar{a}_w[k-d]
+  + \bigl(\bar{a}_w[k-d]+\xi\bigr)\,\beta_w + n_a[k] \\
+\text{(S7 back-off)}\quad
+y_2[k] &= (1+\beta_w)\bigl(\bar{a}_w[k]
+  - \bar{a}'[k]\,\nabla_d\bar{w}_d[k]\bigr) + \xi\,\beta_w + n_a[k]
+\end{align*}
+
+\textbf{Linearization}\quad (partials at the estimate;
+$\theta \in \{b_w,\ p_w,\ \bar{w}_s\}$)
+
+\begin{align*}
+\frac{\partial y_2}{\partial \bar{a}_w} = 1+\hat{\beta}_w,
+\qquad
+\frac{\partial y_2}{\partial \theta}
+  = -(1+\hat{\beta}_w)\,\nabla_d\bar{w}_d[k]\,J_{\theta}[k],
+\qquad
+\frac{\partial y_2}{\partial \beta_w}
+  = \hat{\bar{a}}_w[k] - \hat{\bar{a}}'[k]\,\nabla_d\bar{w}_d[k] + \xi
+\end{align*}
+
+\begin{align*}
+\mathbf{H}_{1,:}[k] &= \mathbf{e}_1^{\top} \\
+\mathbf{H}_{2,:}[k] &= (1+\hat{\beta}_w)
+\begin{bmatrix}
+0 & 0 & 0 & 1 &
+-\nabla_d\bar{w}_d\,J_{b_w} &
+-\nabla_d\bar{w}_d\,J_{p_w} &
+-\nabla_d\bar{w}_d\,J_{w_s} & 0
+\end{bmatrix}
++ \bigl(\hat{\bar{a}}_w - \hat{\bar{a}}'\,\nabla_d\bar{w}_d + \xi\bigr)\,
+  \mathbf{e}_8^{\top}
+\end{align*}
+
+\textbf{Innovation}\quad (first order in the errors)
+
+\begin{align*}
+e_{y_2}[k]
+  &= y_2[k] - (1+\hat{\beta}_w)\bigl(\hat{\bar{a}}_w[k]
+     - \hat{\bar{a}}'[k]\,\nabla_d\bar{w}_d[k]\bigr)
+     - \xi\,\hat{\beta}_w \\
+  &= (1+\hat{\beta}_w)\Bigl(e_{\bar{a}_w}[k]
+     - \nabla_d\bar{w}_d[k]\,
+       \bigl[J_{b_w}e_{b_w} + J_{p_w}e_{p_w}
+       + J_{w_s}e_{\bar{w}_s}\bigr]\Bigr)
+   + \bigl(\hat{\bar{a}}_w - \hat{\bar{a}}'\,\nabla_d\bar{w}_d + \xi\bigr)\,
+     e_{\beta_w}
+   + n_a[k]
+\end{align*}
+
+\textbf{Prior}\quad ($N_{run} = T_{sim}/\Delta t$; $IF_{DC}$ = the S8
+$IF_{var}$ autocorrelation sums unweighted --- the $s \to 1$ limit,
+$a_{cov}$-free; derivation in ref)
+
+\begin{equation*}
+P_{\beta\beta}[0] = \frac{2\,IF_{DC}}{N_{run}},
+\qquad
+P_{\beta\,\cdot}[0] = 0 \quad
+(\text{independent of all seeds})
+\end{equation*}
+
+% ---------- was: formB_ws_ref.tex, S8b notes (prose summary) ----------
+% Motivation: y_2 readout per-seed slow fluctuation std 5-6% (finite-window
+%   variance-estimator statistics). ATTRIBUTION CORRECTED 2026-08-01: NOT the
+%   c2/c3 ratchet fuel (y2_off ablation: seed spread unchanged, per-seed
+%   ws_hat correlation 0.95); the ratchet is y_1-fed (eps_w MA(2), item #3).
+% Container: multiplicative fractional bias (additive REJECTED: level-weighted
+%   DC is not a constant under a varying level trajectory).
+% Prior derivation (4 steps, zero new constants):
+%   m[k] := (s[k]-E[s])/(abar_w+xi); Var(m)=2 (chi^2(1)); run-DC picks up the
+%   spectral density at zero: Var(beta_w) ~= 2*IF_DC/N_run, IF_DC = the R22
+%   (A,B,C) autocorrelation sums at s->1 (call the builder with a_cov -> 0;
+%   z far field 3.76, trough 3.67; s-weighted 0.05 value 3.37);
+%   N_run = T_sim/dt = 7680 -> sqrt(P_beta[0]) = sqrt(2*3.76/7680) = 0.031.
+% a_cov cancels in the closed form -> a_cov x10 invariance fingerprint.
+% Two-scale account of the empirical 5-6% (provisional): per-window std with
+%   window-to-window corr 0.39 decomposes into run-constant 5.5%*sqrt(0.39)
+%   ~= 3.4% <-> predicted run-DC 3.1% (ratio 1.1); window-scale 4.3% <-> the
+%   same closed form at window length (osc ~1.9s: 5.0%; hold ~1.0s: 6.9%).
+% Whitened mode: H column-8 entry = H2_scale*(abar_hat - abar'*grad + xi).
+% Acceptance (was S11 items 8-12): readout-population closure ratio in
+%   [0.83, 1.20]; P[0] budget on the beta block; y2_off arm bit-identical;
+%   anchor-lock/C1 unchanged; a_cov x10 scan leaves beta stats unchanged.
