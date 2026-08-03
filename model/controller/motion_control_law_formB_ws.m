@@ -196,6 +196,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
 %       .Pf_a_floor_par  sqrt P(4,4) seed floor on the x/y gain (the parallel
 %                      representation floor: fit sup + envelope-width
 %                      pushforwards, root-sum)
+%       .ws0_perp      law-origin offset on the wall-normal axis: the law is
+%                      evaluated at w_bar - (w_s_hat + ws0_perp - 1), so slot 7
+%                      keeps meaning the PHYSICAL contact position even when
+%                      the boundary's Form B representative has its origin
+%                      inside the surface (cell)             (default 1 = plane)
 %       .b_init / .p_init / .ws_init   seeds                 (default 9/8, 1, 1)
 %       .Pf_b_std / .Pf_p_std   sqrt P0 widths               (default 1/8, 1/8)
 %       .Pf_ws_std     sqrt P0 width of w_s; REQUIRED if lock_ws = false
@@ -266,7 +271,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
     persistent y2_echo_corr S_echo_T S_echo_n
     persistent ma2_aug alpha_ma2 n_state    % MA(2) noise-memory augmentation
     persistent lock_mask_g lock_mask_ax lock_state_idx_ax
-    persistent par_law b_par p_par ws0_par
+    persistent par_law b_par p_par ws0_par ws0_perp
     persistent par_ws_free  % parallel-axis (x/y) gain law
 
     % Axis roles (world frame; the wall normal is the z axis by convention)
@@ -378,6 +383,14 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         Q_theta_floor = get_field_default(ctrl_const, 'Q_theta_floor', 0);
 
         % --- 0C. Parallel-axis law (x/y); constants are caller-supplied ---
+        % Law-origin offset on the WALL-NORMAL axis. The w_s state always means
+        % the physical contact position; a boundary whose Form B representative
+        % has its origin elsewhere (a cell: origin sits inside the surface, the
+        % same phenomenon par_law handles for x/y) declares the shift here, so
+        % slot 7 stays interpretable and the x/y one-way feed is untouched.
+        % Default 1 = plane = today's behaviour, bit-identical.
+        ws0_perp = get_field_default(ctrl_const, 'ws0_perp', 1);
+
         par_law = logical(get_field_default(ctrl_const, 'par_law', false));
         b_par = 0; p_par = 0; ws0_par = 1;
         if par_law
@@ -513,7 +526,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
             else
                 law_b  = seed_b(ax);
                 law_p  = seed_p(ax);
-                law_ws = seed_ws(ax);
+                law_ws = seed_ws(ax) + (ws0_perp - 1);
             end
             gap_seed = max(w_bar_seed - law_ws, gap_floor);
             [a_bar_seed, ~, ~, ~, ~, dA_db, dA_dp, dA_dws] = ...
@@ -815,7 +828,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         else
             law_b  = b_i;
             law_p  = p_i;
-            law_ws = ws_i;
+            law_ws = ws_i + (ws0_perp - 1);
         end
         gap_d = max(w_bar_d - law_ws, gap_floor);
         [~, a_prime_i, J_b_i, J_p_i, J_ws_i] = ...

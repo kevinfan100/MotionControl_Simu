@@ -129,9 +129,10 @@ function out = run_formB_ws(opts, test_opts)
         if ~isfield(topts, 'a_ctrl_override');     topts.a_ctrl_override = [];         end
         if ~isfield(topts, 'log_P_full');          topts.log_P_full = false;           end
         if ~isfield(topts, 'ws_inject');           topts.ws_inject = 0;                end
+        if ~isfield(topts, 'plant_cperp');         topts.plant_cperp = [];             end
         out = local_run_once(cfg_t, topts.seed, topts.ctrl_const_override, ...
                              topts.verbose, topts.a_ctrl_override, topts.log_P_full, ...
-                             topts.ws_inject);
+                             topts.ws_inject, topts.plant_cperp);
         return;
     end
 
@@ -143,6 +144,9 @@ function out = run_formB_ws(opts, test_opts)
     if ~isfield(opts, 'wrong_seed');  opts.wrong_seed  = 0;     end
     if ~isfield(opts, 'a_cov_scale'); opts.a_cov_scale = 1;     end
     if ~isfield(opts, 'ws_inject');   opts.ws_inject = 0;      end   % [R] TRUE wall offset, plant side only (S11 injection)
+    if ~isfield(opts, 'plant_gain_law'); opts.plant_gain_law = []; end  % struct(b,p,ws): TRUE z curve = Form B(b,p,ws), plant side only (curve-mismatch arm)
+    if ~isfield(opts, 'plant_cell_Rc');  opts.plant_cell_Rc  = []; end  % [um] TRUE z boundary = sphere of this radius (exact J&O), plant side only
+    if ~isfield(opts, 'ctrl_cell_Rc');   opts.ctrl_cell_Rc   = []; end  % [um] CONTROLLER anchors/priors re-derived for a cell of this radius
     if ~isfield(opts, 'seeds');       opts.seeds       = [];    end
     if ~isfield(opts, 'verbose');     opts.verbose     = false; end
     if ~isfield(opts, 'config_override');     opts.config_override     = struct(); end
@@ -228,6 +232,35 @@ function out = run_formB_ws(opts, test_opts)
         ov.ws0_par        = par_pkg.ws0;
         ov.Pf_a_floor_par = par_pkg.floor_a;
     end
+    % Cell boundary on the WALL-NORMAL axis: the two published asymptotic
+    % anchors disagree by 2.3-2.9x for a sphere (vs 1.12x for a plane), so the
+    % anchor route would demand a prior width ~30-78x the plane's. The legal
+    % construction is the Stage-1a one already used for x/y: fit the law
+    % offline to the published exact two-sphere curve on the planned envelope,
+    % origin free, and price the width by how much the constants move when the
+    % inputs (envelope ends, measured cell radius) move. z only; x/y keep the
+    % plane-parallel package, matching the plant (c_para stays the plane curve).
+    % Plant-side boundary handle (h_bar -> c_perp); [] = published plane curve.
+    % A cell radius wins over a Form B proxy if both are given.
+    plant_cperp = [];
+    if ~isempty(opts.plant_gain_law)
+        plant_cperp = @(hb) calc_formB_cperp(hb, opts.plant_gain_law);
+    end
+    if ~isempty(opts.plant_cell_Rc)
+        plant_lam = opts.plant_cell_Rc / pc.R;
+        plant_cperp = @(hb) build_truth_two_sphere(hb, plant_lam);
+    end
+
+    cell_pkg = [];
+    if ~isempty(opts.ctrl_cell_Rc)
+        cell_pkg = local_cell_law_package(env_lo, env_hi, opts.ctrl_cell_Rc / pc.R);
+        ov.b_init     = [B_SEED; B_SEED; cell_pkg.b];
+        ov.p_init     = [P_SEED; P_SEED; cell_pkg.p];
+        ov.ws0_perp   = cell_pkg.ws0;                   % slot 7 stays physical
+        ov.Pf_b_std   = [sPbb_env; sPbb_env; cell_pkg.width(1)];
+        ov.Pf_p_std   = [sPpp_env; sPpp_env; cell_pkg.width(2)];
+        ov.Pf_a_floor = [floor_a_env; floor_a_env; cell_pkg.floor_a];
+    end
     if ~opts.y2_on
         ov.y2_off = true;                    % fingerprint arm
     end
@@ -250,6 +283,18 @@ function out = run_formB_ws(opts, test_opts)
         ov.(fn{idx}) = opts.ctrl_const_override.(fn{idx});
     end
 
+    % The fitted law origin carries its own representation width, which adds in
+    % quadrature to whatever pre-run knowledge of the surface position the
+    % caller declared (applied after the override so it cannot be lost).
+    if ~isempty(cell_pkg) && isfield(ov, 'Pf_ws_std') && ~isempty(ov.Pf_ws_std) ...
+            && ~(isfield(ov, 'lock_ws') && ov.lock_ws)
+        ws_std_v = ov.Pf_ws_std(:);
+        if isscalar(ws_std_v); ws_std_v = ws_std_v * ones(3, 1); end
+        ws_std_declared = ws_std_v(AX_Z);
+        ws_std_v(AX_Z) = sqrt(ws_std_declared^2 + cell_pkg.width(3)^2);
+        ov.Pf_ws_std = ws_std_v;
+    end
+
     % arm tag (file name + report header)
     tag = lower(opts.tier);
     if opts.y2_on; tag = [tag '_y2on']; else; tag = [tag '_y2off']; end
@@ -257,6 +302,9 @@ function out = run_formB_ws(opts, test_opts)
     if opts.wrong_seed;          tag = [tag '_wrongseed']; end
     if ~opts.par_law;            tag = [tag '_nopar']; end
     if opts.a_cov_scale ~= 1;    tag = [tag sprintf('_acov%g', cfg.a_cov)]; end
+    if ~isempty(opts.plant_gain_law); tag = [tag '_plantlaw']; end
+    if ~isempty(opts.plant_cell_Rc);  tag = [tag sprintf('_cell%g', opts.plant_cell_Rc)]; end
+    if ~isempty(opts.ctrl_cell_Rc);   tag = [tag sprintf('_ctrlcell%g', opts.ctrl_cell_Rc)]; end
 
     lastwarn('');
 
@@ -280,6 +328,25 @@ function out = run_formB_ws(opts, test_opts)
     else
         fprintf('PAR LAW (x/y): OFF -- x/y run the perpendicular law (legacy arm)\n');
     end
+    if ~isempty(opts.plant_gain_law)
+        fprintf('PLANT GAIN LAW (z): Form B b=%g p=%g ws=%g -- controller blind (plane priors kept)\n', ...
+                opts.plant_gain_law.b, opts.plant_gain_law.p, opts.plant_gain_law.ws);
+    end
+    if ~isempty(opts.plant_cell_Rc)
+        fprintf('PLANT BOUNDARY (z): CELL Rc = %g um (lam = %.3f), exact two-sphere truth\n', ...
+                opts.plant_cell_Rc, opts.plant_cell_Rc / pc.R);
+    end
+    if ~isempty(cell_pkg)
+        fprintf(['CELL LAW (z): b %.4f p %.4f ws0 %.4f (+-[%.4f %.4f %.4f]) floor %.4f ' ...
+                 'sup %.3f%% | Rc = %g um\n'], cell_pkg.b, cell_pkg.p, cell_pkg.ws0, ...
+                cell_pkg.width(1), cell_pkg.width(2), cell_pkg.width(3), ...
+                cell_pkg.floor_a, 100 * cell_pkg.fit_sup, opts.ctrl_cell_Rc);
+        if isfield(ov, 'Pf_ws_std') && ~isempty(ov.Pf_ws_std)
+            wsv = ov.Pf_ws_std(:);
+            fprintf('  w_s prior (z): declared %.4f (+) origin width %.4f -> %.4f\n', ...
+                    ws_std_declared, cell_pkg.width(3), wsv(AX_Z));
+        end
+    end
     fprintf('%6s | %10s %10s %11s | %8s %8s | %4s\n', 'seed', ...
             'desc pk %', 'osc RMS %', 'hold mean %', 'b diag', 'p diag', 'NaN');
 
@@ -287,7 +354,7 @@ function out = run_formB_ws(opts, test_opts)
     runs  = cell(n_seeds, 1);
     Mrows = zeros(n_seeds, 6);   % desc | osc | hold | bud_b | bud_p | nan
     for q = 1:n_seeds
-        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, false, opts.ws_inject);
+        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, false, opts.ws_inject, plant_cperp);
         m = local_run_metrics(s, cfg, AX_Z, OSC_SETTLE_S, HOLD_SETTLE_S);
         runs{q}     = s;
         Mrows(q, :) = [m.desc_peak_pct, m.osc_rms_pct, m.hold_mean_pct, ...
@@ -354,7 +421,8 @@ function out = run_formB_ws(opts, test_opts)
     out.opts    = opts;
     out.arm_tag = tag;
     out.seeds   = seeds;
-    out.par_pkg = par_pkg;      % [] when par_law is off
+    out.par_pkg  = par_pkg;      % [] when par_law is off
+    out.cell_pkg = cell_pkg;     % [] unless the controller is anchored for a cell
 
     here = fileparts(mfilename('fullpath'));
     out_dir = fullfile(here, '..', '..', 'test_results');
@@ -550,6 +618,97 @@ function pkg = local_parallel_law_package(w_lo, w_hi)
 end
 
 
+function pkg = local_cell_law_package(w_lo, w_hi, lam)
+%LOCAL_CELL_LAW_PACKAGE  Form B constants for a CELL boundary on the z axis.
+%   pkg = local_cell_law_package(w_lo, w_hi, lam)
+%
+%   The plane's anchors (9/8, 1) come from two asymptotic limits that agree to
+%   12.5 %. For a sphere of radius ratio lam = Rc/R the same two limits give
+%   b_far = (3/2) sqrt(lam) against b_near = 2 [lam/(1+lam)]^2 -- a factor
+%   2.3-2.9 apart -- so the anchor route would have to declare a prior width
+%   30-78x the plane's, which is the parameter-wander regime the narrow priors
+%   exist to avoid. This package takes the OTHER legal route, the one already
+%   in production for the wall-parallel axes: fit the law offline to the
+%   published exact two-sphere gain 1/c_cell (Jeffrey & Onishi 1984,
+%   build_truth_two_sphere) on the planned envelope with the origin free, and
+%   price the prior width by how much the fitted constants move when the inputs
+%   move -- the envelope ends, and the MEASURED cell radius.
+%
+%   Everything is offline: the truth curve is evaluated once per driver call
+%   and only the resulting constants cross into the controller, which stays
+%   run-time c-free. Nothing is tuned; the inputs are the envelope and lam.
+%
+%   pkg fields (same schema as local_parallel_law_package):
+%       .b .p .ws0    fitted constants; ws0 is the law origin when the physical
+%                     surface sits at w_bar = 1, so the controller declares the
+%                     shift ws0 - 1 through ctrl_const.ws0_perp and slot 7
+%                     keeps meaning the physical surface position [-]
+%       .width        1x3 [db dp dws0] input sensitivity: the largest constant
+%                     shift over four refits (envelope ends +-LO_PROBE, cell
+%                     radius +-RC_TOL)
+%       .fit_sup      minimax residual sup|a_law - 1/c_cell| on the envelope
+%       .floor_a      sqrt P(4,4) seed floor: root-sum of the fit residual and
+%                     the three width pushforwards through dA/dtheta
+    N_FIT     = 4000;                 % grid; the sup is grid-independent here
+    TH_START  = [1.5, 1.7, 0.80];     % near the fitted optimum (simplex seed)
+    GAP_FLOOR = 0.01;                 % law-argument floor, matches the
+                                      % controller's positivity guard
+    LO_PROBE  = 0.1;                  % envelope-end probe = ENV_LO_MARGIN
+    RC_TOL    = 0.10;                 % cell-radius measurement tolerance [-]
+
+    assert(lam > 0 && isfinite(lam), 'run_formB_ws:badCellLam', ...
+           'cell radius ratio lam = %.4f must be finite and positive.', lam);
+    assert(w_lo - LO_PROBE > 1, 'run_formB_ws:cellProbeBelowContact', ...
+           'near-wall boundary probe w_bar = %.3f is not > 1.', w_lo - LO_PROBE);
+
+    [th, sup] = local_fit_cell_law(w_lo, w_hi, lam, TH_START, N_FIT, GAP_FLOOR);
+
+    probes = {[w_lo + LO_PROBE, w_hi, lam], [w_lo - LO_PROBE, w_hi, lam], ...
+              [w_lo, w_hi, (1 + RC_TOL) * lam], [w_lo, w_hi, (1 - RC_TOL) * lam]};
+    dth = zeros(numel(probes), 3);
+    for j = 1:numel(probes)
+        dth(j, :) = local_fit_cell_law(probes{j}(1), probes{j}(2), probes{j}(3), ...
+                                       th, N_FIT, GAP_FLOOR) - th;
+    end
+    width = max(abs(dth), [], 1);
+
+    w    = linspace(w_lo, w_hi, N_FIT).';
+    g    = max(w - th(3), GAP_FLOOR);
+    u    = 1 + g / th(1);
+    upow = u.^(-th(2));
+    a_prime = (th(2) / th(1)) * upow ./ u;      % |dA/dws|
+    dA_db   = (g / th(1)) .* a_prime;           % |dA/db|
+    dA_dp   = upow .* log(u);                   % |dA/dp|
+
+    pkg = struct();
+    pkg.b       = th(1);
+    pkg.p       = th(2);
+    pkg.ws0     = th(3);
+    pkg.lam     = lam;
+    pkg.width   = width;
+    pkg.fit_sup = sup;
+    pkg.floor_a = sqrt(sup^2 ...
+                       + (max(a_prime) * width(3))^2 ...
+                       + (max(dA_db)   * width(1))^2 ...
+                       + (max(abs(dA_dp)) * width(2))^2);
+end
+
+
+function [th, sup] = local_fit_cell_law(w_lo, w_hi, lam, th0, n_fit, gap_floor)
+%LOCAL_FIT_CELL_LAW  3-parameter minimax fit of Form B to the cell gain 1/c.
+%   Same non-smooth objective and restart discipline as local_fit_par_law.
+    w = linspace(w_lo, w_hi, n_fit).';
+    a_target = 1 ./ build_truth_two_sphere(w, lam);
+    a_target = a_target(:);
+    obj = @(t) max(abs(1 - (1 + max(w - t(3), gap_floor) / t(1)).^(-t(2)) - a_target));
+    solver_opts = optimset('TolX', 1e-10, 'TolFun', 1e-12, ...
+                           'MaxFunEvals', 2e4, 'MaxIter', 2e4, 'Display', 'off');
+    th  = fminsearch(obj, th0, solver_opts);
+    th  = fminsearch(obj, th,  solver_opts);
+    sup = obj(th);
+end
+
+
 function [th, sup] = local_fit_par_law(w_lo, w_hi, th0, n_fit, gap_floor)
 %LOCAL_FIT_PAR_LAW  3-parameter minimax fit of the Form B law to 1/c_para.
 %   theta = [b, p, ws0]; the objective is the sup residual on [w_lo, w_hi],
@@ -607,8 +766,9 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
 end
 
 
-function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_ctrl_override, log_P_full, ws_inject)
+function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_ctrl_override, log_P_full, ws_inject, plant_cperp)
 if nargin < 7; ws_inject = 0; end
+if nargin < 8; plant_cperp = []; end
 %LOCAL_RUN_ONCE  One seed of the scenario. Fork of run_5state_expgain's body
 %   with the controller hard-dispatched to motion_control_law_formB_ws and the
 %   log schema extended by the p / w_s parameter rows.
@@ -672,6 +832,12 @@ if nargin < 7; ws_inject = 0; end
         P_plant.wall.pz = pz_plant;  % step_dynamics / calc_thermal_force see
                                      % the TRUE wall; controller keeps P
     end
+    % Boundary override: TRUE z curve = plant_cperp(h_bar), plant side only
+    % (calc_gamma_inv / calc_thermal_force dispatch on this field); the
+    % controller keeps P and whatever priors the driver derived for it.
+    if wall_on_drv && ~isempty(plant_cperp)
+        P_plant.wall.plant_cperp = plant_cperp;
+    end
     if wall_on_drv && isfield(P.wall, 'h_bar_min')
         h_bar_floor_drv = P.wall.h_bar_min;
     else
@@ -727,9 +893,12 @@ if nargin < 7; ws_inject = 0; end
         if wall_on_drv
             h_bar_true_k = max((dot(p_curr, P.wall.w_hat) - pz_plant) / R_drv, h_bar_floor_drv);
             [c_para_k, c_perp_k] = calc_correction_functions(h_bar_true_k);
+            if ~isempty(plant_cperp)
+                c_perp_k = plant_cperp(h_bar_true_k);
+            end
             a_true_k = [a_nom_drv / c_para_k; a_nom_drv / c_para_k; a_nom_drv / c_perp_k];
             % true d a_h / d h_bar by central difference on the exact curve
-            a_prime_true_out(k, :) = local_a_prime_true(h_bar_true_k, a_nom_drv, h_bar_floor_drv).';
+            a_prime_true_out(k, :) = local_a_prime_true(h_bar_true_k, a_nom_drv, h_bar_floor_drv, plant_cperp).';
         else
             h_bar_true_k = Inf;
             a_true_k = a_nom_drv * ones(3, 1);
@@ -860,15 +1029,20 @@ if nargin < 7; ws_inject = 0; end
 end
 
 
-function ap = local_a_prime_true(h_bar, a_nom, h_floor)
+function ap = local_a_prime_true(h_bar, a_nom, h_floor, plant_cperp)
 %LOCAL_A_PRIME_TRUE  d a_h / d h_bar on the EXACT correction curve [um/pN].
 %   Central difference; used only as the reference in the analysis, never by
 %   the controller.
+    if nargin < 4; plant_cperp = []; end
     dh = 1e-4 * max(h_bar, 1);
     hp = h_bar + dh;
     hm = max(h_bar - dh, h_floor);
     [cp_p, ce_p] = calc_correction_functions(hp);
     [cp_m, ce_m] = calc_correction_functions(hm);
+    if ~isempty(plant_cperp)
+        ce_p = plant_cperp(hp);
+        ce_m = plant_cperp(hm);
+    end
     den = hp - hm;
     ap_para = a_nom * (1/cp_p - 1/cp_m) / den;
     ap_perp = a_nom * (1/ce_p - 1/ce_m) / den;

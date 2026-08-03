@@ -38,6 +38,15 @@ function [Gamma_inv, h_bar] = calc_gamma_inv(p, params)
         % Calculate correction coefficients
         [c_para, c_perp] = calc_correction_functions(h_bar);
 
+        % Plant-side boundary override: params.wall.plant_cperp is a handle
+        % h_bar -> c_perp supplied by the driver (Form B proxy for the
+        % curve-mismatch arm, or the exact two-sphere cell curve). The field
+        % exists only on the driver's P_plant copy; controllers never see it.
+        % c_para stays the published plane curve.
+        if isfield(params.wall, 'plant_cperp') && ~isempty(params.wall.plant_cperp)
+            c_perp = params.wall.plant_cperp(h_bar);
+        end
+
         % W = w_hat * w_hat' is the projection onto the normal direction
         W = w_hat * w_hat';
 

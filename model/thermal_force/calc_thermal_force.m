@@ -55,6 +55,13 @@ function f_th = calc_thermal_force(p, params)
         % Calculate correction coefficients using Wall Effect module
         [c_para, c_perp] = calc_correction_functions(h_bar);
 
+        % Plant-side boundary override: same handle as calc_gamma_inv, so drag
+        % and thermal noise stay fluctuation-dissipation consistent on the
+        % perpendicular axis.
+        if isfield(params.wall, 'plant_cperp') && ~isempty(params.wall.plant_cperp)
+            c_perp = params.wall.plant_cperp(h_bar);
+        end
+
         % C = c_para * (u_hat + v_hat) + c_perp * w_hat
         C = c_para * (u_hat + v_hat) + c_perp * w_hat;
     else
