@@ -559,6 +559,21 @@ Config 2 --- $p$ locked at 1, estimate $(b, w_s)$: seed 7 vs seed 11.
 \clearpage
 
 \begin{center}
+\includegraphics[width=0.49\linewidth]{figures/formB_c2_priorsweep_seed7.png}\hfill
+\includegraphics[width=0.49\linewidth]{figures/formB_c2_priorsweep_seed11.png}
+
+Config 2 with the $w_s$ prior width swept
+$\sqrt{P_{w_s}}[0] \in \{0.028,\ 0.111,\ 0.222\}$ (calibrated-grade /
+house placeholder / doubled): seed 7 (left) vs seed 11 (right).  Same
+verdict as the config-3 sweep --- the excursion scales with the claimed
+prior (seed-11 end deviation $-2.3\,/\,-18.8\,/\,-31.0\,\%$); config 1
+is excluded from the sweep because \texttt{lock\_ws} pins $w_s$ and the
+prior never enters.
+\end{center}
+
+\clearpage
+
+\begin{center}
 \includegraphics[width=0.49\linewidth]{figures/formB_c3_seed7.png}\hfill
 \includegraphics[width=0.49\linewidth]{figures/formB_c3_seed11.png}
 
@@ -592,6 +607,24 @@ through whichever parameter still has the widest prior.
 
 Config 4 --- config 2 with the TRUE wall injected at $\bar{w}_s = 1.05$
 (plant-side shift, S11 protocol): seed 7 vs seed 11.
+\end{center}
+
+\clearpage
+
+\begin{center}
+\includegraphics[width=0.49\linewidth]{figures/formB_c4_priorsweep_seed7.png}\hfill
+\includegraphics[width=0.49\linewidth]{figures/formB_c4_priorsweep_seed11.png}
+
+Config 4 with the $w_s$ prior width swept
+$\sqrt{P_{w_s}}[0] \in \{0.028,\ 0.111,\ 0.222\}$ --- the other face of
+the sweep: against a REAL $+5\,\%$ wall the injection response collapses
+with the prior (seed 7: $0.09\,/\,0.53\,/\,0.67$ of the step), so the
+unjustified tight prior cleanly misses the true wall (seed 7 error
+$-4.6\,\%$ at $\max|z| = 1.93$; seed 11 breaks the claimed band,
+$\max|z| = 2.57$).  Wander (c2/c3 sweep) and response (this page) are
+governed by the same Bayes gain --- a small prior achieves the goal ONLY
+when it is true (bought by calibration or a physical anchor), never by
+typing a smaller number.
 \end{center}
 
 \clearpage

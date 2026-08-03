@@ -185,9 +185,19 @@ for $p+1>0$ it decays faster than every power:}
 \newpage
 
 \hd{Form B}
-\begin{empheq}[box=\fbox]{equation*}
- \bar a\g = 1-\left[\frac{b}{\g+b}\right]^{p}
+\begin{empheq}[box=\fbox]{align*}
+ \bar a\big(\wb-\ws,\,b,\,p\big)
+   &= 1-\left(1+\frac{\wb-\ws}{b}\right)^{-p}
+   &&{\small(\ws-1:\ \text{unknown surface position})} \\[0.45em]
+ \bar a\big(\wb-\ws,\,b_w,\,p_w\big)
+   &= 1-\left(1+\frac{\wb-\ws}{b_w}\right)^{-p_w} \\[0.45em]
+ \bar a\big(\wb_d-\hat{\bar w}_s,\,\hat b_w,\,\hat p_w\big)
+   &= 1-\left(1+\frac{\wb_d-\hat{\bar w}_s}{\hat b_w}\right)^{-\hat p_w}
 \end{empheq}
+
+{\small equivalently, and the writing used for the derivatives below:}
+\[ \bar a\g = 1-\left(1+\frac{\g}{b}\right)^{-p}
+            = 1-\left[\frac{b}{\g+b}\right]^{p} \]
 
 \[ \bar a' = p\,b^{\,p}\,\big(\g+b\big)^{-p-1} \]
 
@@ -198,9 +208,6 @@ for $p+1>0$ it decays faster than every power:}
 \end{empheq}
 
 \hd{Two limits of Form B}
-\[ \bar a = 1-\left[\frac{b}{\g+b}\right]^{p}
-        = 1-\left(1+\frac{\g}{b}\right)^{-p} \]
-
 {\small near wall, $\g\ll b$, drop the square and higher terms of
 $\left(1+\g/b\right)^{-p}\simeq1-p\,\g/b$, then match $\bar a\simeq\g$:}
 \[ \bar a \simeq \frac{p}{b}\,\g

@@ -42,3 +42,6 @@ codegen/
 # Claude Code 自動產物
 .claude/progress/
 .claude/scheduled_tasks.lock
+
+# XeLaTeX 中介檔
+*.xdv
