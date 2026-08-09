@@ -97,4 +97,91 @@ drifting $-4.0/-4.5\,\%$, and the traversal budgets fail by $25$--$40\times$
 so, but cannot repair itself.
 \end{center}
 
+\clearpage
+
+\begin{center}
+\includegraphics[width=0.49\linewidth]{figures/formB_bonly_planeprior_seed7.png}\hfill
+\includegraphics[width=0.49\linewidth]{figures/formB_bonly_planeprior_seed11.png}
+
+Single-free-parameter arm (2026-08-05) --- the TRUE $z$ curve is the $p = 1$
+member of the page-2 constructed family, $(b, p, w_s) = (0.13,\ 1,\ 1)$, and
+the controller frees ONLY $b$: $p$ and $w_s$ are locked \emph{at their true
+values}. Nothing is left to blame --- no representation error (the truth is a
+member of the controller's own family), no $b$--$p$ coupling, no $b$--$w_s$
+degeneracy --- so the only remaining obstacle is the prior width itself. The
+envelope-derived $\sqrt{P_{bb}}[0] = 0.0157$ places the truth $63.5$ prior
+widths from the $9/8$ seed; $\hat{b}$ moves $0.064 / 0.073$ of the $0.995$ it
+would need and stalls at $1.061 / 1.052$, the traversal budget realises
+$348 / 472$ against a limit of $1$ while reaching the truth would require
+$\sim\! 8.5\times10^{4}$, and the gain error settles at descent peak
+$45.5 / 45.2\,\%$, hold $-43.5 / -43.0\,\%$. The plant here is a
+\emph{constructed} test curve, not a fitted cell (the physical cell fits in
+this document sit at $b = 0.50$--$1.57$, depending on whether the law origin
+is held on the surface): the page therefore indicts the prior structure, not
+the boundary physics.
+\end{center}
+
+\clearpage
+
+\begin{center}
+\includegraphics[width=0.85\linewidth]{figures/formB_b_identifiability_sweep.png}
+
+Locked-$b$ profile for the same constructed plant --- $b$ is LOCKED on a swept
+grid instead of estimated, so the EKF prior plays no part. Bottom: the
+truth-referenced gain error is a clean V bottoming \emph{exactly} at
+$b = 0.13$ (descent $0.33\,\%$, osc $0.12\,\%$, hold $+0.01\,\%$ --- the plane
+baseline), which verifies the Form B machinery: locked at the right constant
+the filter is exact, and every percent above that floor is the constant being
+wrong. Top: the data-only statistic --- the mean readout-versus-model
+mismatch, computable without knowing the truth --- climbs monotonically across
+the grid, $+2.3\,\%$ at $b = 0.08$ to $+50.0 \pm 6.7\,\%$ at the plane anchor,
+where it stands $7.5\sigma$ from zero on two seeds. The run therefore
+\emph{does} carry, in a truth-free statistic, the information that the
+anchored $b$ is wrong; the companion page's filter simply cannot act on it,
+because its prior places the truth $63.5$ widths away. Identifiability is not
+the obstacle --- the prior width is. Two caveats on reading $b$ off this
+curve: the mismatch is monotonic with no feature at the truth (locating $b$
+needs the readout offset characterised first --- it is $+4.5 \pm 7.0\,\%$
+there, consistent with zero but unresolved at $N = 2$), and near the truth the
+slope is only $\sim\!6\,\%$ per e-fold against that $7\,\%$ scatter, so two
+seeds fix $b$ to a factor of a few, not to a percent. The filter's own
+whitened $y_2$ channel is a poor route to the same information: its innovation
+mean tracks $b$ over $12\times$, but the per-sample RMS is noise-dominated and
+bottoms at $b = 0.80$.
+\end{center}
+
+\clearpage
+
+\begin{center}
+\includegraphics[width=0.49\linewidth]{figures/formB_bwide_seed7.png}\hfill
+\includegraphics[width=0.49\linewidth]{figures/formB_bwide_seed11.png}
+
+Widened-$b$-prior arm --- same plant and same locks as two pages back, but
+$\sqrt{P_{bb}}[0]$ is opened up so the truth is inside the prior. \textbf{The
+widths are ASSUMED, not derived} (provisional, to bracket the travel
+$|9/8 - 0.13| = 0.995$); a committed width must come from a declared boundary
+family. Ladder, $\sqrt{P_{bb}} \rightarrow \hat{b}_{\text{final}}$ (seed
+$7\,/\,11$), descent error, budget: $0.0157 \rightarrow 1.061/1.052$,
+$45.5/45.2\,\%$, $348/472$; $\ 0.10 \rightarrow 0.316/0.185$,
+$29.3/24.8\,\%$, $96/136$; $\ 0.25 \rightarrow 0.132/0.051$, $8.5/6.9\,\%$,
+$16.5/19.7$; $\ 0.50 \rightarrow 0.118/0.051$, $5.5/9.6\,\%$, $4.1/4.7$;
+$\ 1.00 \rightarrow 0.123/0.051$, $5.7/9.8\,\%$, $1.01/1.16$. Four readings.
+(i) Once the prior stops forbidding it the filter \emph{does} walk $b$ to the
+truth, and it does so during the descent, exactly where the wall-gap
+information lives. (ii) The $P[0]$ budget criterion turns out to mean
+literally what it says --- to move a distance $\Delta$ lawfully the prior must
+satisfy $\sqrt{P[0]} \ge \Delta$, and at $\sqrt{P_{bb}} = 1.00 \approx \Delta$
+the realised ratio lands at $1.01/1.16$, on the limit. (iii) The prior stops
+binding above $\sqrt{P_{bb}} \approx 0.25$: from there the answer is
+data-limited, not prior-limited, and widening further buys nothing.
+(iv) What data-limited costs: $\hat{b}$ scatters $0.123$ vs $0.051$ across two
+seeds (factor $2.4$) and the hold error splits $-0.5\,\%$ vs $+10.2\,\%$, so
+the gain recovers to the few-percent level but not to the $0.33\,\%$ floor
+that \emph{knowing} $b$ gives. Caveat on the container: a linear Gaussian
+prior with mean $9/8$ and $\sqrt{P} = 1.0$ puts ${\sim}13\,\%$ of its mass at
+$b < 0$, which is unphysical for a length --- a genuinely wide prior on $b$
+probably wants a log parametrisation, which is a state-level change and was
+not attempted.
+\end{center}
+
 \end{document}
