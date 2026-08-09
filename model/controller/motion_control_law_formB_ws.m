@@ -201,6 +201,20 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
 %                      keeps meaning the PHYSICAL contact position even when
 %                      the boundary's Form B representative has its origin
 %                      inside the surface (cell)             (default 1 = plane)
+%       .law_form_amp  AMPLITUDE WRITING probe (default false = production,
+%                      bit-identical). Ties the law origin to the length
+%                      constant, w_s = b, which at p = 1 makes the law
+%                      a_bar = 1 - b/w_bar exactly, so slot 5 carries a single
+%                      free scalar beta on the (b, w_s) diagonal with
+%                      J_beta = 1/w_bar^2 (no null; the production J_b
+%                      vanishes at gap = b, inside the canonical osc band).
+%                      REQUIRES lock_p = lock_ws = true, lock_b = false,
+%                      p_init = 1, ws0_perp = 1 (all asserted at init).
+%                      In this mode slot 7 is a frozen reporter and is NOT
+%                      the contact position -- the law's zero-gain point is
+%                      w_bar = beta, i.e. diag.b_hat doubles as the implied
+%                      wall. x/y are untouched (they read the frozen slot 7).
+%                      Derivation: derivation/formB_amp_bonly_probe.tex
 %       .b_init / .p_init / .ws_init   seeds                 (default 9/8, 1, 1)
 %       .Pf_b_std / .Pf_p_std   sqrt P0 widths               (default 1/8, 1/8)
 %       .Pf_ws_std     sqrt P0 width of w_s; REQUIRED if lock_ws = false
@@ -273,6 +287,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
     persistent lock_mask_g lock_mask_ax lock_state_idx_ax
     persistent par_law b_par p_par ws0_par ws0_perp
     persistent par_ws_free  % parallel-axis (x/y) gain law
+    persistent law_form_amp % amplitude writing = (b, w_s) tied on the diagonal
 
     % Axis roles (world frame; the wall normal is the z axis by convention)
     AX_PAR = [1, 2];    % wall-parallel axes
@@ -435,6 +450,41 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
             lock_state_idx_ax{ax} = 4 + find(lock_mask_ax(:, ax));   % 5..7
         end
 
+        % --- 0C''. AMPLITUDE WRITING (law_form_amp, 2026-08-09 probe).
+        %     Ties the law origin to the length constant, w_s = b, which at
+        %     p = 1 turns the production law into the amplitude writing
+        %         a_bar = 1 - (1 + (w - b)/b)^(-1) = 1 - b/w        (exact)
+        %     so slot 5 carries a SINGLE free scalar beta running along the
+        %     (b, w_s) diagonal. By the chain rule at the tied point
+        %         J_beta   = J_b   + J_ws   = 1/w^2      (strictly positive)
+        %         dA/dbeta = dA/db + dA/dws = -1/w
+        %     both exact -- the closed forms of formB_amp_functions.tex. The
+        %     production J_b vanishes at gap = b (w_bar = 1 + b_hat), inside
+        %     the canonical oscillation band; the tied Jacobian has no null,
+        %     which is the whole point of the arm.
+        %     Default false = today's behaviour, bit-identical.
+        %     Derivation + prior chain: derivation/formB_amp_bonly_probe.tex.
+        law_form_amp = logical(get_field_default(ctrl_const, 'law_form_amp', false));
+        if law_form_amp
+            % The tie is only defined for the single-free-scalar arm: p must
+            % be pinned at the far-field anchor (otherwise the writing is
+            % 1 - (b/w)^p and the level read-off b_eff = w(c-1)/c no longer
+            % applies), slot 7 must be locked (it stops meaning the contact
+            % position -- the law's zero-gain point is w_bar = beta), and the
+            % law origin offset must be the plane's (ws0_perp ~= 1 would make
+            % the law 1 - beta/(w - ws0_perp + 1), invalidating both the
+            % closed forms above and the driver's amplitude prior).
+            assert(lock_mask_g(2) && lock_mask_g(3) && ~lock_mask_g(1), ...
+                   'motion_control_law_formB_ws:ampLocks', ...
+                   ['law_form_amp requires lock_p = true, lock_ws = true, ', ...
+                    'lock_b = false (single free scalar on the (b, w_s) ', ...
+                    'diagonal); got [%d %d %d].'], lock_mask_g);
+            assert(abs(ws0_perp - 1) < 1e-12, ...
+                   'motion_control_law_formB_ws:ampOrigin', ...
+                   ['law_form_amp requires ws0_perp = 1 (plane origin); ', ...
+                    'got %.6g.'], ws0_perp);
+        end
+
         % --- 0D. Validity clamps (numerical guards only, not tuning) ---
         a_bar_floor = get_field_default(ctrl_const, 'a_bar_floor', 0.05);
         b_clamp     = get_field_default(ctrl_const, 'b_clamp', [0.05, 5]);   % 7b b-clamp precedent
@@ -461,6 +511,14 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         seed_b  = expand3(get_field_default(ctrl_const, 'b_init',  b_seed_derived));
         seed_p  = expand3(get_field_default(ctrl_const, 'p_init',  p_seed_derived));
         seed_ws = expand3(get_field_default(ctrl_const, 'ws_init', ws_seed_nominal));
+        if law_form_amp
+            % p is pinned by the assert in 0C''; check the VALUE too, since
+            % the tie's closed forms and the driver's level read-off
+            % b_eff = w(c-1)/c both assume p = 1 exactly.
+            assert(all(abs(seed_p - 1) < 1e-12), ...
+                   'motion_control_law_formB_ws:ampExponent', ...
+                   'law_form_amp requires p_init = 1; got %s.', mat2str(seed_p(:).', 6));
+        end
 
         % --- 0G. P0 widths (derived, fixed 2026-07-31) ---
         % Defaults below are the GLOBAL-SUP FALLBACKS, valid on w_bar in
@@ -526,7 +584,12 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
             else
                 law_b  = seed_b(ax);
                 law_p  = seed_p(ax);
-                law_ws = seed_ws(ax) + (ws0_perp - 1);
+                if law_form_amp
+                    % Amplitude writing: the origin IS the constant (0C'').
+                    law_ws = law_b + (ws0_perp - 1);
+                else
+                    law_ws = seed_ws(ax) + (ws0_perp - 1);
+                end
             end
             gap_seed = max(w_bar_seed - law_ws, gap_floor);
             [a_bar_seed, ~, ~, ~, ~, dA_db, dA_dp, dA_dws] = ...
@@ -536,6 +599,13 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
 
             % Level Jacobians G = dA/d[b p ws] at the start height; locked
             % parameters carry zero error, so their columns are zeroed.
+            if law_form_amp && ~is_par_ax
+                % Fold the tied w_s column into b BEFORE the lock mask zeroes
+                % it: slot 7 is locked, but its error is NOT zero -- it is
+                % beta's error. dA/dbeta = dA/db + dA/dws (= -1/w exactly).
+                dA_db  = dA_db + dA_dws;
+                dA_dws = 0;
+            end
             G_lvl = [dA_db, dA_dp, dA_dws] .* free_mask_row;
             Ptt   = [Pf_b_std(ax)^2, Pf_p_std(ax)^2, Pf_ws_std(ax)^2] .* free_mask_row;
 
@@ -828,11 +898,26 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         else
             law_b  = b_i;
             law_p  = p_i;
-            law_ws = ws_i + (ws0_perp - 1);
+            if law_form_amp
+                % Amplitude writing: the origin IS the constant (0C'').
+                law_ws = law_b + (ws0_perp - 1);
+            else
+                law_ws = ws_i + (ws0_perp - 1);
+            end
         end
         gap_d = max(w_bar_d - law_ws, gap_floor);
         [~, a_prime_i, J_b_i, J_p_i, J_ws_i] = ...
             local_gain_law_formB(gap_d, law_b, law_p, enable_wall && isfinite(w_bar_d));
+        if law_form_amp && ~(par_law && any(ax == AX_PAR))
+            % Fold the tied w_s column into b. This MUST happen BEFORE the
+            % lock zeroing below: slot 7 is locked, so if the fold moved
+            % after it, J_ws_i would already be 0 and J_beta would collapse
+            % to the bare J_b -- the sign-flipping, null-crossing Jacobian
+            % this arm exists to avoid. The run would still complete and
+            % look plausible. Do not "clean up" this ordering.
+            J_b_i  = J_b_i + J_ws_i;      % = 1/w_bar^2 at the tied point
+            J_ws_i = 0;
+        end
         % Locked parameters carry zero error: zero their J at the source
         % (this zeroes the H column AND the F_e row-4 column in one move).
         if lm(1); J_b_i  = 0; end
@@ -1008,7 +1093,19 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         %     they stay exactly at the seed.
         x_upd(4) = max(x_upd(4), a_bar_floor);
         if ~lm(1)
-            x_upd(5) = min(max(x_upd(5), b_clamp(1)), b_clamp(2));
+            hi_b = b_clamp(2);
+            if law_form_amp && ~(par_law && any(ax == AX_PAR))
+                % Under the tie the law's pole moves with the estimate: the
+                % gap argument is w_bar_d - beta, so the slot-7 clamp below
+                % (which guarantees gap > gap_floor in the length writing) is
+                % inert and must be replaced on slot 5. Same construction,
+                % same ws_margin -- so gap_d > gap_floor holds by the same
+                % guarantee, and the max() in the law never binds. No new
+                % constant, and a no-op when enable_wall = false
+                % (w_bar_d = Inf).
+                hi_b = min(hi_b, w_bar_d - ws_margin);
+            end
+            x_upd(5) = min(max(x_upd(5), b_clamp(1)), hi_b);
         end
         if ~lm(2)
             x_upd(6) = min(max(x_upd(6), p_clamp(1)), p_clamp(2));

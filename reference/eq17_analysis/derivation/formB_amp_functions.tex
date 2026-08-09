@@ -1,0 +1,154 @@
+% STATUS: ACTIVE -- three-form function set, one page per quantity.
+%          Common setting: w_bar_s known, each form's exponent pinned, and every
+%          quantity evaluated ALONG b(w_bar) -- the constant that form's law
+%          demands at each height.  No fitted constant appears anywhere.
+%              Form A   a = 1 - exp(-b*(w-ws))     p = 0
+%              Form B   a = 1 - b/((w-ws) + b)     p = 1   (production)
+%              Form C   a = 1 - b/(1 + w-ws)       p = 1   (amplitude writing)
+%          Five quantities: b(w_bar) , db(w_bar)/dw_bar , a_bar' , da_bar/db , J_b
+%          (a_bar is omitted: along b(w_bar) all three collapse onto a_true).
+%          NOTATION: b(w_bar) with an argument = the constant the TRUTH demands
+%          at each height (formB_ws_ref.tex S10 calls it b_eff); plain b = the one
+%          frozen constant the filter carries.  Pages 1-2 use the function, pages
+%          3-6 the constant.
+%          Results only, no intermediate algebra and no prose (user, 2026-08-08);
+%          (w_bar - w_bar_s) written out in full everywhere -- no shorthand.
+% ======================================================
+% Compile: xelatex formB_amp_functions.tex
+% Path:    reference/eq17_analysis/derivation/formB_amp_functions.tex
+% Figures: test_script/scratch/plot_formB_form_compare.m
+%          -> figures/formB_cmp_{b,dbdw,aprime,dadb,Jb}.png
+% Truth:   calc_correction_functions (two-sphere perpendicular series);
+%          the body states everything through a_true and a'_true, never c_perp
+% ======================================================
+
+\documentclass[12pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=1.8cm}
+\usepackage{graphicx}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.6em}
+\linespread{1.05}
+\pagestyle{plain}
+
+\newcommand{\gp}{\bigl(\bar{w}-\bar{w}_s\bigr)}
+\newcommand{\gq}{\bigl(1+\bar{w}-\bar{w}_s\bigr)}
+
+% one page = results on top, one large figure filling the rest
+\newcommand{\fpage}[2]{%
+  #1\par\vfill
+  \begin{center}\includegraphics[width=0.97\linewidth]{figures/#2}\end{center}%
+  \vfill\clearpage}
+
+\begin{document}
+
+% ---------------------------------------------------------------- step 1: b
+\fpage{%
+\begin{align*}
+\text{Form A}\quad \bar{a} &= 1 - e^{-b\gp}       &  p &= 0 \\
+\text{Form B}\quad \bar{a} &= 1 - \frac{b}{\gp+b} &  p &= 1 \\
+\text{Form C}\quad \bar{a} &= 1 - \frac{b}{1+\bar{w}-\bar{w}_s} &  p &= 1
+\end{align*}
+
+\begin{equation*}
+\bar{w}_s\ \text{known},
+\qquad
+\bar{a}^{\prime}_{\mathrm{true}} := \frac{\mathrm{d}\bar{a}_{\mathrm{true}}}{\mathrm{d}\bar{w}}
+\end{equation*}
+
+\begin{align*}
+b_{\text{A}}(\bar{w}) &= -\frac{\ln\bigl(1-\bar{a}_{\mathrm{true}}\bigr)}{\bar{w}-\bar{w}_s},
+&
+b_{\text{B}}(\bar{w}) &= \gp\,\frac{1-\bar{a}_{\mathrm{true}}}{\bar{a}_{\mathrm{true}}},
+&
+b_{\text{C}}(\bar{w}) &= \gq\bigl(1-\bar{a}_{\mathrm{true}}\bigr)
+\end{align*}
+
+\begin{equation*}
+\bar{w}-\bar{w}_s \in [\,0.1,\ 10\,]
+\end{equation*}
+
+\begin{align*}
+\bar{w}-\bar{w}_s = 0:&\quad
+  \text{A, B}:\ \text{any } b \ ;\qquad \text{C}:\ b = 1 \\
+\bar{w}-\bar{w}_s = \infty:&\quad
+  \text{A, B, C}:\ \text{any } b \\
+\text{elsewhere}:&\quad
+  \partial\bar{a}/\partial b \neq 0 \ \Rightarrow\ b(\bar{w}) \ \text{unique}
+\end{align*}}{formB_cmp_b.png}
+
+% ------------------------------------------------------------ step 2: db/dw
+\fpage{%
+\begin{align*}
+\frac{\mathrm{d}b_{\text{A}}(\bar{w})}{\mathrm{d}\bar{w}}
+  &= \frac{1}{\gp^{2}}
+     \left[\frac{\gp\,\bar{a}^{\prime}_{\mathrm{true}}}{1-\bar{a}_{\mathrm{true}}}
+     + \ln\bigl(1-\bar{a}_{\mathrm{true}}\bigr)\right] \\[0.5em]
+\frac{\mathrm{d}b_{\text{B}}(\bar{w})}{\mathrm{d}\bar{w}}
+  &= \frac{1-\bar{a}_{\mathrm{true}}}{\bar{a}_{\mathrm{true}}}
+   - \gp\,\frac{\bar{a}^{\prime}_{\mathrm{true}}}{\bar{a}_{\mathrm{true}}^{\,2}} \\[0.5em]
+\frac{\mathrm{d}b_{\text{C}}(\bar{w})}{\mathrm{d}\bar{w}}
+  &= \bigl(1-\bar{a}_{\mathrm{true}}\bigr) - \gq\,\bar{a}^{\prime}_{\mathrm{true}}
+\end{align*}
+
+\begin{equation*}
+\frac{\mathrm{d}b(\bar{w})}{\mathrm{d}\bar{w}}\Bigl|_{\,\bar{w}-\bar{w}_s\,=\,0.1}
+  = -0.669,\ +0.316,\ +0.063
+\qquad
+\frac{\mathrm{d}b(\bar{w})}{\mathrm{d}\bar{w}}\Bigl|_{\,\bar{w}-\bar{w}_s\,=\,10}
+  = -0.014,\ -0.001,\ +0.001
+\end{equation*}}{formB_cmp_dbdw.png}
+
+% ------------------------------------------------------------ step 3: a_bar'
+\fpage{%
+\begin{align*}
+\bar{a}^{\prime}_{\text{A}} &= -\frac{\bigl(1-\bar{a}_{\mathrm{true}}\bigr)
+   \ln\bigl(1-\bar{a}_{\mathrm{true}}\bigr)}{\bar{w}-\bar{w}_s}
+&
+\bar{a}^{\prime}_{\text{B}} &= \frac{\bar{a}_{\mathrm{true}}
+   \bigl(1-\bar{a}_{\mathrm{true}}\bigr)}{\bar{w}-\bar{w}_s}
+&
+\bar{a}^{\prime}_{\text{C}} &= \frac{1-\bar{a}_{\mathrm{true}}}
+   {1+\bar{w}-\bar{w}_s}
+\end{align*}}{formB_cmp_aprime.png}
+
+% -------------------------------------------------------- step 4: da_bar/db
+\fpage{%
+\begin{align*}
+\frac{\partial\bar{a}_{\text{A}}}{\partial b}
+  &= +\gp\bigl(1-\bar{a}_{\mathrm{true}}\bigr)
+&
+\frac{\partial\bar{a}_{\text{B}}}{\partial b}
+  &= -\frac{\bar{a}_{\mathrm{true}}^{\,2}}{\bar{w}-\bar{w}_s}
+&
+\frac{\partial\bar{a}_{\text{C}}}{\partial b}
+  &= -\frac{1}{1+\bar{w}-\bar{w}_s}
+\end{align*}}{formB_cmp_dadb.png}
+
+% ------------------------------------------------------------- step 5: J_b
+\fpage{%
+\begin{align*}
+J_{b,\text{A}} &= \bigl(1-\bar{a}_{\mathrm{true}}\bigr)
+   \Bigl[1+\ln\bigl(1-\bar{a}_{\mathrm{true}}\bigr)\Bigr]
+&
+J_{b,\text{B}} &= \frac{\bar{a}_{\mathrm{true}}^{\,2}
+   \bigl(2\bar{a}_{\mathrm{true}}-1\bigr)}{\bigl(\bar{w}-\bar{w}_s\bigr)^{2}}
+&
+J_{b,\text{C}} &= \frac{1}{\gq^{2}}
+\end{align*}
+
+\begin{equation*}
+J_b = 0:\quad
+\text{A}:\ \bar{a}_{\mathrm{true}} = 1-e^{-1},\ \ \bar{w}-\bar{w}_s = 1.955
+\qquad
+\text{B}:\ \bar{a}_{\mathrm{true}} = \tfrac{1}{2},\ \ \bar{w}-\bar{w}_s = 1.128
+\qquad
+\text{C}:\ \text{none}
+\end{equation*}}{formB_cmp_Jb.png}
+
+\end{document}

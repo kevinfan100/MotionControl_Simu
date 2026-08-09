@@ -66,6 +66,20 @@ function out = run_formB_ws(opts, test_opts)
 %       .wrong_seed  0       1 = offset the b / p seeds by one prior width
 %                            (+1/8 each): honest-init recovery arm
 %       .a_cov_scale 1       multiplies the 0.05 base a_cov (invariance sweep)
+%       .law_form    'len'   'len' = production length writing.
+%                            'amp' = AMPLITUDE writing probe (2026-08-09):
+%                            the law origin is tied to the length constant,
+%                            w_s = b, so at p = 1 the law is a_bar = 1 - b/w
+%                            and slot 5 is the ONLY free parameter, with
+%                            J_beta = 1/w^2 (no null; the production J_b
+%                            vanishes at w_bar = 1 + b_hat, inside the
+%                            canonical oscillation band). Forces
+%                            lock_p = lock_ws = true, p_init = 1, and swaps
+%                            BOTH P0 numbers to the amplitude read-off
+%                            (sqrt(P_bb) 0.0708, shape floor 0.0372, against
+%                            the length arm's 0.0157 / 0.00284). Tag '_amp'.
+%                            Refuses oracle_bp / ctrl_cell_Rc / tier t2.
+%                            Derivation: derivation/formB_amp_bonly_probe.tex
 %       .seeds       [7 11 23 42 101 777]    house 6-seed convention
 %       .verbose     false   per-run progress printout
 %       .config_override     struct merged into the canonical config (window
@@ -147,6 +161,7 @@ function out = run_formB_ws(opts, test_opts)
     if ~isfield(opts, 'plant_gain_law'); opts.plant_gain_law = []; end  % struct(b,p,ws): TRUE z curve = Form B(b,p,ws), plant side only (curve-mismatch arm)
     if ~isfield(opts, 'plant_cell_Rc');  opts.plant_cell_Rc  = []; end  % [um] TRUE z boundary = sphere of this radius (exact J&O), plant side only
     if ~isfield(opts, 'ctrl_cell_Rc');   opts.ctrl_cell_Rc   = []; end  % [um] CONTROLLER anchors/priors re-derived for a cell of this radius
+    if ~isfield(opts, 'law_form');    opts.law_form    = 'len'; end  % 'len' = production length writing; 'amp' = amplitude writing probe (single free scalar on the (b, w_s) diagonal)
     if ~isfield(opts, 'seeds');       opts.seeds       = [];    end
     if ~isfield(opts, 'verbose');     opts.verbose     = false; end
     if ~isfield(opts, 'config_override');     opts.config_override     = struct(); end
@@ -182,6 +197,18 @@ function out = run_formB_ws(opts, test_opts)
     assert(~(opts.wrong_seed && ~isempty(opts.oracle_bp)), ...
            'run_formB_ws:armConflict', ...
            'wrong_seed and oracle_bp are mutually exclusive arms.');
+    assert(any(strcmpi(opts.law_form, {'len', 'amp'})), ...
+           'run_formB_ws:badLawForm', 'opts.law_form must be ''len'' or ''amp''.');
+    law_amp = strcmpi(opts.law_form, 'amp');
+    % The amplitude writing needs the single-free-scalar configuration; every
+    % arm below that would break one of its preconditions is refused here
+    % rather than silently producing a plausible-looking run.
+    assert(~(law_amp && ~isempty(opts.oracle_bp)), 'run_formB_ws:armConflict', ...
+           'law_form = ''amp'' and oracle_bp conflict (oracle_bp locks b).');
+    assert(~(law_amp && ~isempty(opts.ctrl_cell_Rc)), 'run_formB_ws:armConflict', ...
+           'law_form = ''amp'' and ctrl_cell_Rc conflict (cell package sets ws0_perp ~= 1).');
+    assert(~(law_amp && strcmpi(opts.tier, 't2')), 'run_formB_ws:armConflict', ...
+           'law_form = ''amp'' requires tier t1 (slot 7 must stay locked).');
 
     seeds = opts.seeds;
     if isempty(seeds); seeds = SEEDS_DEFAULT; end
@@ -215,6 +242,7 @@ function out = run_formB_ws(opts, test_opts)
     env_lo = cfg.h_bottom / pc.R - ENV_LO_MARGIN;
     env_hi = cfg.h_init   / pc.R + ENV_HI_MARGIN;
     [sPbb_env, sPpp_env, floor_a_env] = local_envelope_priors(env_lo, env_hi);
+    [sPbb_amp, floor_a_amp] = local_envelope_priors_amp(env_lo, env_hi);
 
     ov = struct();
     ov.Pf_b_std   = sPbb_env;     % sup|b_eff - 9/8| on the envelope
@@ -275,8 +303,29 @@ function out = run_formB_ws(opts, test_opts)
         ov.lock_p = true;
     end
     if opts.wrong_seed
-        ov.b_init = B_SEED + PRIOR_STD_BP;   % one prior width off, each
-        ov.p_init = P_SEED + PRIOR_STD_BP;
+        if law_amp
+            % "One prior width off" must use THIS writing's width, and p is
+            % pinned under the tie, so only b moves.
+            ov.b_init = B_SEED + sPbb_amp;
+        else
+            ov.b_init = B_SEED + PRIOR_STD_BP;   % one prior width off, each
+            ov.p_init = P_SEED + PRIOR_STD_BP;
+        end
+    end
+    if law_amp
+        % --- Amplitude writing probe (2026-08-09). The law origin is tied to
+        %     the length constant (w_s = b), so at p = 1 the law is
+        %     a_bar = 1 - b/w_bar and slot 5 is the ONLY free parameter.
+        %     Both P0 numbers must come from the amplitude read-off: swapping
+        %     only Pf_b_std would leave the gain prior ~13x too tight.
+        %     Derivation: derivation/formB_amp_bonly_probe.tex.
+        ov.law_form_amp = true;
+        ov.lock_b       = false;
+        ov.lock_p       = true;              % exponent pinned at the far-field anchor
+        ov.lock_ws      = true;              % slot 7 is a frozen reporter here
+        ov.p_init       = P_SEED;
+        ov.Pf_b_std     = sPbb_amp;          % sup|b_eff,C - 9/8| on the envelope
+        ov.Pf_a_floor   = floor_a_amp;       % sup|a_anchored,C - 1/c| on the envelope
     end
     fn = fieldnames(opts.ctrl_const_override);
     for idx = 1:numel(fn)
@@ -305,6 +354,7 @@ function out = run_formB_ws(opts, test_opts)
     if ~isempty(opts.plant_gain_law); tag = [tag '_plantlaw']; end
     if ~isempty(opts.plant_cell_Rc);  tag = [tag sprintf('_cell%g', opts.plant_cell_Rc)]; end
     if ~isempty(opts.ctrl_cell_Rc);   tag = [tag sprintf('_ctrlcell%g', opts.ctrl_cell_Rc)]; end
+    if law_amp;                       tag = [tag '_amp']; end   % NOT optional: the .mat is named by tag
 
     lastwarn('');
 
@@ -315,8 +365,8 @@ function out = run_formB_ws(opts, test_opts)
     fprintf('scenario: hold %.1fs -> descend %.1fs -> %g Hz osc x%d -> hold, T=%.1fs; h_bar_min=%.2f\n', ...
             cfg.t_hold, cfg.t_descend_override, cfg.frequency, cfg.n_cycles, ...
             cfg.T_sim, cfg.h_min / pc.R);
-    fprintf('lock_ws=%d  y2_on=%d  oracle_bp=%s  wrong_seed=%d  a_cov=%.3f\n', ...
-            ov.lock_ws, opts.y2_on, mat2str(opts.oracle_bp, 5), ...
+    fprintf('law_form=%s  lock_ws=%d  y2_on=%d  oracle_bp=%s  wrong_seed=%d  a_cov=%.3f\n', ...
+            lower(opts.law_form), ov.lock_ws, opts.y2_on, mat2str(opts.oracle_bp, 5), ...
             opts.wrong_seed, cfg.a_cov);
     fprintf(['ENVELOPE PRIORS on w_bar in [%.3f, %.3f]: sqrt_Pbb %.4f  sqrt_Ppp %.4f  ' ...
              'shape floor %.5f  (derived from the planned trajectory; global-sup fallback %.4f)\n'], ...
@@ -385,14 +435,27 @@ function out = run_formB_ws(opts, test_opts)
     flag_p = find(Mrows(:, 5) > RATIO_SEED_FLAG);
     mean_b = mean(Mrows(:, 4));
     mean_p = mean(Mrows(:, 5));
-    fprintf('budget aggregate: b mean %.3f (%s <= %.3f), p mean %.3f (%s <= %.3f)\n', ...
-            mean_b, local_verdict(mean_b, RATIO_MEAN_PASS), RATIO_MEAN_PASS, ...
-            mean_p, local_verdict(mean_p, RATIO_MEAN_PASS), RATIO_MEAN_PASS);
-    fprintf('per-seed traversal ratios (diagnostic; flag > %.3f): b max %.3f%s | p max %.3f%s\n', ...
-            RATIO_SEED_FLAG, max(Mrows(:, 4)), local_flag_str(flag_b, seeds), ...
-            max(Mrows(:, 5)), local_flag_str(flag_p, seeds));
-    fprintf('prior widths sqrt(P[0]) (controller-reported, z): b %.4f  p %.4f  (envelope %.4f / %.4f)\n', ...
-            runs{1}.P_b_out(1, AX_Z), runs{1}.P_p_out(1, AX_Z), sPbb_env, sPpp_env);
+    if isnan(mean_p)
+        fprintf('budget aggregate: b mean %.3f (%s <= %.3f), p n/a (locked, zero-width prior)\n', ...
+                mean_b, local_verdict(mean_b, RATIO_MEAN_PASS), RATIO_MEAN_PASS);
+        fprintf('per-seed traversal ratios (diagnostic; flag > %.3f): b max %.3f%s | p n/a\n', ...
+                RATIO_SEED_FLAG, max(Mrows(:, 4)), local_flag_str(flag_b, seeds));
+    else
+        fprintf('budget aggregate: b mean %.3f (%s <= %.3f), p mean %.3f (%s <= %.3f)\n', ...
+                mean_b, local_verdict(mean_b, RATIO_MEAN_PASS), RATIO_MEAN_PASS, ...
+                mean_p, local_verdict(mean_p, RATIO_MEAN_PASS), RATIO_MEAN_PASS);
+        fprintf('per-seed traversal ratios (diagnostic; flag > %.3f): b max %.3f%s | p max %.3f%s\n', ...
+                RATIO_SEED_FLAG, max(Mrows(:, 4)), local_flag_str(flag_b, seeds), ...
+                max(Mrows(:, 5)), local_flag_str(flag_p, seeds));
+    end
+    if law_amp
+        fprintf(['prior widths sqrt(P[0]) (controller-reported, z): b %.4f  ', ...
+                 '(AMPLITUDE envelope %.4f; shape floor %.5f vs length %.5f)\n'], ...
+                runs{1}.P_b_out(1, AX_Z), sPbb_amp, floor_a_amp, floor_a_env);
+    else
+        fprintf('prior widths sqrt(P[0]) (controller-reported, z): b %.4f  p %.4f  (envelope %.4f / %.4f)\n', ...
+                runs{1}.P_b_out(1, AX_Z), runs{1}.P_p_out(1, AX_Z), sPbb_env, sPpp_env);
+    end
     fprintf('h_bar range (true, seed %d): [%.3f, %.3f]\n', seeds(1), ...
             min(runs{1}.h_bar_true_out), max(runs{1}.h_bar_true_out));
 
@@ -537,6 +600,54 @@ function [sPbb, sPpp, floor_a] = local_envelope_priors(h_lo, h_hi)
 
     a_anchored = 1 - (1 + (h - 1) / B_SEED).^(-P_SEED);
     floor_a    = max(abs(a_anchored - 1 ./ c));
+end
+
+
+function [sPbb, floor_a] = local_envelope_priors_amp(h_lo, h_hi)
+%LOCAL_ENVELOPE_PRIORS_AMP  b prior width and shape floor, AMPLITUDE writing.
+%   [sPbb, floor_a] = local_envelope_priors_amp(h_lo, h_hi)
+%
+%   Sibling of local_envelope_priors for the tied (law_form_amp) arm, where
+%   the law is a_bar = 1 - b/w_bar. Taking logs of the deficit,
+%       ln(1 - a_bar) = ln b - p*ln(w_bar)
+%   so b is the log-log INTERCEPT and p the slope; with p pinned at 1 the
+%   intercept is read straight off the truth deficit (c-1)/c:
+%       b_eff = w_bar * (c - 1) / c
+%   No p width is returned: the exponent is pinned under the tie, so a p
+%   prior would be a claim about a state that cannot move.
+%
+%   Unlike the length reading, b_eff here is strictly MONOTONE (1 at contact
+%   -> 9/8 in the far field), so the sup sits on the envelope FLOOR and the
+%   width inherits the floor margin's provenance directly. The length
+%   reading's sup is interior and boundary-immune; that difference is
+%   declared, with numbers, in derivation/formB_amp_bonly_probe.tex.
+%
+%   Outputs are sqrt-P quantities (standard deviations), [-].
+    B_SEED  = 9/8;    % derived far-field reflection coefficient
+    N_SWEEP = 20001;  % same grid density as the length sibling
+
+    assert(h_lo > 1 && h_hi > h_lo, 'run_formB_ws:badEnvelope', ...
+           'envelope must satisfy 1 < h_lo (%.3f) < h_hi (%.3f).', h_lo, h_hi);
+
+    h = linspace(h_lo, h_hi, N_SWEEP).';
+    c = zeros(N_SWEEP, 1);
+    for i = 1:N_SWEEP
+        [~, c_perp_i] = calc_correction_functions(h(i), true);
+        c(i) = c_perp_i;
+    end
+
+    b_eff = h .* (c - 1) ./ c;
+    sPbb  = max(abs(b_eff - B_SEED));
+
+    a_anchored = 1 - B_SEED ./ h;
+    floor_a    = max(abs(a_anchored - 1 ./ c));
+
+    % Self-check: pointwise |a_anchored - 1/c| == |b_eff - 9/8| / h exactly,
+    % so the two numbers above cannot disagree unless a formula is wrong.
+    assert(abs(floor_a - max(abs(b_eff - B_SEED) ./ h)) < 1e-12, ...
+           'run_formB_ws:ampPriorIdentity', ...
+           'amplitude prior identity violated (%.3e) -- check both formulas.', ...
+           abs(floor_a - max(abs(b_eff - B_SEED) ./ h)));
 end
 
 
@@ -758,7 +869,13 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
     m.budget_b = trav2_b / max(budget_b, eps);
     trav2_p    = (s.p_hat_out(end, ax) - s.p_hat_out(1, ax))^2;
     budget_p   = s.P_p_out(1, ax)^2 - s.P_p_out(end, ax)^2;
-    m.budget_p = trav2_p / max(budget_p, eps);
+    if s.P_p_out(1, ax) == 0
+        % p locked with a zero-width prior (amplitude arm): the ratio is 0/0.
+        % Report NaN rather than a 0 that reads as a PASS.
+        m.budget_p = NaN;
+    else
+        m.budget_p = trav2_p / max(budget_p, eps);
+    end
 
     m.any_nan = any(~isfinite(s.p_true_out(:))) || any(~isfinite(s.a_hat_out(:))) ...
                 || any(~isfinite(s.b_hat_out(:))) || any(~isfinite(s.p_hat_out(:))) ...
