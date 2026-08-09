@@ -2,7 +2,7 @@ function plot_formB_closedloop_pages(opts)
 %PLOT_FORMB_CLOSEDLOOP_PAGES  Closed-loop pages for formB_amp_functions.
 %
 %   STATUS: ACTIVE -- reads test_results/temp_formB_two_boundaries.mat.
-%   Pages 6 and 7 appended to formB_amp_functions (one page per truth
+%   Pages 7 and 8 appended to formB_amp_functions (one page per truth
 %   function). Single seed, the two writings, constants estimated.
 %
 %   Two rows, matching the house style of formB_cmp_*.png exactly (latex

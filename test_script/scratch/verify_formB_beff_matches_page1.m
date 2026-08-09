@@ -1,4 +1,4 @@
-%VERIFY_FORMB_BEFF_MATCHES_PAGE1  Are the red b_eff curves on pp.6-7 the
+%VERIFY_FORMB_BEFF_MATCHES_PAGE1  Are the red b_eff curves on pp.7-8 the
 %   same function page 1 plots?
 %
 %   STATUS: ACTIVE -- run after any change to plot_formB_closedloop_pages.m

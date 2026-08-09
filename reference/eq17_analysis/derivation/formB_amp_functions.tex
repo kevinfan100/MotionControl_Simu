@@ -6,9 +6,14 @@
 %              Form B   a = 1 - b/((w-ws) + b)     p = 1   (production)
 %              Form C   a = 1 - b/(1 + w-ws)       p = 1   (amplitude writing)
 %          Five quantities: b(w_bar) , db(w_bar)/dw_bar , a_bar' , da_bar/db , J_b
-%          (a_bar is omitted: along b(w_bar) all three collapse onto a_true).
+%          (a_bar is omitted THERE: along b(w_bar) all three collapse onto
+%          a_true, so such a page would say nothing about the writings).
 %
-%          PAGES 6-7 (2026-08-09) close the loop on page 1.  Page 1's
+%          PAGE 6 (2026-08-10) carries the complementary fact pages 1-5 cannot:
+%          a_true is not one curve but two.  Both truths appear, with the far-field
+%          limits that produce the two published anchors 9/8 and 9/16.
+%
+%          PAGES 7-8 (2026-08-09) close the loop on page 1.  Page 1's
 %          b(w_bar) is what formB_ws_ref.tex S10 calls b_eff; these two pages
 %          put the ESTIMATE next to it, and the gain error it produces, one
 %          page per truth function.  Two truths: the wall-normal c_perp (the
@@ -17,33 +22,34 @@
 %          plant_cperp handle -- same filter, same axis, same trajectory,
 %          different truth.  It is not "the x/y axes".  Each writing carries
 %          its own honestly derived prior, sup|b_eff - anchor| on the envelope;
-%          nothing is fitted.  p.7 KEEPS p.6's anchor 9/8 -- a controller that
+%          nothing is fitted.  p.8 KEEPS p.7's anchor 9/8 -- a controller that
 %          does not know the boundary changed cannot be handed c_para's own 9/16
 %          coefficient -- and widens only sqrt(P[0]), to sup|b_eff - 9/8| taken
-%          on c_para (0.7505 B, 0.5697 C).  With p.6's 0.0157/0.0708 instead,
+%          on c_para (0.7505 B, 0.5697 C).  With p.7's 0.0157/0.0708 instead,
 %          the target sits 47 and 8 prior widths away and BOTH writings are
 %          blocked (hold -32.1 %, -14.5 %); with the wider prior both reach it
 %          (b_end 0.353 vs target 0.386, 0.545 vs 0.557) and hold falls to
 %          -2.6 % / +0.2 %, at the cost of a +-5 % spread across seeds.
 %          Single seed (7); the 12-seed means differ from
 %          the printed single-run numbers and are in the arm script's console.
-%          Figures: test_script/scratch/plot_formB_closedloop_pages.m
-%          Arms:    test_script/scratch/run_formB_BC_two_boundaries.m  (p.6)
-%                   test_script/scratch/run_formB_blind_para.m         (p.7)
+%          Figures: test_script/scratch/plot_formB_truth_pair.m (p.6),
+%                   test_script/scratch/plot_formB_closedloop_pages.m
+%          Arms:    test_script/scratch/run_formB_BC_two_boundaries.m  (p.7)
+%                   test_script/scratch/run_formB_blind_para.m         (p.8)
 %          Acceptance for the amplitude arm: verify_formB_amp_tie.m (7/7 PASS).
-%          HOW THE RED CURVES RELATE TO PAGE 1 (checked, not assumed):
+%          HOW pp.7-8's RED CURVES RELATE TO PAGE 1 (checked, not assumed):
 %            same formula -- b_B = (w-ws)(1-a_true)/a_true, b_C = (1+w-ws)(1-a_true),
 %              figure vs generator agree to 1.5e-15, and substituting b_eff back
 %              into each law returns a_true to 1.7e-16;
 %            different abscissa -- page 1 is on a uniform grid in (w_bar - w_bar_s),
-%              pp.6-7 are in TIME, and the trajectory maps time to gap
+%              pp.7-8 are in TIME, and the trajectory maps time to gap
 %              non-monotonically, so one curve appears as a ramp plus two scallops;
 %            partly different domain -- the trajectory covers gap [1.00, 21.22],
 %              page 1 plots [0.1, 10]; 21.6 % of the samples (the whole initial
 %              far-field hold) lie off page 1's right edge, and page 1's gap < 1
 %              is never visited;
-%            p.7's truth is NOT on page 1 at all -- page 1 is c_perp only, so p.6's
-%              red curves are page 1's, reparametrised, while p.7's are c_para.
+%            p.8's truth is NOT on page 1 at all -- page 1 is c_perp only, so p.7's
+%              red curves are page 1's, reparametrised, while p.8's are c_para.
 %          The red curve is evaluated at the COMMANDED height, so it is one common
 %          reference for both arms; using each arm's true height would shift it by
 %          at most 0.0046 (2.8 % of B's swing) / 0.0004 (6.1 % of C's).
@@ -53,7 +59,7 @@
 %          NOTATION: b(w_bar) with an argument = the constant the TRUTH demands
 %          at each height (formB_ws_ref.tex S10 calls it b_eff); plain b = the one
 %          frozen constant the filter carries.  Pages 1-2 use the function,
-%          pages 3-5 the constant, pages 6-7 the estimate of it.
+%          pages 3-5 the constant, pages 7-8 the estimate of it.
 %          Results only, no intermediate algebra and no prose (user, 2026-08-08);
 %          (w_bar - w_bar_s) written out in full everywhere -- no shorthand.
 % ======================================================
@@ -61,9 +67,12 @@
 % Path:    reference/eq17_analysis/derivation/formB_amp_functions.tex
 % Figures: test_script/scratch/plot_formB_form_compare.m      (pp.1-5)
 %          -> figures/formB_cmp_{b,dbdw,aprime,dadb,Jb}.png
-%          test_script/scratch/plot_formB_closedloop_pages.m  (pp.6-7)
+%          test_script/scratch/plot_formB_truth_pair.m         (p.6)
+%          -> figures/a_perp_para.png
+%          test_script/scratch/plot_formB_closedloop_pages.m  (pp.7-8)
 %          -> figures/formB_cl_{perp,para}.png
-% Truth:   calc_correction_functions (two-sphere perpendicular series);
+% Truth:   calc_correction_functions; pp.1-5 and p.7 use the perpendicular
+%          series, p.6 shows both, p.8 substitutes the parallel one;
 %          the body states everything through a_true and a'_true, never c_perp
 % ======================================================
 
@@ -196,7 +205,26 @@ J_b = 0:\quad
 \text{C}:\ \text{none}
 \end{equation*}}{formB_cmp_Jb.png}
 
-% ------------------------------------------- step 6: closed loop, perp
+% ------------------------------------------ step 6: the two truth functions
+\fpage{%
+\begin{align*}
+\bar{a}_{\mathrm{true}} &= \frac{1}{c}
+& c_\perp,\ c_\parallel &\ \text{two-sphere series}
+& \bar{w}_s &= 1
+\end{align*}
+
+\begin{align*}
+\bar{w}-\bar{w}_s = 1:&\quad
+  \bar{a}_\perp = 0.4706, \qquad \bar{a}_\parallel = 0.7214 \\
+\bar{w}-\bar{w}_s = 10:&\quad
+  \bar{a}_\perp = 0.8981, \qquad \bar{a}_\parallel = 0.9489 \\
+\bar{w}-\bar{w}_s \to \infty:&\quad
+  \bigl(1-\bar{a}_\perp\bigr)\bar{w} \to \tfrac{9}{8},
+  \qquad
+  \bigl(1-\bar{a}_\parallel\bigr)\bar{w} \to \tfrac{9}{16}
+\end{align*}}{a_perp_para.png}
+
+% ------------------------------------------- step 7: closed loop, perp
 \fpage{%
 \begin{align*}
 \text{truth} &= c_\perp
@@ -207,7 +235,7 @@ J_b = 0:\quad
 \end{align*}
 }{formB_cl_perp.png}
 
-% ------------------------------------------- step 7: closed loop, para
+% ------------------------------------------- step 8: closed loop, para
 \fpage{%
 \begin{align*}
 \text{truth} &= c_\parallel
