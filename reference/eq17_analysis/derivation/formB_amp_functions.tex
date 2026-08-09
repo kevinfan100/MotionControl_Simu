@@ -8,32 +8,33 @@
 %          Five quantities: b(w_bar) , db(w_bar)/dw_bar , a_bar' , da_bar/db , J_b
 %          (a_bar is omitted: along b(w_bar) all three collapse onto a_true).
 %
-%          PAGES 6-8 (2026-08-09) take page 1 seriously and close the loop.
-%          Page 1's b(w_bar) is what formB_ws_ref.tex S10 calls b_eff; how far
-%          the fixed published anchor sits from it is what decides whether
-%          estimating the constant is worth anything, and how flat it is over
-%          the envelope is what decides the gain error a frozen constant can
-%          reach. Two truth functions are used: the wall-normal c_perp (the
-%          production case) and the wall-parallel c_para, the latter SUBSTITUTED
-%          into the wall-normal channel through the driver's plant_cperp handle
-%          -- same filter, same axis, same trajectory, different truth. It is
-%          not "the x/y axes".
-%          Figures: test_script/scratch/plot_formB_anchor_vs_target.m (p.6)
-%                   test_script/scratch/plot_formB_pages78.m          (p.7-8)
+%          PAGES 6-7 (2026-08-09) close the loop on page 1.  Page 1's
+%          b(w_bar) is what formB_ws_ref.tex S10 calls b_eff; these two pages
+%          put the ESTIMATE next to it, and the gain error it produces, one
+%          page per truth function.  Two truths: the wall-normal c_perp (the
+%          production case) and the wall-parallel c_para, the latter
+%          SUBSTITUTED into the wall-normal channel through the driver's
+%          plant_cperp handle -- same filter, same axis, same trajectory,
+%          different truth.  It is not "the x/y axes".  Each writing carries
+%          its own honestly derived prior, sup|b_eff - anchor| on the envelope;
+%          nothing is fitted.  Single seed (7); the 12-seed means differ from
+%          the printed single-run numbers and are in the arm script's console.
+%          Figures: test_script/scratch/plot_formB_closedloop_pages.m
 %          Arms:    test_script/scratch/run_formB_BC_two_boundaries.m
-%                   (2 truths x 2 writings x free/locked, 12 seeds, 96 runs)
 %          Acceptance for the amplitude arm: verify_formB_amp_tie.m (7/7 PASS).
 %          NOTATION: b(w_bar) with an argument = the constant the TRUTH demands
 %          at each height (formB_ws_ref.tex S10 calls it b_eff); plain b = the one
-%          frozen constant the filter carries.  Pages 1-2 use the function, pages
-%          3-6 the constant.
+%          frozen constant the filter carries.  Pages 1-2 use the function,
+%          pages 3-5 the constant, pages 6-7 the estimate of it.
 %          Results only, no intermediate algebra and no prose (user, 2026-08-08);
 %          (w_bar - w_bar_s) written out in full everywhere -- no shorthand.
 % ======================================================
 % Compile: xelatex formB_amp_functions.tex
 % Path:    reference/eq17_analysis/derivation/formB_amp_functions.tex
-% Figures: test_script/scratch/plot_formB_form_compare.m
+% Figures: test_script/scratch/plot_formB_form_compare.m      (pp.1-5)
 %          -> figures/formB_cmp_{b,dbdw,aprime,dadb,Jb}.png
+%          test_script/scratch/plot_formB_closedloop_pages.m  (pp.6-7)
+%          -> figures/formB_cl_{perp,para}.png
 % Truth:   calc_correction_functions (two-sphere perpendicular series);
 %          the body states everything through a_true and a'_true, never c_perp
 % ======================================================
@@ -167,121 +168,60 @@ J_b = 0:\quad
 \text{C}:\ \text{none}
 \end{equation*}}{formB_cmp_Jb.png}
 
-% ---------------------------------------------- step 6: anchor vs b_eff
+% ------------------------------------------- step 6: closed loop, perp
 \fpage{%
 \begin{align*}
-\text{anchor}\quad
-  b_0 &= \tfrac{9}{8}\ (\perp), \quad \tfrac{9}{16}\ (\parallel)
-  &&\text{far-field reflection coefficient, one number, fixed} \\
-\text{target}\quad
-  b_{\mathrm{eff}}(\bar{w}) &= \text{page 1}
-  &&\text{a curve: what the truth demands at each height}
+\text{truth} &= c_\perp
+& b_0 &= \tfrac{9}{8}\ \text{(both)}
+& p &= 1,\ \ \bar{w}_s = 1 \\
+\hat{b}\ \text{estimated} & & \sqrt{P[0]} &= 0.0157\ \text{(B)},\ \ 0.0708\ \text{(C)}
+& & \text{one seed}
 \end{align*}
 
 \begin{equation*}
-\text{truth} = c_\perp\ \text{and}\ c_\parallel ;
+b_{\mathrm{eff}} = \text{page 1};
 \qquad
-p = 1,\ \bar{w}_s = 1\ \text{pinned};
-\qquad
-\text{12 seeds}
+\sup_{\text{envelope}}\bigl|b_{\mathrm{eff}} - \tfrac{9}{8}\bigr|
+  = 0.0157\ \text{(B)},\ \ 0.0708\ \text{(C)}
 \end{equation*}
-
-\begin{center}
-\begin{tabular}{llcccc}
-\hline
-truth & writing & $b_0$ & $b_{\mathrm{eff}}$ (hold) &
-  $|b_0-b_{\mathrm{eff}}|$ & value of freeing it \\
-\hline
-$c_\perp$     & B & $1.1250$ & $1.1248$ & $0.0002$ & $+0.084$\ \ ($t=+1.63$) \\
-$c_\parallel$ & C & $0.5625$ & $0.5571$ & $0.0054$ & $-0.016$\ \ ($t=-0.68$) \\
-$c_\perp$     & C & $1.1250$ & $1.0587$ & $0.0663$ & $-1.610$\ \ ($t=-2.92$)\,$^\dagger$ \\
-$c_\parallel$ & B & $0.5625$ & $0.3861$ & $0.1764$ & $-4.064$\ \ ($t=-6.48$)\,$^\dagger$ \\
-\hline
-\end{tabular}
-\end{center}
 
 \begin{equation*}
-\text{value} := \bigl|\overline{e_a}\bigr|_{\text{free}}
-              - \bigl|\overline{e_a}\bigr|_{\text{locked}}\ \ [\%],
-\quad \text{final hold};
+\text{descent peak},\ \text{osc RMS},\ \text{final hold}\ [\%]
 \qquad
-\text{slope of the two large rows}: -24.3,\ -23.0
-\end{equation*}
+\text{B}:\ 0.95,\ 0.26,\ -0.60
+\qquad
+\text{C}:\ 5.47,\ 1.87,\ -3.52
+\end{equation*}}{formB_cl_perp.png}
 
-\emph{locked} pins the shape constant only (slot 5): its Kalman gain and
-covariance are zero and it never leaves $b_0$. The gain state $\bar{a}$ is
-estimated in both arms, so this is the marginal value of \emph{also} freeing
-the shape constant. $^\dagger$ these two rows share a sign with the
-$P(4,5)\!\to\!P_{44}$ inflation channel and await its control arm; the other
-two do not.}{formB_anchor_vs_target.png}
-
-% --------------------------------------------- step 7: gain error, perp
+% ------------------------------------------- step 7: closed loop, para
 \fpage{%
+\begin{align*}
+\text{truth} &= c_\parallel
+& b_0 &= \tfrac{9}{16}\ \text{(both)}
+& p &= 1,\ \ \bar{w}_s = 1 \\
+\hat{b}\ \text{estimated} & & \sqrt{P[0]} &= 0.1880\ \text{(B)},\ \ 0.0072\ \text{(C)}
+& & \text{one seed}
+\end{align*}
+
 \begin{equation*}
-\text{truth} = c_\perp ,
+\sup_{\text{envelope}}\bigl|b_{\mathrm{eff}} - \tfrac{9}{16}\bigr|
+  = 0.1880\ \text{(B)},\ \ 0.0072\ \text{(C)}
 \qquad
-b_0 = \tfrac{9}{8}\ \text{for both writings},
+\text{swing}\ = 0.1769,\ \ 0.0069
+\end{equation*}
+
+\begin{equation*}
+\text{descent peak},\ \text{osc RMS},\ \text{final hold}\ [\%]
 \qquad
-\sqrt{P[0]} = 0.0157\ (\text{B}),\ \ 0.0708\ (\text{C})
-\end{equation*}
-
-\begin{center}
-\begin{tabular}{llccc}
-\hline
-writing & constant & descent peak \% & oscillation RMS \% & final hold \% \\
-\hline
-B & locked & $1.032 \pm 0.151$ & $0.341 \pm 0.075$ & $-0.482 \pm 0.368$ \\
-B & free   & $1.102 \pm 0.219$ & $0.407 \pm 0.144$ & $-0.470 \pm 0.579$ \\
-C & locked & $7.027 \pm 1.953$ & $2.762 \pm 1.205$ & $-5.579 \pm 2.328$ \\
-C & free   & $6.605 \pm 2.652$ & $2.389 \pm 1.266$ & $-3.083 \pm 3.471$ \\
-\hline
-\end{tabular}
-\end{center}
-
-\begin{equation*}
-\text{locked}\ \ \text{B}/\text{C} = 0.15,\ 0.12,\ 0.09
-\qquad\Longrightarrow\qquad
-\text{B ahead by}\ 6.8\text{--}11.6\times
-\end{equation*}
-
-The locked pair is the writing-versus-writing comparison with no estimator in
-it. Page 1: $b_{\mathrm{eff},\text{B}}$ swings $0.0189$ here, $b_{\mathrm{eff},
-\text{C}}$ swings $0.0699$.}{formB_page7_perp.png}
-
-% --------------------------------------------- step 8: gain error, para
-\fpage{%
-\begin{equation*}
-\text{truth} = c_\parallel\ \text{substituted into the wall-normal channel},
+\text{B}:\ 5.81,\ 2.00,\ -3.83
 \qquad
-b_0 = \tfrac{9}{16}\ \text{for both writings}
+\text{C}:\ 0.91,\ 0.44,\ -0.58
 \end{equation*}
-
-\begin{center}
-\begin{tabular}{llccc}
-\hline
-writing & constant & descent peak \% & oscillation RMS \% & final hold \% \\
-\hline
-B & locked & $10.914 \pm 1.369$ & $4.572 \pm 1.177$ & $-9.238 \pm 1.789$ \\
-B & free   & $\ \,9.728 \pm 2.624$ & $3.059 \pm 1.560$ & $-3.972 \pm 4.246$ \\
-C & locked & $\ \,0.790 \pm 0.152$ & $0.375 \pm 0.138$ & $-0.506 \pm 0.201$ \\
-C & free   & $\ \,0.783 \pm 0.190$ & $0.373 \pm 0.171$ & $-0.490 \pm 0.279$ \\
-\hline
-\end{tabular}
-\end{center}
 
 \begin{equation*}
-\text{locked}\ \ \text{B}/\text{C} = 13.8,\ 12.2,\ 18.3
-\qquad\Longrightarrow\qquad
-\text{the order of page 7 is reversed}
-\end{equation*}
-
-$b_{\mathrm{eff}}$ swings $0.1769$ (B) against $0.0069$ (C) here, the mirror of
-page 7. Form B pins a simple pole at $\bar{w}_s$; $c_\perp$ has exactly that
-pole (residue $1$), $c_\parallel$ as implemented has none (finite $3.084$ at
-contact). Two limits on reading this page: $c_\parallel$ is a substituted
-truth, not the $x/y$ axes; and at \emph{equal} degrees of freedom --- Form B
-with $b=\frac{9}{16}$, $p$ pinned and the origin free --- the shape residual is
-$0.134\,\%$ against Form C's $0.404\,\%$, so the ordering above holds under the
-rule that no constant may be fitted.}{formB_page8_para.png}
+c_\parallel\ \text{substituted into the wall-normal channel};
+\qquad
+c_\perp\ \text{has a pole at contact},\ \ c_\parallel\ \text{has none}\ (3.084)
+\end{equation*}}{formB_cl_para.png}
 
 \end{document}
