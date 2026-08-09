@@ -17,8 +17,8 @@ function plot_formB_closedloop_pages(opts)
 %              derivation/figures/formB_cl_para.png
 
     if nargin < 1; opts = struct(); end
-    if ~isfield(opts, 'ylim_b'); opts.ylim_b = {[1.04 1.16], [0.34 0.60]}; end
-    if ~isfield(opts, 'ylim_e'); opts.ylim_e = {[-9 3],      [-14 5]};     end
+    if ~isfield(opts, 'ylim_b'); opts.ylim_b = {[1.04 1.16], [0.30 1.20]}; end
+    if ~isfield(opts, 'ylim_e'); opts.ylim_e = {[-9 3],      [-38 8]};     end
 
     here = fileparts(mfilename('fullpath'));
     root = fileparts(fileparts(here));
@@ -26,6 +26,11 @@ function plot_formB_closedloop_pages(opts)
     fig_dir = fullfile(root, 'reference', 'eq17_analysis', 'derivation', 'figures');
     L = load(fullfile(root, 'test_results', 'temp_formB_two_boundaries.mat'));
     r = L.res;
+    % p.7 is the BLIND test: the controller keeps the plane anchor 9/8 and the
+    % plant is c_para. Giving c_para its own 9/16 anchor would hand the filter
+    % the one number an unknown boundary does not provide.
+    Lb = load(fullfile(root, 'test_results', 'temp_formB_blind_para.mat'));
+    rb = Lb.res;
 
     % house palette, identical to plot_formB_form_compare
     C_TRUE = [0.8 0 0];
@@ -47,8 +52,13 @@ function plot_formB_closedloop_pages(opts)
         if ib == 1; c = cP; else; c = cA; end
         beB = (c - 1) .* (w - 1);
         beC = w .* (c - 1) ./ c;
-        bB  = r.trace{ib,1,1}.b;   eB = r.trace{ib,1,1}.e;
-        bC  = r.trace{ib,2,1}.b;   eC = r.trace{ib,2,1}.e;
+        if ib == 1
+            bB = r.trace{1,1,1}.b;  eB = r.trace{1,1,1}.e;
+            bC = r.trace{1,2,1}.b;  eC = r.trace{1,2,1}.e;
+        else                       % blind arms, anchor 9/8, plane-derived prior
+            bB = rb.trace{1}.b;     eB = rb.trace{1}.e;
+            bC = rb.trace{2}.b;     eC = rb.trace{2}.e;
+        end
 
         f = figure('Position', [60 60 1000 900], 'Color', 'w', ...
                    'NumberTitle', 'off', 'Visible', 'off');

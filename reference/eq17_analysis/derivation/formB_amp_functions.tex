@@ -17,7 +17,9 @@
 %          plant_cperp handle -- same filter, same axis, same trajectory,
 %          different truth.  It is not "the x/y axes".  Each writing carries
 %          its own honestly derived prior, sup|b_eff - anchor| on the envelope;
-%          nothing is fitted.  Single seed (7); the 12-seed means differ from
+%          nothing is fitted.  p.7 keeps p.6's anchor AND prior: a controller
+%          that does not know the boundary changed cannot be handed c_para's
+%          own 9/16 coefficient.  Single seed (7); the 12-seed means differ from
 %          the printed single-run numbers and are in the arm script's console.
 %          Figures: test_script/scratch/plot_formB_closedloop_pages.m
 %          Arms:    test_script/scratch/run_formB_BC_two_boundaries.m
@@ -177,51 +179,23 @@ J_b = 0:\quad
 \hat{b}\ \text{estimated} & & \sqrt{P[0]} &= 0.0157\ \text{(B)},\ \ 0.0708\ \text{(C)}
 & & \text{one seed}
 \end{align*}
-
-\begin{equation*}
-b_{\mathrm{eff}} = \text{page 1};
-\qquad
-\sup_{\text{envelope}}\bigl|b_{\mathrm{eff}} - \tfrac{9}{8}\bigr|
-  = 0.0157\ \text{(B)},\ \ 0.0708\ \text{(C)}
-\end{equation*}
-
-\begin{equation*}
-\text{descent peak},\ \text{osc RMS},\ \text{final hold}\ [\%]
-\qquad
-\text{B}:\ 0.95,\ 0.26,\ -0.60
-\qquad
-\text{C}:\ 5.47,\ 1.87,\ -3.52
-\end{equation*}}{formB_cl_perp.png}
+}{formB_cl_perp.png}
 
 % ------------------------------------------- step 7: closed loop, para
 \fpage{%
 \begin{align*}
 \text{truth} &= c_\parallel
-& b_0 &= \tfrac{9}{16}\ \text{(both)}
+& b_0 &= \tfrac{9}{8}\ \text{(both, as on p.6)}
 & p &= 1,\ \ \bar{w}_s = 1 \\
-\hat{b}\ \text{estimated} & & \sqrt{P[0]} &= 0.1880\ \text{(B)},\ \ 0.0072\ \text{(C)}
+\hat{b}\ \text{estimated} & & \sqrt{P[0]} &= 0.0157\ \text{(B)},\ \ 0.0708\ \text{(C)}
 & & \text{one seed}
 \end{align*}
 
-\begin{equation*}
-\sup_{\text{envelope}}\bigl|b_{\mathrm{eff}} - \tfrac{9}{16}\bigr|
-  = 0.1880\ \text{(B)},\ \ 0.0072\ \text{(C)}
-\qquad
-\text{swing}\ = 0.1769,\ \ 0.0069
-\end{equation*}
-
-\begin{equation*}
-\text{descent peak},\ \text{osc RMS},\ \text{final hold}\ [\%]
-\qquad
-\text{B}:\ 5.81,\ 2.00,\ -3.83
-\qquad
-\text{C}:\ 0.91,\ 0.44,\ -0.58
-\end{equation*}
 
 \begin{equation*}
 c_\parallel\ \text{substituted into the wall-normal channel};
 \qquad
-c_\perp\ \text{has a pole at contact},\ \ c_\parallel\ \text{has none}\ (3.084)
+\text{anchor and prior unchanged}
 \end{equation*}}{formB_cl_para.png}
 
 \end{document}
