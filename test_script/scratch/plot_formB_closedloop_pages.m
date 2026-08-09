@@ -17,8 +17,8 @@ function plot_formB_closedloop_pages(opts)
 %              derivation/figures/formB_cl_para.png
 
     if nargin < 1; opts = struct(); end
-    if ~isfield(opts, 'ylim_b'); opts.ylim_b = {[1.04 1.16], [0.30 1.20]}; end
-    if ~isfield(opts, 'ylim_e'); opts.ylim_e = {[-9 3],      [-38 8]};     end
+    if ~isfield(opts, 'ylim_b'); opts.ylim_b = {[1.04 1.16], [0.08 1.28]}; end
+    if ~isfield(opts, 'ylim_e'); opts.ylim_e = {[-9 3],      [-17 24]};     end
 
     here = fileparts(mfilename('fullpath'));
     root = fileparts(fileparts(here));
@@ -55,9 +55,9 @@ function plot_formB_closedloop_pages(opts)
         if ib == 1
             bB = r.trace{1,1,1}.b;  eB = r.trace{1,1,1}.e;
             bC = r.trace{1,2,1}.b;  eC = r.trace{1,2,1}.e;
-        else                       % blind arms, anchor 9/8, plane-derived prior
-            bB = rb.trace{1}.b;     eB = rb.trace{1}.e;
-            bC = rb.trace{2}.b;     eC = rb.trace{2}.e;
+        else   % anchor 9/8 kept; prior widened to cover a non-plane boundary
+            bB = rb.trace{3}.b;     eB = rb.trace{3}.e;
+            bC = rb.trace{4}.b;     eC = rb.trace{4}.e;
         end
 
         f = figure('Position', [60 60 1000 900], 'Color', 'w', ...
@@ -98,19 +98,26 @@ function plot_formB_closedloop_pages(opts)
         fprintf('wrote %s\n', out);
     end
 
-    % ---- the numbers that go on the pages, in the document's format -----
-    BN = {'perp', 'para'};
-    for ib = 1:2
-        TB_ = squeeze(r.tab(ib, 1, 1, :, :));   % writing B, free
-        TC_ = squeeze(r.tab(ib, 2, 1, :, :));   % writing C, free
-        fprintf('\n%s  (12 seeds, free)\n', BN{ib});
-        fprintf('  desc / osc / hold   B  %.2f, %.2f, %+.2f     C  %.2f, %.2f, %+.2f\n', ...
-                mean(TB_(:,1)), mean(TB_(:,2)), mean(TB_(:,3)), ...
-                mean(TC_(:,1)), mean(TC_(:,2)), mean(TC_(:,3)));
-        fprintf('  seed-7 single run   B  %.2f, %.2f, %+.2f     C  %.2f, %.2f, %+.2f\n', ...
-                squeeze(r.tab(ib,1,1,1,1)), squeeze(r.tab(ib,1,1,1,2)), squeeze(r.tab(ib,1,1,1,3)), ...
-                squeeze(r.tab(ib,2,1,1,1)), squeeze(r.tab(ib,2,1,1,2)), squeeze(r.tab(ib,2,1,1,3)));
-    end
+    % ---- the numbers behind each page, in the document's format ---------
+    fprintf('\np.6  c_perp, anchor 9/8, plane prior  (12 seeds)\n');
+    local_row('B', squeeze(r.tab(1,1,1,:,:)), squeeze(r.tab(1,1,1,1,:)));
+    local_row('C', squeeze(r.tab(1,2,1,:,:)), squeeze(r.tab(1,2,1,1,:)));
+
+    fprintf('\np.7  c_para, anchor 9/8 KEPT, prior widened on c_para  (12 seeds)\n');
+    local_row('B', squeeze(rb.tab(3,:,:)), squeeze(rb.tab(3,1,:)));
+    local_row('C', squeeze(rb.tab(4,:,:)), squeeze(rb.tab(4,1,:)));
+    fprintf('     prior  B %.4f  C %.4f      b_end  B %.4f  C %.4f\n', ...
+            rb.prior(3), rb.prior(4), mean(rb.tab(3,:,4)), mean(rb.tab(4,:,4)));
+
+    fprintf('\n     for reference, the SAME page-7 run on p.6''s prior:\n');
+    local_row('B', squeeze(rb.tab(1,:,:)), squeeze(rb.tab(1,1,:)));
+    local_row('C', squeeze(rb.tab(2,:,:)), squeeze(rb.tab(2,1,:)));
+end
+
+% --------------------------------------------------------------------------
+function local_row(nm, T, s1)
+    fprintf('  %s  desc/osc/hold  12-seed %6.2f %6.2f %+7.2f   seed 7 %6.2f %6.2f %+7.2f\n', ...
+            nm, mean(T(:,1)), mean(T(:,2)), mean(T(:,3)), s1(1), s1(2), s1(3));
 end
 
 % --------------------------------------------------------------------------

@@ -17,12 +17,19 @@
 %          plant_cperp handle -- same filter, same axis, same trajectory,
 %          different truth.  It is not "the x/y axes".  Each writing carries
 %          its own honestly derived prior, sup|b_eff - anchor| on the envelope;
-%          nothing is fitted.  p.7 keeps p.6's anchor AND prior: a controller
-%          that does not know the boundary changed cannot be handed c_para's
-%          own 9/16 coefficient.  Single seed (7); the 12-seed means differ from
+%          nothing is fitted.  p.7 KEEPS p.6's anchor 9/8 -- a controller that
+%          does not know the boundary changed cannot be handed c_para's own 9/16
+%          coefficient -- and widens only sqrt(P[0]), to sup|b_eff - 9/8| taken
+%          on c_para (0.7505 B, 0.5697 C).  With p.6's 0.0157/0.0708 instead,
+%          the target sits 47 and 8 prior widths away and BOTH writings are
+%          blocked (hold -32.1 %, -14.5 %); with the wider prior both reach it
+%          (b_end 0.353 vs target 0.386, 0.545 vs 0.557) and hold falls to
+%          -2.6 % / +0.2 %, at the cost of a +-5 % spread across seeds.
+%          Single seed (7); the 12-seed means differ from
 %          the printed single-run numbers and are in the arm script's console.
 %          Figures: test_script/scratch/plot_formB_closedloop_pages.m
-%          Arms:    test_script/scratch/run_formB_BC_two_boundaries.m
+%          Arms:    test_script/scratch/run_formB_BC_two_boundaries.m  (p.6)
+%                   test_script/scratch/run_formB_blind_para.m         (p.7)
 %          Acceptance for the amplitude arm: verify_formB_amp_tie.m (7/7 PASS).
 %          NOTATION: b(w_bar) with an argument = the constant the TRUTH demands
 %          at each height (formB_ws_ref.tex S10 calls it b_eff); plain b = the one
@@ -187,7 +194,7 @@ J_b = 0:\quad
 \text{truth} &= c_\parallel
 & b_0 &= \tfrac{9}{8}\ \text{(both, as on p.6)}
 & p &= 1,\ \ \bar{w}_s = 1 \\
-\hat{b}\ \text{estimated} & & \sqrt{P[0]} &= 0.0157\ \text{(B)},\ \ 0.0708\ \text{(C)}
+\hat{b}\ \text{estimated} & & \sqrt{P[0]} &= 0.7505\ \text{(B)},\ \ 0.5697\ \text{(C)}
 & & \text{one seed}
 \end{align*}
 
@@ -195,7 +202,8 @@ J_b = 0:\quad
 \begin{equation*}
 c_\parallel\ \text{substituted into the wall-normal channel};
 \qquad
-\text{anchor and prior unchanged}
+\text{anchor kept},\qquad
+\sqrt{P[0]} = \sup\bigl|b_{\mathrm{eff}} - \tfrac{9}{8}\bigr|_{c_\parallel}
 \end{equation*}}{formB_cl_para.png}
 
 \end{document}
