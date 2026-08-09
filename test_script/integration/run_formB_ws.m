@@ -326,6 +326,34 @@ function out = run_formB_ws(opts, test_opts)
         ov.p_init       = P_SEED;
         ov.Pf_b_std     = sPbb_amp;          % sup|b_eff,C - 9/8| on the envelope
         ov.Pf_a_floor   = floor_a_amp;       % sup|a_anchored,C - 1/c| on the envelope
+        % Under the tie the law's pole sits at w_bar = beta, so the slot-5
+        % guard (beta <= w_bar_d - ws_margin) binds whenever the commanded
+        % trough is not clear of the seed. A clamped beta looks like a
+        % downward traversal and is not one -- refuse the configuration rather
+        % than produce that artefact. wrong_seed makes it worse: it starts
+        % beta one prior width HIGHER.
+        AMP_TROUGH_MARGIN = 0.05;            % [-] readable clearance
+        w_trough = cfg.h_bottom / pc.R;
+        assert(w_trough > ov.b_init + AMP_TROUGH_MARGIN, ...
+               'run_formB_ws:ampTroughClamp', ...
+               ['law_form = ''amp'': commanded trough w_bar = %.4f is not clear ', ...
+                'of the seed beta = %.4f (needs > seed + %.2f). The slot-5 pole ', ...
+                'guard would clamp beta at the trough and fake a downward ', ...
+                'traversal.'], w_trough, ov.b_init, AMP_TROUGH_MARGIN);
+        % The y2 gate is the ONLY measurement carrying a parameter column, so
+        % heights below h_bar_safe contribute NO evidence about beta. If the
+        % prior is derived below the gate it prices evidence the filter is
+        % forbidden to collect. Report the gap rather than hide it.
+        if env_lo < cfg.h_bar_safe - 1e-12
+            [sPbb_obs, ~] = local_envelope_priors_amp(cfg.h_bar_safe, env_hi);
+            warning('run_formB_ws:ampPriorBelowGate', ...
+                    ['amplitude prior derived on [%.3f, %.3f] but the y2 gate ', ...
+                     'blinds the parameter channel below h_bar_safe = %.2f. ', ...
+                     'Declared sqrt(P[0]) = %.4f; the OBSERVABLE demand saturates ', ...
+                     'at %.4f (ratio %.2fx). Travel beyond that is prior, not ', ...
+                     'evidence.'], env_lo, env_hi, cfg.h_bar_safe, ...
+                    sPbb_amp, sPbb_obs, sPbb_amp / sPbb_obs);
+        end
     end
     fn = fieldnames(opts.ctrl_const_override);
     for idx = 1:numel(fn)
@@ -626,8 +654,14 @@ function [sPbb, floor_a] = local_envelope_priors_amp(h_lo, h_hi)
     B_SEED  = 9/8;    % derived far-field reflection coefficient
     N_SWEEP = 20001;  % same grid density as the length sibling
 
+    % h_lo = trough - ENV_LO_MARGIN, so a trough at the truth-domain floor 1.1
+    % lands here at exactly 1.0 and trips this. Name the real cause: the two
+    % floors differ by one ENV_LO_MARGIN.
     assert(h_lo > 1 && h_hi > h_lo, 'run_formB_ws:badEnvelope', ...
-           'envelope must satisfy 1 < h_lo (%.3f) < h_hi (%.3f).', h_lo, h_hi);
+           ['envelope must satisfy 1 < h_lo (%.3f) < h_hi (%.3f). h_lo is the ', ...
+            'commanded trough LESS the tracking margin, so the deepest trough ', ...
+            'this admits is 1 + ENV_LO_MARGIN, not the truth-domain floor 1.1.'], ...
+           h_lo, h_hi);
 
     h = linspace(h_lo, h_hi, N_SWEEP).';
     c = zeros(N_SWEEP, 1);
