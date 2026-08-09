@@ -31,6 +31,25 @@
 %          Arms:    test_script/scratch/run_formB_BC_two_boundaries.m  (p.6)
 %                   test_script/scratch/run_formB_blind_para.m         (p.7)
 %          Acceptance for the amplitude arm: verify_formB_amp_tie.m (7/7 PASS).
+%          HOW THE RED CURVES RELATE TO PAGE 1 (checked, not assumed):
+%            same formula -- b_B = (w-ws)(1-a_true)/a_true, b_C = (1+w-ws)(1-a_true),
+%              figure vs generator agree to 1.5e-15, and substituting b_eff back
+%              into each law returns a_true to 1.7e-16;
+%            different abscissa -- page 1 is on a uniform grid in (w_bar - w_bar_s),
+%              pp.6-7 are in TIME, and the trajectory maps time to gap
+%              non-monotonically, so one curve appears as a ramp plus two scallops;
+%            partly different domain -- the trajectory covers gap [1.00, 21.22],
+%              page 1 plots [0.1, 10]; 21.6 % of the samples (the whole initial
+%              far-field hold) lie off page 1's right edge, and page 1's gap < 1
+%              is never visited;
+%            p.7's truth is NOT on page 1 at all -- page 1 is c_perp only, so p.6's
+%              red curves are page 1's, reparametrised, while p.7's are c_para.
+%          The red curve is evaluated at the COMMANDED height, so it is one common
+%          reference for both arms; using each arm's true height would shift it by
+%          at most 0.0046 (2.8 % of B's swing) / 0.0004 (6.1 % of C's).
+%          sqrt(P[0]) on every page is the sup over the planned envelope
+%          [1.90, 23.22], which is wider than the achieved trajectory -- hence e.g.
+%          c_perp B: envelope sup 0.0157 vs trajectory swing 0.0159 about 9/8.
 %          NOTATION: b(w_bar) with an argument = the constant the TRUTH demands
 %          at each height (formB_ws_ref.tex S10 calls it b_eff); plain b = the one
 %          frozen constant the filter carries.  Pages 1-2 use the function,
