@@ -142,7 +142,13 @@ function res = plot_formB_amp_bonly(opts)
             sprintf('amplitude, only \\beta (%d seeds)', numel(seeds)), ...
             'anchor 9/8', 'envelope minimax 1.0651'}, ...
            'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', FS - 6);
-    ylim(ax, [1.03 1.14]); xlim(ax, [aA.t(1) aA.t(end)]);
+    bmin = inf; bmax = -inf;
+    for q = 1:numel(seeds)
+        bmin = min(bmin, min(res.runs{iAMP, q}.b_hat(2:end)));
+        bmax = max(bmax, max(res.runs{iAMP, q}.b_hat(2:end)));
+    end
+    ylim(ax, [bmin - 0.005, max(bmax, 1.14) + 0.005]);
+    xlim(ax, [aA.t(1) aA.t(end)]);
     style_ax(ax, FS); add_phase(ax, tb);
     out = fullfile(fig_dir, 'formB_amp_vs_len_bhat.png');
     exportgraphics(f, out, 'Resolution', 150); close(f);
