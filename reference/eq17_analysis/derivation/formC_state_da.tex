@@ -1,0 +1,417 @@
+% STATUS: ACTIVE -- SSOT for the state-writing (slope read off the gain state)
+%          gain-law derivation with a multiplicative constant disturbance.
+%          Section-for-section counterpart of formB_ws.tex; same equation-only
+%          house style.  Differences from formB_ws are confined to S1, S2,
+%          S6 row 4 and S7 (see the marked notes).
+%          Parameter order everywhere: a_w, da_w (user, 2026-08-11).
+% ======================================================
+% Compile: xelatex formC_state_da.tex
+% Path:    reference/eq17_analysis/derivation/formC_state_da.tex
+% Companion: formB_ws.tex (the height-writing SSOT it replaces on the slope path)
+% ======================================================
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\usepackage{graphicx}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\emergencystretch}{2em}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\begin{document}
+
+\section{Gain law}
+
+(bars denote normalized quantities: lengths by $R$, $\bar{a} = a/a_o$,
+$\bar{f} = a_o f$; $0 < \bar{a} < 1$, $1 + \delta a > 0$;
+$e_{\theta} = \theta - \hat{\theta}$)
+
+\begin{equation*}
+\bar{a}'(\bar{a},\, \delta a) := \frac{\mathrm{d}\bar{a}}{\mathrm{d}\bar{w}}
+  = \bigl(1-\bar{a}\bigr)^{2}\bigl(1 + \delta a\bigr)
+\qquad
+\left(\begin{array}{l}
+\text{no parameter in the law;}\\
+\delta a \text{ is a state}
+\end{array}\right)
+\end{equation*}
+
+\begin{align*}
+\bar{a}'_w[k] &= \bigl(1-\bar{a}_w[k]\bigr)^{2}\bigl(1+\delta a_w[k]\bigr) \\
+\hat{\bar{a}}'[k] &= \bigl(1-\hat{\bar{a}}_w[k]\bigr)^{2}\bigl(1+\delta\hat{a}_w[k]\bigr)
+\qquad (\text{states only: no } \bar{w}_d,\ \text{no } \hat{\bar{w}}_s)
+\end{align*}
+
+Exponent $2 = 1 + 1/p$ at $p = 1$; both asymptotic anchors give $p = 1$, so the
+exponent is anchored, not chosen.
+
+Integrated form (used for seeding only; $\bar{w}_0$ = integration constant):
+
+\begin{equation*}
+\bar{a}(\bar{w}) = 1 - \frac{1}{(1+\delta a)\,(\bar{w}-\bar{w}_0)} ,
+\qquad
+\frac{\partial\bar{a}}{\partial\bar{w}_0} = -\bar{a}' \quad(\text{exact})
+\end{equation*}
+
+\begin{equation*}
+\text{plane, } \bar{w}_0 = \bar{w}_s - 1:\quad
+\bar{a} = 1 - \frac{b}{\bar{w}} ,\qquad b := \frac{1}{1+\delta a} ,
+\qquad
+b \to \tfrac{9}{8} \iff \delta a \to -\tfrac{1}{9}
+\end{equation*}
+
+\begin{equation*}
+a_w = a_o\,\bar{a}_w , \qquad a_o = \frac{\Delta t}{\gamma_N R}
+\qquad (a_o \text{ fixed, not a state})
+\end{equation*}
+
+Declared truncation (shape floor; $b_{\mathrm{state}}(\bar{w}) :=
+(1-\bar{a}_{\mathrm{true}})^{2}/\bar{a}'_{\mathrm{true}}$, offline):
+
+\begin{equation*}
+\sup_{\bar{w}}\left|\frac{\bar{a}'(\bar{a}_{\mathrm{true}},\delta a)}
+{\bar{a}'_{\mathrm{true}}} - 1\right|
+= \sup_{\bar{w}}\left|\frac{b_{\mathrm{state}}(\bar{w})}{b} - 1\right|
+\qquad
+\begin{array}{ll}
+0.66\,\%\ \mathrm{RMS},\ 4.65\,\%\ \sup & (\bar{w}-\bar{w}_s \in [0.1,\,25])\\
+0.59\,\%\ \mathrm{RMS},\ 2.06\,\%\ \sup & (\bar{w}-\bar{w}_s \ge 1)
+\end{array}
+\end{equation*}
+
+\section{Gain rate and parameter Jacobians}
+
+\begin{align*}
+A_a(\bar{a},\delta a) := \frac{\partial\bar{a}'}{\partial\bar{a}}
+  &= -2\bigl(1-\bar{a}\bigr)\bigl(1+\delta a\bigr) = \frac{-2\,\bar{a}'}{1-\bar{a}}
+  \qquad (<0 \text{ always}) \\[0.3em]
+A_{\delta}(\bar{a}) := \frac{\partial\bar{a}'}{\partial\delta a}
+  &= \bigl(1-\bar{a}\bigr)^{2} = \frac{\bar{a}'}{1+\delta a}
+  \qquad (>0 \text{ always; no zero, no sign change})
+\end{align*}
+
+\begin{align*}
+\bar{a}'_w[k] - \hat{\bar{a}}'[k]
+  = A_a\bigl(\hat{\bar{a}}_w[k],\delta\hat{a}_w[k]\bigr)\, e_{\bar{a}_w}[k]
+  + A_{\delta}\bigl(\hat{\bar{a}}_w[k]\bigr)\, e_{\delta a_w}[k]
+  + \mathcal{O}(e^{2})
+\end{align*}
+
+$\bar{a}'$ depends on the state $\bar{a}_w$: $A_a \neq 0$.  This is the single
+structural difference from the height writing and it propagates into S6 row 4
+and S7.
+
+\section{True dynamics}
+
+$\bigl(\delta\bar{w}_j[k] := \delta\bar{w}[k-d+j-1],\ j = 1,\dots,d+1,\
+d = 2;\ \delta\bar{w}_D \equiv 0 \text{ hereafter}\bigr)$
+
+\begin{align*}
+\bar{w}[k] &= \bar{w}_d[k] - \delta\bar{w}_3[k] \\
+\bar{a}_w[k+1] &= \bar{a}_w\bigl(\bar{w}[k+1]\bigr) \\
+\bar{w}_d[k+1] &= \bar{w}_d[k] + \Delta\bar{w}_d[k] \\
+\delta\bar{w}_1[k+1] &= \delta\bar{w}_2[k] \\
+\delta\bar{w}_2[k+1] &= \delta\bar{w}_3[k] \\
+\delta\bar{w}_3[k+1] &= \lambda_c\,\delta\bar{w}_3[k]
+  - F_{dw}[k]\,e_{\bar{a}_w}[k] - \varepsilon_w[k]
+  \qquad (e_{\bar{a}_w} = \bar{a}_w - \hat{\bar{a}}_w) \\
+\delta a_w[k+1] &= \delta a_w[k]
+\end{align*}
+
+\begin{align*}
+F_{dw}[k] &:= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
+\varepsilon_w[k] &:= \bar{a}_w[k]\,\bar{f}_T[k]
+  + (1-\lambda_c)\sum_{i=1}^{d}\bar{a}_w[k-i]\,\bar{f}_T[k-i]
+  + (1-\lambda_c)\,n_w[k]
+\end{align*}
+
+\section{Process model}
+
+\begin{align*}
+\bar{w}[k+1] - \bar{w}[k]
+  &= \Delta\bar{w}_d[k] + (1-\lambda_c)\,\delta\bar{w}_3[k]
+   + F_{dw}[k]\,e_{\bar{a}_w}[k] + \varepsilon_w[k]
+\end{align*}
+
+\begin{align*}
+\bar{a}_w[k+1] = \bar{a}_w[k] + \bar{a}'[k]\,\Bigl[
+  \Delta\bar{w}_d[k] + (1-\lambda_c)\,\delta\bar{w}_3[k]
+  + F_{dw}[k]\,e_{\bar{a}_w}[k] + \varepsilon_w[k] \Bigr]
+\end{align*}
+\begin{equation*}
+\bar{a}'[k] = \bigl(1-\bar{a}_w[k]\bigr)^{2}\bigl(1+\delta a_w[k]\bigr)
+\end{equation*}
+
+\begin{equation*}
+\mathbf{x}[k] = \bigl[\,\delta\bar{w}_1,\ \delta\bar{w}_2,\ \delta\bar{w}_3,\
+\bar{a}_w,\ \delta a_w\,\bigr]^{\top}[k] \qquad (d = 2)
+\end{equation*}
+
+\begin{align*}
+\delta\bar{w}_1[k+1] &= \delta\bar{w}_2[k] \\
+\delta\bar{w}_2[k+1] &= \delta\bar{w}_3[k] \\
+\delta\bar{w}_3[k+1] &= \lambda_c\,\delta\bar{w}_3[k]
+  - F_{dw}[k]\,e_{\bar{a}_w}[k] - \varepsilon_w[k] \\
+\bar{a}_w[k+1] &= \bar{a}_w[k] + \bar{a}'[k]\,\Bigl[
+  \Delta\bar{w}_d[k] + (1-\lambda_c)\,\delta\bar{w}_3[k]
+  + F_{dw}[k]\,e_{\bar{a}_w}[k] + \varepsilon_w[k] \Bigr] \\
+\delta a_w[k+1] &= \delta a_w[k]
+\end{align*}
+
+\section{Estimator}
+
+\begin{align*}
+\delta\hat{\bar{w}}_1[k+1] &= \delta\hat{\bar{w}}_2[k] \\
+\delta\hat{\bar{w}}_2[k+1] &= \delta\hat{\bar{w}}_3[k] \\
+\delta\hat{\bar{w}}_3[k+1] &= \lambda_c\,\delta\hat{\bar{w}}_3[k] \\
+\hat{\bar{a}}_w[k+1] &= \hat{\bar{a}}_w[k] + \hat{\bar{a}}'[k]\,M[k] \\
+\delta\hat{a}_w[k+1] &= \delta\hat{a}_w[k]
+\end{align*}
+\begin{align*}
+M[k] &:= \Delta\bar{w}_d[k] + (1-\lambda_c)\,\delta\hat{\bar{w}}_3[k] \\
+\hat{\bar{a}}'[k] &= \bigl(1-\hat{\bar{a}}_w[k]\bigr)^{2}
+  \bigl(1+\delta\hat{a}_w[k]\bigr)
+\end{align*}
+
+\section{Error dynamics}
+
+(True $-$ Estimator; coefficients at the estimate)
+
+\begin{equation*}
+e_{\delta\bar{w}_j} = \delta\bar{w}_j - \delta\hat{\bar{w}}_j \ \ (j = 1,2,3),
+\qquad
+\mathbf{e} = \bigl[\,e_{\delta\bar{w}_1},\ e_{\delta\bar{w}_2},\
+e_{\delta\bar{w}_3},\ e_{\bar{a}_w},\ e_{\delta a_w}\,\bigr]^{\top}
+\end{equation*}
+
+\begin{align*}
+e_{\delta\bar{w}_1}[k+1] &= e_{\delta\bar{w}_2}[k] \\
+e_{\delta\bar{w}_2}[k+1] &= e_{\delta\bar{w}_3}[k] \\
+e_{\delta\bar{w}_3}[k+1] &= \lambda_c\,e_{\delta\bar{w}_3}[k]
+  - F_{dw}[k]\,e_{\bar{a}_w}[k] - \varepsilon_w[k] \\
+e_{\bar{a}_w}[k+1] &= \Bigl[\,1 + \hat{\bar{a}}'[k]\,F_{dw}[k]
+  + A_a[k]\,M[k]\,\Bigr] e_{\bar{a}_w}[k]
+  + A_{\delta}[k]\,M[k]\; e_{\delta a_w}[k] \\
+  &\qquad + (1-\lambda_c)\,\hat{\bar{a}}'[k]\,e_{\delta\bar{w}_3}[k]
+  + \hat{\bar{a}}'[k]\,\varepsilon_w[k] \\
+e_{\delta a_w}[k+1] &= e_{\delta a_w}[k]
+\end{align*}
+
+\begin{equation*}
+A_a[k] = A_a\bigl(\hat{\bar{a}}_w[k],\delta\hat{a}_w[k]\bigr),
+\qquad
+A_{\delta}[k] = A_{\delta}\bigl(\hat{\bar{a}}_w[k]\bigr),
+\qquad
+\mathbf{e}[k+1] = F_e[k]\,\mathbf{e}[k] + \mathbf{q}[k]
+\end{equation*}
+
+\begin{equation*}
+F_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lambda_c & -F_{dw} & 0 \\
+0 & 0 & (1-\lambda_c)\hat{\bar{a}}' &
+  1 + \hat{\bar{a}}'F_{dw} + A_a M & A_{\delta} M \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\end{equation*}
+
+\begin{equation*}
+\mathbf{q}[k] = \bigl[\,0,\ 0,\ -\varepsilon_w[k],\
+\hat{\bar{a}}'[k]\,\varepsilon_w[k],\ 0\,\bigr]^{\top}
+\qquad (q_4 = -\hat{\bar{a}}'[k]\,q_3)
+\end{equation*}
+
+The term $A_a M$ has no counterpart in the height writing (there $F_e(4,4) =
+1 + \hat{\bar{a}}'F_{dw}$ exactly).  Homogeneous propagation of the integration
+constant is exact:
+
+\begin{equation*}
+e_{\bar{a}}(\bar{w}) = -\,\bar{a}'(\bar{w})\;e_{\bar{w}_0}
+\ \propto\ \frac{1}{(\bar{w}-\bar{w}_0)^{2}}
+\qquad\Longrightarrow\qquad
+\oint \text{(closed excursion)} : \text{gain} = 1
+\end{equation*}
+
+\section{Measurement and innovation}
+
+Measurement ($d$-step delay; $\bar{a}_{wm} = a_{wm}/a_o$; $y_2$ raw readout ---
+AR(1) whitening enters with $R_2$, S8)
+
+\begin{align*}
+\nabla_d\bar{w}_d[k] &:= \bar{w}_d[k] - \bar{w}_d[k-d] \\
+y_1[k] &= \delta\bar{w}_m[k] = \delta\bar{w}_1[k] + n_w[k] \\
+y_2[k] &= \bar{a}_{wm}[k] = \bar{a}_w[k-d] + n_a[k]
+\end{align*}
+
+Delay back-off
+\begin{equation*}
+\bar{a}_w[k-d] = \bar{a}_w[k] - \bar{a}'[k]\,\nabla_d\bar{w}_d[k]
+\ \Longrightarrow\
+y_2[k] = \bar{a}_w[k] - \bar{a}'[k]\,\nabla_d\bar{w}_d[k] + n_a[k]
+\end{equation*}
+
+Linearization (partials at the estimate; $\bar{a}'$ \emph{does} depend on the
+state $\bar{a}_w$, so $\partial y_2/\partial\bar{a}_w$ is \emph{not} $1$ ---
+this is where the height-writing derivation does not carry over)
+
+\begin{align*}
+\frac{\partial y_2}{\partial\bar{a}_w}
+  &= 1 - A_a[k]\,\nabla_d\bar{w}_d[k]
+   = 1 + 2\bigl(1-\hat{\bar{a}}_w\bigr)\bigl(1+\delta\hat{a}_w\bigr)
+     \nabla_d\bar{w}_d[k] \\
+\frac{\partial y_2}{\partial\delta a_w}
+  &= -A_{\delta}[k]\,\nabla_d\bar{w}_d[k]
+   = -\bigl(1-\hat{\bar{a}}_w\bigr)^{2}\,\nabla_d\bar{w}_d[k]
+\end{align*}
+
+Output equation ($H$ is the Jacobian; row 2 is nonlinear in $\mathbf{x}$, so
+$H\mathbf{x}$ is its linearization, not an identity)
+
+\begin{equation*}
+\mathbf{y}[k] = H[k]\,\mathbf{x}[k] + \mathbf{r}[k],
+\qquad
+\mathbf{r}[k] = \begin{bmatrix} n_w[k] \\ n_a[k] \end{bmatrix}
+\end{equation*}
+
+\begin{equation*}
+H[k] =
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 - A_a\nabla_d\bar{w}_d & -A_{\delta}\nabla_d\bar{w}_d
+\end{bmatrix}
+\end{equation*}
+
+Innovation
+\begin{align*}
+e_{y_1}[k] &= y_1[k] - \delta\hat{\bar{w}}_1[k]
+  = e_{\delta\bar{w}_1}[k] + n_w[k] \\
+e_{y_2}[k] &= y_2[k] - \hat{\bar{a}}_w[k]
+  + \hat{\bar{a}}'[k]\,\nabla_d\bar{w}_d[k] \\
+  &= \bigl[\,1 - A_a[k]\,\nabla_d\bar{w}_d[k]\,\bigr] e_{\bar{a}_w}[k]
+   - A_{\delta}[k]\,\nabla_d\bar{w}_d[k]\; e_{\delta a_w}[k] + n_a[k]
+\end{align*}
+
+\section{Process and measurement noise}
+
+Process noise $Q$ (only the current white thermal step enters $Q$: the past
+thermal steps in $\varepsilon_w$ are cross-step correlated, and $n_w$ already
+sits in $R_1$)
+
+\begin{equation*}
+q_3[k] = -\bar{a}_w[k]\,\bar{f}_T[k],
+\qquad
+q_4[k] = \hat{\bar{a}}'[k]\,\bar{a}_w[k]\,\bar{f}_T[k]
+       = -\hat{\bar{a}}'[k]\,q_3[k]
+\end{equation*}
+
+\begin{equation*}
+\gamma(\bar{w}) = \gamma_N c(\bar{w}),
+\quad
+\sigma^{2}_{\bar{f}_T} = a_o^{2}\,\frac{4k_BT\gamma(\bar{w})}{\Delta t},
+\quad
+\bar{a}_w = \frac{\Delta t}{a_o\gamma(\bar{w})R}
+\ \Longrightarrow\
+\mathrm{Var}\bigl(\bar{a}_w\bar{f}_T\bigr) = \frac{4k_BT}{a_oR}\,\bar{a}_w
+\end{equation*}
+
+\begin{equation*}
+Q_{33}[k] = \frac{4k_BT}{a_oR}\,\bar{a}_w[k],
+\quad
+Q_{34}[k] = Q_{43}[k] = -\hat{\bar{a}}'[k]\,Q_{33}[k],
+\quad
+Q_{44}[k] = \hat{\bar{a}}'[k]^{2}\,Q_{33}[k]
+\end{equation*}
+
+\begin{equation*}
+Q_{55} = 0 \qquad (\delta a_w \text{ constant: no stochastic driving})
+\end{equation*}
+
+All other entries vanish; the gain block is rank one, since
+$q_4 = -\hat{\bar{a}}'[k]\,q_3$. (run time: entries at the current estimate)
+
+Measurement noise $R = \mathrm{diag}(R_1, R_2)$ ($a_{\mathrm{cov}}$ = EWMA
+coefficient, $IF_{\mathrm{var}}$ = MA($d$) inflation factor of
+$\hat{\sigma}^{2}_{\delta\bar{w}_r}$; $y_2$ treated as white here)
+
+\begin{equation*}
+R_1 = \sigma^{2}_{n_w}
+\end{equation*}
+
+\begin{equation*}
+\sigma^{2}_{\delta\bar{w}_r}[k]
+  = C_{dpmr}\frac{4k_BT}{a_oR}\bar{a}_w[k] + C_n\sigma^{2}_{n_w}
+  = C_{dpmr}\frac{4k_BT}{a_oR}\bigl(\bar{a}_w[k] + \xi\bigr),
+\qquad
+\xi := \frac{C_n\sigma^{2}_{n_w}}{C_{dpmr}\bigl(4k_BT a_o/R\bigr)}
+\end{equation*}
+
+\begin{equation*}
+\mathrm{Var}\bigl(\hat{\sigma}^{2}_{\delta\bar{w}_r}\bigr)
+  = K_{\mathrm{var}} IF_{\mathrm{var}}
+    \bigl(\sigma^{2}_{\delta\bar{w}_r}\bigr)^{2},
+\quad
+K_{\mathrm{var}} = \frac{2a_{\mathrm{cov}}}{2-a_{\mathrm{cov}}},
+\quad
+R_2[k] = K_{\mathrm{var}} IF_{\mathrm{var}}
+  \bigl(\bar{a}_w[k]+\xi\bigr)^{2} + d\,Q_{44}[k]
+\end{equation*}
+
+\section*{Seed, prior and the covariance identity}
+
+Seed ($\hat{\bar{w}}_0$ = nominal wall; it enters here and nowhere else)
+
+\begin{equation*}
+\delta\hat{a}_w[0] = 0,
+\qquad
+\hat{\bar{a}}_w[0] = 1 - \frac{1}
+  {\bigl(1+\delta\hat{a}_w[0]\bigr)\bigl(\bar{w}[0]-\hat{\bar{w}}_0\bigr)}
+\end{equation*}
+
+Level Jacobians at the seed (exact sensitivities of the flow, both at fixed
+$\bar{w}$)
+
+\begin{equation*}
+\frac{\partial\bar{a}}{\partial\,\delta a}\bigg|_{\bar{w}}
+  = \frac{1-\bar{a}}{1+\delta a} ,
+\qquad
+\frac{\partial\bar{a}}{\partial\bar{w}_0}\bigg|_{\bar{w}} = -\,\bar{a}'
+\end{equation*}
+
+\begin{align*}
+P_{44}[0] &= \left(\frac{1-\hat{\bar{a}}_w}{1+\delta\hat{a}_w}\right)^{2}
+  P_{\delta a} \;+\; \bigl(\hat{\bar{a}}'\bigr)^{2} P_{\bar{w}_0}
+  \;+\; \mathrm{floor}_a^{2} \\
+P_{45}[0] &= \frac{1-\hat{\bar{a}}_w}{1+\delta\hat{a}_w}\,P_{\delta a},
+\qquad P_{55}[0] = P_{\delta a}
+\end{align*}
+
+$P_{\bar{w}_0}$ is the wall-position prior carried over unchanged; there is no
+$\bar{w}_s$ state to hold it.  $P_{\delta a}$ is uninformative (user decision
+(i), 2026-08-11): the only undetermined number in the derivation, and the one
+that makes
+
+\begin{equation*}
+\delta\hat{a}_w[\infty] \to -\tfrac{1}{9}
+\qquad\text{an \emph{acceptance}, not an input.}
+\end{equation*}
+
+Covariance identity (predict-only; both terms are exact, so $P_{44}$ must
+reproduce them with no free constant)
+
+\begin{equation*}
+P_{44}[k] = \bigl(\bar{a}'[k]\bigr)^{2} P_{\bar{w}_0}
+  + \left(\frac{1-\bar{a}[k]}{1+\delta a}\right)^{2} P_{\delta a}
+  + \mathrm{floor}_a^{2}
+\end{equation*}
+
+\end{document}
