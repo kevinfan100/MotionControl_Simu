@@ -5,15 +5,40 @@
 %              Form A   a = 1 - exp(-b*(w-ws))     p = 0
 %              Form B   a = 1 - b/((w-ws) + b)     p = 1   (production)
 %              Form C   a = 1 - b/(1 + w-ws)       p = 1   (amplitude writing)
-%          Five quantities: b(w_bar) , db(w_bar)/dw_bar , a_bar' , da_bar/db , J_b
+%          FIGURES DRAW B AND C ONLY (user, 2026-08-10): Form A is not a live
+%          candidate -- its b(w_bar) converges to no constant (b -> 0 in the far
+%          field, so it has no far-field anchor at all, whereas B and C both
+%          land on 9/8), and on the plots it set the axis limits for two curves
+%          that nobody reads.  Its formulas and endpoint numbers stay in the
+%          text as reference; only the curves are gone.  Restore all three with
+%          plot_formB_form_compare(struct('forms', 1:3)).
+%          Six quantities: b(w_bar) , the a' error along b(w_bar) ,
+%          db(w_bar)/dw_bar , a_bar' , da_bar/db , J_b
 %          (a_bar is omitted THERE: along b(w_bar) all three collapse onto
-%          a_true, so such a page would say nothing about the writings).
+%          a_true, so such a page would say nothing about the writings.
+%          PAGE 2 is that collapse's counterpart on the SLOPE, and it does NOT
+%          happen.  b(w_bar) zeroes the VALUE error at every height by
+%          construction (residual 1.1e-16); substituting that same b -- as a
+%          number, not differentiated -- into the law already differentiated at
+%          fixed b leaves a'(b(w)) - a'_true = -(da/db)*(db/dw), an identity
+%          verified to 1.5e-16.  Form B: 1.19 % RMS, 3.56 % sup, sign change at
+%          w-ws = 3.284; Form C: 4.26 / 10.40 %, no sign change.
+%          Run-time relevance: the controller consumes b ONLY through a_bar' --
+%          F_e row 4 uses J_b = d a_bar'/db, and a_bar is a state that is never
+%          re-anchored -- so the term it drops by holding b constant is exactly
+%          the error page 2 plots.  Geometrically: b(w_bar) says which family
+%          member CROSSES the truth at each height; crossing is not tangency,
+%          and one parameter cannot buy both.  The two coincide only where
+%          db/dw = 0, which is the same w-ws = 3.284.
+%          The slope inversion b'(w_bar) is still computed and returned by the
+%          generator, but is not plotted: d a_bar'/db vanishes at b = w-ws, so
+%          inverting there is ill-conditioned and inflates the spread.)
 %
-%          PAGE 6 (2026-08-10) carries the complementary fact pages 1-5 cannot:
+%          PAGE 7 (2026-08-10) carries the complementary fact pages 1-6 cannot:
 %          a_true is not one curve but two.  Both truths appear, with the far-field
 %          limits that produce the two published anchors 9/8 and 9/16.
 %
-%          PAGES 7-8 (2026-08-09) close the loop on page 1.  Page 1's
+%          PAGES 8-9 (2026-08-09) close the loop on page 1.  Page 1's
 %          b(w_bar) is what formB_ws_ref.tex S10 calls b_eff; these two pages
 %          put the ESTIMATE next to it, and the gain error it produces, one
 %          page per truth function.  Two truths: the wall-normal c_perp (the
@@ -32,24 +57,24 @@
 %          -2.6 % / +0.2 %, at the cost of a +-5 % spread across seeds.
 %          Single seed (7); the 12-seed means differ from
 %          the printed single-run numbers and are in the arm script's console.
-%          Figures: test_script/scratch/plot_formB_truth_pair.m (p.6),
+%          Figures: test_script/scratch/plot_formB_truth_pair.m (p.7),
 %                   test_script/scratch/plot_formB_closedloop_pages.m
-%          Arms:    test_script/scratch/run_formB_BC_two_boundaries.m  (p.7)
-%                   test_script/scratch/run_formB_blind_para.m         (p.8)
+%          Arms:    test_script/scratch/run_formB_BC_two_boundaries.m  (p.8)
+%                   test_script/scratch/run_formB_blind_para.m         (p.9)
 %          Acceptance for the amplitude arm: verify_formB_amp_tie.m (7/7 PASS).
-%          HOW pp.7-8's RED CURVES RELATE TO PAGE 1 (checked, not assumed):
+%          HOW pp.8-9's RED CURVES RELATE TO PAGE 1 (checked, not assumed):
 %            same formula -- b_B = (w-ws)(1-a_true)/a_true, b_C = (1+w-ws)(1-a_true),
 %              figure vs generator agree to 1.5e-15, and substituting b_eff back
 %              into each law returns a_true to 1.7e-16;
 %            different abscissa -- page 1 is on a uniform grid in (w_bar - w_bar_s),
-%              pp.7-8 are in TIME, and the trajectory maps time to gap
+%              pp.8-9 are in TIME, and the trajectory maps time to gap
 %              non-monotonically, so one curve appears as a ramp plus two scallops;
 %            partly different domain -- the trajectory covers gap [1.00, 21.22],
 %              page 1 plots [0.1, 10]; 21.6 % of the samples (the whole initial
 %              far-field hold) lie off page 1's right edge, and page 1's gap < 1
 %              is never visited;
-%            p.8's truth is NOT on page 1 at all -- page 1 is c_perp only, so p.7's
-%              red curves are page 1's, reparametrised, while p.8's are c_para.
+%            p.9's truth is NOT on page 1 at all -- page 1 is c_perp only, so p.8's
+%              red curves are page 1's, reparametrised, while p.9's are c_para.
 %          The red curve is evaluated at the COMMANDED height, so it is one common
 %          reference for both arms; using each arm's true height would shift it by
 %          at most 0.0046 (2.8 % of B's swing) / 0.0004 (6.1 % of C's).
@@ -58,21 +83,21 @@
 %          c_perp B: envelope sup 0.0157 vs trajectory swing 0.0159 about 9/8.
 %          NOTATION: b(w_bar) with an argument = the constant the TRUTH demands
 %          at each height (formB_ws_ref.tex S10 calls it b_eff); plain b = the one
-%          frozen constant the filter carries.  Pages 1-2 use the function,
-%          pages 3-5 the constant, pages 7-8 the estimate of it.
+%          frozen constant the filter carries.  Pages 1-3 use the functions,
+%          pages 4-6 the constant, pages 8-9 the estimate of it.
 %          Results only, no intermediate algebra and no prose (user, 2026-08-08);
 %          (w_bar - w_bar_s) written out in full everywhere -- no shorthand.
 % ======================================================
 % Compile: xelatex formB_amp_functions.tex
 % Path:    reference/eq17_analysis/derivation/formB_amp_functions.tex
-% Figures: test_script/scratch/plot_formB_form_compare.m      (pp.1-5)
-%          -> figures/formB_cmp_{b,dbdw,aprime,dadb,Jb}.png
-%          test_script/scratch/plot_formB_truth_pair.m         (p.6)
+% Figures: test_script/scratch/plot_formB_form_compare.m      (pp.1-6)
+%          -> figures/formB_cmp_{b,aprime_err,dbdw,aprime,dadb,Jb}.png
+%          test_script/scratch/plot_formB_truth_pair.m         (p.7)
 %          -> figures/a_perp_para.png
-%          test_script/scratch/plot_formB_closedloop_pages.m  (pp.7-8)
+%          test_script/scratch/plot_formB_closedloop_pages.m  (pp.8-9)
 %          -> figures/formB_cl_{perp,para}.png
-% Truth:   calc_correction_functions; pp.1-5 and p.7 use the perpendicular
-%          series, p.6 shows both, p.8 substitutes the parallel one;
+% Truth:   calc_correction_functions; pp.1-6 and p.8 use the perpendicular
+%          series, p.7 shows both, p.9 substitutes the parallel one;
 %          the body states everything through a_true and a'_true, never c_perp
 % ======================================================
 
@@ -136,7 +161,35 @@ b_{\text{C}}(\bar{w}) &= \gq\bigl(1-\bar{a}_{\mathrm{true}}\bigr)
   \partial\bar{a}/\partial b \neq 0 \ \Rightarrow\ b(\bar{w}) \ \text{unique}
 \end{align*}}{formB_cmp_b.png}
 
-% ------------------------------------------------------------ step 2: db/dw
+% ---------------------- step 2: what b(w_bar) leaves in the slope
+\fpage{%
+\begin{equation*}
+\bar{a}^{\prime}\bigl(\bar{w};b\bigr) := \frac{\partial\bar{a}}{\partial\bar{w}}\bigg|_{b}
+\qquad\text{evaluated at}\qquad b = b(\bar{w})
+\end{equation*}
+
+\begin{align*}
+\bar{a}\bigl(\bar{w};b(\bar{w})\bigr) - \bar{a}_{\mathrm{true}} &= 0
+  & &(1.1\times10^{-16}) \\[0.4em]
+\Delta\bar{a}^{\prime} :=
+\bar{a}^{\prime}\bigl(\bar{w};b(\bar{w})\bigr) - \bar{a}^{\prime}_{\mathrm{true}}
+  &= -\frac{\partial\bar{a}}{\partial b}\,
+      \frac{\mathrm{d}b(\bar{w})}{\mathrm{d}\bar{w}}
+  & &(1.5\times10^{-16})
+\end{align*}
+
+\begin{equation*}
+\Delta\bar{a}^{\prime}/\bar{a}^{\prime}_{\mathrm{true}}\ \ \text{[\%]}:
+\end{equation*}
+
+\begin{align*}
+\text{RMS}:&\quad 106.5,\ \ 1.19,\ \ 4.26\ \% \\
+\text{sup}:&\quad 152.8,\ \ 3.56,\ \ 10.40\ \% \\
+\text{range}:&\quad [+7.9,\,+152.8],\ \ [-0.60,\,+3.56],\ \ [+0.63,\,+10.40]\ \% \\
+\text{zero at }\bar{w}-\bar{w}_s:&\quad \text{none},\ \ 3.284,\ \ \text{none}
+\end{align*}}{formB_cmp_aprime_err.png}
+
+% ------------------------------------------------------------ step 3: db/dw
 \fpage{%
 \begin{align*}
 \frac{\mathrm{d}b_{\text{A}}(\bar{w})}{\mathrm{d}\bar{w}}
@@ -158,7 +211,7 @@ b_{\text{C}}(\bar{w}) &= \gq\bigl(1-\bar{a}_{\mathrm{true}}\bigr)
   = -0.014,\ -0.001,\ +0.001
 \end{equation*}}{formB_cmp_dbdw.png}
 
-% ------------------------------------------------------------ step 3: a_bar'
+% ------------------------------------------------------------ step 4: a_bar'
 \fpage{%
 \begin{align*}
 \bar{a}^{\prime}_{\text{A}} &= -\frac{\bigl(1-\bar{a}_{\mathrm{true}}\bigr)
@@ -171,7 +224,7 @@ b_{\text{C}}(\bar{w}) &= \gq\bigl(1-\bar{a}_{\mathrm{true}}\bigr)
    {1+\bar{w}-\bar{w}_s}
 \end{align*}}{formB_cmp_aprime.png}
 
-% -------------------------------------------------------- step 4: da_bar/db
+% -------------------------------------------------------- step 5: da_bar/db
 \fpage{%
 \begin{align*}
 \frac{\partial\bar{a}_{\text{A}}}{\partial b}
@@ -184,7 +237,7 @@ b_{\text{C}}(\bar{w}) &= \gq\bigl(1-\bar{a}_{\mathrm{true}}\bigr)
   &= -\frac{1}{1+\bar{w}-\bar{w}_s}
 \end{align*}}{formB_cmp_dadb.png}
 
-% ------------------------------------------------------------- step 5: J_b
+% ------------------------------------------------------------- step 6: J_b
 \fpage{%
 \begin{align*}
 J_{b,\text{A}} &= \bigl(1-\bar{a}_{\mathrm{true}}\bigr)
@@ -205,7 +258,7 @@ J_b = 0:\quad
 \text{C}:\ \text{none}
 \end{equation*}}{formB_cmp_Jb.png}
 
-% ------------------------------------------ step 6: the two truth functions
+% ------------------------------------------ step 7: the two truth functions
 \fpage{%
 \begin{align*}
 \bar{a}_{\mathrm{true}} &= \frac{1}{c}
@@ -224,7 +277,7 @@ J_b = 0:\quad
   \bigl(1-\bar{a}_\parallel\bigr)\bar{w} \to \tfrac{9}{16}
 \end{align*}}{a_perp_para.png}
 
-% ------------------------------------------- step 7: closed loop, perp
+% ------------------------------------------- step 8: closed loop, perp
 \fpage{%
 \begin{align*}
 \text{truth} &= c_\perp
@@ -235,11 +288,11 @@ J_b = 0:\quad
 \end{align*}
 }{formB_cl_perp.png}
 
-% ------------------------------------------- step 8: closed loop, para
+% ------------------------------------------- step 9: closed loop, para
 \fpage{%
 \begin{align*}
 \text{truth} &= c_\parallel
-& b_0 &= \tfrac{9}{8}\ \text{(both, as on p.6)}
+& b_0 &= \tfrac{9}{8}\ \text{(both, as on p.7)}
 & p &= 1,\ \ \bar{w}_s = 1 \\
 \hat{b}\ \text{estimated} & & \sqrt{P[0]} &= 0.7505\ \text{(B)},\ \ 0.5697\ \text{(C)}
 & & \text{one seed}

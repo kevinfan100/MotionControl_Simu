@@ -15,6 +15,21 @@ function res = plot_formB_form_compare(opts)
 %       b_B = (w-ws)*(1-a_true)/a_true
 %       b_C = (1 + w-ws)*(1-a_true)
 %
+%   b'(w_bar) is the same construction on the SLOPE: it solves law' = a'_true
+%   pointwise.  The controller consumes b only through a_bar' (F_e row 4 uses
+%   J_b = d a_bar'/db, and a_bar is a state that is never re-anchored), so this
+%   is the inversion the run-time path actually sees.  Along b(w_bar) every
+%   form returns a_true exactly, but NOT a'_true -- b(w_bar) and b'(w_bar) are
+%   different functions with the same far-field limit.
+%
+%       b'_A  solves  b*exp(-b*(w-ws)) = a'_true   (principal branch, b*(w-ws)<1)
+%       b'_B  = 2*a'_true*(w-ws)^2
+%               / (1 - 2*a'_true*(w-ws) + sqrt(1 - 4*a'_true*(w-ws)))
+%       b'_C  = (1 + w-ws)^2 * a'_true
+%
+%   Existence on the plotted range: A needs (w-ws)*a'_true <= 1/e, B needs
+%   <= 1/4, C is unconditional; both margins are checked and printed.
+%
 %   Substituting b(w_bar) back collapses every expression onto a_true and
 %   (w-ws) alone (checked against direct substitution to 1e-16):
 %
@@ -39,6 +54,11 @@ function res = plot_formB_form_compare(opts)
     if nargin < 1; opts = struct(); end
     if ~isfield(opts, 'gap_max'); opts.gap_max = 10;   end
     if ~isfield(opts, 'save');    opts.save    = true; end
+    % Which writings are DRAWN.  Default [2 3] = B and C, the two live
+    % candidates (user, 2026-08-10).  Form A stays in the console and in the
+    % returned struct -- it is only off the figures.  opts.forms = 1:3 restores
+    % the three-curve version.
+    if ~isfield(opts, 'forms');   opts.forms   = [2 3]; end
 
     here = fileparts(mfilename('fullpath'));
     root = fileparts(fileparts(here));
@@ -55,10 +75,28 @@ function res = plot_formB_form_compare(opts)
               (1-a)./a - G.*ap_true./a.^2, ...
               (1-a) - (1+G).*ap_true ];
 
+    % ---- b'(w_bar): the same inversion done on the SLOPE ----------------
+    %   Computed and returned for reference; NOT plotted.  Inverting on the
+    %   slope is ill-conditioned for B (d a_bar'/db vanishes at b = w-ws), so
+    %   the plotted page 2 uses the well-posed statement instead: substitute
+    %   b(w_bar) -- which zeroes the VALUE error by construction -- into the
+    %   differentiated law, and read off what is left in the SLOPE.
+    bp = [ local_bA_slope(G, ap_true), ...
+           2*ap_true.*G.^2 ./ (1 - 2*ap_true.*G + sqrt(1 - 4*ap_true.*G)), ...
+           (1+G).^2 .* ap_true ];
+
     % ---- law quantities evaluated along b(w_bar) ------------------------
     aprime = [ -(1-a).*L./G,   a.*(1-a)./G,           (1-a)./(1+G) ];
     dadb   = [  G.*(1-a),     -a.^2./G,              -1./(1+G)     ];
     Jb     = [ (1-a).*(1+L),   a.^2.*(2*a-1)./G.^2,   1./(1+G).^2  ];
+
+    % ---- page 2: what b(w_bar) leaves in the SLOPE ----------------------
+    %   b(w_bar) zeroes the VALUE error at every height by construction.  Put
+    %   that same b -- as a number, not differentiated -- into the law that has
+    %   already been differentiated at fixed b, and this is what is left.  By
+    %   the chain rule it equals exactly -(da/db)*(db/dw), i.e. the term the
+    %   controller drops when it treats b as a constant.
+    aperr = (aprime - repmat(ap_true, 1, 3)) ./ repmat(ap_true, 1, 3);
 
     % ---- console ---------------------------------------------------------
     NAME = {'Form A', 'Form B', 'Form C'};
@@ -72,6 +110,19 @@ function res = plot_formB_form_compare(opts)
     e2 = max(abs(Jb(:,2) - (G - beff(:,2))./(G + beff(:,2)).^3));
     fprintf('  simplified vs direct substitution:  C a'' %.1e ,  B J_b %.1e\n', e1, e2);
 
+    fprintf('\n[a'' error along b(w_bar)]  same b, same height: value exact, slope not\n');
+    fprintf('  value residual max|a_B(b(w)) - a_true| = %.1e (zero by construction)\n', ...
+            max(abs(G./(G+beff(:,2)) - a)));
+    for k = 1:3
+        e = aperr(:,k);
+        z = local_zero(G, e);
+        fprintf('  %-7s RMS %7.3f %%   sup %7.3f %%   range [%+7.3f, %+7.3f] %%   zero at w-ws = %s\n', ...
+            NAME{k}, 100*sqrt(mean(e.^2)), 100*max(abs(e)), 100*min(e), 100*max(e), ...
+            local_str(z));
+    end
+    fprintf('  (identity: this error equals (da/db)*(db/dw); max discrepancy %.1e)\n', ...
+            max(abs(aperr.*repmat(ap_true,1,3) + dadb.*dbeff)));
+
     if ~opts.save; res = struct('b', beff); return; end
 
     % ---- house style ----------------------------------------------------
@@ -82,25 +133,51 @@ function res = plot_formB_form_compare(opts)
     FS = 20; LFS = 16; AXLW = 2.0; LW = 2.2;
     XL = '$\bar{w}-\bar{w}_s$';
 
-    fig_overlay(G, beff, [], CC, STY, LEG, XL, '$b(\bar{w})$', ...
-                fullfile(fig_dir, 'formB_cmp_b.png'), FS, LFS, AXLW, LW, C_TRUE, [0 1.5]);
+    q   = opts.forms;                       % drawn subset
+    CCq = CC(q); STYq = STY(q); LEGq = LEG(q);
+    % Limits were set for the three-curve version; with Form A dropped they
+    % clipped Form B (db/dw reaches +0.316 at the near-wall end) and left the
+    % b panels mostly empty, so the subset autoscales.
+    YLb = []; YLd = [];
+    if isequal(q(:).', 1:3); YLb = [0 1.5]; YLd = [-0.4 0.15]; end
 
-    fig_overlay(G, dbeff, [], CC, STY, LEG, XL, ...
+    fig_overlay(G, beff(:,q), [], CCq, STYq, LEGq, XL, '$b(\bar{w})$', ...
+                fullfile(fig_dir, 'formB_cmp_b.png'), FS, LFS, AXLW, LW, C_TRUE, YLb);
+
+    % Axis label kept short: the page defines Delta a' in its second equation,
+    % so the axis only has to name it.
+    fig_overlay(G, 100*aperr(:,q), [], CCq, STYq, LEGq, XL, ...
+                '$\Delta\bar{a}^{\prime}/\bar{a}^{\prime}_{\mathrm{true}}$  [\%]', ...
+                fullfile(fig_dir, 'formB_cmp_aprime_err.png'), FS, LFS, AXLW, LW, C_TRUE, []);
+
+    fig_overlay(G, dbeff(:,q), [], CCq, STYq, LEGq, XL, ...
                 '$\mathrm{d}b(\bar{w})/\mathrm{d}\bar{w}$', ...
-                fullfile(fig_dir, 'formB_cmp_dbdw.png'), FS, LFS, AXLW, LW, C_TRUE, [-0.4 0.15]);
+                fullfile(fig_dir, 'formB_cmp_dbdw.png'), FS, LFS, AXLW, LW, C_TRUE, YLd);
 
-    fig_overlay(G, aprime, ap_true, CC, STY, LEG, XL, '$\bar{a}^{\prime}$', ...
+    fig_overlay(G, aprime(:,q), ap_true, CCq, STYq, LEGq, XL, '$\bar{a}^{\prime}$', ...
                 fullfile(fig_dir, 'formB_cmp_aprime.png'), FS, LFS, AXLW, LW, C_TRUE, []);
 
-    fig_overlay(G, dadb, [], CC, STY, LEG, XL, '$\partial\bar{a}/\partial b$', ...
+    fig_overlay(G, dadb(:,q), [], CCq, STYq, LEGq, XL, '$\partial\bar{a}/\partial b$', ...
                 fullfile(fig_dir, 'formB_cmp_dadb.png'), FS, LFS, AXLW, LW, C_TRUE, []);
 
-    fig_overlay(G, Jb, [], CC, STY, LEG, XL, '$J_b$', ...
+    fig_overlay(G, Jb(:,q), [], CCq, STYq, LEGq, XL, '$J_b$', ...
                 fullfile(fig_dir, 'formB_cmp_Jb.png'), FS, LFS, AXLW, LW, C_TRUE, []);
 
-    fprintf('  wrote 5 figures -> %s\n', fig_dir);
-    res = struct('b', beff, 'dbdw', dbeff, 'aprime', aprime, 'dadb', dadb, ...
-                 'Jb', Jb, 'G', G);
+    fprintf('  wrote 6 figures -> %s\n', fig_dir);
+    res = struct('b', beff, 'bprime', bp, 'aperr', aperr, 'dbdw', dbeff, 'aprime', aprime, ...
+                 'dadb', dadb, 'Jb', Jb, 'G', G);
+end
+
+% --------------------------------------------------------------------------
+function b = local_bA_slope(G, s)
+%LOCAL_BA_SLOPE  Principal-branch root of b*exp(-b*G) = s (Form A on the slope).
+%   Newton from b = s, which is the small-(G*s) limit of the principal branch;
+%   the branch condition b*G < 1 holds wherever G*s < 1/e.
+    b = s;
+    for it = 1:200
+        e = exp(-b .* G);
+        b = b - (b.*e - s) ./ (e .* (1 - b.*G));
+    end
 end
 
 % --------------------------------------------------------------------------
@@ -131,13 +208,14 @@ function fig_overlay(x, Y, ytrue, CC, STY, LEG, xl, yl, out, FS, LFS, AXLW, LW, 
     f = figure('Position', [80 80 1000 680], 'Color', 'w', ...
                'NumberTitle', 'off', 'Visible', 'off');
     hold on;
-    h = gobjects(1, 3 + ~isempty(ytrue)); n = 0;
+    m = size(Y, 2);
+    h = gobjects(1, m + ~isempty(ytrue)); n = 0;
     if ~isempty(ytrue)
         n = 1;
         h(1) = plot(x, ytrue, '-', 'Color', C_TRUE, 'LineWidth', LW + 0.6, ...
                     'DisplayName', 'truth');
     end
-    for k = 1:3
+    for k = 1:m
         h(n+k) = plot(x, Y(:,k), STY{k}, 'Color', CC{k}, 'LineWidth', LW, ...
                       'DisplayName', LEG{k});
     end
