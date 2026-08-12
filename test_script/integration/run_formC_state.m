@@ -128,7 +128,7 @@ function out = run_formC_state(opts, test_opts)
 %                     dh_m_out, a_nom, R, ctrl_const, meta)
 %       out.metrics   per-run table + aggregates + metric windows
 %       out.cfg / out.opts / out.arm_tag / out.seeds
-%   Saved to test_results/run_formB_ws_<arm_tag>.mat (gitignored).
+%   Saved to test_results/run_formC_state_<arm_tag>.mat (gitignored).
 %
 %   TEST-LADDER COMPATIBILITY FORM (smoke_formB_ws / check_formB_* contract):
 %       simOut = run_formB_ws(cfg, opts)   % single seed, direct simOut
@@ -371,7 +371,7 @@ function out = run_formC_state(opts, test_opts)
     here = fileparts(mfilename('fullpath'));
     out_dir = fullfile(here, '..', '..', 'test_results');
     if ~exist(out_dir, 'dir'); mkdir(out_dir); end
-    out_file = fullfile(out_dir, ['run_formB_ws_' tag '.mat']);
+    out_file = fullfile(out_dir, ['run_formC_state_' tag '.mat']);
     save(out_file, 'out');
     fprintf('saved: %s\n', out_file);
 end
