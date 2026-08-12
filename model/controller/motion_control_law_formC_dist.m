@@ -11,7 +11,7 @@
 %   re-indexing. Mathematically the filter is the 5-state of the tex
 %   (derivation (b)); with lock_da = true it is the 4-state BASELINE
 %   (derivation (a)) exactly -- same file, one flag.
-function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override)
+function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override, da_known)
 %MOTION_CONTROL_LAW_FORMC_DIST  Per-axis EKF eq17 controller whose gain slope
 %   is a parameter-free function of the gain state, with an ADDITIVE constant
 %   disturbance in the gain state equation (formC_state_dist.tex)
@@ -215,12 +215,35 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
 %                      (0,1), so no single-step increment can exceed 1 in
 %                      magnitude (default [-1, 1]; never binds).
 %
+%   da_known (3x1 or scalar, optional): KNOWN-DISTURBANCE ARM. When supplied,
+%   the row-4 disturbance is taken from this exogenous input instead of from
+%   slot 5, and slot 5 stops being a state (its Jacobian column is zeroed, so
+%   the filter neither estimates it nor carries covariance for it). Use it with
+%   lock_da = true, i.e. on top of the 4-state baseline: the arm is then
+%   "baseline + the model error removed", which measures the CEILING that any
+%   disturbance-estimation scheme could reach. The caller computes it from the
+%   plant truth as
+%       da[k] = [ a'_true(w_bar[k-1]) - (1 - a_true[k-1])^2 ] * ( w_bar[k] - w_bar[k-1] )
+%   which is the closed form of formC_state_dist.tex S3(b) with the increment
+%   written as the actual step in w_bar (S4 first line). The previous step is
+%   used because predict bridges k-1 -> k.
+%
 %   a_ctrl_override (3x1, um/pN, optional): feed a chosen gain to the CONTROL
 %   LAW only; the EKF still estimates a_bar_w / da.
 %
 %   See also: motion_control_law_formC_state, motion_control_law_formB_ws,
 %             run_formC_dist
 
+    if nargin < 7 || isempty(da_known)
+        da_known = [];
+    else
+        da_known = da_known(:);
+        if isscalar(da_known); da_known = da_known * ones(3, 1); end
+        assert(numel(da_known) == 3 && all(isfinite(da_known)), ...
+               'motion_control_law_formC_dist:daKnown', ...
+               'da_known must be a finite 3x1 (or scalar).');
+    end
+    has_da_known = ~isempty(da_known);
     if nargin < 6
         a_ctrl_override = [];
     end
@@ -798,7 +821,14 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
         x_curr = x_e_per_axis(:, ax);
         P_curr = P_per_axis{ax};
         a_bar_i = min(max(x_curr(4), a_bar_floor), a_bar_ceil);
-        da_i    = min(max(x_curr(5), da_clamp(1)), da_clamp(2));
+        if has_da_known
+            % Known-disturbance arm: the row-4 disturbance is exogenous, so it
+            % is NOT clamped (it is the derived truth, not an estimate) and it
+            % does not come from the state.
+            da_i = da_known(ax);
+        else
+            da_i = min(max(x_curr(5), da_clamp(1)), da_clamp(2));
+        end
 
         % --- Gain rate and Jacobian from the STATE (tex S1/S2). The law is
         %     PARAMETER-FREE: da does not appear in it at all.
@@ -812,6 +842,13 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
         lm = lock_mask_ax(:, ax);
         [a_prime_i, A_a_i] = local_gain_law_formC(a_bar_i, enable_wall);
         J_da_i = double(~lm(1));
+        if has_da_known
+            % Exogenous input, not a state: it enters predict at unit gain but
+            % carries no Jacobian, so F_e(4,5) = 0 and no covariance is built
+            % for it. Slot 5 must also be locked (lock_da = true) so nothing
+            % tries to update it.
+            J_da_i = 0;
+        end
         a_prime_v(ax) = a_prime_i;
 
         % --- Q (7x7): rank-1 gain block + Q33 (spec S8, at the estimate) ---
@@ -907,7 +944,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
                   x_curr(3); ...
                   lambda_c * x_curr(3); ...
                   x_curr(4) + a_prime_i * (Delta_wbar_d_km1 + one_minus_lc * x_curr(3)) ...
-                            + J_da_i * da_i; ...
+                            + local_da_inject(has_da_known, J_da_i, da_i); ...
                   x_curr(5); ...
                   x_curr(6); ...
                   x_curr(7)];
@@ -1326,4 +1363,17 @@ function d = empty_diag_formB()
     d.a_bar_Q           = zeros(3, 1);
     d.f_bar             = zeros(3, 1);
     d.P_full            = zeros(7, 7, 3);
+end
+
+
+function v = local_da_inject(has_known, J_da, da)
+%LOCAL_DA_INJECT  Row-4 disturbance term. In the estimated arm it is gated by
+%   the lock mask through J_da; in the known-disturbance arm the value is
+%   exogenous and always applied (J_da is zeroed there only so that no
+%   Jacobian / covariance is built for it).
+    if has_known
+        v = da;
+    else
+        v = J_da * da;
+    end
 end

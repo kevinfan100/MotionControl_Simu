@@ -124,6 +124,7 @@ function out = run_formC_dist(opts, test_opts)
 
     if nargin < 1 || isempty(opts); opts = struct(); end
     if ~isfield(opts, 'arm');         opts.arm         = 'dist'; end
+    if ~isfield(opts, 'da_known');    opts.da_known    = false; end  % KNOWN-DISTURBANCE ARM
     if ~isfield(opts, 'Pf_da_std');   opts.Pf_da_std   = [];    end   % [] = derive
     if ~isfield(opts, 'Pf_w0_std');   opts.Pf_w0_std   = 0.111; end
     if ~isfield(opts, 'par_law');     opts.par_law     = true;  end
@@ -280,7 +281,7 @@ function out = run_formC_dist(opts, test_opts)
                                  % t_frz | da frac by descent end | hold drift
                                  % %/s | hold delta % | unopposed %/s
     for q = 1:n_seeds
-        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, false, opts.ws_inject, plant_cperp);
+        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, false, opts.ws_inject, plant_cperp, opts.da_known);
         m = local_run_metrics(s, cfg, AX_Z, OSC_SETTLE_S, HOLD_SETTLE_S);
         runs{q}     = s;
         Mrows(q, :) = [m.desc_peak_pct, m.osc_rms_pct, m.hold_mean_pct, ...
@@ -762,7 +763,9 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
 end
 
 
-function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_ctrl_override, log_P_full, ws_inject, plant_cperp)
+function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_ctrl_override, log_P_full, ws_inject, plant_cperp, da_known_on)
+    if nargin < 9 || isempty(da_known_on); da_known_on = false; end
+    hb_prev = NaN;  cperp_prev = NaN;
 if nargin < 7; ws_inject = 0; end
 if nargin < 8; plant_cperp = []; end
 %LOCAL_RUN_ONCE  One seed of the scenario. Fork of run_5state_expgain's body
@@ -847,6 +850,7 @@ if nargin < 8; plant_cperp = []; end
     F_th_out = zeros(N, 3);
     p_m_out  = zeros(N, 3);
     p_true_out = zeros(N, 3);
+    da_known_out = zeros(N, 3);
     a_true_out = zeros(N, 3);
     a_prime_true_out = zeros(N, 3);
     ekf_out  = zeros(N, 4);
@@ -910,8 +914,32 @@ if nargin < 8; plant_cperp = []; end
         else
             a_ov_k = a_ctrl_override;
         end
+        % --- KNOWN-DISTURBANCE ARM (ceiling measurement) -------------------
+        %   formC_state_dist.tex S3(b), with the increment written as the
+        %   actual step in w_bar (S4 first line):
+        %       da[k-1] = [a'_true(w[k-1]) - (1-a_true[k-1])^2] * (w[k]-w[k-1])
+        %   The PREVIOUS step is used because predict bridges k-1 -> k, so this
+        %   stays causal. Applied on the wall-normal axis only: x/y run the
+        %   parallel package and are out of scope for this arm.
+        da_known_k = [];
+        if da_known_on
+            if isfinite(h_bar_true_k) && isfinite(hb_prev) && k > 1
+                ap_prev = local_a_prime_true(hb_prev, a_nom_drv, h_bar_floor_drv, plant_cperp);
+                abar_prev  = 1 / cperp_prev;                  % a_true / a_o
+                aprime_bar = ap_prev(3) / a_nom_drv;          % d a_bar / d w_bar
+                da_known_k = [0; 0; (aprime_bar - (1 - abar_prev)^2) ...
+                                    * (h_bar_true_k - hb_prev)];
+            else
+                da_known_k = zeros(3, 1);
+            end
+        end
+        if isfinite(h_bar_true_k)
+            hb_prev = h_bar_true_k;  cperp_prev = c_perp_k;
+        end
+        da_known_out(k, :) = local_row3(da_known_k);
+
         [f_d_k, ekf_k, diag_k] = motion_control_law_formC_dist(del_pd_k, pd_k, ...
-                                     p_m_delayed, P, ctrl_const, a_ov_k);
+                                     p_m_delayed, P, ctrl_const, a_ov_k, da_known_k);
 
         if P.thermal.enable > 0.5
             f_th_k = calc_thermal_force(p_curr, P_plant);
@@ -983,6 +1011,7 @@ if nargin < 8; plant_cperp = []; end
     simOut.F_th_out   = F_th_out;
     simOut.p_m_out    = p_m_out;
     simOut.p_true_out = p_true_out;
+    simOut.da_known_out = da_known_out;
     simOut.a_true_out = a_true_out;
     simOut.a_prime_true_out = a_prime_true_out;
     simOut.tout       = tout;
@@ -1044,4 +1073,11 @@ function ap = local_a_prime_true(h_bar, a_nom, h_floor, plant_cperp)
     ap_para = a_nom * (1/cp_p - 1/cp_m) / den;
     ap_perp = a_nom * (1/ce_p - 1/ce_m) / den;
     ap = [ap_para; ap_para; ap_perp];
+end
+
+
+function r = local_row3(v)
+%LOCAL_ROW3  [] -> zeros(1,3); 3x1 -> row. Keeps the known-disturbance log
+%   shaped even on arms where it is not used.
+    if isempty(v); r = zeros(1, 3); else; r = v(:).'; end
 end
