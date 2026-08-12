@@ -226,7 +226,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_state(del_pd, pd, p_m, 
     persistent t_warmup_kf h_bar_safe sigma2_n_nd
     persistent enable_wall w_hat_n pz_wall
     persistent Q_theta_floor a_bar_floor a_bar_ceil da_clamp ws_margin gap_floor
-    persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off
+    persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off t2_pure_prop
     persistent q33_dc_match q33_dc_fac
     persistent y2_echo_corr S_echo_T S_echo_n
     persistent ma2_aug alpha_ma2 n_state    % MA(2) noise-memory augmentation
@@ -338,6 +338,13 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_state(del_pd, pd, p_m, 
             n_state = 7;
         end
         y1_gain_off  = logical(get_field_default(ctrl_const, 'y1_gain_off', false));
+        % T2 hook (TEST ONLY, default false): zero the loop-coupling column
+        % F_dw and the process noise Q, so P(4,4) propagates by the row-4
+        % diagonal alone. Then the tex S6 flow identity is EXACT
+        %     sqrt(P44[k]) / a_bar'[k] = const
+        % and any error in the A_a*M term shows up as a drift in that ratio.
+        % Use with y2_on = false and y1_gain_off = true.
+        t2_pure_prop = logical(get_field_default(ctrl_const, 't2_pure_prop', false));
         Q_theta_floor = get_field_default(ctrl_const, 'Q_theta_floor', 0);
 
         % --- 0C. Parallel-axis law (x/y); constants are caller-supplied ---
@@ -826,6 +833,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_state(del_pd, pd, p_m, 
             M_tot = M_row4;
         end
         F_dw = F_dw_km1(ax);
+        if t2_pure_prop; F_dw = 0; Q_i = zeros(n_state); end
         F_e = local_build_F_e_formC(lambda_c, F_dw, a_prime_i, A_a_i, A_d_i, M_tot);
 
         % --- EKF predict (S5; constants carry over) ---
