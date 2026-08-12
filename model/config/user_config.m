@@ -39,6 +39,28 @@ function config = user_config()
 %
 %       % Simulation
 %       T_sim       = 5         % Simulation time [sec]
+%
+%   SENSOR-NOISE PROVENANCE (2026-08-12 unification). Every driver and
+%   verification script that models the lab sensor overrides the generic
+%   0.01 um default above with the per-axis triple
+%       meas_noise_std = [0.00062; 0.00057; 0.00331]   % [um] = [0.62; 0.57; 3.31] nm
+%   Status of that triple, so nobody re-derives it from the scripts again:
+%     - It entered the repo on 2025-12-12 (f5334d7) as a config default with
+%       NO datasheet, measurement, or citation attached. phase6_R_matrix_
+%       derivation.md S3.2 later called it the 'v1 sensor spec'.
+%     - Its y entry was originally 0.000057 um (0.057 nm), 10x below x. Phase 6
+%       S3.2/S8.1 flagged that as physically implausible for a tangential axis
+%       and asked for it to be raised to the x-like value if unconfirmed;
+%       commit 69ebc9f (2026-06-08) did so in ONE file, which split the repo
+%       into a 0.57 nm family and a 0.057 nm family for two months.
+%     - 2026-08-12: the split is closed -- every active script now uses 0.57 nm.
+%       phase8_settings_audit.md's 'confirmed real, not a typo' note is
+%       SUPERSEDED (its only evidence was two scripts agreeing with each other).
+%     - OPEN: none of the three axes has a hardware source in this repo. The
+%       triple is plant/filter self-consistent (the same value feeds the noise
+%       injection, R11, xi and Q33), so results are internally valid, but it is
+%       a SCENARIO, not a verified hardware spec. Replace all three the day the
+%       measured sensor noise is available.
 
     % Wall (angles in degrees)
     config.theta = 0;              % Azimuth angle [deg]
