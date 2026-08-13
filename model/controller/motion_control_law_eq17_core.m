@@ -114,6 +114,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     persistent t_warmup_kf h_bar_safe
     persistent sigma2_n_s          % 3x1 [um^2]
     persistent h_dot_max h_ddot_max
+    persistent control_law_ch4 lambda_f_p F_state_ch4   % Meng Ch4 replication arm
     persistent enable_wall          % logical, fall back to flat (h_bar=inf) if false
     persistent w_hat_n pz_wall      % wall geometry
     persistent R_OFF                % large-R fallback for guarded y_2
@@ -179,6 +180,40 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         t_warmup_kf     = ctrl_const.t_warmup_kf;
         h_bar_safe      = ctrl_const.h_bar_safe;
         a_cov           = ctrl_const.a_cov;
+        % --- Meng Ch4 replication flags (spec + provenance:
+        %     reference/eq17_analysis/meng_ch4_spec_ledger.md §4-§7) ---
+        %   ctrl_const.control_law = 'ch4': thesis (4.4) law, and a two-matrix
+        %     predict — state F = thesis (4.10) (row 3 = lambda_c, no input:
+        %     the exact conditional mean, error terms are zero-mean), error
+        %     covariance F = thesis (4.11) with f_d[k-1] (the force that acted
+        %     over the k-1 -> k interval this predict bridges).
+        %   ctrl_const.lambda_f: thesis (4.15) P <- P/lambda_f after update.
+        %     1 (default) = journal (20) form (no forgetting).
+        %   ctrl_const.Pf_init_lambda_f: init-only lambda_f for the Pf DARE
+        %     (defaults to lambda_f). Needed because with Q66=Q77=0 and
+        %     lambda_f=1 the DARE fixed point has P(6:7,6:7)=0 — a dead gain
+        %     estimator; the paper never states its P[0].
+        control_law_ch4 = isfield(ctrl_const, 'control_law') && ...
+                          strcmpi(ctrl_const.control_law, 'ch4');
+        if isfield(ctrl_const, 'lambda_f') && ~isempty(ctrl_const.lambda_f)
+            lambda_f_p = ctrl_const.lambda_f;
+            if ~isscalar(lambda_f_p) || ~isfinite(lambda_f_p) ...
+                    || lambda_f_p <= 0 || lambda_f_p > 1
+                error('motion_control_law_eq17_core:invalidLambdaF', ...
+                      'ctrl_const.lambda_f must be a scalar in (0,1]; got %g.', ...
+                      lambda_f_p);
+            end
+        else
+            lambda_f_p = 1;
+        end
+        % Thesis (4.10) state-transition (constant; shared by all axes)
+        F_state_ch4 = [0 1 0        0 0 0 0; ...
+                       0 0 1        0 0 0 0; ...
+                       0 0 lambda_c 0 0 0 0; ...
+                       0 0 0        1 1 0 0; ...
+                       0 0 0        0 1 0 0; ...
+                       0 0 0        0 0 1 1; ...
+                       0 0 0        0 0 0 1];
         % Wave 2D §5.6 fix: a_pd (LP for δp_md mean) is now separate from a_cov
         % (EWMA for σ²_δxr). If ctrl_const.a_pd is missing (legacy callers),
         % fall back to a_cov for backward compatibility.
@@ -289,7 +324,21 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         %   f_d = 0, F_1 = sum f_d_past = 0, F_2 = sum i*f_d_past = 0.
         % Captures the limiting structural F_e form with no control-history
         % accumulation (positioning Δp_d = 0 + KF-unbiased estimates).
-        F_e_ss = build_F_e(lambda_c, d_delay, 0, 0, 0, false);
+        if control_law_ch4
+            % ch4 arm: DARE under the thesis-(4.11) error F at f_d = 0, with
+            % the lambda_f-sustained recursion so init = the filter's own
+            % equilibrium (same rationale as the eq19 branch).
+            F_e_ss = F_state_ch4;
+            F_e_ss(3, :) = [0 0 1 -1 0 0 0];
+        else
+            F_e_ss = build_F_e(lambda_c, d_delay, 0, 0, 0, false);
+        end
+        if isfield(ctrl_const, 'Pf_init_lambda_f') ...
+                && ~isempty(ctrl_const.Pf_init_lambda_f)
+            lambda_f_init = ctrl_const.Pf_init_lambda_f;
+        else
+            lambda_f_init = lambda_f_p;
+        end
         H_ss   = [1 0 0 0 0 0 0; 0 0 0 0 0 1 -d_delay];
 
         P_per_axis = cell(3, 1);
@@ -304,7 +353,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
                         * (a_init_ax + xi_per_axis(ax))^2;
             R_ss_ax = [sigma2_n_s(ax), 0; 0, R22_ss_ax];
             P_per_axis{ax} = solve_dare_kf_local(F_e_ss, H_ss, ...
-                                                  Q_ss_ax, R_ss_ax);
+                                                  Q_ss_ax, R_ss_ax, ...
+                                                  lambda_f_init);
         end
 
         % --- 0H. IIR states (mode-dependent) ---
@@ -535,13 +585,33 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     end
 
     inv_a_hat = 1 ./ a_hat;
-    f_d = inv_a_hat .* ( ...
-                pd_kp1 ...
-              - lambda_c * pd ...
-              - one_minus_lc * pd_km_d ...
-              + one_minus_lc * delta_x_m ) ...
-          - one_minus_lc * sum_fd_past ...
-          - xD_hat_for_ctrl .* inv_a_hat;
+    if control_law_ch4
+        % Thesis (4.4) = journal (6):
+        %   f_d = (1/â_x[k])·{ x_d[k+1] − x_d[k] + (1−λ_c)·δx̂[k] − x̂_D[k] }
+        % Consumed estimates = the stored posterior. Correspondence: the
+        % thesis (4.14) object X̂[k+1] = F·X̂[k] + K·innov(y[k]) is EXACTLY
+        % what our predict+update wrote back last call — no further F
+        % advance (an extra F·(·) cuts the position feedback to λ_c·δx̂₃,
+        % measured as open-loop thermal wander at λ_c ≈ 0).
+        % Closed-loop spectrum of THIS faithful pairing (10-state companion,
+        % ledger §8): unstable for λ_c ≲ 0.35 (1.173/step at λ_c = 0),
+        % stable at the journal's λ_c = 0.4 — the thesis' own λ = 0
+        % simulation claim is not reproducible under d = 2 as written.
+        dx3_hat = x_e_per_axis(3, :)';
+        f_d = inv_a_hat .* ( ...
+                    pd_kp1 ...
+                  - pd ...
+                  + one_minus_lc * dx3_hat ...
+                  - xD_hat_for_ctrl );
+    else
+        f_d = inv_a_hat .* ( ...
+                    pd_kp1 ...
+                  - lambda_c * pd ...
+                  - one_minus_lc * pd_km_d ...
+                  + one_minus_lc * delta_x_m ) ...
+              - one_minus_lc * sum_fd_past ...
+              - xD_hat_for_ctrl .* inv_a_hat;
+    end
 
     % ------------------------------------------------------------------
     % [4] Adaptive Q and R (per axis)  — Phase 5 / Phase 6
@@ -777,8 +847,22 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         P_curr = P_per_axis{ax};
 
         % --- Predict ---
-        x_pred = F_e * x_curr;
-        P_pred = F_e * P_curr * F_e' + Q_per_axis{ax};
+        if control_law_ch4
+            % Two-matrix predict (thesis Ch4): state by (4.10) — the exact
+            % conditional mean (error terms are zero-mean, so no input) —
+            % covariance by the (4.11) error F. The error transition this
+            % predict bridges (k-1 -> k) was driven by f_d[k-1], i.e. the
+            % f_d_km1 buffer BEFORE this step's shift (the formB-style
+            % pairing; the thesis' own -f_d[k] indexing is its (4.12)
+            % one-step-ahead label for the same object).
+            F_err_ch4 = F_state_ch4;
+            F_err_ch4(3, :) = [0 0 1 -1 0 -f_d_km1(ax) 0];
+            x_pred = F_state_ch4 * x_curr;
+            P_pred = F_err_ch4 * P_curr * F_err_ch4' + Q_per_axis{ax};
+        else
+            x_pred = F_e * x_curr;
+            P_pred = F_e * P_curr * F_e' + Q_per_axis{ax};
+        end
         P_pred = 0.5 * (P_pred + P_pred');
 
         % --- Optional a_hat freeze: lock state(6) and zero P row/col 6 ---
@@ -840,6 +924,12 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
             P_post = I_minus_KH * P_pred * I_minus_KH' + K_kf * R_use * K_kf';
         else
             P_post = (eye(7) - K_kf * H_use) * P_pred;
+            P_post = 0.5 * (P_post + P_post');
+        end
+
+        % --- Forgetting factor, thesis (4.15): P <- P / lambda_f ---
+        if lambda_f_p < 1
+            P_post = P_post / lambda_f_p;
             P_post = 0.5 * (P_post + P_post');
         end
 
@@ -1008,20 +1098,26 @@ function F_e = build_F_e(lambda_c, d_delay, f_d_i, F_1_i, F_2_i, use_eq18)
 end
 
 
-function P_post = solve_dare_kf_local(F, H, Q, R)
+function P_post = solve_dare_kf_local(F, H, Q, R, lambda_f)
 %SOLVE_DARE_KF_LOCAL  Discrete-time KF Riccati steady-state solver.
 %
-%   P_post = solve_dare_kf_local(F, H, Q, R)
+%   P_post = solve_dare_kf_local(F, H, Q, R)             % plain KF
+%   P_post = solve_dare_kf_local(F, H, Q, R, lambda_f)   % with (4.15) forgetting
 %
 %   Fixed-point iteration on the KF Riccati recursion:
 %     P_pred[k+1] = F * P_post[k] * F' + Q
 %     K           = P_pred * H' / (H * P_pred * H' + R)
-%     P_post[k+1] = (I - K*H) * P_pred[k+1]
+%     P_post[k+1] = (I - K*H) * P_pred[k+1] / lambda_f
 %   until ||P_post[k+1] - P_post[k]||_inf < tol or max_iter reached.
+%   lambda_f < 1 gives the forgetting-sustained equilibrium (nonzero even
+%   for states with zero process noise).
 %
 %   Used for Pf_init at known h_init operating point (positioning, f_d=0).
 %   Self-contained — no Control System Toolbox dependency. ~10000 iter at
 %   tol=1e-13 takes ~50 ms; called once per axis at controller init.
+    if nargin < 5 || isempty(lambda_f)
+        lambda_f = 1;   % plain KF recursion (legacy call sites)
+    end
     n = size(F, 1);
     P_post = eye(n);
     max_iter = 10000;
@@ -1031,7 +1127,7 @@ function P_post = solve_dare_kf_local(F, H, Q, R)
         P_pred = 0.5 * (P_pred + P_pred');
         S = H * P_pred * H' + R;
         K = (P_pred * H') / S;
-        P_new = (eye(n) - K * H) * P_pred;
+        P_new = (eye(n) - K * H) * P_pred / lambda_f;
         P_new = 0.5 * (P_new + P_new');
         if max(abs(P_new(:) - P_post(:))) < tol
             P_post = P_new;
