@@ -1,16 +1,16 @@
 % STATUS: ACTIVE -- SSOT for the parameter-free state-writing gain law and its
-%          additive disturbance augmentation. Two derivations are carried side
-%          by side in every section:
+%          additive disturbance augmentation. Equation-only house style; every
+%          remark, rationale, measurement and provenance lives in
+%          formC_state_dist_ref.tex (same section numbers).
+%          Two derivations side by side in every section:
 %              (a) BASELINE      4 states, no disturbance
 %              (b) WITH \delta a 5 states, additive constant disturbance
-%          Same notation in both (the disturbance is \delta a in both places;
-%          no version subscripts). Nothing is abbreviated: the row-4 increment
-%          is written out in full every time it appears.
+%          Same notation in both; no version subscripts.
 % ======================================================
 % Compile: xelatex formC_state_dist.tex
 % Path:    reference/eq17_analysis/derivation/formC_state_dist.tex
-% Sibling: formC_state_da.tex (multiplicative disturbance on the slope)
-%          formB_ws.tex       (height writing, production)
+% Companion: formC_state_dist_ref.tex
+% Sibling:   formB_ws.tex (height writing, production)
 % ======================================================
 
 \documentclass[11pt,a4paper,fontset=none]{ctexart}
@@ -20,7 +20,6 @@
 \setlength{\mathindent}{0pt}
 \usepackage{geometry}
 \geometry{margin=2.0cm}
-\usepackage{graphicx}
 
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0.80em}
@@ -38,61 +37,33 @@
 (bars denote normalized quantities: lengths by $R$, $\ba = a/a_o$,
 $\bar{f} = a_o f$; $0 < \ba < 1$; $e_{\theta} = \theta - \hat{\theta}$)
 
-The slope is read off the gain state alone. No parameter appears in the law.
-
 \begin{equation*}
-\ba'(\ba) := \frac{\mathrm{d}\ba}{\mathrm{d}\bw} = \bigl(1-\ba\bigr)^{2}
-\end{equation*}
-
-\begin{equation*}
+\ba'(\ba) := \frac{\mathrm{d}\ba}{\mathrm{d}\bw} = \bigl(1-\ba\bigr)^{2},
+\qquad
 a_w = a_o\,\ba_w , \qquad a_o = \frac{\Delta t}{\gamma_N R}
-\qquad (a_o \text{ fixed, not a state})
 \end{equation*}
-
-Integrated form (used for seeding only; $\bw_0$ is the integration constant,
-i.e.\ setting $\hat{\ba}_w[0]$ IS setting the wall position)
 
 \begin{equation*}
 \ba(\bw) = 1 - \frac{1}{\bw - \bw_0} ,
 \qquad
-\frac{\partial \ba}{\partial \bw_0} = -\,\ba' \quad(\text{exact})
+\frac{\partial \ba}{\partial \bw_0} = -\,\ba'
 \end{equation*}
 
-Declared truncation. The truth is not a member of this one-curve family. With
-$b_{\mathrm{state}}(\bw) := (1-\ba_{\mathrm{true}})^{2}/\ba'_{\mathrm{true}}$,
-measured offline on $\bw-\bw_s \in [0.1,\,25]$:
-
 \begin{equation*}
+b_{\mathrm{state}}(\bw) := \frac{(1-\ba_{\mathrm{true}})^{2}}
+{\ba'_{\mathrm{true}}},
+\qquad
 \frac{\ba'(\ba_{\mathrm{true}})}{\ba'_{\mathrm{true}}} - 1
   = b_{\mathrm{state}}(\bw) - 1
+\end{equation*}
+
+\section{Jacobians}
+
+\begin{equation*}
+\frac{\partial \ba'}{\partial \ba} = -2\bigl(1-\ba\bigr),
 \qquad
-\begin{array}{l}
-13.05\,\%\ \mathrm{RMS},\quad 15.34\,\%\ \sup \\[0.2em]
-\text{range } [+7.79,\ +15.34]\,\%,\ \textbf{one-signed} \\[0.2em]
-\text{far field } \to +1/8 \text{ exactly } (b_{\mathrm{state}} \to 9/8)
-\end{array}
-\end{equation*}
-
-This error is what derivation (b) asks the disturbance to absorb. Derivation
-(a) carries it with no container at all.
-
-\section{Gain rate and Jacobians}
-
-\begin{equation*}
-\frac{\partial \ba'}{\partial \ba} = -2\bigl(1-\ba\bigr) \qquad (<0 \text{ always})
-\end{equation*}
-
-$\ba'$ depends on the state $\ba_w$, so this partial is not zero. It propagates
-into S6 row 4 and into S7. Both derivations share it.
-
-In (b) the disturbance enters the state equation additively, so its Jacobian is
-
-\begin{equation*}
 \frac{\partial}{\partial\,\delta a}
-\Bigl[\ba_w[k] + \bigl(1-\ba_w[k]\bigr)^{2}\Bigl(
-  \Delta\bw_d[k] + (1-\lambda_c)\delta\bw_3[k]
-  + F_{dw}[k]e_{\ba_w}[k] + \varepsilon_w[k]\Bigr) + \delta a[k]\Bigr] = 1
-\qquad (\text{constant; independent of state and of motion})
+\Bigl[\ba_w + \bigl(1-\ba_w\bigr)^{2}\bigl(\,\cdot\,\bigr) + \delta a\Bigr] = 1
 \end{equation*}
 
 \section{True dynamics}
@@ -100,22 +71,20 @@ In (b) the disturbance enters the state equation additively, so its Jacobian is
 $\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2\bigr)$
 
 \begin{align*}
-\bw[k] &= \bw_d[k] - \delta\bw_3[k] \\
+\bw[k] &= \bw_d[k] - \delta\bw_3[k], &
 \bw_d[k+1] &= \bw_d[k] + \Delta\bw_d[k] \\
-\delta\bw_1[k+1] &= \delta\bw_2[k] \\
+\delta\bw_1[k+1] &= \delta\bw_2[k], &
 \delta\bw_2[k+1] &= \delta\bw_3[k] \\
 \delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k] - F_{dw}[k]\,e_{\ba_w}[k]
   - \varepsilon_w[k]
 \end{align*}
 
 \begin{align*}
-F_{dw}[k] &:= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
-\varepsilon_w[k] &:= \ba_w[k]\,\bar{f}_T[k]
+F_{dw}[k] &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
+\varepsilon_w[k] &= \ba_w[k]\,\bar{f}_T[k]
   + (1-\lambda_c)\sum_{i=1}^{d}\ba_w[k-i]\,\bar{f}_T[k-i]
   + (1-\lambda_c)\,n_w[k]
 \end{align*}
-
-The gain follows the TRUE slope, which is not the law:
 
 \begin{equation*}
 \ba_w[k+1] = \ba_w[k] + \ba'_{\mathrm{true}}[k]\,\Bigl[
@@ -123,10 +92,7 @@ The gain follows the TRUE slope, which is not the law:
   + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr]
 \end{equation*}
 
-\subsection*{(a) baseline: no disturbance}
-
-The law is used as if it were the truth. The discrepancy has no container and
-is carried as the declared truncation of S1.
+\subsection*{(a)}
 
 \begin{equation*}
 \ba_w[k+1] = \ba_w[k] + \bigl(1-\ba_w[k]\bigr)^{2}\Bigl[
@@ -134,10 +100,7 @@ is carried as the declared truncation of S1.
   + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr]
 \end{equation*}
 
-\subsection*{(b) with $\delta a$: the disturbance is DEFINED by the mismatch}
-
-$\delta a$ is not postulated. It is whatever makes the law-based propagation
-exact:
+\subsection*{(b)}
 
 \begin{equation*}
 \ba_w[k+1] = \ba_w[k] + \bigl(1-\ba_w[k]\bigr)^{2}\Bigl[
@@ -145,176 +108,72 @@ exact:
   + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] + \delta a[k]
 \end{equation*}
 
-Subtracting the true line above gives $\delta a$ in closed form:
-
 \begin{align*}
 \delta a[k]
   &= \Bigl[\ba'_{\mathrm{true}}[k] - \bigl(1-\ba_w[k]\bigr)^{2}\Bigr]
      \Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k]
-       + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] \\[0.4em]
+       + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] \\
   &= \bigl(1-\ba_w[k]\bigr)^{2}
      \left[\frac{1}{b_{\mathrm{state}}(\bw[k])} - 1\right]
      \Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k]
        + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr]
 \end{align*}
 
-Three properties follow directly and are used in S8:
-
-\begin{equation*}
-\begin{array}{ll}
-\text{(i)}   & \delta a[k] \text{ is proportional to the increment: it is ZERO
-                during a hold.} \\[0.3em]
-\text{(ii)}  & 1/b_{\mathrm{state}} - 1 \in [-0.133,\,-0.072] \text{ is one-signed,
-                but } \delta a \text{ is NOT:} \\
-             & \quad \mathrm{sign}(\delta a) = -\,\mathrm{sign}(\text{increment}),
-                \text{ so it reverses with the direction of travel.} \\
-             & \quad \text{Measured on the canonical scenario:}\
-                \textstyle\sum_k \delta a = +0.0680 \text{ (descent)},\
-                -0.0401 \text{ (ascent)}, \\
-             & \quad \text{and EXACTLY ZERO over a closed oscillation cycle ---
-                both } \bar{a}'_{\mathrm{true}}\mathrm{d}\bw \text{ and} \\
-             & \quad (1-\ba_{\mathrm{true}})^{2}\mathrm{d}\bw
-                \text{ are exact differentials in } \bw. \\
-             & \quad \textbf{The whole disturbance is acquired on the descent;
-                the oscillation offers} \\
-             & \quad \textbf{a constant-}\delta a\textbf{ model nothing to lock
-                onto.} \\[0.3em]
-\text{(iii)} & (1-\ba_w)^{2} \text{ spans } 0.83 \to 0.0019:\ \delta a
-                \text{ varies over three decades.}
-\end{array}
-\end{equation*}
-
-The process model of S4 nevertheless declares
-
 \begin{equation*}
 \delta a[k+1] = \delta a[k]
 \end{equation*}
 
-This is a modelling CLAIM, not a consequence of the above. S8 prices what the
-claim omits.
-
 \section{Process model}
 
-\subsection*{(a) baseline}
-
 \begin{equation*}
-\mathbf{x}[k] = \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\
-\ba_w\,\bigr]^{\top}[k] \qquad (d = 2)
+\text{(a)}\quad
+\mathbf{x} = \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w\,\bigr]^{\top},
+\qquad
+\text{(b)}\quad
+\mathbf{x} = \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w,\
+\delta a\,\bigr]^{\top}
+\qquad (d = 2)
 \end{equation*}
-
-\begin{align*}
-\delta\bw_1[k+1] &= \delta\bw_2[k] \\
-\delta\bw_2[k+1] &= \delta\bw_3[k] \\
-\delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k] - F_{dw}[k]\,e_{\ba_w}[k]
-  - \varepsilon_w[k] \\
-\ba_w[k+1] &= \ba_w[k] + \bigl(1-\ba_w[k]\bigr)^{2}\Bigl[
-  \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k]
-  + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr]
-\end{align*}
-
-\subsection*{(b) with $\delta a$}
-
-\begin{equation*}
-\mathbf{x}[k] = \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\
-\ba_w,\ \delta a\,\bigr]^{\top}[k] \qquad (d = 2)
-\end{equation*}
-
-\begin{align*}
-\delta\bw_1[k+1] &= \delta\bw_2[k] \\
-\delta\bw_2[k+1] &= \delta\bw_3[k] \\
-\delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k] - F_{dw}[k]\,e_{\ba_w}[k]
-  - \varepsilon_w[k] \\
-\ba_w[k+1] &= \ba_w[k] + \bigl(1-\ba_w[k]\bigr)^{2}\Bigl[
-  \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k]
-  + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] + \delta a[k] \\
-\delta a[k+1] &= \delta a[k]
-\end{align*}
 
 \section{Estimator}
 
-\subsection*{(a) baseline}
-
 \begin{align*}
-\delta\hat{\bw}_1[k+1] &= \delta\hat{\bw}_2[k] \\
-\delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k] \\
-\delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k] \\
-\hat{\ba}_w[k+1] &= \hat{\ba}_w[k] + \bigl(1-\hat{\ba}_w[k]\bigr)^{2}
-  \Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr]
+\delta\hat{\bw}_1[k+1] &= \delta\hat{\bw}_2[k], &
+\delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k], &
+\delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k]
 \end{align*}
 
-\subsection*{(b) with $\delta a$}
-
 \begin{align*}
-\delta\hat{\bw}_1[k+1] &= \delta\hat{\bw}_2[k] \\
-\delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k] \\
-\delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k] \\
-\hat{\ba}_w[k+1] &= \hat{\ba}_w[k] + \bigl(1-\hat{\ba}_w[k]\bigr)^{2}
-  \Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr]
-  + \delta\hat{a}[k] \\
-\delta\hat{a}[k+1] &= \delta\hat{a}[k]
+\text{(a)}\quad \hat{\ba}_w[k+1] &= \hat{\ba}_w[k]
+  + \bigl(1-\hat{\ba}_w[k]\bigr)^{2}
+    \Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr] \\
+\text{(b)}\quad \hat{\ba}_w[k+1] &= \hat{\ba}_w[k]
+  + \bigl(1-\hat{\ba}_w[k]\bigr)^{2}
+    \Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr]
+  + \delta\hat{a}[k],
+\qquad \delta\hat{a}[k+1] = \delta\hat{a}[k]
 \end{align*}
-
-The control law and the S7 measurement prediction both consume
-$\hat{\ba}_w[k]$ unchanged: $\delta a$ enters the state equation, not the
-readout, so no separate ``value used'' quantity exists.
 
 \section{Error dynamics}
 
 (True $-$ Estimator; coefficients at the estimate)
 
-\subsection*{(a) baseline}
-
-\begin{equation*}
-\mathbf{e} = \bigl[\,e_{\delta\bw_1},\ e_{\delta\bw_2},\ e_{\delta\bw_3},\
-e_{\ba_w}\,\bigr]^{\top}
-\end{equation*}
-
 \begin{align*}
-e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k] \\
-e_{\delta\bw_2}[k+1] &= e_{\delta\bw_3}[k] \\
+e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k], \qquad
+e_{\delta\bw_2}[k+1] = e_{\delta\bw_3}[k] \\
 e_{\delta\bw_3}[k+1] &= \lambda_c\,e_{\delta\bw_3}[k]
   - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
-e_{\ba_w}[k+1] &= \Bigl[\,1 + \bigl(1-\hat{\ba}_w[k]\bigr)^{2}F_{dw}[k]
-  - 2\bigl(1-\hat{\ba}_w[k]\bigr)
-    \bigl(\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr)
-  \Bigr] e_{\ba_w}[k] \\
-  &\qquad + (1-\lambda_c)\bigl(1-\hat{\ba}_w[k]\bigr)^{2} e_{\delta\bw_3}[k]
-  + \bigl(1-\hat{\ba}_w[k]\bigr)^{2}\varepsilon_w[k]
-\end{align*}
-
-\begin{equation*}
-F_e[k] =
-\begin{bmatrix}
-0 & 1 & 0 & 0 \\
-0 & 0 & 1 & 0 \\
-0 & 0 & \lambda_c & -F_{dw} \\
-0 & 0 & (1-\lambda_c)(1-\hat{\ba}_w)^{2} &
-  1 + (1-\hat{\ba}_w)^{2}F_{dw}
-  - 2(1-\hat{\ba}_w)\bigl(\Delta\bw_d + (1-\lambda_c)\delta\hat{\bw}_3\bigr)
-\end{bmatrix}
-\end{equation*}
-
-\subsection*{(b) with $\delta a$}
-
-\begin{equation*}
-\mathbf{e} = \bigl[\,e_{\delta\bw_1},\ e_{\delta\bw_2},\ e_{\delta\bw_3},\
-e_{\ba_w},\ e_{\delta a}\,\bigr]^{\top}
-\end{equation*}
-
-Row 4 gains one term and row 5 is an integrator of nothing:
-
-\begin{align*}
-e_{\ba_w}[k+1] &= \Bigl[\,1 + \bigl(1-\hat{\ba}_w[k]\bigr)^{2}F_{dw}[k]
-  - 2\bigl(1-\hat{\ba}_w[k]\bigr)
-    \bigl(\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr)
-  \Bigr] e_{\ba_w}[k] \\
-  &\qquad + 1 \cdot e_{\delta a}[k]
-  + (1-\lambda_c)\bigl(1-\hat{\ba}_w[k]\bigr)^{2} e_{\delta\bw_3}[k]
-  + \bigl(1-\hat{\ba}_w[k]\bigr)^{2}\varepsilon_w[k] \\
+e_{\ba_w}[k+1] &= \Bigl[\,1 + \bigl(1-\hat{\ba}_w\bigr)^{2}F_{dw}
+  - 2\bigl(1-\hat{\ba}_w\bigr)
+    \bigl(\Delta\bw_d + (1-\lambda_c)\delta\hat{\bw}_3\bigr)\Bigr] e_{\ba_w}[k] \\
+  &\qquad + (1-\lambda_c)\bigl(1-\hat{\ba}_w\bigr)^{2} e_{\delta\bw_3}[k]
+  + \bigl(1-\hat{\ba}_w\bigr)^{2}\varepsilon_w[k]
+  \ \ \bigl[\,+\ e_{\delta a}[k]\ \text{in (b)}\bigr] \\
 e_{\delta a}[k+1] &= e_{\delta a}[k]
 \end{align*}
 
 \begin{equation*}
+\text{(b)}\quad
 F_e[k] =
 \begin{bmatrix}
 0 & 1 & 0 & 0 & 0 \\
@@ -328,68 +187,35 @@ F_e[k] =
 \end{bmatrix}
 \end{equation*}
 
-The disturbance column is the constant $1$: unlike a multiplicative
-parameter, its entry does not vanish at a turning point, does not vanish in a
-hold, and does not shrink in the far field. The control law is untouched, so
-$F_e(3,5) = 0$: the loop coupling column is unchanged from (a).
-
-Separability. A constant $\delta a$ drives $e_{\ba_w}$ as a RAMP, whereas an
-error in the gain state itself is a persistent OFFSET; the two are
-distinguishable by their time signature. This is the standard
-position-error / rate-bias pair.
+(a) is the leading $4\times 4$ block.
 
 \begin{equation*}
-\mathbf{q}[k] = \bigl[\,0,\ 0,\ -\varepsilon_w[k],\
-\bigl(1-\hat{\ba}_w[k]\bigr)^{2}\varepsilon_w[k],\ 0\,\bigr]^{\top}
+\mathbf{q}[k] = \bigl[\,0,\ 0,\ -\varepsilon_w,\
+\bigl(1-\hat{\ba}_w\bigr)^{2}\varepsilon_w,\ 0\,\bigr]^{\top}
+\end{equation*}
+
+\begin{equation*}
+e_{\ba}(\bw) = -\,\ba'(\bw)\,e_{\bw_0}
+\ \propto\ \frac{1}{(\bw-\bw_0)^{2}}
 \end{equation*}
 
 \section{Measurement and innovation}
 
-Measurement ($d$-step delay; $\ba_{wm} = a_{wm}/a_o$). Identical in both
-derivations.
-
 \begin{align*}
-\nabla_d\bw_d[k] &:= \bw_d[k] - \bw_d[k-d] \\
-y_1[k] &= \delta\bw_m[k] = \delta\bw_1[k] + n_w[k] \\
-y_2[k] &= \ba_{wm}[k] = \ba_w[k-d] + n_a[k]
+\nabla_d\bw_d[k] &= \bw_d[k] - \bw_d[k-d] \\
+y_1[k] &= \delta\bw_1[k] + n_w[k] \\
+y_2[k] &= \ba_w[k-d] + n_a[k]
 \end{align*}
 
-Delay back-off: the reading is the gain $d$ steps ago, so walk it back along
-the trajectory by (slope) $\times$ (distance travelled),
-
 \begin{equation*}
-\ba_w[k-d] = \ba_w[k] - \bigl(1-\ba_w[k]\bigr)^{2}\,\nabla_d\bw_d[k]
-  - d\,\delta a[k]
-\end{equation*}
-
-The third term exists only in (b) and is EXACT there: under
-$\delta a[k+1] = \delta a[k]$ the disturbance was applied $d$ times over the
-delay, so walking the gain back must walk it back too.
-
-\begin{equation*}
-\text{(a)}\quad y_2[k] = \ba_w[k] - \bigl(1-\ba_w[k]\bigr)^{2}\nabla_d\bw_d[k]
-  + n_a[k]
-\end{equation*}
-\begin{equation*}
-\text{(b)}\quad y_2[k] = \ba_w[k] - \bigl(1-\ba_w[k]\bigr)^{2}\nabla_d\bw_d[k]
-  - d\,\delta a[k] + n_a[k]
-\end{equation*}
-
-Linearization at the estimate. Because $\ba'$ depends on the state, the
-partial is NOT $1$:
-
-\begin{equation*}
-\frac{\partial y_2}{\partial \ba_w}
-  = 1 + 2\bigl(1-\hat{\ba}_w[k]\bigr)\,\nabla_d\bw_d[k]
+\ba_w[k-d] = \ba_w[k] - \bigl(1-\ba_w[k]\bigr)^{2}\nabla_d\bw_d[k]
+  \ \bigl[\,-\ d\,\delta a[k]\ \text{in (b)}\bigr]
 \end{equation*}
 
 \begin{equation*}
-\text{(a)}\quad
-H[k] =
-\begin{bmatrix}
-1 & 0 & 0 & 0 \\
-0 & 0 & 0 & 1 + 2(1-\hat{\ba}_w)\nabla_d\bw_d
-\end{bmatrix}
+\frac{\partial y_2}{\partial \ba_w} = 1 + 2\bigl(1-\hat{\ba}_w\bigr)\nabla_d\bw_d,
+\qquad
+\frac{\partial y_2}{\partial\,\delta a} = -d
 \end{equation*}
 
 \begin{equation*}
@@ -398,133 +224,79 @@ H[k] =
 \begin{bmatrix}
 1 & 0 & 0 & 0 & 0 \\
 0 & 0 & 0 & 1 + 2(1-\hat{\ba}_w)\nabla_d\bw_d & -d
-\end{bmatrix}
+\end{bmatrix},
 \qquad
-\frac{\partial y_2}{\partial\,\delta a} = -d
+K[k] = P^f H^{\top}\bigl(HP^fH^{\top}+R\bigr)^{-1}
 \end{equation*}
 
-The direct column is the CONSTANT $-d$: it does not collapse with position or
-with motion, unlike the multiplicative writing whose column carries a factor
-$(1-\ba)^{2}\nabla_d\bw_d$. It is however small in magnitude against the
-retained term, so in practice $\delta a$ is still seen mainly after it has
-accumulated into $\ba_w$, i.e.\ through the cross-covariance $P(4,5)$ that
-$F_e$ builds.
-
-Innovation
-
 \begin{align*}
-e_{y_1}[k] &= y_1[k] - \delta\hat{\bw}_1[k] = e_{\delta\bw_1}[k] + n_w[k] \\
-e_{y_2}[k] &= y_2[k] - \hat{\ba}_w[k]
-  + \bigl(1-\hat{\ba}_w[k]\bigr)^{2}\nabla_d\bw_d[k]
-  = \Bigl[1 + 2\bigl(1-\hat{\ba}_w[k]\bigr)\nabla_d\bw_d[k]\Bigr]
+e_{y_1}[k] &= e_{\delta\bw_1}[k] + n_w[k] \\
+e_{y_2}[k] &= \Bigl[1 + 2\bigl(1-\hat{\ba}_w\bigr)\nabla_d\bw_d\Bigr]
     e_{\ba_w}[k] - d\,e_{\delta a}[k] + n_a[k]
-\qquad (\text{the } -d\,e_{\delta a} \text{ term in (b) only})
 \end{align*}
 
 \section{Process and measurement noise}
 
-Thermal block, identical in both derivations (only the current white thermal
-step enters $Q$):
-
 \begin{equation*}
-q_3[k] = -\ba_w[k]\,\bar{f}_T[k],
+q_3 = -\ba_w\,\bar{f}_T,
 \qquad
-q_4[k] = \bigl(1-\hat{\ba}_w[k]\bigr)^{2}\ba_w[k]\,\bar{f}_T[k]
-       = -\bigl(1-\hat{\ba}_w[k]\bigr)^{2}q_3[k]
+q_4 = -\bigl(1-\hat{\ba}_w\bigr)^{2}q_3,
+\qquad
+\gamma(\bw) = \gamma_N c(\bw),
+\qquad
+\sigma^{2}_{\bar{f}_T} = a_o^{2}\,\frac{4k_BT\gamma(\bw)}{\Delta t}
 \end{equation*}
 
 \begin{equation*}
-Q_{33}[k] = \frac{4k_BT\,a_o}{R}\,\ba_w[k],
-\quad
-Q_{34}[k] = Q_{43}[k] = -\bigl(1-\hat{\ba}_w[k]\bigr)^{2}Q_{33}[k],
-\quad
-Q_{44}[k] = \bigl(1-\hat{\ba}_w[k]\bigr)^{4}Q_{33}[k]
+Q_{33} = \frac{4k_BT\,a_o}{R}\,\ba_w,
+\qquad
+Q_{34} = Q_{43} = -\bigl(1-\hat{\ba}_w\bigr)^{2}Q_{33},
+\qquad
+Q_{44} = \bigl(1-\hat{\ba}_w\bigr)^{4}Q_{33},
+\qquad
+Q_{55} = 0
 \end{equation*}
 
-Measurement noise $R = \mathrm{diag}(R_1,R_2)$, unchanged from the sibling
-documents:
-
 \begin{equation*}
+R = \mathrm{diag}(R_1, R_2),
+\qquad
 R_1 = \sigma^{2}_{n_w},
 \qquad
-R_2[k] = K_{\mathrm{var}} IF_{\mathrm{var}}\bigl(\ba_w[k]+\xi\bigr)^{2}
-  + d\,Q_{44}[k],
+R_2 = K_{\mathrm{var}} IF_{\mathrm{var}}\bigl(\ba_w+\xi\bigr)^{2} + d\,Q_{44},
 \qquad
 K_{\mathrm{var}} = \frac{2a_{\mathrm{cov}}}{2-a_{\mathrm{cov}}}
 \end{equation*}
 
-\subsection*{The disturbance container $Q_{55}$}
-
-The process model of S4(b) claims $\delta a[k+1] = \delta a[k]$. S3(b) gives
-$\delta a[k]$ in closed form, so what the claim omits is computable, not
-assumed:
-
 \begin{equation*}
-Q_{55}[k] = \mathrm{Var}\Bigl(\delta a[k+1] - \delta a[k]\Bigr)
+\sigma^{2}_{\delta\bw_r} = C_{dpmr}\frac{4k_BT\,a_o}{R}\bigl(\ba_w+\xi\bigr),
+\qquad
+\xi = \frac{C_n\sigma^{2}_{n_w}}{C_{dpmr}\bigl(4k_BT a_o/R\bigr)}
 \end{equation*}
 
-with, writing $\Sigma[k] := \Delta\bw_d[k] + (1-\lambda_c)\delta\bw_3[k]
-+ F_{dw}[k]e_{\ba_w}[k] + \varepsilon_w[k]$ for the increment of S3,
-
 \begin{equation*}
-\delta a[k] = \bigl(1-\ba_w[k]\bigr)^{2}
-  \left[\frac{1}{b_{\mathrm{state}}(\bw[k])} - 1\right]\Sigma[k]
+Q_{55}^{\ast} = \mathrm{Var}\bigl(\delta a[k+1] - \delta a[k]\bigr)
 \end{equation*}
-
-Because $\delta a$ is proportional to $\Sigma$, the increment of $\delta a$ is
-driven by the motion, not by time: $Q_{55}$ is ZERO during a hold and grows
-with commanded speed. A time-invariant $Q_{55}$ would therefore be the wrong
-container even if its magnitude were right.
-
-FIRST ARM: $Q_{55} = 0$. This is the claim ``no stochastic driving of
-$\delta a$''; it is NOT the claim that $\delta a$ is constant, which S3(b)
-already refutes. Its predicted consequence is that $P_{55}$ decreases
-monotonically and $\delta\hat{a}$ freezes late in the run. That prediction is
-pre-registered here and is to be measured, not assumed.
-
-PRE-REGISTERED CONSEQUENCE. S3(b)(i) says the true $\delta a$ is zero in a
-hold, while $F_e(4,5) = 1$ keeps the model injecting $\delta\hat{a}$ every
-step. With $Q_{55} = 0$ the covariance cannot reopen to disown it. So the
-final hold should show a spurious ramp in the gain error, of order the
-descent accumulation ($\sum_k \delta a = +0.068$ over $1.0$ s) scaled by the
-hold duration ($\approx 1.3$ s), i.e.\ $\approx +0.09$ in $\ba$ if unopposed
-by $y_2$. Its presence, sign and magnitude are to be measured.
-
-OPEN ITEM (not implemented in the first arm). $\delta a$ inherits the
-frequency content of $\Sigma$, so on a sinusoidal trajectory it is dominated
-by the commanded frequency rather than being constant or white. The internal
-model principle then says the constant model $\delta a[k+1] = \delta a[k]$
-cannot reject it asymptotically, and the derivable alternative is a two-state
-oscillator at the KNOWN commanded frequency. This is recorded so that the
-first arm's residual can be read against it.
 
 \section*{Seed and prior}
 
 \begin{equation*}
-\hat{\ba}_w[0] = 1 - \frac{1}{\bw[0]-\hat{\bw}_0} ,
+\delta\hat{a}[0] = 0,
 \qquad
-\delta\hat{a}[0] = 0
+\hat{\ba}_w[0] = 1 - \frac{1}{\bw[0]-\hat{\bw}_0}
 \end{equation*}
 
-$\hat{\bw}_0$ is the nominal wall; it enters here and nowhere else, since
-setting $\hat{\ba}_w[0]$ IS setting the integration constant.
+\begin{equation*}
+\frac{\partial\ba}{\partial\,\delta a}\bigg|_{\bw} = \frac{1-\ba}{1+\delta a},
+\qquad
+\frac{\partial\ba}{\partial\bw_0}\bigg|_{\bw} = -\,\ba'
+\end{equation*}
 
-\begin{align*}
-\text{(a)}\quad
-P_{44}[0] &= \bigl(\hat{\ba}'[0]\bigr)^{2} P_{\bw_0}
-  + \mathrm{floor}_a^{2} \\
-\text{(b)}\quad
-P_{44}[0] &= \bigl(\hat{\ba}'[0]\bigr)^{2} P_{\bw_0}
-  + \mathrm{floor}_a^{2},
-\qquad P_{45}[0] = 0,
-\qquad P_{55}[0] = P_{\delta a}
-\end{align*}
-
-$P_{45}[0] = 0$ because at $k = 0$ nothing has yet accumulated: the seed error
-and the disturbance are independent by construction. $P_{\delta a}$ is the
-only undetermined number; its scale follows from the level offset the
-disturbance is expected to remove divided by the number of steps over which it
-must remove it, and its contract is invariance (sweep it by $10\times$; the
-converged behaviour must not move).
+\begin{equation*}
+P_{44}[0] = \bigl(\hat{\ba}'[0]\bigr)^{2} P_{\bw_0} + \mathrm{floor}_a^{2},
+\qquad
+P_{45}[0] = 0,
+\qquad
+P_{55}[0] = P_{\delta a}
+\end{equation*}
 
 \end{document}

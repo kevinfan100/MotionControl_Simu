@@ -1,0 +1,191 @@
+% STATUS: ACTIVE -- companion to formC_state_dist.tex. Everything that is NOT
+%          an equation lives here: declared truncations, measured properties,
+%          pre-registered consequences, open items, and the results that decided
+%          each arm. Section numbers match the main file.
+% ======================================================
+% Compile: xelatex formC_state_dist_ref.tex
+% Path:    reference/eq17_analysis/derivation/formC_state_dist_ref.tex
+% ======================================================
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+
+\begin{document}
+
+\section*{S1 --- gain law}
+
+The truth is not a member of this one-curve family. Declared truncation,
+measured offline on $\bw-\bw_s \in [0.1,\,25]$ from
+\texttt{calc\_correction\_functions}:
+
+\begin{equation*}
+b_{\mathrm{state}} - 1:\quad
+13.05\,\%\ \mathrm{RMS},\quad 15.34\,\%\ \sup,\quad
+\text{range } [+7.79,\ +15.34]\,\%,\quad \text{one-signed},\quad
+\text{far field} \to +1/8
+\end{equation*}
+
+The far-field limit is exact: $c_{\perp} \to 1 + 9/(8\bar{h})$ gives
+$b_{\mathrm{state}} \to 9/8$. The supremum sits at
+$\bw-\bw_s \approx 1.19$, i.e.\ $\bar{h} \approx 2.19$, inside the canonical
+oscillation band --- the run's most informative segment coincides with the
+worst point of the truncation.
+
+The exponent $2$ is $1+1/p$ at $p=1$; both asymptotic anchors give $p=1$, so it
+is anchored rather than chosen. No $8/9$ factor is carried (user decision,
+2026-08-12), which is why the declared truncation is $13\,\%$ and not $0.7\,\%$.
+
+\section*{S3 --- what $\delta a$ is, and what the model claims about it}
+
+$\delta a$ is not postulated; it is what makes the law-based propagation exact,
+so its closed form follows by subtraction. Three properties follow from it
+directly and are used in S8:
+
+\begin{itemize}
+\item[(i)] $\delta a$ is proportional to the increment, hence exactly zero in a
+hold.
+\item[(ii)] $1/b_{\mathrm{state}} - 1 \in [-0.133,\,-0.072]$ is one-signed, but
+$\delta a$ is NOT: $\mathrm{sign}(\delta a) = -\mathrm{sign}(\text{increment})$,
+so it reverses with the direction of travel. Measured on the canonical
+scenario, $\sum_k \delta a = +0.0680$ over the descent, $-0.0401$ over the
+ascent, and EXACTLY ZERO over a closed oscillation cycle --- both
+$\ba'_{\mathrm{true}}\mathrm{d}\bw$ and $(1-\ba_{\mathrm{true}})^{2}\mathrm{d}\bw$
+are exact differentials in $\bw$. The whole disturbance is acquired on the
+descent; a closed oscillation offers a constant-$\delta a$ model nothing to
+lock onto.
+\item[(iii)] $(1-\ba_w)^{2}$ spans $0.83 \to 0.0019$, so $\delta a$ varies over
+three decades.
+\end{itemize}
+
+$\delta a[k+1] = \delta a[k]$ is therefore a modelling CLAIM, not a consequence.
+
+DECLARED, NOT DERIVED: the step from the differential law of S1 to the
+difference equation of S4 is forward Euler and is not stated anywhere in the
+main file. In the height writing that step is an error on top of a correct
+model; here $\ba'$ reads the state, so the discretisation IS the model and the
+estimator is exactly estimating a slightly different family. The flow is
+autonomous, so an exact one-step map exists in closed form; adopting it would
+remove the quadrature error identically. Deferred by user decision.
+
+\section*{S6 --- the disturbance column, and a path the main file does not name}
+
+The disturbance column of $F_e$ is the constant $1$: unlike a multiplicative
+parameter it does not vanish at a turning point, in a hold, or in the far
+field. $F_e(3,5) = 0$ because the control law is untouched by $\delta a$.
+Separability: a constant $\delta a$ drives $e_{\ba_w}$ as a ramp whereas an
+error in the gain state is a persistent offset.
+
+$y_1$ ALSO CORRECTS THE GAIN. This is implied by $K = PH^{\top}S^{-1}$ with
+$H_1 = \mathbf{e}_1^{\top}$, giving $K_1(4) = P(4,1)/S_1$, and $P(4,1)$ is built
+by $F_e(3,4) = -F_{dw}$ and by $Q_{34}$. Nothing in the main file is wrong, but
+the naming (``position measurement'' / ``gain readout'') has misled every
+reader including the author. Measured on the canonical scenario:
+$K_1(4)$ and $|P(4,1)|$ each rise by a factor $\approx 160$ at motion onset
+(medians $1.93\times10^{-3} \to 3.12\times10^{-1}$ and
+$1.00\times10^{-7} \to 1.57\times10^{-5}$), while $K_2(4) \approx 7\times10^{-4}$
+--- three orders of magnitude smaller. A four-arm nested ablation over 8 seeds:
+removing $y_2$ does not reduce the across-seed spread; removing $y_1$'s gain
+correction drops it $34\times$; removing the MA(2) memory changes almost
+nothing. The spread is motion-triggered, not time-accumulated (a $4\times$
+longer initial hold adds $11\,\%$ to the pre-motion spread).
+
+That path is CORRECTLY PRICED: $K_1(4)$ is within $0.04$--$16\,\%$ of the
+realised optimum $E[e\,\nu]/E[\nu^{2}]$. The spread is therefore the
+information cost of inferring gain from position error, not a defect; removing
+the path costs $13.6$ points of hold level.
+
+\section*{S8 --- what the constant claim omits}
+
+$Q_{55}^{\ast}$ is computable from the S3 closed form, so what the claim omits
+is priced rather than assumed. Because $\delta a \propto$ increment,
+$Q_{55}^{\ast}$ is zero in a hold and grows with commanded speed: a
+time-invariant container would be the wrong category even at the right
+magnitude.
+
+FIRST ARM: $Q_{55} = 0$. That is the claim ``no stochastic driving of
+$\delta a$'', not the claim that $\delta a$ is constant, which S3(ii) already
+refutes. Pre-registered consequence: $P_{55}$ decreases monotonically and
+$\delta\hat{a}$ freezes late in the run; and since the true $\delta a$ vanishes
+in a hold while the model keeps injecting $\delta\hat{a}$, the final hold should
+show a spurious ramp of order the descent accumulation.
+
+OPEN ITEM: $\delta a$ inherits the frequency content of the increment, so on a
+sinusoidal trajectory it is dominated by the commanded frequency. The internal
+model principle then says a constant model cannot reject it asymptotically; the
+derivable alternative is a two-state oscillator at the known commanded
+frequency. Not implemented.
+
+\section*{Seed and prior}
+
+$\hat{\bw}_0$ is the nominal wall and enters at the seed and nowhere else,
+because setting $\hat{\ba}_w[0]$ IS setting the integration constant.
+$P_{45}[0] = 0$ because $\ba(\bw)$ carries no $\delta a$ in this writing, so
+$\partial\ba[0]/\partial\,\delta a = 0$ and one term is complete. (The sibling
+\texttt{formC\_state\_da.tex} has a two-term $P_{44}[0]$ because there
+$\delta a$ enters the LAW.) $P_{\delta a}$ is the only undetermined number; its
+contract is invariance under a $10\times$ sweep.
+
+$\mathrm{floor}_a$ as implemented is the supremum over the planned envelope
+($0.0306$, attained at $\bw \approx 2.41$), applied at a seed height where the
+local shape error is $0.0056$. The main file does not specify which of the two
+is meant. Measured $\rho = \mathrm{RMS}(e_{\ba})/\sqrt{P_{44}}$ over 8 seeds is
+$0.15$--$0.18$ before motion and $1.48$ at the end of the run.
+
+\section*{Results that decided each arm}
+
+Canonical scenario, 8 seeds $[7\ 11\ 23\ 42\ 101\ 777\ 27\ 31]$, paired
+(identical draws), overall relative gain-error RMS in percent:
+
+\begin{equation*}
+\begin{array}{lccc}
+ & \text{desc peak} & \text{osc RMS} & \text{overall RMS} \\[0.2em]
+\text{production tier-1 } (\bw_s \text{ pinned at truth}) & 1.83\pm0.72 & 0.96\pm0.62 & 0.99\pm0.61 \\
+\text{production tier-2 } (\bw_s \text{ free}) & 4.22\pm1.80 & 1.90\pm1.00 & 2.07\pm1.38 \\
+\text{(a) no } \delta a & 15.36\pm6.24 & 4.26\pm1.76 & 4.68\pm2.56 \\
+\text{(b) with } \delta a & 17.52\pm6.41 & 7.39\pm7.32 & 7.69\pm4.89 \\
+\text{(a) with } \ba' \text{ from the true height} & 3.23\pm0.98 & 1.58\pm1.01 & 1.87\pm0.93
+\end{array}
+\end{equation*}
+
+The wall-position oracle is worth $2.1\times$ on its own (tier-1 versus
+tier-2), so any comparison against tier-1 overstates the gap.
+
+The true-slope arm improves $8/8$ and is statistically indistinguishable from
+production tier-2 ($t = -0.48$), and better on the descent peak. Hence the
+derivation, the implementation and the idea of integrating the gain are all
+sound: the entire gap is that the integrand carries the state's own error,
+amplified by $\partial\ba'/\partial\ba = -2(1-\ba)$. Production also
+integrates --- its predict is $x_4 + \ba'(\cdot)$ exactly as here --- so it does
+not re-anchor; the only structural difference is where $\ba'$ is evaluated.
+
+The additive constant disturbance is falsified in four configurations: harmful
+on canonical with either slope source, harmful on the Menq ramp
+($\bar{h}\,6.67 \to 1.111$ over $10$ s, near-wall gate opened), and $\delta\hat{a}$
+never leaves noise ($-5.4\times10^{-8} \pm 5.3\times10^{-6}$ against a prior of
+$1.53\times10^{-4}$). Under the true slope there is no model error left to
+absorb, so $\delta a$ can only fit noise and its harm there is expected rather
+than evidence about the concept.
+
+Breaking the feedback by lagging the slope does not work: evaluating $\ba'$ at
+the pre-update state changes nothing ($+0.076$, $t = 0.65$) and smoothing is
+monotonically harmful. So the gap is the BIAS in $\hat{\ba}_w$, not the noise on
+it.
+
+Menq's forgetting factor (thesis eq.\ 4.15,
+$P = \lambda_f^{-1}[I-KH]P^f$) is falsified on $12/12$ paired comparisons across
+two trajectories, two arms and $\lambda_f \in \{0.9999, 0.999, 0.99\}$. It does
+repair the late over-confidence ($\rho\ 1.29 \to 0.79$) but pushes the early
+over-pessimism further down: $\rho(t)$ here is not uniformly biased, and a
+uniform-in-time inflation cannot help a deficit whose sign changes with time.
+
+\end{document}

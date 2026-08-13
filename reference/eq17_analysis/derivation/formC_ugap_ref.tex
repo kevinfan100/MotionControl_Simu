@@ -1,0 +1,170 @@
+% STATUS: ACTIVE -- companion to formC_ugap.tex. Everything that is not an
+%          equation: what the coordinate buys, what it does not buy, the
+%          measurements, and the open items. Independently verified 2026-08-13;
+%          three errors in the main file were found and fixed before any code
+%          was written against it (see "Verification" below).
+% ======================================================
+% Compile: xelatex formC_ugap_ref.tex
+% Path:    reference/eq17_analysis/derivation/formC_ugap_ref.tex
+% ======================================================
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\begin{document}
+
+\section*{Why this coordinate}
+
+Any autonomous scalar flow $\mathrm{d}\ba/\mathrm{d}\bw = g(\ba)$ is
+straightened by $u = \int\!\mathrm{d}\ba/g(\ba)$. Here $g = (1-\ba)^{2}(1+\delta a)$
+gives $u = 1/(1-\ba)$ and $\mathrm{d}u/\mathrm{d}\bw = 1+\delta a$. The height
+writing's law is NOT autonomous ($\ba'$ depends explicitly on $\bw$), so it has
+no such coordinate; the state writing's defect and its remedy are two sides of
+the same property.
+
+Physically $u = (1+\delta a)(\bw-\bw_0)$ is the gap to the implied wall. The
+state changes from ``how strong is the gain'' to ``how far am I'', and distance
+propagates by exactly how far one moved.
+
+\subsection*{What it buys}
+
+\begin{enumerate}
+\item The one-signed quadrature ratchet is removed IDENTICALLY, not reduced.
+$\mathrm{d}u/\mathrm{d}\bw$ is constant in $\bw$, so the one-step integral is
+exact. Measured on the canonical command trajectory (same $\Sigma$, $\ba$-Euler
+versus exact-$u$): $+1.641\,\%$ at the end of the descent, $+2.122\,\%$ at the
+end of the oscillation, strictly one-signed throughout, and exactly first order
+in $\Delta t$ ($+1.077 / +0.542 / +0.272\,\%$ at $\Delta t/2, /4, /8$). Closed
+form: the $\ba$-Euler step equals $u[k+1] = u[k] + \Sigma + \Sigma^{2}/u +
+\mathcal{O}(\Sigma^{3})$, and $\Sigma^{2}/u > 0$ regardless of direction --- that
+is the ratchet. $+2.1\,\%$ is the right size against the $2.8$ point gap between
+arm (a) at $4.68\,\%$ and the true-slope arm at $1.87\,\%$.
+\item The predict increment reads $\hat{u}$ nowhere: $\mathrm{d}u =
+(1+\delta a)\mathrm{d}\bw$. That is the property the ``$\ba'$ from the TRUE
+height'' arm had, obtained here without knowing the true height.
+\item $u$ is affine in the unknown wall position, so a Gaussian posterior is
+closer to the true posterior shape in $u$ than in $\ba$. An EKF in $u$ is a
+DIFFERENT, non-equivalent estimator --- this is the mechanism by which it can
+win.
+\item $(u,\delta a)$ separate cleanly: a wall-position error is a constant
+offset in $u$, a $\delta a$ error is a ramp proportional to accumulated
+displacement ($F_e(4,5) = \hat{\Sigma}$).
+\end{enumerate}
+
+\subsection*{What it does not buy}
+
+No information. $u = (1+\delta a)(\bw-\bw_0)$ with $\bw$ commanded and free, so
+$(u,\delta a) \leftrightarrow (\bw_0,\delta a)$ is a known bijection at fixed
+$\bw$, and Fisher information is invariant under smooth reparametrisation. What
+changes is conditioning. (That invariance assumes the prior is pushed forward
+consistently --- see the seed section.)
+
+The self-amplification is NOT abolished. The term $-2(1-\hat{\ba})\Sigma$ is
+exactly the coordinate's own time-varying Jacobian: a fixed $e_u$ really does
+correspond to an $e_{\ba}$ that grows $123\times$ between $\bar h = 22.2$ and
+$2.0$. What changes is that it moves from the propagation Jacobian to the
+output map $\partial\ba/\partial u = u^{-2}$, where it does not compound.
+
+The structural limits of the $\ba$ writing survive unchanged: in a hold
+$\hat{\Sigma} = 0$ so $F_e(4,5) = 0$ and $\delta a$ is unobservable through the
+state path; over a closed oscillation $\sum\hat{\Sigma} = 0$ so the state path
+carries zero net information about it. Only $y_2$ sees $\delta a$ continuously.
+
+Also unchanged: the $y_1$ gain-correction path through $K_1 = PH_1^{\top}/S_1$
+(measured to supply essentially all of the across-seed spread, and to be
+correctly priced at $0.04$--$16\,\%$ of the realised optimum); the MA(2)
+augmentation the controller runs but no derivation describes ($\approx 21\,\%$
+of the spread); $\bar h_{\mathrm{safe}} = 1.5$ as an underived house value.
+
+\section*{Seed, prior, and a well-posedness constraint}
+
+$\delta a$ enters the LAW here, so its prior enters $u$ at $k=0$ and
+$P_{u\,\delta a}[0] \neq 0$. With $\hat u[0] = 22.22$ and $\sqrt{P_{\delta a}} =
+0.5$ the three contributions to $P_{uu}[0]$ are $123.5$ ($\delta a$), $0.012$
+(wall position) and $\hat u[0]^{4}\mathrm{floor}_a^{2}$; the disturbance term
+dominates the wall term by $10^{4}$.
+
+$\mathrm{floor}_a$ MUST be re-derived for THIS family. The single-curve family
+of \texttt{formC\_state\_dist} declares $13.05\,\%$ RMS / $15.34\,\%$ sup; this
+family, which carries $\delta a$, is the one declared in
+\texttt{formC\_state\_da} at $0.66\,\%$ / $4.65\,\%$. The choice matters far
+more here than in $\ba$ coordinates because the floor is amplified by
+$\hat u[0]^{4}$:
+
+\begin{equation*}
+\begin{array}{lccc}
+\mathrm{floor}_a & \sigma_u & P(u<1) & \text{status} \\[0.2em]
+0.0306\ (\text{envelope sup}) & 15.11 & 8.0\,\% & \text{ill-posed} \\
+0.0056\ (\text{local at seed}) & 2.77 & \approx 0 & \text{well-posed}
+\end{array}
+\end{equation*}
+
+$u>1 \Leftrightarrow \ba<1$, and $u \to 1$ is the singularity of the output map
+$1-1/u$. Eight percent of prior mass at $\ba<0$ sitting on that singularity is
+not a width question. In $\ba$ coordinates the same two choices differ only by a
+factor $5.5$ in width; a linear push-forward cannot preserve both tails. The
+implementation therefore uses the local floor and clamps $u \geq u_{\min}$
+(with $\bar h_{\mathrm{safe}} = 1.5$ the natural value is $u_{\min} = 1.5$),
+and clamps $\hat v$ likewise.
+
+Reporting $\hat{\ba} = 1-1/\hat u$ carries a Jensen bias $\approx
+-P_{uu}/\hat u^{3}$: negligible once converged ($0.01\,\%$ at $u=2$,
+$0.03\,\%$ at $u=4.2$) but $2.18\,\%$ at the seed under the sup floor versus
+$0.07\,\%$ under the local floor --- the same choice again.
+
+\section*{Verification, 2026-08-13}
+
+Independent check before implementation. Central claim, S6, S7 and S8 confirmed
+term by term, including a time-varying similarity transform
+$F^{u}[k] = T[k+1]F^{\ba}[k]T[k]^{-1}$ with $T = \hat u^{2}$ that reproduces the
+printed $F_e$ exactly. Three errors were found and are fixed in the main file:
+
+\begin{enumerate}
+\item $P_{uu}[0]$ omitted the $\delta a$ term and $P_{u\,\delta a}[0]$ was set to
+zero. Inherited from the wrong sibling (see 3), where the zero is correct
+because $\delta a$ does not enter the law there. Magnitude-dominant.
+\item The delay back-off was labelled exact; it drops the
+$(\delta\bw_3-\delta\bw_1)$ channel, which \texttt{formB\_ws\_ref} already
+declares as a truncation. Measured contribution $0.5$--$3\,\%$ of $\sqrt{R_2}$
+(peak $11\,\%$), i.e.\ $\leq 0.1\,\%$ of variance, but it is correlated with the
+states, so it is bias and not variance. Now declared. Note $R_2$'s $d\,\hat
+v^{-4}Q_{uu}$ exists precisely because $H$ omits that channel, so ``exact'' and
+that term cannot both stand.
+\item The sibling cross-reference pointed at \texttt{formC\_state\_dist.tex},
+whose $\delta a$ is a different object (additive per step, absent from the law).
+The $\ba$-coordinate version of THIS law is \texttt{formC\_state\_da.tex}.
+\end{enumerate}
+
+Also reported: \texttt{formC\_state\_da.tex} is internally inconsistent on
+$Q_{33}$ (prefactor $4k_BT/(a_oR)$ in one place, $4k_BT a_o/R$ in its $\xi$);
+the main file here is the correct one.
+
+\section*{Pre-registration}
+
+On the canonical scenario over the 8 house seeds, overall relative gain-error
+RMS: the same estimator in $\ba$ coordinates gives $4.68 \pm 2.56\,\%$; fed
+$\ba'$ from the true height it gives $1.87 \pm 0.93\,\%$; production tier-2
+gives $2.07 \pm 1.38\,\%$.
+
+\begin{equation*}
+\begin{array}{ll}
+\text{lands near } 4.7 & \text{the gap is information; the coordinate cannot help} \\
+\text{lands near } 1.9 & \text{the gap is conditioning} \\
+\text{lands below } 1.9 & \text{also expected: the true-slope arm still carries the}\\
+ & \text{Euler ratchet, which this writing removes as well}
+\end{array}
+\end{equation*}
+
+Arm (a) against $4.68\,\%$ is the clean controlled comparison: same law, same
+estimator, same measurement chain, differing only in the quadrature and in
+whether the integrand reads the state.
+
+\end{document}

@@ -1,0 +1,301 @@
+% STATUS: ACTIVE -- SSOT for the u = 1/(1-a_bar) writing. Equation-only house
+%          style; every remark, rationale, measurement and provenance lives in
+%          formC_ugap_ref.tex (same section numbers).
+%          Two derivations side by side in every section:
+%              (a) BASELINE      4 states, no disturbance
+%              (b) WITH \delta a 5 states, disturbance as a scale on the input
+% ======================================================
+% Compile: xelatex formC_ugap.tex
+% Path:    reference/eq17_analysis/derivation/formC_ugap.tex
+% Companion: formC_ugap_ref.tex
+% Siblings:  formC_state_da.tex   (SAME law in a_bar coordinates -- delta a
+%                                  multiplies the slope, so it enters the law)
+%            formC_state_dist.tex (DIFFERENT law -- delta a is an additive
+%                                  per-step constant, absent from the law)
+%            formB_ws.tex         (height writing, production)
+% ======================================================
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+
+\begin{document}
+
+\section{Coordinate and law}
+
+(bars denote normalized quantities: lengths by $R$, $\ba = a/a_o$,
+$\bar{f} = a_o f$; $0 < \ba < 1 \Leftrightarrow u > 1$;
+$e_{\theta} = \theta - \hat{\theta}$)
+
+\begin{equation*}
+u := \frac{1}{1-\ba},
+\qquad
+\ba = 1 - \frac{1}{u},
+\qquad
+a_w = a_o\,\ba_w ,
+\qquad
+a_o = \frac{\Delta t}{\gamma_N R}
+\end{equation*}
+
+\begin{equation*}
+\frac{\mathrm{d}\ba}{\mathrm{d}\bw} = \bigl(1-\ba\bigr)^{2}\bigl(1+\delta a\bigr)
+\qquad\Longleftrightarrow\qquad
+\frac{\mathrm{d}u}{\mathrm{d}\bw} = 1 + \delta a
+\end{equation*}
+
+\begin{equation*}
+u(\bw) = \bigl(1+\delta a\bigr)\bigl(\bw - \bw_0\bigr),
+\qquad
+\frac{\partial u}{\partial \bw_0} = -\bigl(1+\delta a\bigr),
+\qquad
+\int_{\bw[k]}^{\bw[k+1]}\!\!\mathrm{d}u
+ = \bigl(1+\delta a\bigr)\,\Sigma[k] \quad(\text{exact; } \Sigma \text{ in S3})
+\end{equation*}
+
+\section{Jacobians}
+
+\begin{equation*}
+\frac{\partial \ba}{\partial u} = \frac{1}{u^{2}} = \bigl(1-\ba\bigr)^{2},
+\qquad
+\frac{\partial}{\partial u}\Bigl[u + (1+\delta a)\bigl(\,\cdot\,\bigr)\Bigr] = 1,
+\qquad
+\frac{\partial}{\partial\,\delta a}
+  \Bigl[u + (1+\delta a)\,\Sigma\Bigr] = \Sigma
+\end{equation*}
+
+\section{True dynamics}
+
+$\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2\bigr)$
+
+\begin{align*}
+\bw[k] &= \bw_d[k] - \delta\bw_3[k], &
+\bw_d[k+1] &= \bw_d[k] + \Delta\bw_d[k] \\
+\delta\bw_1[k+1] &= \delta\bw_2[k], &
+\delta\bw_2[k+1] &= \delta\bw_3[k] \\
+\delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k] - F_{dw}[k]\,e_{\ba_w}[k]
+  - \varepsilon_w[k]
+\end{align*}
+
+\begin{align*}
+F_{dw}[k] &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
+\varepsilon_w[k] &= \ba_w[k]\,\bar{f}_T[k]
+  + (1-\lambda_c)\sum_{i=1}^{d}\ba_w[k-i]\,\bar{f}_T[k-i]
+  + (1-\lambda_c)\,n_w[k]
+\end{align*}
+
+\begin{equation*}
+\Sigma[k] := \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k]
+  + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]
+  \;=\; \bw[k+1] - \bw[k]
+\end{equation*}
+
+\begin{equation*}
+\text{(a)}\quad u[k+1] = u[k] + \Sigma[k],
+\qquad
+\text{(b)}\quad u[k+1] = u[k] + \bigl(1+\delta a[k]\bigr)\Sigma[k],
+\qquad
+\delta a[k+1] = \delta a[k]
+\end{equation*}
+
+\section{Process model}
+
+\begin{equation*}
+\text{(a)}\quad
+\mathbf{x} = \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ u\,\bigr]^{\top},
+\qquad
+\text{(b)}\quad
+\mathbf{x} = \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ u,\
+\delta a\,\bigr]^{\top}
+\qquad (d = 2)
+\end{equation*}
+
+\section{Estimator}
+
+\begin{equation*}
+\hat{\Sigma}[k] := \Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]
+\end{equation*}
+
+\begin{align*}
+\delta\hat{\bw}_1[k+1] &= \delta\hat{\bw}_2[k], &
+\delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k], &
+\delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k]
+\end{align*}
+
+\begin{equation*}
+\text{(a)}\quad \hat{u}[k+1] = \hat{u}[k] + \hat{\Sigma}[k],
+\qquad
+\text{(b)}\quad \hat{u}[k+1] = \hat{u}[k]
+  + \bigl(1+\delta\hat{a}[k]\bigr)\hat{\Sigma}[k],
+\qquad
+\delta\hat{a}[k+1] = \delta\hat{a}[k]
+\end{equation*}
+
+\begin{equation*}
+\hat{\ba}_w[k] = 1 - \frac{1}{\hat{u}[k]}
+\qquad(\text{control law and S7 consume this})
+\end{equation*}
+
+\section{Error dynamics}
+
+(True $-$ Estimator; coefficients at the estimate;
+$e_{\ba_w} = \bigl(1-\hat{\ba}_w\bigr)^{2} e_u + \mathcal{O}(e_u^{2})$)
+
+\begin{align*}
+e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k], \qquad
+e_{\delta\bw_2}[k+1] = e_{\delta\bw_3}[k] \\
+e_{\delta\bw_3}[k+1] &= \lambda_c\,e_{\delta\bw_3}[k]
+  - F_{dw}\bigl(1-\hat{\ba}_w\bigr)^{2} e_u[k] - \varepsilon_w[k] \\
+e_u[k+1] &= \Bigl[\,1 + \bigl(1+\delta\hat{a}\bigr)F_{dw}
+  \bigl(1-\hat{\ba}_w\bigr)^{2}\Bigr] e_u[k]
+  + \hat{\Sigma}[k]\,e_{\delta a}[k] \\
+  &\qquad + \bigl(1+\delta\hat{a}\bigr)(1-\lambda_c)\,e_{\delta\bw_3}[k]
+  + \bigl(1+\delta\hat{a}\bigr)\varepsilon_w[k] \\
+e_{\delta a}[k+1] &= e_{\delta a}[k]
+\end{align*}
+
+\begin{equation*}
+\text{(b)}\quad
+F_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lambda_c & -F_{dw}(1-\hat{\ba}_w)^{2} & 0 \\
+0 & 0 & (1+\delta\hat{a})(1-\lambda_c) &
+  1 + (1+\delta\hat{a})F_{dw}(1-\hat{\ba}_w)^{2} & \hat{\Sigma} \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\end{equation*}
+
+(a) is the leading $4\times 4$ block with $\delta\hat{a} = 0$.
+
+\begin{equation*}
+\mathbf{q}[k] = \bigl[\,0,\ 0,\ -\varepsilon_w,\
+\bigl(1+\delta\hat{a}\bigr)\varepsilon_w,\ 0\,\bigr]^{\top}
+\end{equation*}
+
+\section{Measurement and innovation}
+
+\begin{align*}
+\nabla_d\bw_d[k] &= \bw_d[k] - \bw_d[k-d] \\
+y_1[k] &= \delta\bw_1[k] + n_w[k] \\
+y_2[k] &= \ba_w[k-d] + n_a[k]
+\end{align*}
+
+\begin{equation*}
+u[k-d] = u[k] - \bigl(1+\delta a\bigr)\nabla_d\bw_d[k]
+  + \bigl(1+\delta a\bigr)\bigl(\delta\bw_3[k]-\delta\bw_1[k]\bigr)
+\end{equation*}
+\begin{equation*}
+\hat{v}[k] := \hat{u}[k] - \bigl(1+\delta\hat{a}\bigr)\nabla_d\bw_d[k]
+\quad
+\bigl[\text{declared truncation: the }(\delta\bw_3-\delta\bw_1)
+\text{ channel is dropped from } H\bigr]
+\end{equation*}
+
+\begin{equation*}
+\hat{y}_2[k] = 1 - \frac{1}{\hat{v}[k]},
+\qquad
+\frac{\partial y_2}{\partial u} = \frac{1}{\hat{v}^{2}},
+\qquad
+\frac{\partial y_2}{\partial\,\delta a} = -\frac{\nabla_d\bw_d}{\hat{v}^{2}}
+\end{equation*}
+
+\begin{equation*}
+\text{(b)}\quad
+H[k] =
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & \hat{v}^{-2} & -\nabla_d\bw_d\,\hat{v}^{-2}
+\end{bmatrix},
+\qquad
+K[k] = P^f H^{\top}\bigl(HP^fH^{\top}+R\bigr)^{-1}
+\end{equation*}
+
+\begin{align*}
+e_{y_1}[k] &= e_{\delta\bw_1}[k] + n_w[k] \\
+e_{y_2}[k] &= \hat{v}^{-2}\,e_u[k]
+  - \nabla_d\bw_d\,\hat{v}^{-2}\,e_{\delta a}[k] + n_a[k]
+\end{align*}
+
+\section{Process and measurement noise}
+
+\begin{equation*}
+q_3 = -\ba_w\,\bar{f}_T,
+\qquad
+q_u = -\bigl(1+\delta\hat{a}\bigr)q_3,
+\qquad
+\gamma(\bw) = \gamma_N c(\bw),
+\qquad
+\sigma^{2}_{\bar{f}_T} = a_o^{2}\,\frac{4k_BT\gamma(\bw)}{\Delta t}
+\end{equation*}
+
+\begin{equation*}
+Q_{33} = \frac{4k_BT\,a_o}{R}\,\ba_w,
+\qquad
+Q_{3u} = Q_{u3} = -\bigl(1+\delta\hat{a}\bigr)Q_{33},
+\qquad
+Q_{uu} = \bigl(1+\delta\hat{a}\bigr)^{2}Q_{33},
+\qquad
+Q_{\delta a} = 0
+\end{equation*}
+
+\begin{equation*}
+R = \mathrm{diag}(R_1, R_2),
+\qquad
+R_1 = \sigma^{2}_{n_w},
+\qquad
+R_2 = K_{\mathrm{var}} IF_{\mathrm{var}}\bigl(\ba_w+\xi\bigr)^{2}
+  + d\,\hat{v}^{-4}Q_{uu},
+\qquad
+K_{\mathrm{var}} = \frac{2a_{\mathrm{cov}}}{2-a_{\mathrm{cov}}}
+\end{equation*}
+
+\begin{equation*}
+\sigma^{2}_{\delta\bw_r} = C_{dpmr}\frac{4k_BT\,a_o}{R}\bigl(\ba_w+\xi\bigr),
+\qquad
+\xi = \frac{C_n\sigma^{2}_{n_w}}{C_{dpmr}\bigl(4k_BT a_o/R\bigr)}
+\end{equation*}
+
+\section*{Seed and prior}
+
+\begin{equation*}
+\delta\hat{a}[0] = 0,
+\qquad
+\hat{u}[0] = \bw[0] - \hat{\bw}_0 = \frac{1}{1-\hat{\ba}_w[0]}
+\end{equation*}
+
+\begin{equation*}
+\frac{\partial u}{\partial\bw_0} = -\bigl(1+\delta a\bigr),
+\qquad
+\frac{\partial u}{\partial\,\delta a}\bigg|_{\bw} = \bw - \bw_0 = \frac{u}{1+\delta a},
+\qquad
+\delta u = \frac{\delta\ba}{\bigl(1-\ba\bigr)^{2}} = u^{2}\,\delta\ba
+\end{equation*}
+
+\begin{equation*}
+P_{uu}[0] = \left(\frac{\hat{u}[0]}{1+\delta\hat{a}}\right)^{2}P_{\delta a}
+  + \bigl(1+\delta\hat{a}\bigr)^{2}P_{\bw_0}
+  + \hat{u}[0]^{4}\,\mathrm{floor}_a^{2}
+\end{equation*}
+\begin{equation*}
+P_{u\,\delta a}[0] = \frac{\hat{u}[0]}{1+\delta\hat{a}}\,P_{\delta a},
+\qquad
+P_{\delta a}[0] = P_{\delta a},
+\qquad
+u \geq u_{\min}
+\end{equation*}
+
+\end{document}
