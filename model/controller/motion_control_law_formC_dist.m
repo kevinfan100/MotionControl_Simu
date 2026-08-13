@@ -11,7 +11,7 @@
 %   re-indexing. Mathematically the filter is the 5-state of the tex
 %   (derivation (b)); with lock_da = true it is the 4-state BASELINE
 %   (derivation (a)) exactly -- same file, one flag.
-function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override, da_known)
+function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override, da_known, ap_known)
 %MOTION_CONTROL_LAW_FORMC_DIST  Per-axis EKF eq17 controller whose gain slope
 %   is a parameter-free function of the gain state, with an ADDITIVE constant
 %   disturbance in the gain state equation (formC_state_dist.tex)
@@ -234,6 +234,21 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
 %   See also: motion_control_law_formC_state, motion_control_law_formB_ws,
 %             run_formC_dist
 
+    % ap_known (3x1, optional): TRUE-SLOPE ARM. Replaces the law's a_bar'
+    % outright, so the integrand carries no state error. This isolates the ONE
+    % remaining structural difference from the height writing, whose a_bar' is
+    % a deterministic function of the COMMANDED height and therefore identical
+    % across seeds, while ours reads the seed-dependent gain state. With it
+    % supplied, d a_bar'/d a_bar is 0 by construction, so the A_a*M term leaves
+    % F_e(4,4). Diagnostic only.
+    if nargin < 8 || isempty(ap_known)
+        ap_known = [];
+    else
+        ap_known = ap_known(:);
+        assert(numel(ap_known) == 3 && all(isfinite(ap_known)), ...
+               'motion_control_law_formC_dist:apKnown', 'ap_known must be a finite 3x1.');
+    end
+    has_ap_known = ~isempty(ap_known);
     if nargin < 7 || isempty(da_known)
         da_known = [];
     else
@@ -293,6 +308,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
     persistent enable_wall w_hat_n pz_wall
     persistent Q_theta_floor a_bar_floor a_bar_ceil da_clamp ws_margin gap_floor
     persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off t2_pure_prop lambda_f
+    persistent ap_src ap_ewma_a a_bar_slope_v
     persistent q33_dc_match q33_dc_fac
     persistent y2_echo_corr S_echo_T S_echo_n
     persistent ma2_aug alpha_ma2 n_state    % MA(2) noise-memory augmentation
@@ -433,6 +449,18 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
         % factor inflates P without naming anything, which is the opposite.
         % Its legitimate use here is as an INSTRUMENT: the lambda that restores
         % rho -> 1 measures the size of the unmodelled variance.
+        % Where the SLOPE is evaluated. The true-slope arm showed the whole
+        % gap to the height writing is the integrand carrying the state's own
+        % error; these break that feedback WITHOUT using the wall:
+        %   'post' (default)  a_bar_hat as it stands = today's behaviour
+        %   'pred'            the PRE-update value, so this step's measurement
+        %                     noise never reaches the slope
+        %   'ewma'            an EWMA of a_bar_hat, weight ap_ewma_a
+        ap_src    = lower(get_field_default(ctrl_const, 'ap_src', 'post'));
+        ap_ewma_a = get_field_default(ctrl_const, 'ap_ewma_a', 0.05);
+        assert(any(strcmp(ap_src, {'post','pred','ewma'})), ...
+               'motion_control_law_formC_dist:apSrc', 'ap_src must be post|pred|ewma.');
+        a_bar_slope_v = [];
         lambda_f = get_field_default(ctrl_const, 'lambda_f', 1);
         assert(isscalar(lambda_f) && lambda_f > 0 && lambda_f <= 1, ...
                'motion_control_law_formC_dist:lambdaF', ...
@@ -868,7 +896,22 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
         %     (tex S6(b)). J_da below is that constant, zeroed when locked so
         %     the lock is provably inert at the source.
         lm = lock_mask_ax(:, ax);
-        [a_prime_i, A_a_i] = local_gain_law_formC(a_bar_i, enable_wall);
+        if isempty(a_bar_slope_v); a_bar_slope_v = x_e_per_axis(4, :).'; end
+        switch ap_src
+            case 'post';  a_bar_sl = a_bar_i;
+            case 'pred';  a_bar_sl = min(max(a_bar_slope_v(ax), a_bar_floor), a_bar_ceil);
+            case 'ewma'
+                a_bar_slope_v(ax) = (1 - ap_ewma_a) * a_bar_slope_v(ax) + ap_ewma_a * a_bar_i;
+                a_bar_sl = min(max(a_bar_slope_v(ax), a_bar_floor), a_bar_ceil);
+        end
+        [a_prime_i, A_a_i] = local_gain_law_formC(a_bar_sl, enable_wall);
+        if ~strcmp(ap_src, 'post')
+            A_a_i = 0;      % the slope no longer reads the CURRENT state
+        end
+        if has_ap_known
+            a_prime_i = ap_known(ax);   % exogenous integrand
+            A_a_i     = 0;              % no state dependence left
+        end
         J_da_i = double(~lm(1));
         if has_da_known
             % Exogenous input, not a state: it enters predict at unit gain but
@@ -1088,6 +1131,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
         end
         P_upd = freeze_locked_P(P_upd, lock_state_idx_ax{ax});
 
+        if strcmp(ap_src, 'pred'); a_bar_slope_v(ax) = x_pred(4); end
         x_e_per_axis(:, ax) = x_upd;
         P_per_axis{ax} = P_upd;
     end

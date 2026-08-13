@@ -26,6 +26,7 @@ function plot_formC_dist_compare(oB, oD, opts)
     if nargin < 3; opts = struct(); end
     if ~isfield(opts, 'Ts');     opts.Ts = 6.25e-4; end   % logged dt (1600 Hz)
     if ~isfield(opts, 'suffix'); opts.suffix = ''; end     % scenario tag
+    if ~isfield(opts, 'names');  opts.names  = {'no \delta a', 'with \delta a'}; end
 
     here = fileparts(mfilename('fullpath'));
     root = fileparts(fileparts(here));
@@ -36,7 +37,7 @@ function plot_formC_dist_compare(oB, oD, opts)
         d = {local_pull(oB.runs{q}, AX, opts.Ts), local_pull(oD.runs{q}, AX, opts.Ts)};
         out = fullfile(fig_dir, sprintf('formC_dist_cmp%s_s%02d.png', ...
                                         opts.suffix, seeds(q)));
-        local_page(d, seeds(q), out);
+        local_page(d, seeds(q), out, opts.names);
         fprintf('seed %3d : no-da relerr RMS %6.3f %%  |  with-da %6.3f %%   da_end %+.3e\n', ...
                 seeds(q), sqrt(mean(d{1}.e.^2)), sqrt(mean(d{2}.e.^2)), d{2}.da(end));
     end
@@ -55,11 +56,10 @@ function s = local_pull(r, ax, Ts)
     s.t  = (0:numel(s.aH)-1).' * Ts;
 end
 
-function local_page(d, sq, out)
+function local_page(d, sq, out, NAME)
     COL_TRUE = [0.8 0 0]; COL_HAT = [0 0.2 0.9]; COL_MEAS = [0.45 0.72 0.95];
     BANDC = [0.45 0.55 0.95];
     FS = 18; LFS = 13; AXLW = 2.0; LW = 2.0;
-    NAME = {'no \delta a', 'with \delta a'};
 
     YL = cell(3, 1);
     YL{1} = local_lim([d{1}.aT; d{1}.aH; d{1}.aM; d{2}.aT; d{2}.aH; d{2}.aM], 0.05);
