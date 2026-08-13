@@ -244,6 +244,10 @@ function out = run_formC_state(opts, test_opts)
             error('run_formC_state:arm', 'opts.arm must be ''A'' or ''B''.');
     end
 
+    if ~opts.y2_on
+        ov.y2_off = true;                    % fingerprint arm
+    end
+
     ov.par_law = opts.par_law;
     par_pkg = [];
     if opts.par_law

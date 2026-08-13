@@ -34,8 +34,9 @@ function plot_formC_base_ablation(out)
     COL_ARM  = [0.00 0.20 0.90;                  % A0 nominal  = blue (estimate)
                 0.93 0.49 0.06;                  % A1 y2 OFF   = orange
                 0.10 0.60 0.30;                  % A2 fdet OFF = green
-                0.45 0.10 0.65];                 % A3 both OFF = purple
-    LS_ARM   = {'-', '-', '-', '--'};
+                0.45 0.10 0.65;                  % A3 both OFF = purple
+                0.00 0.65 0.75];                 % A4 S echo OFF = teal
+    LS_ARM   = {'-', '-', '-', '--', ':'};
     FS = 18; LFS = 13; AXLW = 2.0; LW = 2.0;
 
     for q = 1:numel(out.seeds)

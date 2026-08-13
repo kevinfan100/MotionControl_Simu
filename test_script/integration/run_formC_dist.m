@@ -224,6 +224,10 @@ function out = run_formC_dist(opts, test_opts)
             error('run_formC_dist:arm', 'opts.arm must be ''base'' or ''dist''.');
     end
 
+    if ~opts.y2_on
+        ov.y2_off = true;                    % fingerprint arm
+    end
+
     ov.par_law = opts.par_law;
     par_pkg = [];
     if opts.par_law
@@ -873,6 +877,8 @@ if nargin < 8; plant_cperp = []; end
     dws_y1_out = zeros(N, 3);
     dws_y2_out = zeros(N, 3);
     K_a_y2_out   = zeros(N, 3);
+    K_a_y1_out   = zeros(N, 3);
+    P41_out      = zeros(N, 3);
     R2_out       = zeros(N, 3);
     dx_r_out     = zeros(N, 3);   % IIR residual the gain readout is built from [um]
     dh_m_out     = zeros(N, 3);   % delayed position error fed to the controller [um]
@@ -984,6 +990,8 @@ if nargin < 8; plant_cperp = []; end
         dws_y1_out(k, :) = diag_k.dws_y1(:).';
         dws_y2_out(k, :) = diag_k.dws_y2(:).';
         K_a_y2_out(k, :)   = diag_k.K_kf_a_y2(:).';
+        K_a_y1_out(k, :)   = diag_k.K_kf_a_y1(:).';
+        P41_out(k, :)      = diag_k.P41(:).';
         R2_out(k, :)       = diag_k.R2(:).';
         dx_r_out(k, :)     = diag_k.dx_r(:).';
         dh_m_out(k, :)     = diag_k.delta_x_m(:).';
@@ -1036,6 +1044,8 @@ if nargin < 8; plant_cperp = []; end
     simOut.dws_y1_out = dws_y1_out;
     simOut.dws_y2_out = dws_y2_out;
     simOut.K_a_y2_out   = K_a_y2_out;
+    simOut.K_a_y1_out   = K_a_y1_out;
+    simOut.P41_out      = P41_out;
     simOut.R2_out       = R2_out;
     simOut.dx_r_out     = dx_r_out;
     simOut.dh_m_out     = dh_m_out;
