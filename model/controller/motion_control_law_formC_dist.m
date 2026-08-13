@@ -292,7 +292,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
     persistent t_warmup_kf h_bar_safe sigma2_n_nd
     persistent enable_wall w_hat_n pz_wall
     persistent Q_theta_floor a_bar_floor a_bar_ceil da_clamp ws_margin gap_floor
-    persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off t2_pure_prop
+    persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off t2_pure_prop lambda_f
     persistent q33_dc_match q33_dc_fac
     persistent y2_echo_corr S_echo_T S_echo_n
     persistent ma2_aug alpha_ma2 n_state    % MA(2) noise-memory augmentation
@@ -411,6 +411,32 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
         % and any error in the A_a*M term shows up as a drift in that ratio.
         % Use with y2_on = false and y1_gain_off = true.
         t2_pure_prop = logical(get_field_default(ctrl_const, 't2_pure_prop', false));
+        % Forgetting factor, Menq thesis eq (4.15):
+        %     P[k] = (1/lambda_f) * [I - K[k] H] P^f[k]
+        % i.e. a MULTIPLICATIVE inflation of the POSTERIOR, applied once after
+        % the measurement update. Our update is sequential 1-D (y1 then y2), so
+        % it is applied once after BOTH, which is the same object as his single
+        % joint update. Multiplicative means locked slots (P == 0 exactly) stay
+        % locked: 0/lambda = 0. Note it inflates the whole P, including the
+        % dw_bar block, not just the gain -- that is faithful to the method.
+        % lambda_f = 1 disables it exactly (default). NO derivation exists for
+        % its value; it is a knob, so results are reported as a sweep.
+        % STATUS: DIAGNOSTIC ONLY, NOT AN ADOPTED FIX. Falsified 2026-08-12 on
+        % 12/12 paired comparisons (2 trajectories x 2 arms x 3 lambda values):
+        % monotonically harmful, nothing improved. It does repair the honesty
+        % ratio late in a run (rho 1.29 -> 0.79 on canonical) but costs more
+        % than it buys, because rho(t) here is NOT uniformly biased -- it is
+        % over-pessimistic early (0.18) and over-confident late, and a
+        % uniform-in-time inflation cannot help a non-uniform deficit.
+        % The derivation deliberately does NOT carry it: its S8 discipline is
+        % to NAME what the model omits and price it into Q; a forgetting
+        % factor inflates P without naming anything, which is the opposite.
+        % Its legitimate use here is as an INSTRUMENT: the lambda that restores
+        % rho -> 1 measures the size of the unmodelled variance.
+        lambda_f = get_field_default(ctrl_const, 'lambda_f', 1);
+        assert(isscalar(lambda_f) && lambda_f > 0 && lambda_f <= 1, ...
+               'motion_control_law_formC_dist:lambdaF', ...
+               'lambda_f must be a scalar in (0, 1]; got %g.', lambda_f);
         Q_theta_floor = get_field_default(ctrl_const, 'Q_theta_floor', 0);
 
         % --- 0C. Parallel-axis law (x/y); constants are caller-supplied ---
@@ -1055,6 +1081,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
         x_upd(4) = min(max(x_upd(4), a_bar_floor), a_bar_ceil);
         if ~lm(1)
             x_upd(5) = min(max(x_upd(5), da_clamp(1)), da_clamp(2));
+        end
+        if lambda_f < 1
+            P_upd = P_upd / lambda_f;            % Menq (4.15)
+            P_upd = 0.5 * (P_upd + P_upd');
         end
         P_upd = freeze_locked_P(P_upd, lock_state_idx_ax{ax});
 

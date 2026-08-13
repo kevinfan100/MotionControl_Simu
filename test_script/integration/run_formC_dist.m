@@ -125,6 +125,7 @@ function out = run_formC_dist(opts, test_opts)
     if nargin < 1 || isempty(opts); opts = struct(); end
     if ~isfield(opts, 'arm');         opts.arm         = 'dist'; end
     if ~isfield(opts, 'da_known');    opts.da_known    = false; end  % KNOWN-DISTURBANCE ARM
+    if ~isfield(opts, 'lambda_f');    opts.lambda_f    = 1;     end  % Menq (4.15), 1 = off
     if ~isfield(opts, 'Pf_da_std');   opts.Pf_da_std   = [];    end   % [] = derive
     if ~isfield(opts, 'Pf_w0_std');   opts.Pf_w0_std   = 0.111; end
     if ~isfield(opts, 'par_law');     opts.par_law     = true;  end
@@ -213,6 +214,7 @@ function out = run_formC_dist(opts, test_opts)
     ov.Pf_w0_std  = opts.Pf_w0_std;   % wall prior, carried over from formB_ws
     ov.Pf_da_std  = Pf_da_used;
     ov.ws0_perp   = 1;                % plane
+    ov.lambda_f   = opts.lambda_f;    % Menq (4.15) forgetting factor
     ov.da_init    = 0;                % tex seed, both derivations
 
     switch lower(opts.arm)
