@@ -167,4 +167,75 @@ Arm (a) against $4.68\,\%$ is the clean controlled comparison: same law, same
 estimator, same measurement chain, differing only in the quadrature and in
 whether the integrand reads the state.
 
+
+\section*{Result, 2026-08-13}
+
+Eight house seeds, paired, canonical scenario. Overall relative gain-error RMS:
+
+\begin{equation*}
+\begin{array}{lccc}
+ & \text{desc peak} & \text{osc RMS} & \text{overall RMS} \\[0.2em]
+\ba \text{ coordinate, arm (a)}      & 15.25\pm6.30 & 4.24\pm1.74 & 4.59\pm2.56 \\
+u \text{ coordinate, arm (a)}        & 16.02\pm7.70 & 4.42\pm2.07 & 5.46\pm2.90 \\
+\ba \text{ coordinate, arm (b)}      & 17.52\pm6.41 & 7.39\pm7.32 & 7.33\pm4.61 \\
+u \text{ coordinate, arm (b)}        & 17.09\pm4.80 & 4.22\pm2.09 & 4.76\pm2.71 \\
+\ba' \text{ from the true height}    & 3.23\pm0.98  & 1.58\pm1.01 & 1.87\pm0.93 \\
+\text{production tier-2}             & 4.22\pm1.80  & 1.90\pm1.00 & 2.07\pm1.38
+\end{array}
+\end{equation*}
+
+Arm (a) paired difference $u-\ba$: $+0.874 \pm 1.605$, $t = +1.54$, $u$ better on
+$3/8$. THE FIRST PRE-REGISTERED BRANCH: it lands near $4.7$, not near $1.9$. The
+coordinate does not close the gap, and the point estimate is on the wrong side
+of zero. The $2.4\times$ gap to production tier-2 is INFORMATION, not
+conditioning.
+
+That is decisive because the ratchet removal is not in doubt --- it was measured
+at $+2.1\,\%$, one-signed, and this writing removes it identically. Removing it
+buys no accuracy. So the ratchet was already being corrected by the
+measurements, and what survives is what the true-slope arm removes and this
+coordinate cannot: the integrand reads the state, and no smooth
+reparametrisation changes what the data say about the state. The invariance
+argument of ``What it does not buy'' is thereby confirmed by experiment rather
+than only asserted.
+
+Read off the figures: the error trace has the SAME SHAPE in both coordinates ---
+same features at the same times --- shifted bodily. Seed 7 shifts the wrong way
+(final hold $-3 \to -5\,\%$), seed 101 the right way (final hold returns toward
+zero). A shift whose sign is set by the seed, not by the coordinate, is what
+$t = +1.54$ over $3/8$ means.
+
+Two findings that are not about the headline:
+
+\begin{enumerate}
+\item In arm (b) the coordinate HELPS: $7.33 \to 4.76$, $u$ better on $7/8$
+($t = -1.71$). And $\delta\hat{a}$ actually moves here --- $-0.145 \pm 0.058$,
+one-signed $8/8$ --- where in \texttt{formC\_state\_dist} it never left noise
+($-5.4\times10^{-8}$). The difference is structural: $\delta a$ enters the law
+in this family, so $F_e(4,5) = \hat\Sigma$ makes it observable through
+displacement. The disturbance state is only estimable in the writing where it
+means something. It still does not reach arm (a), so this rehabilitates the
+mechanism without rehabilitating the arm.
+\item The well-posedness table was right, and it was worth having. The envelope
+floor gives $15.32\,\%$ overall RMS against the local floor's $5.46\,\%$, and
+clamps $u$ on up to $23.5\,\%$ of steps against $4.0\,\%$. Predicted before the
+run from $P(u<1) = 8.0\,\%$ alone.
+\end{enumerate}
+
+The clamp is not the explanation for the headline: per-seed clamp count against
+the paired difference correlates at $-0.008$.
+
+\section*{Standing after this result}
+
+Three independent routes have now failed to close the same gap --- an additive
+disturbance state, a multiplicative one, a uniform-in-time covariance inflation,
+and a coordinate change that provably removes the discretisation error. The one
+thing that does close it is knowing where the wall is. Production tier-2 does
+not know either, and matches the true-slope arm, so the remaining question is
+not how to integrate the gain but whether anything in the state writing can
+substitute for evaluating $\ba'$ at a height. On the present evidence the answer
+is no, and the state writing's case has to rest on something other than accuracy
+on this scenario --- extrapolation beyond the traversed band being the obvious
+candidate, and still unmeasured.
+
 \end{document}
