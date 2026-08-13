@@ -18,6 +18,17 @@ function traj = calc_traj_params(config)
     traj.frequency = config.frequency;
     traj.n_cycles = config.n_cycles;
 
+    % Tangential sines along u_hat/v_hat (Meng Ch4 Scenario A/B x/y motion).
+    % Defaults 0 = legacy wall-normal-only motion, bit-identical.
+    fields_tan = {'amp_u', 'freq_u', 'amp_v', 'freq_v'};
+    for i = 1:numel(fields_tan)
+        if isfield(config, fields_tan{i}) && ~isempty(config.(fields_tan{i}))
+            traj.(fields_tan{i}) = config.(fields_tan{i});
+        else
+            traj.(fields_tan{i}) = 0;
+        end
+    end
+
     % Optional override for Phase 2 descent duration (osc trajectory).
     % Default: t_descend = 1/frequency (used if override is missing or empty).
     if isfield(config, 't_descend_override') && ~isempty(config.t_descend_override)

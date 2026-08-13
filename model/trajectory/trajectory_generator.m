@@ -44,6 +44,23 @@ function [p_d, del_pd] = trajectory_generator(t, params)
     pz = params.wall.pz;
     Ts = params.common.Ts;
 
+    % Tangential sines along the wall-plane axes u_hat/v_hat (Meng Ch4
+    % Scenario A/B: x/y sinusoids). Zero-phase sines evaluated at t+Ts (the
+    % one-step-ahead convention), so p_d(0) = p0 is unchanged. Defaults 0
+    % keep every existing run bit-identical.
+    p_tan = [0; 0; 0];
+    if isfield(params.traj, 'amp_u') || isfield(params.traj, 'amp_v')
+        tn = t + Ts;
+        if isfield(params.traj, 'amp_u') && params.traj.amp_u ~= 0
+            p_tan = p_tan + params.traj.amp_u ...
+                    * sin(2*pi*params.traj.freq_u*tn) * params.wall.u_hat;
+        end
+        if isfield(params.traj, 'amp_v') && params.traj.amp_v ~= 0
+            p_tan = p_tan + params.traj.amp_v ...
+                    * sin(2*pi*params.traj.freq_v*tn) * params.wall.v_hat;
+        end
+    end
+
     t_hold    = params.traj.t_hold;
     h_init    = params.traj.h_init;
     h_bottom  = params.traj.h_bottom;
@@ -64,7 +81,7 @@ function [p_d, del_pd] = trajectory_generator(t, params)
         end
         t_next = t + Ts;
         h = max(h_init - rate * t_next, h_bottom);
-        p_d = (pz + h) * w_hat;
+        p_d = (pz + h) * w_hat + p_tan;
 
         if isempty(p_d_prev)
             p_d_prev = p0;
@@ -77,7 +94,7 @@ function [p_d, del_pd] = trajectory_generator(t, params)
     % Positioning mode: hold at h_init for entire simulation
     if trajectory_type > 1.5
         h = h_init;
-        p_d = (pz + h) * w_hat;
+        p_d = (pz + h) * w_hat + p_tan;
 
         if isempty(p_d_prev)
             p_d_prev = p0;
@@ -120,7 +137,7 @@ function [p_d, del_pd] = trajectory_generator(t, params)
     end
 
     % Convert h to world coordinates
-    p_d = (pz + h) * w_hat;
+    p_d = (pz + h) * w_hat + p_tan;
 
     % Compute trajectory increment del_pd = p_d[k+1] - p_d[k]
     if isempty(p_d_prev)
