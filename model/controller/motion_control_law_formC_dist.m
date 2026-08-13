@@ -308,7 +308,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
     persistent enable_wall w_hat_n pz_wall
     persistent Q_theta_floor a_bar_floor a_bar_ceil da_clamp ws_margin gap_floor
     persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off t2_pure_prop lambda_f
-    persistent ap_src ap_ewma_a a_bar_slope_v
+    persistent ap_src ap_ewma_a a_bar_slope_v law_b_formC
     persistent q33_dc_match q33_dc_fac
     persistent y2_echo_corr S_echo_T S_echo_n
     persistent ma2_aug alpha_ma2 n_state    % MA(2) noise-memory augmentation
@@ -457,6 +457,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
         %                     noise never reaches the slope
         %   'ewma'            an EWMA of a_bar_hat, weight ap_ewma_a
         ap_src    = lower(get_field_default(ctrl_const, 'ap_src', 'post'));
+        law_b_formC = get_field_default(ctrl_const, 'law_b_formC', 1);
         ap_ewma_a = get_field_default(ctrl_const, 'ap_ewma_a', 0.05);
         assert(any(strcmp(ap_src, {'post','pred','ewma'})), ...
                'motion_control_law_formC_dist:apSrc', 'ap_src must be post|pred|ewma.');
@@ -601,7 +602,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
             % integrated law does NOT involve da: the disturbance is a per-step
             % increment of the state equation, not a reshaping of the curve.
             [a_bar_seed, dA_dw0] = ...
-                local_seed_level_formC(w_bar_seed, w0_law, enable_seed, gap_floor);
+                local_seed_level_formC(w_bar_seed, w0_law, enable_seed, gap_floor, law_b_formC);
             a_bar_seed = min(max(a_bar_seed, a_bar_floor), a_bar_ceil);
             a_bar_seed_v(ax) = a_bar_seed;
 
@@ -904,10 +905,13 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
                 a_bar_slope_v(ax) = (1 - ap_ewma_a) * a_bar_slope_v(ax) + ap_ewma_a * a_bar_i;
                 a_bar_sl = min(max(a_bar_slope_v(ax), a_bar_floor), a_bar_ceil);
         end
-        [a_prime_i, A_a_i] = local_gain_law_formC(a_bar_sl, enable_wall);
-        if ~strcmp(ap_src, 'post')
-            A_a_i = 0;      % the slope no longer reads the CURRENT state
-        end
+        % Jacobian is taken AT the evaluation point. Zeroing A_a instead was a
+        % defect (2026-08-13): A_a*M is what grows P44 along the descent, so
+        % removing it made the filter over-confident and confounded the test
+        % with a covariance-propagation change. The lag is one step (or a short
+        % EWMA) against a 1 Hz trajectory, so treating it as negligible for the
+        % Jacobian is the standard approximation and keeps P intact.
+        [a_prime_i, A_a_i] = local_gain_law_formC(a_bar_sl, enable_wall, law_b_formC);
         if has_ap_known
             a_prime_i = ap_known(ax);   % exogenous integrand
             A_a_i     = 0;              % no state dependence left
@@ -1232,38 +1236,48 @@ end
 
 %% =================== Local Helpers ===================
 
-function [a_bar_p, A_a] = local_gain_law_formC(a_bar, enable)
+function [a_bar_p, A_a] = local_gain_law_formC(a_bar, enable, law_b)
 %LOCAL_GAIN_LAW_FORMC  Slope read off the gain STATE (tex S1/S2). No height,
 %   no wall position, NO parameter of any kind -- this is the whole law.
 %       a_bar' = (1 - a_bar)^2
 %       A_a    = d a_bar'/d a_bar = -2 (1 - a_bar)               (< 0 always)
 %   The additive disturbance does NOT enter here (contrast the multiplicative
 %   sibling's (1+da) factor): it enters the state equation once per step.
+%   law_b (optional, default 1) divides the slope. The far-field limit of
+%   b_state is 9/8 EXACTLY (c_perp -> 1 + 9/(8 h_bar)), so law_b = 9/8 is the
+%   asymptotic anchor, not a fit. law_b = 1 is the unanchored form.
+    if nargin < 3 || isempty(law_b); law_b = 1; end
     if ~enable
         a_bar_p = 0; A_a = 0;
         return;
     end
     om      = 1 - a_bar;
-    a_bar_p = om^2;
-    A_a     = -2 * om;
+    a_bar_p = om^2 / law_b;
+    A_a     = -2 * om / law_b;
 end
 
 
-function [a_bar, dA_dw0] = local_seed_level_formC(w_bar, w0, enable, gap_floor)
+function [a_bar, dA_dw0] = local_seed_level_formC(w_bar, w0, enable, gap_floor, law_b)
 %LOCAL_SEED_LEVEL_FORMC  Integrated law at the seed height (tex, seed section).
-%       a_bar(w_bar) = 1 - 1/(w_bar - w0)
+%       a_bar(w_bar) = 1 - law_b/(w_bar - w0)
+%   This IS the integral of a_bar' = (1-a_bar)^2/law_b: with u = 1/(1-a_bar),
+%   du/dw_bar = 1/law_b. The slope and the seed MUST carry the same law_b or
+%   the arm is estimating one family while seeded on another (defect found
+%   2026-08-13). At law_b = 9/8 and w0 = 0 this is the EXACT far-field truth,
+%   since c_perp -> 1 + (9/8)/h_bar gives a_bar -> 1 - (9/8)/h_bar.
 %   w0 is the integration constant, so setting a_bar_hat[0] IS setting the
 %   wall position: this is the ONLY place a nominal wall enters the controller.
 %   da does not appear -- the integrated curve is parameter-free, which is
 %   exactly why P45[0] = 0 is structural rather than a modelling choice.
 %   Level Jacobian at fixed w_bar, exact:  d a_bar/d w0 = -a_bar'
+    if nargin < 5 || isempty(law_b); law_b = 1; end
     if ~enable || ~isfinite(w_bar)
         a_bar = 1; dA_dw0 = 0;
         return;
     end
     u      = max(w_bar - w0, gap_floor);
-    a_bar  = 1 - 1 / u;
-    dA_dw0 = -1 / u^2;                    % = -a_bar'
+    a_bar  = 1 - law_b / u;
+    dA_dw0 = -law_b / u^2;                % = -a_bar'
 end
 
 

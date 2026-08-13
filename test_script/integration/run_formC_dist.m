@@ -128,6 +128,12 @@ function out = run_formC_dist(opts, test_opts)
     if ~isfield(opts, 'lambda_f');    opts.lambda_f    = 1;     end  % Menq (4.15), 1 = off
     if ~isfield(opts, 'ap_known');    opts.ap_known    = false; end  % TRUE-SLOPE ARM
     if ~isfield(opts, 'ap_src');      opts.ap_src      = 'post'; end
+    % ARGUMENT-ERROR ARM. Finite => a_bar' comes from the LAW evaluated at the
+    % TRUE a_bar displaced by this constant, exogenously (no feedback from the
+    % state). Separates "the argument is known badly" from "the argument IS the
+    % state". Units: absolute a_bar. Implies the true-slope path.
+    if ~isfield(opts, 'ap_law_bias'); opts.ap_law_bias = NaN; end
+    if ~isfield(opts, 'law_b');       opts.law_b       = 1;   end
     if ~isfield(opts, 'ap_ewma_a');   opts.ap_ewma_a   = 0.05;  end
     if ~isfield(opts, 'Pf_da_std');   opts.Pf_da_std   = [];    end   % [] = derive
     if ~isfield(opts, 'Pf_w0_std');   opts.Pf_w0_std   = 0.111; end
@@ -219,6 +225,7 @@ function out = run_formC_dist(opts, test_opts)
     ov.ws0_perp   = 1;                % plane
     ov.lambda_f   = opts.lambda_f;    % Menq (4.15) forgetting factor
     ov.ap_src     = opts.ap_src;      % slope evaluation point
+    ov.law_b_formC = opts.law_b;      % 9/8 = far-field anchor, 1 = unanchored
     ov.ap_ewma_a  = opts.ap_ewma_a;
     ov.da_init    = 0;                % tex seed, both derivations
 
@@ -292,7 +299,7 @@ function out = run_formC_dist(opts, test_opts)
                                  % t_frz | da frac by descent end | hold drift
                                  % %/s | hold delta % | unopposed %/s
     for q = 1:n_seeds
-        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, false, opts.ws_inject, plant_cperp, opts.da_known, opts.ap_known);
+        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, false, opts.ws_inject, plant_cperp, opts.da_known, opts.ap_known, opts.ap_law_bias, opts.law_b);
         m = local_run_metrics(s, cfg, AX_Z, OSC_SETTLE_S, HOLD_SETTLE_S);
         runs{q}     = s;
         Mrows(q, :) = [m.desc_peak_pct, m.osc_rms_pct, m.hold_mean_pct, ...
@@ -774,9 +781,13 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
 end
 
 
-function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_ctrl_override, log_P_full, ws_inject, plant_cperp, da_known_on, ap_known_on)
+function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_ctrl_override, log_P_full, ws_inject, plant_cperp, da_known_on, ap_known_on, ap_law_bias, law_b)
     if nargin < 9  || isempty(da_known_on); da_known_on = false; end
     if nargin < 10 || isempty(ap_known_on); ap_known_on = false; end
+    if nargin < 11 || isempty(ap_law_bias); ap_law_bias = NaN; end
+    if nargin < 12 || isempty(law_b); law_b = 1; end
+    ap_law_on = isfinite(ap_law_bias);
+    if ap_law_on; ap_known_on = true; end
     hb_prev = NaN;  cperp_prev = NaN;
 if nargin < 7; ws_inject = 0; end
 if nargin < 8; plant_cperp = []; end
@@ -956,8 +967,16 @@ if nargin < 8; plant_cperp = []; end
         ap_known_k = [];
         if ap_known_on
             if isfinite(hb_prev) && k > 1
-                ap_known_k = local_a_prime_true(hb_prev, a_nom_drv, h_bar_floor_drv, ...
-                                                plant_cperp) / a_nom_drv;
+                if ap_law_on
+                    % LAW evaluated at the TRUE a_bar plus a constant offset.
+                    % Exogenous: the state never enters, so any harm here is
+                    % argument error and not feedback.
+                    ab_off = 1 / cperp_prev + ap_law_bias;
+                    ap_known_k = [0; 0; (1 - ab_off)^2 / law_b];
+                else
+                    ap_known_k = local_a_prime_true(hb_prev, a_nom_drv, h_bar_floor_drv, ...
+                                                    plant_cperp) / a_nom_drv;
+                end
             else
                 ap_known_k = zeros(3, 1);
             end

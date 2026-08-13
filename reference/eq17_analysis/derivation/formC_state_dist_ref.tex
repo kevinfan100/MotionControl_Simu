@@ -188,4 +188,56 @@ repair the late over-confidence ($\rho\ 1.29 \to 0.79$) but pushes the early
 over-pessimism further down: $\rho(t)$ here is not uniformly biased, and a
 uniform-in-time inflation cannot help a deficit whose sign changes with time.
 
+
+\section*{The anchor, and where the law's error actually lives (2026-08-13)}
+
+$b_{\mathrm{state}} \to 9/8$ is exact in the far field, so $b = 9/8$ is the
+asymptotic ANCHOR and $b = 1$ is the unanchored form. Both the slope and the
+seed must carry it: $\int (1-\ba)^{2}/b\,\mathrm{d}\bw$ integrates to
+$\ba = 1 - b/(\bw-\bw_0)$, and at $b = 9/8$, $\bw_0 = 0$ that IS the far-field
+truth. The seed carried $b = 1$ regardless of the slope until this was fixed
+(the fix moved the numbers by $< 0.06$ points; the arms are now consistent).
+
+Four arms, 8 paired seeds, overall relative gain-error RMS:
+
+\begin{equation*}
+\begin{array}{lcccc}
+ & \text{desc peak} & \text{osc RMS} & \text{overall} & \text{hold bias} \pm \text{across-seed sd} \\[0.2em]
+\text{law at TRUE }\ba,\ b=1     & 12.96\pm2.22 & 6.24\pm1.59 & 8.26\pm1.69 & -12.17 \pm 2.32 \\
+\text{law at TRUE }\ba,\ b=9/8   & 3.83\pm1.14  & 1.88\pm1.17 & 2.48\pm1.29 & -3.42 \pm 2.39 \\
+\text{law at EST. }\ba,\ b=1     & 15.36\pm6.24 & 4.26\pm1.76 & 4.94\pm2.71 & +0.73 \pm 6.88 \\
+\text{law at EST. }\ba,\ b=9/8   & 15.09\pm5.69 & 4.17\pm2.32 & 5.12\pm3.32 & +3.33 \pm 7.12
+\end{array}
+\end{equation*}
+
+Paired: exogenous $-5.785 \pm 0.587$, $t = -27.9$, better $8/8$. State-fed
+$+0.180 \pm 1.366$, $t = +0.37$, better $3/8$. The paired sd bounds the
+closed-loop effect at roughly $[-0.8, +1.1]$ points, so it is at least $5\times$
+smaller than the open-loop effect --- an interval, not an absence of evidence.
+
+THE DISSOCIATION IS THE RESULT. The law's error lives ENTIRELY in the bias:
+anchoring removes $72\,\%$ of it ($-12.17 \to -3.42$) and leaves the across-seed
+scatter untouched ($2.32 \to 2.39$). Feeding the law the state instead removes
+the bias already ($+0.73$) and pays $3\times$ the scatter ($6.88$). So there is
+nothing left for the anchor to fix in the closed loop, and $4.94\,\%$ is scatter
+rather than bias.
+
+Hence the paradox that opened this: feeding the law a PERFECT argument makes it
+WORSE ($8.26$ against $4.94$). The state-fed integrand does not track the law;
+it tracks the measurements, which are unbiased and noisy. The state writing's
+own feedback is what discards the law.
+
+Read off the figures (\texttt{formC\_dist\_cmp\_anchor\_exo\_*} against
+\texttt{\_anchor\_state\_*}): the exogenous arms' error is a SMOOTH DETERMINISTIC
+curve with two valleys locked to the oscillation, reaching $-13\,\%$ and settling
+there, and the anchor scales the whole curve down by $\approx 3\times$. The
+state-fed arms' error is ragged noise about zero with no valleys, and the two
+columns are visually indistinguishable.
+
+By this project's own no-trade-off rule, a bias-versus-scatter trade set by ONE
+choice --- where $\ba'$ is evaluated --- means the writing is wrong rather than
+that a compromise must be struck. Production evaluates at the COMMANDED height
+(\texttt{gap\_d = w\_bar\_d - law\_ws}), which is exact and free, and gets low
+bias AND low scatter at $2.07\,\%$.
+
 \end{document}
