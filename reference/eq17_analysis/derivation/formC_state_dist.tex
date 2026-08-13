@@ -38,23 +38,30 @@
 $\bar{f} = a_o f$; $0 < \ba < 1$; $e_{\theta} = \theta - \hat{\theta}$)
 
 \begin{equation*}
+\ba_{\mathrm{true}}(\bw) = 1 - \frac{9}{8\bw} + \frac{1}{2\bw^{3}}
+  - \frac{57}{100\,\bw^{4}} + \frac{1}{5\bw^{5}}
+  + \frac{7}{200\,\bw^{11}} - \frac{1}{25\,\bw^{12}}
+\end{equation*}
+
+\begin{equation*}
+1 - \ba_{\mathrm{true}} = \frac{9}{8\bw} + \mathcal{O}(\bw^{-3}),
+\qquad
+\ba'_{\mathrm{true}} = \frac{9}{8\bw^{2}} + \mathcal{O}(\bw^{-4})
+\end{equation*}
+
+\begin{equation*}
 \ba'(\ba) := \frac{\mathrm{d}\ba}{\mathrm{d}\bw} = \bigl(1-\ba\bigr)^{2},
 \qquad
 a_w = a_o\,\ba_w , \qquad a_o = \frac{\Delta t}{\gamma_N R}
 \end{equation*}
 
 \begin{equation*}
-\ba(\bw) = 1 - \frac{1}{\bw - \bw_0} ,
+b_{\mathrm{state}}(\bw) := \frac{\bigl(1-\ba_{\mathrm{true}}\bigr)^{2}}
+  {\ba'_{\mathrm{true}}}
+  = \frac{9}{8} + \frac{1}{2\bw^{2}} - \frac{57}{50\,\bw^{3}}
+  + \mathcal{O}(\bw^{-4}),
 \qquad
-\frac{\partial \ba}{\partial \bw_0} = -\,\ba'
-\end{equation*}
-
-\begin{equation*}
-b_{\mathrm{state}}(\bw) := \frac{(1-\ba_{\mathrm{true}})^{2}}
-{\ba'_{\mathrm{true}}},
-\qquad
-\frac{\ba'(\ba_{\mathrm{true}})}{\ba'_{\mathrm{true}}} - 1
-  = b_{\mathrm{state}}(\bw) - 1
+\frac{\ba'(\ba_{\mathrm{true}})}{\ba'_{\mathrm{true}}} = b_{\mathrm{state}}
 \end{equation*}
 
 \section{Jacobians}

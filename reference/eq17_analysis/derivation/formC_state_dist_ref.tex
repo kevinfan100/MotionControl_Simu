@@ -191,6 +191,13 @@ uniform-in-time inflation cannot help a deficit whose sign changes with time.
 
 \section*{The anchor, and where the law's error actually lives (2026-08-13)}
 
+DECIDED 2026-08-13 (user): the main file KEEPS the parameter-free law
+$\ba' = (1-\ba)^{2}$. The anchored variant below was measured, not adopted;
+\texttt{ctrl\_const.law\_b\_formC} exists and defaults to $1$. What the main
+file now carries instead is the ORIGIN of the number: $\ba_{\mathrm{true}}$ is
+written as its own polynomial, so $b_{\mathrm{state}} \to 9/8$ is visible in S1
+without a constant entering the law.
+
 $b_{\mathrm{state}} \to 9/8$ is exact in the far field, so $b = 9/8$ is the
 asymptotic ANCHOR and $b = 1$ is the unanchored form. Both the slope and the
 seed must carry it: $\int (1-\ba)^{2}/b\,\mathrm{d}\bw$ integrates to
@@ -209,6 +216,23 @@ Four arms, 8 paired seeds, overall relative gain-error RMS:
 \text{law at EST. }\ba,\ b=9/8   & 15.09\pm5.69 & 4.17\pm2.32 & 5.12\pm3.32 & +3.33 \pm 7.12
 \end{array}
 \end{equation*}
+
+The two error measures disagree in DIRECTION, which is why this is a choice and
+not a free win. On the declared envelope $\bw \in [1.900,\,23.222]$:
+
+\begin{equation*}
+\begin{array}{lcccc}
+ & \text{slope sup} & \text{slope RMS} & \mathrm{floor}_a\ (\sup) & \ba\text{-error RMS} \\[0.2em]
+b = 1   & 15.34\,\% & 13.10\,\% & 0.0306\ (\bw\,2.41) & 0.0145 \\
+b = 9/8 & 2.53\,\%  & 0.81\,\%  & 0.0373\ (\bw\,1.90) & 0.0057
+\end{array}
+\end{equation*}
+
+The anchor buys the far field and pays near the wall: it pins
+$\ba \to 1 - 9/(8\bw)$ exactly, so the residual concentrates at small $\bw$ and
+the supremum migrates to the envelope edge. $\mathrm{floor}_a$ is a SUPREMUM, so
+adopting the anchor would WIDEN $P_{44}[0]$ by $22\,\%$ even though the curve is
+$2.6\times$ better in RMS.
 
 Paired: exogenous $-5.785 \pm 0.587$, $t = -27.9$, better $8/8$. State-fed
 $+0.180 \pm 1.366$, $t = +0.37$, better $3/8$. The paired sd bounds the
