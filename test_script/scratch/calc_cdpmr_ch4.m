@@ -94,6 +94,72 @@ function out = calc_cdpmr_ch4(lc, lambda_f, ratio)
         out.C_dpmr_raw(3)/(2+1/(1-lc^2)));
     fprintf('LP under-read on (4.4): v2/raw = %.4f (frozen-arm measured ~0.91)\n', ...
         out.C_dpmr(3)/out.C_dpmr_raw(3));
+
+    % ---- v3: Jensen inflation of the loop variance under 1/a-hat noise ----
+    % V(gamma): EWMA-visible variance when the TRUE loop gain is gamma = a/a_hat
+    % (plant-side columns scale by gamma; the estimator's K, R22 stay at the
+    % believed operating point). J(sigma) = E_eps[ V(1/(1-eps)) ] / V(1) with
+    % eps ~ N(0, sigma^2), eps = (a - a_hat)/a read at runtime as sqrt(P66)/a_hat.
+    fprintf('\n--- v3 Jensen factor (z axis, a = a_N) ---\n');
+    a = a_N; sn2 = SN(3)^2;
+    Q = zeros(7); Q(3,3) = 4*kBT*a;
+    R22 = cc.R22_prefactor * cc.IF_eff * (a + cc.xi_per_axis(3))^2;
+    Rm = [sn2 0; 0 R22];
+    P = eye(7);
+    for it = 1:20000
+        Pf = Ferr*P*Ferr' + Q; Pf = 0.5*(Pf+Pf');
+        S = H2*Pf*H2' + Rm; K = (Pf*H2')/S;
+        P = (eye(7)-K*H2)*Pf/lambda_f; P = 0.5*(P+P');
+    end
+    alpha = cc.a_pd;  oma = 1-alpha;
+    Vg = @(g) local_Vg(g, mu, K, H2, Fs, alpha, oma);
+    V1 = Vg(1);
+    gam_grid = 0.6:0.05:1.8;  Vrel = zeros(size(gam_grid));
+    for i = 1:numel(gam_grid); Vrel(i) = Vg(gam_grid(i))/V1; end
+    fprintf('V(gamma)/V(1): '); fprintf('%.3g ', Vrel); fprintf('\n');
+    c2 = (Vg(1.05)+Vg(0.95)-2*V1)/V1/0.05^2/2;
+    fprintf('curvature c2 = %.2f;  c1 = %.2f\n', c2, (Vg(1.05)-Vg(0.95))/V1/0.1);
+    % J(sigma) by Gauss-Hermite (20-node) with instability clipping
+    [xg, wg] = local_gh(20);
+    sig_grid = 0:0.02:0.30;  J = ones(size(sig_grid));
+    for si = 2:numel(sig_grid)
+        s_ = sig_grid(si); acc = 0; wacc = 0;
+        for q = 1:20
+            eps_ = sqrt(2)*s_*xg(q);
+            g_ = 1/(1-eps_);
+            if g_ > 0 && g_ < 1.75
+                v_ = Vg(g_)/V1;
+                if v_ < 50; acc = acc + wg(q)*v_; wacc = wacc + wg(q); end
+            end
+        end
+        J(si) = acc/wacc;
+    end
+    out.jensen = struct('sigma_grid', sig_grid, 'J', J, 'c2', c2);
+    fprintf('J(sigma): '); fprintf('%.3f ', J); fprintf('\n');
+end
+
+
+function V = local_Vg(g, mu, K, H2, Fs, alpha, oma)
+%LOCAL_VG  EWMA-visible variance (thermal-unit) at true loop gain g = a/a_hat.
+    A = zeros(11);
+    A(1,1)=1; A(1,6)=-mu*g; A(1,7)=g; A(2,1)=1; A(3,2)=1;
+    A(4:10,4:10) = (eye(7)-K*H2)*Fs;
+    A(4:10,3) = K(:,1);
+    A(11,3) = alpha; A(11,11) = oma;
+    Cv = oma * [0 0 1 zeros(1,7) -1];
+    ST = lyap_ss(A, [-1; zeros(10,1)]);
+    V = Cv*ST*Cv';
+end
+
+
+function [x, w] = local_gh(n)
+%LOCAL_GH  Gauss-Hermite nodes/weights via the Golub-Welsch companion.
+    b = sqrt((1:n-1)/2);
+    T = diag(b,1) + diag(b,-1);
+    [ev, ed] = eig(T);
+    x = diag(ed);  w = (ev(1,:).^2)' * sqrt(pi);
+    [x, ix] = sort(x); w = w(ix);
+    w = w / sqrt(pi);         % normalize to a probability measure
 end
 
 function S = lyap_ss(A, B)

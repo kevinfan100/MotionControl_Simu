@@ -494,6 +494,22 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     den_axm_per_axis = C_dpmr_eff_per_axis * 4 * kBT;          % 3x1 [pN*um]
     a_xm = (sigma2_dxr_hat_new - C_np_eff_per_axis .* sigma2_n_s) ./ den_axm_per_axis;  % 3x1 [um/pN]
 
+    % v3 Jensen correction (Meng Ch4 ledger §12, diagnostic flag): the loop
+    % variance inflates as E[V(a/â)] > V(1) when â fluctuates; divide the
+    % readout by J(σ_ε), σ_ε = sqrt(P66)/â from the filter's own posterior.
+    % ctrl_const.jensen_sigma_grid / jensen_J from calc_cdpmr_ch4 (derived,
+    % no free numbers). Default absent = off.
+    if isfield(ctrl_const, 'jensen_J') && ~isempty(ctrl_const.jensen_J) ...
+            && ~isempty(P_per_axis)
+        for jax = 1:3
+            sig_eps = sqrt(max(P_per_axis{jax}(6, 6), 0)) ...
+                      / max(x_e_per_axis(6, jax), 1e-12);
+            Jf = interp1(ctrl_const.jensen_sigma_grid, ctrl_const.jensen_J, ...
+                         min(sig_eps, ctrl_const.jensen_sigma_grid(end)), 'linear');
+            a_xm(jax) = a_xm(jax) / Jf;
+        end
+    end
+
     % ------------------------------------------------------------------
     % [2] Warmup gate (Phase 8 §A: 2-step; f_d=0; EKF skipped; IIR active)
     % ------------------------------------------------------------------
