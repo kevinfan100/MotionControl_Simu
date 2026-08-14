@@ -17,12 +17,13 @@
 %   Gates: h_bar_safe = 1 override (2026-08-12 ruling); G1/G2/G3 duty printed.
 %   EXPIRES: Scenario-A adjudication vs journal Fig 4-6
 %            (spec: reference/eq17_analysis/meng_ch4_spec_ledger.md)
-function out = run_meng_ch4_sA(seeds, lambda_f, IF_override, plant_mode)
+function out = run_meng_ch4_sA(seeds, lambda_f, IF_override, plant_mode, ch4_fdet)
 
     if nargin < 1 || isempty(seeds); seeds = 7; end
     if nargin < 2 || isempty(lambda_f); lambda_f = 0.98; end
     if nargin < 3; IF_override = []; end   % 3x1 IF_eff_per_axis (diagnostic: 1e12 kills y2 on that axis)
     if nargin < 4 || isempty(plant_mode); plant_mode = 'map'; end  % 'map' = Meng (4.3) | 'rk4' = house continuous physics
+    if nargin < 5 || isempty(ch4_fdet); ch4_fdet = false; end       % ledger 19/20 exogenous-regressor fix
 
     here = fileparts(mfilename('fullpath'));
     root = fileparts(fileparts(here));
@@ -82,6 +83,7 @@ function out = run_meng_ch4_sA(seeds, lambda_f, IF_override, plant_mode)
     ccE.C_np_eff    = Cn;
     ccE.xi_per_axis = (Cn ./ Cd) .* SIGMA_N.^2 / (4*kBT);
     if ~isempty(IF_override); ccE.IF_eff_per_axis = IF_override(:); end
+    ccE.ch4_fdet = ch4_fdet;
 
     ccN = cc;
     ccN.a_hat_freeze = a_N * [1; 1; 1];

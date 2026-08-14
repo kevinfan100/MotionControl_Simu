@@ -970,8 +970,18 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         end
 
         % --- Forgetting factor, thesis (4.15): P <- P / lambda_f ---
+        % ctrl_const.lf_selective (ledger 21): inflate ONLY the gain block
+        % (slots 6-7, the Q=0 states that need forgetting to stay adaptive):
+        % P <- L P L with L = diag(1,..,1,1/sqrt(lf),1/sqrt(lf)). The
+        % position chain (Q33 driven) and x_D pair keep their honest P.
         if lambda_f_p(ax) < 1
-            P_post = P_post / lambda_f_p(ax);
+            if isfield(ctrl_const, 'lf_selective') && ctrl_const.lf_selective
+                s_lf = 1 / sqrt(lambda_f_p(ax));
+                L_lf = ones(7, 1); L_lf(6) = s_lf; L_lf(7) = s_lf;
+                P_post = (L_lf * L_lf') .* P_post;
+            else
+                P_post = P_post / lambda_f_p(ax);
+            end
             P_post = 0.5 * (P_post + P_post');
         end
 
