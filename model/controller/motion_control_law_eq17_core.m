@@ -837,6 +837,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     % Diag storage for the EKF loop (used only if nargout >= 3, but cheap)
     K_a_y2_per_axis  = zeros(3, 1);    % K_kf(6, 2) per axis (0 if y_2 gated)
     K_dx_y1_per_axis = zeros(3, 1);    % K_kf(3, 1) per axis
+    innov_y1_per_axis = zeros(3, 1);   % y_1 innovation
+    K_a_y1_per_axis  = zeros(3, 1);    % K_kf(6, 1) per axis
     innov_y2_per_axis = zeros(3, 1);   % y_2 innovation (0 if y_2 gated)
     gate_y2_off_per_axis = false(3, 1);
     G_per_axis = false(3, 3);          % rows: G1/G2/G3, cols: axes
@@ -968,6 +970,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
 
         % Save K_kf entries needed by diag (always — cheap; 7x1 or 7x2 col)
         K_dx_y1_per_axis(ax) = K_kf(3, 1);    % gain on δx_3 from y_1 (col 1)
+        innov_y1_per_axis(ax) = innov(1);     % y_1 innovation (ledger §17 diagnostic)
+        K_a_y1_per_axis(ax)  = K_kf(6, 1);    % gain-slot update from y_1
         if gate_y2_off
             K_a_y2_per_axis(ax)   = 0;        % y_2 channel skipped
             innov_y2_per_axis(ax) = 0;
@@ -1032,6 +1036,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         diag.innovation_y2        = innov_y2_per_axis;             % 3x1
         diag.K_kf_a_y2            = K_a_y2_per_axis;               % 3x1
         diag.K_kf_dx_y1           = K_dx_y1_per_axis;              % 3x1
+        diag.innovation_y1        = innov_y1_per_axis;             % 3x1
+        diag.K_kf_a_y1            = K_a_y1_per_axis;               % 3x1
         diag.P_a                  = P_a_per_axis;                  % 3x1
         diag.P_dx                 = P_dx_per_axis;                 % 3x1
         diag.x_D_hat              = x_e_per_axis(4, :).';          % 3x1
