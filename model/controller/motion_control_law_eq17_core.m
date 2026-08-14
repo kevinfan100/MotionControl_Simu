@@ -758,8 +758,17 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         % X2a: IF_eff is per-axis (calibrated from empirical ρ_δx if present)
         % to absorb the ~9% deviation between Phase 1 closed form and
         % production-conditions ρ_δx (Phase 9 Stage I diagnosis).
+        % Diagnostic (Meng Ch4 ledger §11): ctrl_const.R22_a_fixed (3x1)
+        % evaluates R(2,2) at a FIXED gain instead of a_hat, separating the
+        % R22(a_hat) rectification route from the 1/a_hat loop route. Not a
+        % production knob.
+        if isfield(ctrl_const, 'R22_a_fixed') && ~isempty(ctrl_const.R22_a_fixed)
+            a_for_R22 = ctrl_const.R22_a_fixed(ax);
+        else
+            a_for_R22 = a_hat_i;
+        end
         R2_intrinsic_i = R22_prefactor * IF_eff_per_axis(ax) ...
-                         * (a_hat_i + xi_per_axis(ax))^2;
+                         * (a_for_R22 + xi_per_axis(ax))^2;
         % R(2,2) eff = intrinsic + delay_R2_factor * Q77  (Phase 6 §4.3)
         R2_eff_i = R2_intrinsic_i + delay_R2_factor * Q77_i;
 
