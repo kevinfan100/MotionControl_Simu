@@ -17,13 +17,33 @@ function out = calc_cdpmr_ch4(lc, lambda_f, ratio)
     pc = physical_constants(); kBT = pc.k_B*pc.T; a_N = pc.Ts/pc.gamma_N;
 
     % ---- instrument validation: (3.6) loop vs closed forms ----
-    fprintf('--- instrument validation: law (3.6) loop ---\n');
+    fprintf('--- instrument validation: law (3.6) loop (raw variance) ---\n');
     for lcv = [0.4 0.7 1e-9]
         mu = 1-lcv;
         A = [1 0 -mu  mu  mu; 1 0 0 0 0; 0 1 0 0 0; 0 0 mu -mu -mu; 0 0 0 1 0];
         DT = lyap_ss(A, [-1;0;0;0;0]);  Dn = lyap_ss(A, [-mu;0;0;mu;0]);
         fprintf('lc=%.1g: C_dpmr=%.4f (closed %.4f)  C_n=%.4f (closed %.4f)\n', ...
             lcv, DT(3,3), 2+1/(1-lcv^2), Dn(3,3)+1, 2/(1+lcv));
+    end
+
+    % ---- instrument validation 2: (3.6)+LP readout vs the PRODUCTION
+    %      closed forms (calc_ctrl_params.m:150-181, a_pd low-pass composed) ----
+    fprintf('--- instrument validation: (3.6)+LP readout vs production eff forms ---\n');
+    alpha = 0.05;   % a_pd
+    for lcv = [0.4 0.7]
+        mu = 1-lcv;  oma = 1-alpha;  D0 = 1 - oma*lcv;
+        Cd_closed = oma^2 * (2*oma*(1-lcv)/D0 + 2/((2-alpha)*(1+lcv)*D0));
+        Cn_closed = oma^2 * (2/(2-alpha) + 2*oma^2*alpha*(1-lcv)/((2-alpha)*D0) ...
+                             + 2*(1-lcv)^2/((2-alpha)*(1+lcv)*D0));
+        % 6-state: [dx(j+1) dx(j) dx(j-1) af(j) af(j-1) m]
+        A6 = [1 0 -mu  mu  mu 0; 1 0 0 0 0 0; 0 1 0 0 0 0; ...
+              0 0 mu -mu -mu 0; 0 0 0 1 0 0; 0 0 alpha 0 0 oma];
+        Bw = [-1;0;0;0;0;0];  Bn = [-mu;0;0;mu;0;alpha];
+        Cv = oma * [0 0 1 0 0 -1];    % dx_r = (1-alpha)(s3 + n - m)
+        ST = lyap_ss(A6, Bw);  Sn = lyap_ss(A6, Bn);
+        Cd_l = Cv*ST*Cv';  Cn_l = Cv*Sn*Cv' + oma^2;
+        fprintf('lc=%.1f: C_dpmr_eff=%.4f (closed %.4f)  C_n_eff=%.4f (closed %.4f)\n', ...
+            lcv, Cd_l, Cd_closed, Cn_l, Cn_closed);
     end
 
     % ---- (4.4) loop constants, per axis ----
@@ -50,21 +70,30 @@ function out = calc_cdpmr_ch4(lc, lambda_f, ratio)
             S = H2*Pf*H2' + Rm; K = (Pf*H2')/S;
             P = (eye(7)-K*H2)*Pf/lambda_f; P = 0.5*(P+P');
         end
-        A = zeros(10);
+        A = zeros(11);
         A(1,1)=1; A(1,6)=-mu; A(1,7)=1; A(2,1)=1; A(3,2)=1;
         A(4:10,4:10) = (eye(7)-K*H2)*Fs;
         A(4:10,3) = K(:,1);
-        ST = lyap_ss(A, [-1; zeros(9,1)]);
-        Sn = lyap_ss(A, [zeros(3,1); K(:,1)]);
-        Sy = lyap_ss(A, [zeros(3,1); K(:,2)]);
-        out.C_dpmr(i) = ST(3,3);
-        out.C_n(i)    = Sn(3,3) + 1;
-        out.y2leak(i) = Sy(3,3)*R22/sn2;
-        fprintf('case %d (ax %d, a=%.5f, sn=%.1f nm): C_dpmr44=%.4f  C_n44=%.4f  y2leak=%.3g\n', ...
-            i, ax, a, 1e3*SN(ax), out.C_dpmr(i), out.C_n(i), out.y2leak(i));
+        alpha = cc.a_pd;  oma = 1-alpha;
+        A(11,3) = alpha;  A(11,11) = oma;         % LP mean m of dx_m
+        Bw = [-1; zeros(10,1)];
+        Bn = [zeros(3,1); K(:,1); alpha];
+        By = [zeros(3,1); K(:,2); 0];
+        Cv = oma * [0 0 1 zeros(1,7) -1];          % dx_r = (1-a)(s3 + n - m)
+        ST = lyap_ss(A, Bw);  Sn = lyap_ss(A, Bn);  Sy = lyap_ss(A, By);
+        out.C_dpmr_raw(i) = ST(3,3);
+        out.C_n_raw(i)    = Sn(3,3) + 1;
+        out.C_dpmr(i) = Cv*ST*Cv';                 % v2: what the EWMA sees
+        out.C_n(i)    = Cv*Sn*Cv' + oma^2;
+        out.y2leak(i) = (Cv*Sy*Cv')*R22/sn2;
+        fprintf('case %d (ax %d, a=%.5f, sn=%.1f nm): raw C_dpmr44=%.4f C_n44=%.4f | v2(LP) C_dpmr=%.4f C_n=%.4f | y2leak=%.3g\n', ...
+            i, ax, a, 1e3*SN(ax), out.C_dpmr_raw(i), out.C_n_raw(i), ...
+            out.C_dpmr(i), out.C_n(i), out.y2leak(i));
     end
-    fprintf('cross-check: C_dpmr44/C_dpmr36 = %.3f (Scenario-0 measured sigma^2 inflation ~1.91)\n', ...
-        out.C_dpmr(3)/(2+1/(1-lc^2)));
+    fprintf('cross-check raw: C_dpmr44/C_dpmr36 = %.3f (Scenario-0 measured ~1.91)\n', ...
+        out.C_dpmr_raw(3)/(2+1/(1-lc^2)));
+    fprintf('LP under-read on (4.4): v2/raw = %.4f (frozen-arm measured ~0.91)\n', ...
+        out.C_dpmr(3)/out.C_dpmr_raw(3));
 end
 
 function S = lyap_ss(A, B)
