@@ -115,6 +115,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     persistent sigma2_n_s          % 3x1 [um^2]
     persistent h_dot_max h_ddot_max
     persistent control_law_ch4 lambda_f_p F_state_ch4   % Meng Ch4 replication arm
+    persistent ch4_fdet f_det_km1                       % ch4 exogenous-regressor fix (ledger 19)
     persistent enable_wall          % logical, fall back to flat (h_bar=inf) if false
     persistent w_hat_n pz_wall      % wall geometry
     persistent R_OFF                % large-R fallback for guarded y_2
@@ -206,6 +207,14 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         else
             lambda_f_p = ones(3, 1);
         end
+        % ch4_fdet (ledger 19): use the FEEDFORWARD deterministic force
+        % f_det = (x_d[k+1]-x_d[k])/a_hat in F_err(3,6) instead of the
+        % realized f_d, which contains the estimate-feedback terms and is
+        % noise-correlated with the innovation (the Ljung/endogeneity bias;
+        % same disease and same fdet cure as eq17-4state 06-18 and formB
+        % 08-01). Default off.
+        ch4_fdet = isfield(ctrl_const, 'ch4_fdet') && ctrl_const.ch4_fdet;
+        f_det_km1 = zeros(3, 1);
         % Thesis (4.10) state-transition (constant; shared by all axes)
         F_state_ch4 = [0 1 0        0 0 0 0; ...
                        0 0 1        0 0 0 0; ...
@@ -620,6 +629,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
                   - pd ...
                   + one_minus_lc * dx3_hat ...
                   - xD_hat_for_ctrl );
+        f_det_cur = inv_a_hat .* (pd_kp1 - pd);   % feedforward-only (exogenous)
     else
         f_d = inv_a_hat .* ( ...
                     pd_kp1 ...
@@ -884,7 +894,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
             % pairing; the thesis' own -f_d[k] indexing is its (4.12)
             % one-step-ahead label for the same object).
             F_err_ch4 = F_state_ch4;
-            F_err_ch4(3, :) = [0 0 1 -1 0 -f_d_km1(ax) 0];
+            if ch4_fdet
+                F_err_ch4(3, :) = [0 0 1 -1 0 -f_det_km1(ax) 0];
+            else
+                F_err_ch4(3, :) = [0 0 1 -1 0 -f_d_km1(ax) 0];
+            end
             x_pred = F_state_ch4 * x_curr;
             P_pred = F_err_ch4 * P_curr * F_err_ch4' + Q_per_axis{ax};
         else
@@ -988,6 +1002,9 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     % [6] Bookkeeping: shift delay buffers, IIR states, k_step
     %     (Σf_d shift: f_d_km2 <- f_d_km1; f_d_km1 <- f_d_current)
     % ------------------------------------------------------------------
+    if control_law_ch4
+        f_det_km1 = f_det_cur;
+    end
     pd_km2 = pd_km1;
     pd_km1 = pd;
 
