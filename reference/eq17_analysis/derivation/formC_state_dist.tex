@@ -56,12 +56,9 @@ a_w = a_o\,\ba_w , \qquad a_o = \frac{\Delta t}{\gamma_N R}
 \end{equation*}
 
 \begin{equation*}
-b_{\mathrm{state}}(\bw) := \frac{\bigl(1-\ba_{\mathrm{true}}\bigr)^{2}}
-  {\ba'_{\mathrm{true}}}
+\frac{\ba'(\ba_{\mathrm{true}})}{\ba'_{\mathrm{true}}}
   = \frac{9}{8} + \frac{1}{2\bw^{2}} - \frac{57}{50\,\bw^{3}}
-  + \mathcal{O}(\bw^{-4}),
-\qquad
-\frac{\ba'(\ba_{\mathrm{true}})}{\ba'_{\mathrm{true}}} = b_{\mathrm{state}}
+  + \mathcal{O}(\bw^{-4})
 \end{equation*}
 
 \section{Jacobians}
@@ -115,16 +112,12 @@ F_{dw}[k] &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
   + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] + \delta a[k]
 \end{equation*}
 
-\begin{align*}
+\begin{equation*}
 \delta a[k]
-  &= \Bigl[\ba'_{\mathrm{true}}[k] - \bigl(1-\ba_w[k]\bigr)^{2}\Bigr]
-     \Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k]
-       + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] \\
-  &= \bigl(1-\ba_w[k]\bigr)^{2}
-     \left[\frac{1}{b_{\mathrm{state}}(\bw[k])} - 1\right]
+  = \Bigl[\ba'_{\mathrm{true}}[k] - \bigl(1-\ba_w[k]\bigr)^{2}\Bigr]
      \Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k]
        + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr]
-\end{align*}
+\end{equation*}
 
 \begin{equation*}
 \delta a[k+1] = \delta a[k]
