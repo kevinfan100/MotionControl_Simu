@@ -313,3 +313,16 @@ tracking-vs-bias 是 λ_f 的真 trade，論文從未討論。
   λ_f trade、穩定牆、與三層讀數誤差」**
 
 **Scenario A 至此收官。** 未拆項：+5~6% 結構地板（幾個已知 few-% 項的和）；Scenario B 未跑。
+
+## 15. per-axis λ_f 定案 + 最終圖組（2026-08-14）
+
+- **λ_f 細掃（0.999/0.9995/0.9998/1.0）**：x/y 帶寬 0.9995 起達論文視覺等級（2.7%→1.3%），
+  z 近牆追蹤在 0.9995 起崩（+17.8%→+34.5%）——**z 的記憶必須短於末段跳水時間（~1.5 s ⇒ λ_f ≤ 0.999）**
+- **⇒ per-axis λ_f 定案 [x y z] = [0.9995 0.9995 0.999]**（三軸本就是獨立濾波器，Ch4 框架內；
+  規則 = N_eff 匹配該軸增益變化時間尺度，非自由旋鈕）。`lambda_f` 改 3×1（scalar 廣播，迴歸 6/6 PASS）
+- **兩 seed 定案數字**（far/near bias）：x +6.7/+12.2%、y +4.9/+9.4%、z +5.4/+19.0%；
+  std δ far/near：x 38/32、z 30/21 nm
+- 圖組 `sAfinal_A_gain / B_error / C_relerr`（house style，plot_meng_ch4_sAfinal.m）
+- **x/y vs z 的殘餘偏差差異歸因（[假說]級，機制已定位未量化）**：hold 校準缺兩個運動項
+  （e_a×f_d 乘性、1 Hz 殘差經 LP 洩漏）；x/y f_peak 2.6 pN 有感、z ramp 力 0.05 pN 免疫
+  ⇒ 下一件推導 = motion-corrected calibration

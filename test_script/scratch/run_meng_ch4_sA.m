@@ -63,13 +63,22 @@ function out = run_meng_ch4_sA(seeds, lambda_f)
     cc.force_Q77_zero  = true;             % paper (21): Q33-only
     cc.h_bar_safe      = 1;                % G3 off (2026-08-12 ruling)
 
-    cd44 = calc_cdpmr_ch4(LC, lambda_f, 0.35);
+    % per-axis lambda_f (scalar broadcasts); calibration computed per unique value
+    lfv = lambda_f(:);  if isscalar(lfv); lfv = lfv * ones(3, 1); end
+    Cd = zeros(3, 1);  Cn = zeros(3, 1);
+    for u = unique(lfv)'
+        cdu = calc_cdpmr_ch4(LC, u, 0.35);
+        m = (lfv == u);
+        Cd(m) = cdu.C_dpmr(m);
+        Cn(m) = cdu.C_n(m);
+    end
     ccE = cc;
-    ccE.control_law = 'ch4';  ccE.lambda_f = lambda_f;
-    if lambda_f >= 1;  ccE.Pf_init_lambda_f = 0.98;  end
-    ccE.C_dpmr_eff  = cd44.C_dpmr(1:3);
-    ccE.C_np_eff    = cd44.C_n(1:3);
-    ccE.xi_per_axis = (cd44.C_n(1:3) ./ cd44.C_dpmr(1:3)) .* SIGMA_N.^2 / (4*kBT);
+    ccE.control_law = 'ch4';  ccE.lambda_f = lfv;
+    pfl = lfv;  pfl(pfl >= 1) = 0.98;
+    ccE.Pf_init_lambda_f = pfl;
+    ccE.C_dpmr_eff  = Cd;
+    ccE.C_np_eff    = Cn;
+    ccE.xi_per_axis = (Cn ./ Cd) .* SIGMA_N.^2 / (4*kBT);
 
     ccN = cc;
     ccN.a_hat_freeze = a_N * [1; 1; 1];

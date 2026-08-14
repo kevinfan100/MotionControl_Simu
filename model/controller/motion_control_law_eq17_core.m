@@ -196,15 +196,15 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         control_law_ch4 = isfield(ctrl_const, 'control_law') && ...
                           strcmpi(ctrl_const.control_law, 'ch4');
         if isfield(ctrl_const, 'lambda_f') && ~isempty(ctrl_const.lambda_f)
-            lambda_f_p = ctrl_const.lambda_f;
-            if ~isscalar(lambda_f_p) || ~isfinite(lambda_f_p) ...
-                    || lambda_f_p <= 0 || lambda_f_p > 1
+            lambda_f_p = ctrl_const.lambda_f(:);
+            if isscalar(lambda_f_p); lambda_f_p = lambda_f_p * ones(3, 1); end
+            if numel(lambda_f_p) ~= 3 || any(~isfinite(lambda_f_p)) ...
+                    || any(lambda_f_p <= 0) || any(lambda_f_p > 1)
                 error('motion_control_law_eq17_core:invalidLambdaF', ...
-                      'ctrl_const.lambda_f must be a scalar in (0,1]; got %g.', ...
-                      lambda_f_p);
+                      'ctrl_const.lambda_f must be scalar or 3x1 in (0,1].');
             end
         else
-            lambda_f_p = 1;
+            lambda_f_p = ones(3, 1);
         end
         % Thesis (4.10) state-transition (constant; shared by all axes)
         F_state_ch4 = [0 1 0        0 0 0 0; ...
@@ -335,7 +335,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         end
         if isfield(ctrl_const, 'Pf_init_lambda_f') ...
                 && ~isempty(ctrl_const.Pf_init_lambda_f)
-            lambda_f_init = ctrl_const.Pf_init_lambda_f;
+            lambda_f_init = ctrl_const.Pf_init_lambda_f(:);
+            if isscalar(lambda_f_init); lambda_f_init = lambda_f_init * ones(3, 1); end
         else
             lambda_f_init = lambda_f_p;
         end
@@ -354,7 +355,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
             R_ss_ax = [sigma2_n_s(ax), 0; 0, R22_ss_ax];
             P_per_axis{ax} = solve_dare_kf_local(F_e_ss, H_ss, ...
                                                   Q_ss_ax, R_ss_ax, ...
-                                                  lambda_f_init);
+                                                  lambda_f_init(ax));
         end
 
         % --- 0H. IIR states (mode-dependent) ---
@@ -953,8 +954,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         end
 
         % --- Forgetting factor, thesis (4.15): P <- P / lambda_f ---
-        if lambda_f_p < 1
-            P_post = P_post / lambda_f_p;
+        if lambda_f_p(ax) < 1
+            P_post = P_post / lambda_f_p(ax);
             P_post = 0.5 * (P_post + P_post');
         end
 
