@@ -17,9 +17,10 @@
 %   Gates: h_bar_safe = 1 override (2026-08-12 ruling); G1/G2/G3 duty printed.
 %   EXPIRES: Scenario-A adjudication vs journal Fig 4-6
 %            (spec: reference/eq17_analysis/meng_ch4_spec_ledger.md)
-function out = run_meng_ch4_sA(seeds)
+function out = run_meng_ch4_sA(seeds, lambda_f)
 
     if nargin < 1 || isempty(seeds); seeds = 7; end
+    if nargin < 2 || isempty(lambda_f); lambda_f = 0.98; end
 
     here = fileparts(mfilename('fullpath'));
     root = fileparts(fileparts(here));
@@ -62,9 +63,10 @@ function out = run_meng_ch4_sA(seeds)
     cc.force_Q77_zero  = true;             % paper (21): Q33-only
     cc.h_bar_safe      = 1;                % G3 off (2026-08-12 ruling)
 
-    cd44 = calc_cdpmr_ch4(LC, 0.98, 0.35);
+    cd44 = calc_cdpmr_ch4(LC, lambda_f, 0.35);
     ccE = cc;
-    ccE.control_law = 'ch4';  ccE.lambda_f = 0.98;
+    ccE.control_law = 'ch4';  ccE.lambda_f = lambda_f;
+    if lambda_f >= 1;  ccE.Pf_init_lambda_f = 0.98;  end
     ccE.C_dpmr_eff  = cd44.C_dpmr(1:3);
     ccE.C_np_eff    = cd44.C_n(1:3);
     ccE.xi_per_axis = (cd44.C_n(1:3) ./ cd44.C_dpmr(1:3)) .* SIGMA_N.^2 / (4*kBT);
@@ -77,7 +79,7 @@ function out = run_meng_ch4_sA(seeds)
                   'nseed', {1, numel(seeds)});
 
     out = struct('t', t(1:N), 'pd', pd_arr(1:N, :), 'seeds', seeds, ...
-                 'a_N', a_N, 'lc', LC);
+                 'a_N', a_N, 'lc', LC, 'lambda_f', lambda_f);
     for ia = 1:numel(arms)
         nm = arms(ia).name;
         runs = cell(arms(ia).nseed, 1);
