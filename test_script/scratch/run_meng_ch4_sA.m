@@ -17,11 +17,12 @@
 %   Gates: h_bar_safe = 1 override (2026-08-12 ruling); G1/G2/G3 duty printed.
 %   EXPIRES: Scenario-A adjudication vs journal Fig 4-6
 %            (spec: reference/eq17_analysis/meng_ch4_spec_ledger.md)
-function out = run_meng_ch4_sA(seeds, lambda_f, IF_override)
+function out = run_meng_ch4_sA(seeds, lambda_f, IF_override, plant_mode)
 
     if nargin < 1 || isempty(seeds); seeds = 7; end
     if nargin < 2 || isempty(lambda_f); lambda_f = 0.98; end
     if nargin < 3; IF_override = []; end   % 3x1 IF_eff_per_axis (diagnostic: 1e12 kills y2 on that axis)
+    if nargin < 4 || isempty(plant_mode); plant_mode = 'map'; end  % 'map' = Meng (4.3) | 'rk4' = house continuous physics
 
     here = fileparts(mfilename('fullpath'));
     root = fileparts(fileparts(here));
@@ -96,7 +97,7 @@ function out = run_meng_ch4_sA(seeds, lambda_f, IF_override)
         runs = cell(arms(ia).nseed, 1);
         for is = 1:arms(ia).nseed
             runs{is} = local_run_once(pd_arr, params, arms(ia).cc, ...
-                                      seeds(is), pc, N);
+                                      seeds(is), pc, N, plant_mode);
         end
         out.(nm) = runs;
         r = runs{1};  ke = r.kend;
@@ -117,7 +118,7 @@ function out = run_meng_ch4_sA(seeds, lambda_f, IF_override)
 end
 
 
-function r = local_run_once(pd_arr, params, cc, seed, pc, N)
+function r = local_run_once(pd_arr, params, cc, seed, pc, N, plant_mode)
 %LOCAL_RUN_ONCE  Wall-effect plant (per-axis Meng-(4.3) map) + d = 2 delay.
     rng(seed);
     clear motion_control_law_eq17_core
@@ -144,7 +145,12 @@ function r = local_run_once(pd_arr, params, cc, seed, pc, N)
         gam = gN * [c_par; c_par; c_per];
         a_ax = Ts ./ gam;
         f_T = sqrt(4*kBT*gam/Ts) .* randn(3, 1);
-        p = p + a_ax .* (f_d + f_T);
+        if strcmpi(plant_mode, 'rk4')
+            % house continuous physics: RK4 on the full mobility (ZOH force)
+            p = step_dynamics(p, f_d + f_T, params, Ts);
+        else
+            p = p + a_ax .* (f_d + f_T);
+        end
 
         p_true(k, :) = p';
         a_hat(k, :)  = dg.a_hat';
