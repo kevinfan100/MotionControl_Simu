@@ -17,10 +17,11 @@
 %   Gates: h_bar_safe = 1 override (2026-08-12 ruling); G1/G2/G3 duty printed.
 %   EXPIRES: Scenario-A adjudication vs journal Fig 4-6
 %            (spec: reference/eq17_analysis/meng_ch4_spec_ledger.md)
-function out = run_meng_ch4_sA(seeds, lambda_f)
+function out = run_meng_ch4_sA(seeds, lambda_f, IF_override)
 
     if nargin < 1 || isempty(seeds); seeds = 7; end
     if nargin < 2 || isempty(lambda_f); lambda_f = 0.98; end
+    if nargin < 3; IF_override = []; end   % 3x1 IF_eff_per_axis (diagnostic: 1e12 kills y2 on that axis)
 
     here = fileparts(mfilename('fullpath'));
     root = fileparts(fileparts(here));
@@ -79,6 +80,7 @@ function out = run_meng_ch4_sA(seeds, lambda_f)
     ccE.C_dpmr_eff  = Cd;
     ccE.C_np_eff    = Cn;
     ccE.xi_per_axis = (Cn ./ Cd) .* SIGMA_N.^2 / (4*kBT);
+    if ~isempty(IF_override); ccE.IF_eff_per_axis = IF_override(:); end
 
     ccN = cc;
     ccN.a_hat_freeze = a_N * [1; 1; 1];
@@ -123,7 +125,7 @@ function r = local_run_once(pd_arr, params, cc, seed, pc, N)
     sigma_n = sqrt(params.ctrl.sigma2_noise(:));
 
     p_true = zeros(N, 3);  a_hat = zeros(N, 3);  a_true = zeros(N, 3);
-    G = false(N, 3);
+    P_a = zeros(N, 3);  G = false(N, 3);
     p = params.common.p0;
     pe1 = p;  pe2 = p;
     kend = N;
@@ -147,6 +149,7 @@ function r = local_run_once(pd_arr, params, cc, seed, pc, N)
         p_true(k, :) = p';
         a_hat(k, :)  = dg.a_hat';
         a_true(k, :) = a_ax';
+        P_a(k, :)    = dg.P_a';
         G(k, :)      = dg.guards_individual(:, 3)';
         pe2 = pe1;  pe1 = p_entry;
         if ~isfinite(p(3)) || abs(p(3)) > 1e8
@@ -154,5 +157,5 @@ function r = local_run_once(pd_arr, params, cc, seed, pc, N)
         end
     end
     r = struct('p_true', p_true, 'p_d_used', pd_arr(1:N, :), 'a_hat', a_hat, ...
-               'a_true', a_true, 'G', G, 'seed', seed, 'kend', kend);
+               'a_true', a_true, 'P_a', P_a, 'G', G, 'seed', seed, 'kend', kend);
 end
