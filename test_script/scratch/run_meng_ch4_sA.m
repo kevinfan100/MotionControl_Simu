@@ -55,7 +55,7 @@ function out = run_meng_ch4_sA(seeds, lambda_f, IF_override, plant_mode)
     params = struct();
     params.ctrl   = struct('enable', 1, 'Ts', Ts, 'k_B', pc.k_B, 'T', pc.T, ...
                            'gamma', gN, 'sigma2_noise', SIGMA_N.^2);
-    params.common = struct('R', R, 'p0', [0; 0; H0]);
+    params.common = struct('R', R, 'p0', [0; 0; H0], 'gamma_N', gN);
     params.wall   = struct('w_hat', [0; 0; 1], 'pz', 0, 'enable_wall_effect', 1);
     params.traj   = struct('amplitude', 9, 'frequency', 1);   % Q77 bound reads (inert: Q77 forced 0)
 
