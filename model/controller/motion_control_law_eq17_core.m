@@ -962,13 +962,6 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         S1_pred_per_axis(ax) = S(1, 1);          % y1 innovation variance the filter believes
         S = 0.5 * (S + S');                     % symmetrize
         K_kf = (P_pred * H_use') / S;           % 7x{1,2}
-        % Diagnostic (ledger 24/25): scale the gain-block rows of K in the
-        % STATE update only (P keeps the unscaled K -- the ledger-24 version
-        % contaminated P and let the filter self-compensate).
-        K_state = K_kf;
-        if isfield(ctrl_const, 'K_gain_scale') && ~isempty(ctrl_const.K_gain_scale)
-            K_state(6:7, :) = ctrl_const.K_gain_scale * K_state(6:7, :);
-        end
 
         % --- Stage 10 Option A: gate slot 6 + 7 update during G1 (warm-up) ---
         % Wave 4 root cause: F_e(3,6) = -f_d accumulates P_pred(3,6) cross-cov
@@ -980,6 +973,16 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         if G1
             K_kf(6, :) = 0;     % gate slot 6 (a_x) measurement update
             K_kf(7, :) = 0;     % gate slot 7 (δa_x) — Jordan-pair consistency
+        end
+
+        % Diagnostic (ledger 24/25): scale the gain-block rows of K in the
+        % STATE update only (P keeps the unscaled K -- the ledger-24 version
+        % contaminated P and let the filter self-compensate). Copied AFTER the
+        % G1 gate so the warm-up gate reaches the state update (a copy taken
+        % before the gate silently disabled Guard 1 -- unit T4 caught it).
+        K_state = K_kf;
+        if isfield(ctrl_const, 'K_gain_scale') && ~isempty(ctrl_const.K_gain_scale)
+            K_state(6:7, :) = ctrl_const.K_gain_scale * K_state(6:7, :);
         end
 
         x_post = x_pred + K_state * innov;
