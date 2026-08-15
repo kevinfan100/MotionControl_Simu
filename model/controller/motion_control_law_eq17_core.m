@@ -1093,6 +1093,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         diag.innovation_y1        = innov_y1_per_axis;             % 3x1
         diag.K_kf_a_y1            = K_a_y1_per_axis;               % 3x1
         diag.S1_pred              = S1_pred_per_axis;              % 3x1
+        if control_law_ch4
+            diag.f_det = f_det_cur;                                % 3x1 (fdet regressor as consumed)
+        else
+            diag.f_det = nan(3, 1);
+        end
         diag.P_a                  = P_a_per_axis;                  % 3x1
         diag.P_dx                 = P_dx_per_axis;                 % 3x1
         diag.x_D_hat              = x_e_per_axis(4, :).';          % 3x1
