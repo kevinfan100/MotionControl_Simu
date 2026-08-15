@@ -118,6 +118,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     persistent ch4_fdet f_det_km1                       % ch4 exogenous-regressor fix (ledger 19)
     persistent ch4_stale_ff x34_prev                    % stale-consumption known input (ledger 25)
     persistent y2_whiten a_xm_prev                      % y2 AR(1) whitening (ledger 29; family knob, expgain SSOT)
+    persistent lf_schedule lf_sched_scale               % height-scheduled forgetting (ledger 31; cube-root law)
     persistent enable_wall          % logical, fall back to flat (h_bar=inf) if false
     persistent w_hat_n pz_wall      % wall geometry
     persistent R_OFF                % large-R fallback for guarded y_2
@@ -236,6 +237,20 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         %   H2' = a_cov*H2,  R22' = a_cov*(2-a_cov)*R22.
         % Zero new constants. Default off (bit-identical legacy).
         y2_whiten = isfield(ctrl_const, 'y2_whiten') && ctrl_const.y2_whiten;
+        % lf_schedule (ledger 31): replace the constant forgetting factor by
+        % the tracking-optimal memory (Ljung cube-root law)
+        %   T*(t) = (2 * J_ln_rate * r_drift^2)^(-1/3),  lambda_f = 1 - Ts/T*,
+        % with r_drift = |d ln a/dt| from the COMMANDED height (published
+        % asymptotic log-slope 1/(hb*(hb-1)), parallel axes scaled by the
+        % reflection ratio (9/16)/(9/8) = 1/2) and J_ln_rate the filter's own
+        % booked relative Fisher rate. Zero free numbers; clamps are wide
+        % safety rails only. Default off (bit-identical).
+        lf_schedule = isfield(ctrl_const, 'lf_schedule') && ctrl_const.lf_schedule;
+        if isfield(ctrl_const, 'lf_sched_scale') && ~isempty(ctrl_const.lf_sched_scale)
+            lf_sched_scale = ctrl_const.lf_sched_scale;   % T* curvature diagnostic
+        else
+            lf_sched_scale = 1;
+        end
         % Thesis (4.10) state-transition (constant; shared by all axes)
         F_state_ch4 = [0 1 0        0 0 0 0; ...
                        0 0 1        0 0 0 0; ...
@@ -879,6 +894,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     K_a_y1_per_axis  = zeros(3, 1);    % K_kf(6, 1) per axis
     S1_pred_per_axis = zeros(3, 1);    % believed Var(innov_y1)
     x34_used = zeros(2, 3);            % slots 3,4 consumed this call (ledger 25)
+    lf_used_per_axis = ones(3, 1);     % actual forgetting applied (ledger 31 diag)
     innov_y2_per_axis = zeros(3, 1);   % y_2 innovation (0 if y_2 gated)
     gate_y2_off_per_axis = false(3, 1);
     G_per_axis = false(3, 3);          % rows: G1/G2/G3, cols: axes
@@ -1028,13 +1044,33 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         % (slots 6-7, the Q=0 states that need forgetting to stay adaptive):
         % P <- L P L with L = diag(1,..,1,1/sqrt(lf),1/sqrt(lf)). The
         % position chain (Q33 driven) and x_D pair keep their honest P.
-        if lambda_f_p(ax) < 1
+        if lf_schedule && control_law_ch4
+            % ledger 31: height-scheduled forgetting (cube-root law).
+            h_d_cmd  = w_hat_n' * pd - pz_wall;
+            hb_d     = max(h_d_cmd / R_radius, 1 + 1e-3);
+            dhb_d    = abs(w_hat_n' * del_pd) / R_radius;
+            g_ln     = (0.5 + 0.5 * w_hat_n(ax)^2) / (hb_d * (hb_d - 1));
+            r_drift  = g_ln * dhb_d / Ts;                  % |d ln a/dt| [1/s]
+            J_y1     = f_det_cur(ax)^2 / S1_pred_per_axis(ax);
+            if gate_y2_off
+                J_y2 = 0;
+            else
+                J_y2 = H_use(2, 6)^2 / R_use(2, 2);        % raw & whitened alike
+            end
+            J_ln_rate = x_curr(6)^2 * (J_y1 + J_y2) / Ts;  % relative Fisher [1/s]
+            T_star = (2 * J_ln_rate * max(r_drift, 1e-12)^2)^(-1/3) * lf_sched_scale;
+            lf_use = min(max(1 - Ts / T_star, 0.95), 1 - 1e-5);
+        else
+            lf_use = lambda_f_p(ax);
+        end
+        lf_used_per_axis(ax) = lf_use;
+        if lf_use < 1
             if isfield(ctrl_const, 'lf_selective') && ctrl_const.lf_selective
-                s_lf = 1 / sqrt(lambda_f_p(ax));
+                s_lf = 1 / sqrt(lf_use);
                 L_lf = ones(7, 1); L_lf(6) = s_lf; L_lf(7) = s_lf;
                 P_post = (L_lf * L_lf') .* P_post;
             else
-                P_post = P_post / lambda_f_p(ax);
+                P_post = P_post / lf_use;
             end
             P_post = 0.5 * (P_post + P_post');
         end
@@ -1122,6 +1158,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         diag.innovation_y1        = innov_y1_per_axis;             % 3x1
         diag.K_kf_a_y1            = K_a_y1_per_axis;               % 3x1
         diag.S1_pred              = S1_pred_per_axis;              % 3x1
+        diag.lambda_f_used = lf_used_per_axis;                     % 3x1 (ledger 31)
         if control_law_ch4
             diag.f_det = f_det_cur;                                % 3x1 (fdet regressor as consumed)
         else
