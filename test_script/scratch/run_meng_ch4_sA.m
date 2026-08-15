@@ -17,13 +17,14 @@
 %   Gates: h_bar_safe = 1 override (2026-08-12 ruling); G1/G2/G3 duty printed.
 %   EXPIRES: Scenario-A adjudication vs journal Fig 4-6
 %            (spec: reference/eq17_analysis/meng_ch4_spec_ledger.md)
-function out = run_meng_ch4_sA(seeds, lambda_f, IF_override, plant_mode, ch4_fdet)
+function out = run_meng_ch4_sA(seeds, lambda_f, IF_override, plant_mode, ch4_fdet, ch4_staleff)
 
     if nargin < 1 || isempty(seeds); seeds = 7; end
     if nargin < 2 || isempty(lambda_f); lambda_f = 0.98; end
     if nargin < 3; IF_override = []; end   % 3x1 IF_eff_per_axis (diagnostic: 1e12 kills y2 on that axis)
     if nargin < 4 || isempty(plant_mode); plant_mode = 'map'; end  % 'map' = Meng (4.3) | 'rk4' = house continuous physics
     if nargin < 5 || isempty(ch4_fdet); ch4_fdet = false; end       % ledger 19/20 exogenous-regressor fix
+    if nargin < 6 || isempty(ch4_staleff); ch4_staleff = false; end % ledger 25 stale-consumption known input
 
     here = fileparts(mfilename('fullpath'));
     root = fileparts(fileparts(here));
@@ -84,6 +85,7 @@ function out = run_meng_ch4_sA(seeds, lambda_f, IF_override, plant_mode, ch4_fde
     ccE.xi_per_axis = (Cn ./ Cd) .* SIGMA_N.^2 / (4*kBT);
     if ~isempty(IF_override); ccE.IF_eff_per_axis = IF_override(:); end
     ccE.ch4_fdet = ch4_fdet;
+    ccE.ch4_stale_ff = ch4_staleff;
 
     ccN = cc;
     ccN.a_hat_freeze = a_N * [1; 1; 1];
@@ -92,7 +94,10 @@ function out = run_meng_ch4_sA(seeds, lambda_f, IF_override, plant_mode, ch4_fde
     arms = struct('name', {'N', 'E98'}, 'cc', {ccN, ccE}, ...
                   'nseed', {1, numel(seeds)});
 
-    out = struct('t', t(1:N), 'pd', pd_arr(1:N, :), 'seeds', seeds, ...
+    % delta pairing (ledger 26): p_true(k) = p[k+1] -> pair with pd_arr(k+1);
+    % the old pd_arr(1:N) pairing injected a deterministic 35 nm quadrature
+    % artifact (-delta_pd) on the 1 Hz axes
+    out = struct('t', t(1:N), 'pd', pd_arr(2:N+1, :), 'seeds', seeds, ...
                  'a_N', a_N, 'lc', LC, 'lambda_f', lambda_f);
     for ia = 1:numel(arms)
         nm = arms(ia).name;
@@ -164,6 +169,6 @@ function r = local_run_once(pd_arr, params, cc, seed, pc, N, plant_mode)
             kend = k;  break;
         end
     end
-    r = struct('p_true', p_true, 'p_d_used', pd_arr(1:N, :), 'a_hat', a_hat, ...
+    r = struct('p_true', p_true, 'p_d_used', pd_arr(2:N+1, :), 'a_hat', a_hat, ...
                'a_true', a_true, 'P_a', P_a, 'G', G, 'seed', seed, 'kend', kend);
 end
