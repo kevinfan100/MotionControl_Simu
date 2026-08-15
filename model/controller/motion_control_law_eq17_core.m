@@ -117,6 +117,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     persistent control_law_ch4 lambda_f_p F_state_ch4   % Meng Ch4 replication arm
     persistent ch4_fdet f_det_km1                       % ch4 exogenous-regressor fix (ledger 19)
     persistent ch4_stale_ff x34_prev                    % stale-consumption known input (ledger 25)
+    persistent y2_whiten a_xm_prev                      % y2 AR(1) whitening (ledger 29; family knob, expgain SSOT)
     persistent enable_wall          % logical, fall back to flat (h_bar=inf) if false
     persistent w_hat_n pz_wall      % wall geometry
     persistent R_OFF                % large-R fallback for guarded y_2
@@ -225,6 +226,16 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         % match the true error dynamics. Zero free numbers. Default off.
         ch4_stale_ff = isfield(ctrl_const, 'ch4_stale_ff') && ctrl_const.ch4_stale_ff;
         x34_prev = zeros(2, 3);
+        % y2_whiten (ledger 29): a_xm is an EXACT AR(1) filter of the
+        % single-sample gain readout u[k] with pole 1-a_cov, so feeding it
+        % every step over-states its information by (2-a_cov)/a_cov (= 39 at
+        % a_cov = 0.05) and its chi-square low-frequency fluctuation drives
+        % the slow a_hat wander (ledger 28 arm-Y conviction). Whitened form
+        % (family SSOT = motion_control_law_5state_expgain.m):
+        %   y2' = a_xm[k] - (1-a_cov)*a_xm[k-1] = a_cov*u[k]  (white),
+        %   H2' = a_cov*H2,  R22' = a_cov*(2-a_cov)*R22.
+        % Zero new constants. Default off (bit-identical legacy).
+        y2_whiten = isfield(ctrl_const, 'y2_whiten') && ctrl_const.y2_whiten;
         % Thesis (4.10) state-transition (constant; shared by all axes)
         F_state_ch4 = [0 1 0        0 0 0 0; ...
                        0 0 1        0 0 0 0; ...
@@ -309,6 +320,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
             a_x_init = [a_nom; a_nom; a_nom];
         end
         a_nom_per_axis = a_x_init;           % nominal Category-B a per axis (for Q55)
+        a_xm_prev = a_x_init;                % y2_whiten chain seed: E[a_xm] at init (ledger 29)
 
         % --- 0F. Initialize EKF state ---
         x_e_per_axis = zeros(7, 3);
@@ -958,6 +970,13 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
             H_use = H_full;
             y_use = [delta_x_m(ax); a_xm(ax)];
             R_use = R_per_axis{ax};
+            if y2_whiten
+                % ledger 29: whitened increment consumes only the fresh
+                % sample: innov2 = a_cov*(u[k] - H2*x_hat) exactly.
+                H_use(2, :) = a_cov * H_use(2, :);
+                y_use(2)    = a_xm(ax) - (1 - a_cov) * a_xm_prev(ax);
+                R_use(2, 2) = a_cov * (2 - a_cov) * R_use(2, 2);
+            end
         end
 
         % --- Update (sequential / conditional) ---
@@ -1051,6 +1070,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         f_det_km1 = f_det_cur;
         x34_prev = x34_used;   % the posteriors CONSUMED this call (k-1 vintage)
     end
+    a_xm_prev = a_xm;   % raw AR(1) chain continues through gated steps (ledger 29)
     pd_km2 = pd_km1;
     pd_km1 = pd;
 
