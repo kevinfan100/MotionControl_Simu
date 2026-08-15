@@ -621,6 +621,12 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     end
 
     inv_a_hat = 1 ./ a_hat;
+    if isfield(params.ctrl, 'a_true_oracle') && ~isempty(params.ctrl.a_true_oracle)
+        % DIAGNOSTIC ONLY (ledger 27 arm O): sever every 1/a-hat feedback in
+        % the law and the fdet regressor (estimator untouched) -- convicts or
+        % acquits the nonlinear self-interaction as the slow-wander driver.
+        inv_a_hat = 1 ./ params.ctrl.a_true_oracle(:);
+    end
     if control_law_ch4
         % Thesis (4.4) = journal (6):
         %   f_d = (1/â_x[k])·{ x_d[k+1] − x_d[k] + (1−λ_c)·δx̂[k] − x̂_D[k] }
