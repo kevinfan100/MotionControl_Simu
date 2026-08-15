@@ -945,6 +945,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         S1_pred_per_axis(ax) = S(1, 1);          % y1 innovation variance the filter believes
         S = 0.5 * (S + S');                     % symmetrize
         K_kf = (P_pred * H_use') / S;           % 7x{1,2}
+        % Diagnostic (ledger 24): scale the gain-block rows of K to emulate
+        % the honest-Riccati K level (kappa ~ 1/sqrt(S1 dishonesty)).
+        if isfield(ctrl_const, 'K_gain_scale') && ~isempty(ctrl_const.K_gain_scale)
+            K_kf(6:7, :) = ctrl_const.K_gain_scale * K_kf(6:7, :);
+        end
 
         % --- Stage 10 Option A: gate slot 6 + 7 update during G1 (warm-up) ---
         % Wave 4 root cause: F_e(3,6) = -f_d accumulates P_pred(3,6) cross-cov
