@@ -116,6 +116,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     persistent h_dot_max h_ddot_max
     persistent control_law_ch4 lambda_f_p F_state_ch4   % Meng Ch4 replication arm
     persistent ch4_fdet f_det_km1                       % ch4 exogenous-regressor fix (ledger 19)
+    persistent ch4_stale_ff x34_prev                    % stale-consumption known input (ledger 25)
     persistent enable_wall          % logical, fall back to flat (h_bar=inf) if false
     persistent w_hat_n pz_wall      % wall geometry
     persistent R_OFF                % large-R fallback for guarded y_2
@@ -215,6 +216,15 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         % 08-01). Default off.
         ch4_fdet = isfield(ctrl_const, 'ch4_fdet') && ctrl_const.ch4_fdet;
         f_det_km1 = zeros(3, 1);
+        % ch4_stale_ff (ledger 25): the (4.4) law consumes the PREVIOUS
+        % posterior, so the true slot-3 dynamics carry the known input
+        %   u3[k] = (1-lc)*(x3[k]-x3[k-1]) - (x4[k]-x4[k-1])
+        % built purely from the filter's own history. Adding it to the
+        % slot-3 predict removes a self-inflicted innovation component
+        % (measured 2.5x of believed S1) and makes the covariance model
+        % match the true error dynamics. Zero free numbers. Default off.
+        ch4_stale_ff = isfield(ctrl_const, 'ch4_stale_ff') && ctrl_const.ch4_stale_ff;
+        x34_prev = zeros(2, 3);
         % Thesis (4.10) state-transition (constant; shared by all axes)
         F_state_ch4 = [0 1 0        0 0 0 0; ...
                        0 0 1        0 0 0 0; ...
@@ -850,6 +860,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     innov_y1_per_axis = zeros(3, 1);   % y_1 innovation
     K_a_y1_per_axis  = zeros(3, 1);    % K_kf(6, 1) per axis
     S1_pred_per_axis = zeros(3, 1);    % believed Var(innov_y1)
+    x34_used = zeros(2, 3);            % slots 3,4 consumed this call (ledger 25)
     innov_y2_per_axis = zeros(3, 1);   % y_2 innovation (0 if y_2 gated)
     gate_y2_off_per_axis = false(3, 1);
     G_per_axis = false(3, 3);          % rows: G1/G2/G3, cols: axes
@@ -884,6 +895,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
 
         x_curr = x_e_per_axis(:, ax);
         P_curr = P_per_axis{ax};
+        x34_used(:, ax) = x_curr(3:4);   % pre-update slots 3,4 (ledger 25 buffer)
 
         % --- Predict ---
         if control_law_ch4
@@ -901,6 +913,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
                 F_err_ch4(3, :) = [0 0 1 -1 0 -f_d_km1(ax) 0];
             end
             x_pred = F_state_ch4 * x_curr;
+            if ch4_stale_ff
+                x_pred(3) = x_pred(3) ...
+                    + one_minus_lc * (x_curr(3) - x34_prev(1, ax)) ...
+                    - (x_curr(4) - x34_prev(2, ax));
+            end
             P_pred = F_err_ch4 * P_curr * F_err_ch4' + Q_per_axis{ax};
         else
             x_pred = F_e * x_curr;
@@ -945,10 +962,12 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         S1_pred_per_axis(ax) = S(1, 1);          % y1 innovation variance the filter believes
         S = 0.5 * (S + S');                     % symmetrize
         K_kf = (P_pred * H_use') / S;           % 7x{1,2}
-        % Diagnostic (ledger 24): scale the gain-block rows of K to emulate
-        % the honest-Riccati K level (kappa ~ 1/sqrt(S1 dishonesty)).
+        % Diagnostic (ledger 24/25): scale the gain-block rows of K in the
+        % STATE update only (P keeps the unscaled K -- the ledger-24 version
+        % contaminated P and let the filter self-compensate).
+        K_state = K_kf;
         if isfield(ctrl_const, 'K_gain_scale') && ~isempty(ctrl_const.K_gain_scale)
-            K_kf(6:7, :) = ctrl_const.K_gain_scale * K_kf(6:7, :);
+            K_state(6:7, :) = ctrl_const.K_gain_scale * K_state(6:7, :);
         end
 
         % --- Stage 10 Option A: gate slot 6 + 7 update during G1 (warm-up) ---
@@ -963,7 +982,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
             K_kf(7, :) = 0;     % gate slot 7 (δa_x) — Jordan-pair consistency
         end
 
-        x_post = x_pred + K_kf * innov;
+        x_post = x_pred + K_state * innov;
         % Joseph form (numerically stable) vs Standard form (legacy).
         % Joseph: P_post = (I-KH) P_pred (I-KH)' + K R K'   — symmetric PSD by construction
         % Standard: P_post = (I-KH) P_pred                  — needs explicit symmetrization
@@ -1021,6 +1040,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     % ------------------------------------------------------------------
     if control_law_ch4
         f_det_km1 = f_det_cur;
+        x34_prev = x34_used;   % the posteriors CONSUMED this call (k-1 vintage)
     end
     pd_km2 = pd_km1;
     pd_km1 = pd;
