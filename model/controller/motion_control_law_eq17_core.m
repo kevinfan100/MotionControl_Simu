@@ -119,6 +119,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     persistent ch4_stale_ff x34_prev                    % stale-consumption known input (ledger 25)
     persistent y2_whiten a_xm_prev                      % y2 AR(1) whitening (ledger 29; family knob, expgain SSOT)
     persistent lf_schedule lf_sched_scale               % height-scheduled forgetting (ledger 31; cube-root law)
+    persistent lf_f2_avg lf_alpha_cyc                   % command-period-averaged f_det^2 (ledger 32)
     persistent enable_wall          % logical, fall back to flat (h_bar=inf) if false
     persistent w_hat_n pz_wall      % wall geometry
     persistent R_OFF                % large-R fallback for guarded y_2
@@ -246,6 +247,22 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         % booked relative Fisher rate. Zero free numbers; clamps are wide
         % safety rails only. Default off (bit-identical).
         lf_schedule = isfield(ctrl_const, 'lf_schedule') && ctrl_const.lf_schedule;
+        % ledger 32 refinements: (i) J uses f_det^2 averaged over the KNOWN
+        % command period (Fisher of the memory window, not the instant --
+        % instantaneous J made lambda_f breathe at 2x the command frequency
+        % and cut memory at every force peak); (ii) parallel axes use the
+        % Goldman log-slope composite instead of the 1/2 reflection bound
+        % (curvature test showed the bound overstates parallel drift ~2x);
+        % (iii) T* is floored at the small-error validity of the cube-root
+        % law: sigma_rel <= 10% (measured V(gamma) curvature keeps the
+        % variance inflation J(sigma) <= 1.1 up to sigma ~ 0.10, 08-15 v3).
+        if isfield(params, 'traj') && isfield(params.traj, 'frequency') ...
+                && params.traj.frequency > 0
+            lf_alpha_cyc = min(Ts * params.traj.frequency, 1);
+        else
+            lf_alpha_cyc = 1;               % no periodic command: instantaneous
+        end
+        lf_f2_avg = zeros(3, 1);
         if isfield(ctrl_const, 'lf_sched_scale') && ~isempty(ctrl_const.lf_sched_scale)
             lf_sched_scale = ctrl_const.lf_sched_scale;   % T* curvature diagnostic
         else
@@ -1049,16 +1066,32 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
             h_d_cmd  = w_hat_n' * pd - pz_wall;
             hb_d     = max(h_d_cmd / R_radius, 1 + 1e-3);
             dhb_d    = abs(w_hat_n' * del_pd) / R_radius;
-            g_ln     = (0.5 + 0.5 * w_hat_n(ax)^2) / (hb_d * (hb_d - 1));
+            % per-axis log-slope: perp = 1/(hb(hb-1)) (expgain b=1 family);
+            % parallel = Goldman composite (9/16)/(hb(hb-1)*c_A) with
+            % c_A = 1 + (8/15)ln(1+1/(hb-1)) -- hits the published log law
+            % near wall (2.23 vs Goldman 2.135 at hb=1.111) and the 9/16
+            % reflection slope far away (ledger 32).
+            g_perp   = 1 / (hb_d * (hb_d - 1));
+            c_A      = 1 + (8/15) * log(1 + 1 / (hb_d - 1));
+            g_par    = (9/16) / (hb_d * (hb_d - 1) * c_A);
+            wsq      = w_hat_n(ax)^2;
+            g_ln     = wsq * g_perp + (1 - wsq) * g_par;
             r_drift  = g_ln * dhb_d / Ts;                  % |d ln a/dt| [1/s]
-            J_y1     = f_det_cur(ax)^2 / S1_pred_per_axis(ax);
+            if lf_f2_avg(ax) == 0
+                lf_f2_avg(ax) = f_det_cur(ax)^2;           % warm start
+            end
+            lf_f2_avg(ax) = (1 - lf_alpha_cyc) * lf_f2_avg(ax) ...
+                            + lf_alpha_cyc * f_det_cur(ax)^2;
+            J_y1     = lf_f2_avg(ax) / S1_pred_per_axis(ax);
             if gate_y2_off
                 J_y2 = 0;
             else
                 J_y2 = H_use(2, 6)^2 / R_use(2, 2);        % raw & whitened alike
             end
             J_ln_rate = x_curr(6)^2 * (J_y1 + J_y2) / Ts;  % relative Fisher [1/s]
-            T_star = (2 * J_ln_rate * max(r_drift, 1e-12)^2)^(-1/3) * lf_sched_scale;
+            T_cube = (2 * J_ln_rate * max(r_drift, 1e-12)^2)^(-1/3) * lf_sched_scale;
+            T_min  = 1 / (0.10^2 * max(J_ln_rate, 1e-12)); % sigma_rel <= 10% validity floor
+            T_star = max(T_cube, T_min);
             lf_use = min(max(1 - Ts / T_star, 0.95), 1 - 1e-5);
         else
             lf_use = lambda_f_p(ax);
