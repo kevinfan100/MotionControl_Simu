@@ -264,9 +264,10 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         end
         lf_f2_avg = zeros(3, 1);
         if isfield(ctrl_const, 'lf_sched_scale') && ~isempty(ctrl_const.lf_sched_scale)
-            lf_sched_scale = ctrl_const.lf_sched_scale;   % T* curvature diagnostic
+            lf_sched_scale = ctrl_const.lf_sched_scale(:);  % T* scale (scalar or 3x1 per-axis)
+            if isscalar(lf_sched_scale); lf_sched_scale = lf_sched_scale * ones(3, 1); end
         else
-            lf_sched_scale = 1;
+            lf_sched_scale = ones(3, 1);
         end
         % Thesis (4.10) state-transition (constant; shared by all axes)
         F_state_ch4 = [0 1 0        0 0 0 0; ...
@@ -1089,7 +1090,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
                 J_y2 = H_use(2, 6)^2 / R_use(2, 2);        % raw & whitened alike
             end
             J_ln_rate = x_curr(6)^2 * (J_y1 + J_y2) / Ts;  % relative Fisher [1/s]
-            T_cube = (2 * J_ln_rate * max(r_drift, 1e-12)^2)^(-1/3) * lf_sched_scale;
+            T_cube = (2 * J_ln_rate * max(r_drift, 1e-12)^2)^(-1/3) * lf_sched_scale(ax);
             T_min  = 1 / (0.10^2 * max(J_ln_rate, 1e-12)); % sigma_rel <= 10% validity floor
             T_star = max(T_cube, T_min);
             lf_use = min(max(1 - Ts / T_star, 0.95), 1 - 1e-5);
