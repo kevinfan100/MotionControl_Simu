@@ -1078,11 +1078,20 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
             wsq      = w_hat_n(ax)^2;
             g_ln     = wsq * g_perp + (1 - wsq) * g_par;
             r_drift  = g_ln * dhb_d / Ts;                  % |d ln a/dt| [1/s]
+            % ledger 37: J must book the regressor the filter ACTUALLY runs.
+            % With ch4_fdet the F_err pairing is f_det; without it the pairing
+            % is the realized force f_d (16x larger on z) -- using f_det^2
+            % here under-books z information ~250x and stretches T*.
+            if ch4_fdet
+                f_reg = f_det_cur(ax);
+            else
+                f_reg = f_d(ax);
+            end
             if lf_f2_avg(ax) == 0
-                lf_f2_avg(ax) = f_det_cur(ax)^2;           % warm start
+                lf_f2_avg(ax) = f_reg^2;                   % warm start
             end
             lf_f2_avg(ax) = (1 - lf_alpha_cyc) * lf_f2_avg(ax) ...
-                            + lf_alpha_cyc * f_det_cur(ax)^2;
+                            + lf_alpha_cyc * f_reg^2;
             J_y1     = lf_f2_avg(ax) / S1_pred_per_axis(ax);
             if gate_y2_off
                 J_y2 = 0;
