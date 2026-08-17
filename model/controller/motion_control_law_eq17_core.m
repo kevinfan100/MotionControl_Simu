@@ -713,6 +713,12 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
                   + one_minus_lc * dx3_hat ...
                   - xD_hat_for_ctrl );
         f_det_cur = inv_a_hat .* (pd_kp1 - pd);   % feedforward-only (exogenous)
+        if isfield(params.ctrl, 'a_reg_oracle') && ~isempty(params.ctrl.a_reg_oracle)
+            % DIAGNOSTIC ONLY (ledger 43): oracle REGRESSOR, law keeps a_hat
+            % -- severs only the 1/a-hat modulation of the pairing, leaving
+            % the control loop and the stale-ff premise intact.
+            f_det_cur = (pd_kp1 - pd) ./ params.ctrl.a_reg_oracle(:);
+        end
     else
         f_d = inv_a_hat .* ( ...
                     pd_kp1 ...
