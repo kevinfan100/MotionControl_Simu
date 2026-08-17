@@ -118,6 +118,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
     persistent ch4_fdet f_det_km1                       % ch4 exogenous-regressor fix (ledger 19)
     persistent ch4_stale_ff x34_prev                    % stale-consumption known input (ledger 25)
     persistent y2_whiten a_xm_prev                      % y2 AR(1) whitening (ledger 29; family knob, expgain SSOT)
+    persistent y2_ma2 ma2_th ma2_s ma2_w1 ma2_w2        % u-serial-correlation recovery (ledger 40; MA(2), rho measured ledger 39)
     persistent lf_schedule lf_sched_scale               % height-scheduled forgetting (ledger 31; cube-root law)
     persistent lf_f2_avg lf_alpha_cyc                   % command-period-averaged f_det^2 (ledger 32)
     persistent enable_wall          % logical, fall back to flat (h_bar=inf) if false
@@ -238,6 +239,27 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         %   H2' = a_cov*H2,  R22' = a_cov*(2-a_cov)*R22.
         % Zero new constants. Default off (bit-identical legacy).
         y2_whiten = isfield(ctrl_const, 'y2_whiten') && ctrl_const.y2_whiten;
+        % y2_ma2 (ledger 40): the whitened u-samples are MA(2)-correlated
+        % (rho = [0.60 0.17], zero beyond lag 2 -- the d = 2 loop entangles
+        % adjacent increments; measured ledger 39). Recover the booked-away
+        % 2.7x by subtracting the two lagged noise ESTIMATES (residual-
+        % feedback MA inverter) and booking only the white innovation
+        % variance sigma_w^2 = (R_booked/IF)/(1+th1^2+th2^2). Default off.
+        y2_ma2 = isfield(ctrl_const, 'y2_ma2') && ctrl_const.y2_ma2;
+        if isfield(ctrl_const, 'y2_ma2_rho') && ~isempty(ctrl_const.y2_ma2_rho)
+            rho_u = ctrl_const.y2_ma2_rho(:);
+        else
+            rho_u = [0.596; 0.176];        % pooled measurement (ledger 39)
+        end
+        th1 = 0.8; th2 = 0.3;              % MA(2) coefficients from rho (fixed point)
+        for it_ma = 1:50
+            s_ma = 1 + th1^2 + th2^2;
+            th2 = rho_u(2) * s_ma;
+            th1 = rho_u(1) * s_ma / (1 + th2);
+        end
+        ma2_th = [th1; th2];
+        ma2_s  = 1 + th1^2 + th2^2;
+        ma2_w1 = zeros(3, 1);  ma2_w2 = zeros(3, 1);
         % lf_schedule (ledger 31): replace the constant forgetting factor by
         % the tracking-optimal memory (Ljung cube-root law)
         %   T*(t) = (2 * J_ln_rate * r_drift^2)^(-1/3),  lambda_f = 1 - Ts/T*,
@@ -1010,6 +1032,14 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
                 H_use(2, :) = a_cov * H_use(2, :);
                 y_use(2)    = a_xm(ax) - (1 - a_cov) * a_xm_prev(ax);
                 R_use(2, 2) = a_cov * (2 - a_cov) * R_use(2, 2);
+                if y2_ma2
+                    % ledger 40: subtract the two lagged noise estimates and
+                    % book the white innovation only (IF_eff penalty removed
+                    % -- the correlation is now modeled, not discounted).
+                    y_use(2) = y_use(2) - ma2_th(1) * ma2_w1(ax) ...
+                                        - ma2_th(2) * ma2_w2(ax);
+                    R_use(2, 2) = (R_use(2, 2) / IF_eff_per_axis(ax)) / ma2_s;
+                end
             end
         end
 
@@ -1045,6 +1075,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         end
 
         x_post = x_pred + K_state * innov;
+        if y2_whiten && y2_ma2 && ~gate_y2_off
+            w_fresh = y_use(2) - H_use(2, :) * x_post;   % post-fit noise estimate
+            ma2_w2(ax) = ma2_w1(ax);
+            ma2_w1(ax) = w_fresh;
+        end
         % Joseph form (numerically stable) vs Standard form (legacy).
         % Joseph: P_post = (I-KH) P_pred (I-KH)' + K R K'   — symmetric PSD by construction
         % Standard: P_post = (I-KH) P_pred                  — needs explicit symmetrization
