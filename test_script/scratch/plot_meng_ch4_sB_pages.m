@@ -14,9 +14,6 @@ axn='xyz';
 f=figure('Position',[40 40 1500 1050],'Color','w','Visible','off');
 tl=tiledlayout(f,3,2,'TileSpacing','compact','Padding','compact');
 for ax=1:3
-  yl=[0;0];
-  vv=[S{1}.dx(:,ax); S{2}.dx(:,ax)]; r=max(vv)-min(vv);
-  yl=[min(vv)-0.05*r, max(vv)+0.05*r];
   for c=1:2
     a=nexttile(tl,(ax-1)*2+c); hold(a,'on');
     plot(a,t,S{c}.dx(:,ax),'-','Color',COL_HAT,'LineWidth',LW, ...
@@ -26,12 +23,12 @@ for ax=1:3
       legend(a,'Location','northoutside','Orientation','horizontal', ...
              'FontSize',LFS,'FontWeight','bold','Box','on');
     end
-    xlim(a,[0 3]); ylim(a,yl); box(a,'on');
-    if c==1; ylabel(a,sprintf('\\delta%c  [\\mum]',axn(ax)),'FontSize',FS,'FontWeight','bold'); end
+    vv=S{c}.dx(:,ax); r=max(vv)-min(vv);
+    xlim(a,[0 3]); ylim(a,[min(vv)-0.05*r, max(vv)+0.05*r]); box(a,'on');
+    ylabel(a,sprintf('\\delta%c  [\\mum]',axn(ax)),'FontSize',FS,'FontWeight','bold');
     if ax==3; xlabel(a,'time  [s]','FontSize',FS,'FontWeight','bold'); end
     set(a,'FontSize',FS,'FontWeight','bold','LineWidth',AXLW,'Box','on');
     if ax<3; set(a,'XTickLabel',[]); end
-    if c==2; set(a,'YTickLabel',[]); end
     grid(a,'off');
   end
 end
