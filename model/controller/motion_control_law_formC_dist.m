@@ -307,7 +307,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
     persistent t_warmup_kf h_bar_safe sigma2_n_nd
     persistent enable_wall w_hat_n pz_wall
     persistent Q_theta_floor a_bar_floor a_bar_ceil da_clamp ws_margin gap_floor
-    persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off t2_pure_prop lambda_f
+    persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off t2_pure_prop lambda_f obs_dump_on
     persistent ap_src ap_ewma_a a_bar_slope_v law_b_formC
     persistent q33_dc_match q33_dc_fac
     persistent y2_echo_corr S_echo_T S_echo_n
@@ -354,6 +354,14 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
 
         y2_whiten    = logical(get_field_default(ctrl_const, 'y2_whiten', true));
         fe_row4_full = logical(get_field_default(ctrl_const, 'fe_row4_full', true));
+
+        % Observability capture (model/diag/obs_dump.m). OFF by default and the
+        % only cost when off is the persistent logical tested at the call site,
+        % so a run with obs_dump = false is bit-identical to one without this
+        % code. Consumed by verify_state_observability.m.
+        obs_dump_on = logical(get_field_default(ctrl_const, 'obs_dump', false));
+        obs_dump('reset', obs_dump_on);
+
         use_fdet     = logical(get_field_default(ctrl_const, 'use_fdet', true));
         y2_off       = logical(get_field_default(ctrl_const, 'y2_off', false));
         % DIAGNOSTIC arm (b) of the eps_w MA(2) study (2026-08-01): scale the
@@ -1073,6 +1081,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
         % (b) y2 = gain readout (whitened increment by default).
         %     a_wm_km1 is shifted every step regardless, so the increment
         %     stays valid when the gate reopens.
+        H2_log = [];
         if ~gate_off(ax) && ~y2_off
             % H row 2 (tex S7, CORRECTED 2026-08-12 -- see the header note).
             % The height writing had dy2/da_bar EXACTLY 1 because a_bar' did
@@ -1108,6 +1117,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
             % Jacobians do in H2 above.
             y2_pred = H2_scale * (x_upd(4) ...
                         - echo_fac * (a_prime_i * Grad_wbar_d + d_delay * x_upd(5)));
+            H2_log = H2;
             S2  = H2 * P_upd * H2' + R2_i;
             K2  = (P_upd * H2') / S2;
             if freeze_gain; K2(4:7) = 0; end
@@ -1136,6 +1146,16 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
         P_upd = freeze_locked_P(P_upd, lock_state_idx_ax{ax});
 
         if strcmp(ap_src, 'pred'); a_bar_slope_v(ax) = x_pred(4); end
+        if obs_dump_on
+            % One record per axis per step. H2_log is [] when the y2 gate was
+            % closed or y2 is off -- the empty slot is meaningful (that channel
+            % did not update), so it is kept rather than dropped.
+            obs_dump('append', struct('ax', ax, 'k', k_step, 'F', F_e, ...
+                'H', {{H1, H2_log}}, 'R', [R1_i, R2_i], ...
+                'x_pred', x_pred, 'x_upd', x_upd, 'P_pred', P_pred, ...
+                'P_upd', P_upd, 'gate', gate_off(ax)));
+        end
+
         x_e_per_axis(:, ax) = x_upd;
         P_per_axis{ax} = P_upd;
     end

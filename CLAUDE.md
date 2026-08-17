@@ -19,6 +19,8 @@
    `sup|θ_eff − θ₀| ≲ √P[0] ⟺ Q_θ = 0 誠實`
    （工具 `test_script/integration/verify_shape_exponent_bound.m`；
    prior 設計方法 `reference/shared/param_prior_rules.md`）
+5. 新 state 先過可觀性五關 —— `.claude/rules/observability-workflow.md`
+   （工具 `test_script/integration/verify_state_observability.m`；捕捉 `model/diag/obs_dump.m`）
 
 三個形式（檔案級對應見 @agent_docs/eq17/mainline-gainlaw.md；
 對照與定案門檻見 `reference/eq17_analysis/shape_ledger.md`）：
