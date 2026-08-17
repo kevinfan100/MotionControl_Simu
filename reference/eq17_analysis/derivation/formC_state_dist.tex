@@ -44,19 +44,31 @@ $\bar{f} = a_o f$; $0 < \ba < 1$; $e_{\theta} = \theta - \hat{\theta}$)
 \end{equation*}
 
 \begin{equation*}
-1 - \ba_{\mathrm{true}} = \frac{9}{8\bw} + \mathcal{O}(\bw^{-3}),
+\ba'_{\mathrm{true}}(\bw) > 0 \ \ \text{on} \ \ \bw > 1
+\qquad\Longrightarrow\qquad
+\ba' = \frac{\bigl(1-\ba\bigr)^{2}}{b_{\mathrm{true}}(\ba)}
+\ \ \text{exactly},
 \qquad
-\ba'_{\mathrm{true}} = \frac{9}{8\bw^{2}} + \mathcal{O}(\bw^{-4})
+b_{\mathrm{true}} := \frac{\bigl(1-\ba_{\mathrm{true}}\bigr)^{2}}
+  {\ba'_{\mathrm{true}}}
 \end{equation*}
 
-\begin{equation*}
-\ba'(\ba) := \frac{\mathrm{d}\ba}{\mathrm{d}\bw} = \bigl(1-\ba\bigr)^{2},
-\qquad
-a_w = a_o\,\ba_w , \qquad a_o = \frac{\Delta t}{\gamma_N R}
-\end{equation*}
+\begin{align*}
+\ba_{\mathrm{true}}(1) = 0, \quad \ba'_{\mathrm{true}}(1) = 1
+  &\quad\Longrightarrow\quad b_{\mathrm{true}}\bigl(\ba = 0\bigr) = 1 \\
+1 - \ba_{\mathrm{true}} = \frac{9}{8\bw} + \mathcal{O}(\bw^{-3})
+  &\quad\Longrightarrow\quad b_{\mathrm{true}}\bigl(\ba \to 1\bigr) = \frac{9}{8}
+\end{align*}
+
+\begin{align*}
+\ba'(\ba) &:= \frac{\mathrm{d}\ba}{\mathrm{d}\bw} = \bigl(1-\ba\bigr)^{2}
+  \qquad \bigl(b_{\mathrm{true}}(\ba) \to 1, \ \text{its contact value}\bigr) \\
+a_w &= a_o\,\ba_w , \qquad a_o = \frac{\Delta t}{\gamma_N R}
+\end{align*}
 
 \begin{equation*}
 \frac{\ba'(\ba_{\mathrm{true}})}{\ba'_{\mathrm{true}}}
+  = b_{\mathrm{true}}
   = \frac{9}{8} + \frac{1}{2\bw^{2}} - \frac{57}{50\,\bw^{3}}
   + \mathcal{O}(\bw^{-4})
 \end{equation*}
@@ -75,9 +87,9 @@ a_w = a_o\,\ba_w , \qquad a_o = \frac{\Delta t}{\gamma_N R}
 $\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2\bigr)$
 
 \begin{align*}
-\bw[k] &= \bw_d[k] - \delta\bw_3[k], &
-\bw_d[k+1] &= \bw_d[k] + \Delta\bw_d[k] \\
-\delta\bw_1[k+1] &= \delta\bw_2[k], &
+\bw[k]           &= \bw_d[k] - \delta\bw_3[k] \\
+\bw_d[k+1]       &= \bw_d[k] + \Delta\bw_d[k] \\
+\delta\bw_1[k+1] &= \delta\bw_2[k] \\
 \delta\bw_2[k+1] &= \delta\bw_3[k] \\
 \delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k] - F_{dw}[k]\,e_{\ba_w}[k]
   - \varepsilon_w[k]
@@ -125,21 +137,20 @@ F_{dw}[k] &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
 
 \section{Process model}
 
-\begin{equation*}
-\text{(a)}\quad
-\mathbf{x} = \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w\,\bigr]^{\top},
-\qquad
-\text{(b)}\quad
-\mathbf{x} = \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w,\
-\delta a\,\bigr]^{\top}
+\begin{align*}
+\text{(a)}\quad \mathbf{x}
+  &= \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w\,\bigr]^{\top} \\
+\text{(b)}\quad \mathbf{x}
+  &= \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w,\
+     \delta a\,\bigr]^{\top}
 \qquad (d = 2)
-\end{equation*}
+\end{align*}
 
 \section{Estimator}
 
 \begin{align*}
-\delta\hat{\bw}_1[k+1] &= \delta\hat{\bw}_2[k], &
-\delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k], &
+\delta\hat{\bw}_1[k+1] &= \delta\hat{\bw}_2[k] \\
+\delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k] \\
 \delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k]
 \end{align*}
 
@@ -150,8 +161,8 @@ F_{dw}[k] &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
 \text{(b)}\quad \hat{\ba}_w[k+1] &= \hat{\ba}_w[k]
   + \bigl(1-\hat{\ba}_w[k]\bigr)^{2}
     \Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr]
-  + \delta\hat{a}[k],
-\qquad \delta\hat{a}[k+1] = \delta\hat{a}[k]
+  + \delta\hat{a}[k] \\
+\text{(b)}\quad \delta\hat{a}[k+1] &= \delta\hat{a}[k]
 \end{align*}
 
 \section{Error dynamics}
@@ -159,8 +170,8 @@ F_{dw}[k] &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
 (True $-$ Estimator; coefficients at the estimate)
 
 \begin{align*}
-e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k], \qquad
-e_{\delta\bw_2}[k+1] = e_{\delta\bw_3}[k] \\
+e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k] \\
+e_{\delta\bw_2}[k+1] &= e_{\delta\bw_3}[k] \\
 e_{\delta\bw_3}[k+1] &= \lambda_c\,e_{\delta\bw_3}[k]
   - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
 e_{\ba_w}[k+1] &= \Bigl[\,1 + \bigl(1-\hat{\ba}_w\bigr)^{2}F_{dw}
@@ -212,11 +223,11 @@ y_2[k] &= \ba_w[k-d] + n_a[k]
   \ \bigl[\,-\ d\,\delta a[k]\ \text{in (b)}\bigr]
 \end{equation*}
 
-\begin{equation*}
-\frac{\partial y_2}{\partial \ba_w} = 1 + 2\bigl(1-\hat{\ba}_w\bigr)\nabla_d\bw_d,
-\qquad
-\frac{\partial y_2}{\partial\,\delta a} = -d
-\end{equation*}
+\begin{align*}
+\frac{\partial y_2}{\partial \ba_w}
+  &= 1 + 2\bigl(1-\hat{\ba}_w\bigr)\nabla_d\bw_d \\
+\frac{\partial y_2}{\partial\,\delta a} &= -d
+\end{align*}
 
 \begin{equation*}
 \text{(b)}\quad
@@ -224,8 +235,10 @@ H[k] =
 \begin{bmatrix}
 1 & 0 & 0 & 0 & 0 \\
 0 & 0 & 0 & 1 + 2(1-\hat{\ba}_w)\nabla_d\bw_d & -d
-\end{bmatrix},
-\qquad
+\end{bmatrix}
+\end{equation*}
+
+\begin{equation*}
 K[k] = P^f H^{\top}\bigl(HP^fH^{\top}+R\bigr)^{-1}
 \end{equation*}
 
@@ -237,41 +250,28 @@ e_{y_2}[k] &= \Bigl[1 + 2\bigl(1-\hat{\ba}_w\bigr)\nabla_d\bw_d\Bigr]
 
 \section{Process and measurement noise}
 
-\begin{equation*}
-q_3 = -\ba_w\,\bar{f}_T,
-\qquad
-q_4 = -\bigl(1-\hat{\ba}_w\bigr)^{2}q_3,
-\qquad
-\gamma(\bw) = \gamma_N c(\bw),
-\qquad
-\sigma^{2}_{\bar{f}_T} = a_o^{2}\,\frac{4k_BT\gamma(\bw)}{\Delta t}
-\end{equation*}
+\begin{align*}
+q_3 &= -\ba_w\,\bar{f}_T \\
+q_4 &= -\bigl(1-\hat{\ba}_w\bigr)^{2}q_3 \\
+\gamma(\bw) &= \gamma_N c(\bw) \\
+\sigma^{2}_{\bar{f}_T} &= a_o^{2}\,\frac{4k_BT\gamma(\bw)}{\Delta t}
+\end{align*}
 
-\begin{equation*}
-Q_{33} = \frac{4k_BT\,a_o}{R}\,\ba_w,
-\qquad
-Q_{34} = Q_{43} = -\bigl(1-\hat{\ba}_w\bigr)^{2}Q_{33},
-\qquad
-Q_{44} = \bigl(1-\hat{\ba}_w\bigr)^{4}Q_{33},
-\qquad
-Q_{55} = 0
-\end{equation*}
+\begin{align*}
+Q_{33} &= \frac{4k_BT\,a_o}{R}\,\ba_w \\
+Q_{34} = Q_{43} &= -\bigl(1-\hat{\ba}_w\bigr)^{2}Q_{33} \\
+Q_{44} &= \bigl(1-\hat{\ba}_w\bigr)^{4}Q_{33} \\
+Q_{55} &= 0
+\end{align*}
 
-\begin{equation*}
-R = \mathrm{diag}(R_1, R_2),
-\qquad
-R_1 = \sigma^{2}_{n_w},
-\qquad
-R_2 = K_{\mathrm{var}} IF_{\mathrm{var}}\bigl(\ba_w+\xi\bigr)^{2} + d\,Q_{44},
-\qquad
-K_{\mathrm{var}} = \frac{2a_{\mathrm{cov}}}{2-a_{\mathrm{cov}}}
-\end{equation*}
-
-\begin{equation*}
-\sigma^{2}_{\delta\bw_r} = C_{dpmr}\frac{4k_BT\,a_o}{R}\bigl(\ba_w+\xi\bigr),
-\qquad
-\xi = \frac{C_n\sigma^{2}_{n_w}}{C_{dpmr}\bigl(4k_BT a_o/R\bigr)}
-\end{equation*}
+\begin{align*}
+R &= \mathrm{diag}(R_1, R_2) \\
+R_1 &= \sigma^{2}_{n_w} \\
+R_2 &= K_{\mathrm{var}} IF_{\mathrm{var}}\bigl(\ba_w+\xi\bigr)^{2} + d\,Q_{44} \\
+K_{\mathrm{var}} &= \frac{2a_{\mathrm{cov}}}{2-a_{\mathrm{cov}}} \\
+\sigma^{2}_{\delta\bw_r} &= C_{dpmr}\frac{4k_BT\,a_o}{R}\bigl(\ba_w+\xi\bigr) \\
+\xi &= \frac{C_n\sigma^{2}_{n_w}}{C_{dpmr}\bigl(4k_BT a_o/R\bigr)}
+\end{align*}
 
 \begin{equation*}
 Q_{55}^{\ast} = \mathrm{Var}\bigl(\delta a[k+1] - \delta a[k]\bigr)
@@ -279,24 +279,20 @@ Q_{55}^{\ast} = \mathrm{Var}\bigl(\delta a[k+1] - \delta a[k]\bigr)
 
 \section*{Seed and prior}
 
-\begin{equation*}
-\delta\hat{a}[0] = 0,
-\qquad
-\hat{\ba}_w[0] = 1 - \frac{1}{\bw[0]-\hat{\bw}_0}
-\end{equation*}
+\begin{align*}
+\delta\hat{a}[0] &= 0 \\
+\hat{\ba}_w[0] &= 1 - \frac{1}{\bw[0]-\hat{\bw}_0}
+\end{align*}
 
-\begin{equation*}
-\frac{\partial\ba}{\partial\,\delta a}\bigg|_{\bw} = \frac{1-\ba}{1+\delta a},
-\qquad
-\frac{\partial\ba}{\partial\bw_0}\bigg|_{\bw} = -\,\ba'
-\end{equation*}
+\begin{align*}
+\frac{\partial\ba}{\partial\,\delta a}\bigg|_{\bw} &= \frac{1-\ba}{1+\delta a} \\
+\frac{\partial\ba}{\partial\bw_0}\bigg|_{\bw} &= -\,\ba'
+\end{align*}
 
-\begin{equation*}
-P_{44}[0] = \bigl(\hat{\ba}'[0]\bigr)^{2} P_{\bw_0} + \mathrm{floor}_a^{2},
-\qquad
-P_{45}[0] = 0,
-\qquad
-P_{55}[0] = P_{\delta a}
-\end{equation*}
+\begin{align*}
+P_{44}[0] &= \bigl(\hat{\ba}'[0]\bigr)^{2} P_{\bw_0} + \mathrm{floor}_a^{2} \\
+P_{45}[0] &= 0 \\
+P_{55}[0] &= P_{\delta a}
+\end{align*}
 
 \end{document}
