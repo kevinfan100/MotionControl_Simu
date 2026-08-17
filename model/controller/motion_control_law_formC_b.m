@@ -211,9 +211,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
 %       .par_law       x/y run the fitted parallel origin    (default false;
 %                      REQUIRES .w0_par, .Pf_a_floor_par)
 %       .a_bar_floor / .a_bar_ceil   a_bar clamps    (default 0.05, 1 - 1e-4)
-%       .da_clamp      [min max] on da. Structural bound only: a_bar lives in
-%                      (0,1), so no single-step increment can exceed 1 in
-%                      magnitude (default [-1, 1]; never binds).
+%       .b_floor / .b_ceil   numerical guard on slot 5 = b (default 0.5, 2.0).
+%                      Guard only: b_true on the envelope lives in
+%                      [1.1258, 1.1534], so the guard is ~20x wider than the
+%                      physics and must never bind. How far b MAY travel is
+%                      P55's job, not the guard's -- P55 records the travel.
 %
 %   da_known (3x1 or scalar, optional): KNOWN-DISTURBANCE ARM. When supplied,
 %   the row-4 disturbance is taken from this exogenous input instead of from
@@ -297,9 +299,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_bar amlpf_var_factor
     persistent t_warmup_kf h_bar_safe sigma2_n_nd
     persistent enable_wall w_hat_n pz_wall
-    persistent Q_theta_floor a_bar_floor a_bar_ceil da_clamp ws_margin gap_floor
+    persistent Q_theta_floor a_bar_floor a_bar_ceil ws_margin gap_floor
     persistent b_floor b_ceil
-    persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off t2_pure_prop lambda_f
+    persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off t2_pure_prop lambda_f obs_dump_on
     persistent ap_src ap_ewma_a a_bar_slope_v law_b_formC
     persistent q33_dc_match q33_dc_fac
     persistent y2_echo_corr S_echo_T S_echo_n
@@ -346,6 +348,14 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
 
         y2_whiten    = logical(get_field_default(ctrl_const, 'y2_whiten', true));
         fe_row4_full = logical(get_field_default(ctrl_const, 'fe_row4_full', true));
+
+        % Observability capture (model/diag/obs_dump.m). OFF by default and the
+        % only cost when off is the persistent logical tested at the call site,
+        % so a run with obs_dump = false is bit-identical to one without this
+        % code. Consumed by verify_state_observability.m.
+        obs_dump_on = logical(get_field_default(ctrl_const, 'obs_dump', false));
+        obs_dump('reset', obs_dump_on);
+
         use_fdet     = logical(get_field_default(ctrl_const, 'use_fdet', true));
         y2_off       = logical(get_field_default(ctrl_const, 'y2_off', false));
         % DIAGNOSTIC arm (b) of the eps_w MA(2) study (2026-08-01): scale the
@@ -517,7 +527,6 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % admissible value can exceed 1 in magnitude. That structural bound is
         % the clamp; it is not a tuning knob and never binds (the run-time
         % values are O(1e-4)).
-        da_clamp    = get_field_default(ctrl_const, 'da_clamp', [-1, 1]);
         ws_margin   = get_field_default(ctrl_const, 'ws_margin', 1e-3);
         gap_floor   = ws_margin;      % keeps w_bar - w0 > 0 at the seed
 
@@ -1083,6 +1092,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % (b) y2 = gain readout (whitened increment by default).
         %     a_wm_km1 is shifted every step regardless, so the increment
         %     stays valid when the gate reopens.
+        H2_log = [];
         if ~gate_off(ax) && ~y2_off
             % H row 2 (tex S7, CORRECTED 2026-08-12 -- see the header note).
             % The height writing had dy2/da_bar EXACTLY 1 because a_bar' did
@@ -1118,6 +1128,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             % Jacobians do in H2 above.
             y2_pred = H2_scale * (x_upd(4) ...
                         - echo_fac * a_prime_i * Grad_wbar_d);
+            H2_log = H2;
             S2  = H2 * P_upd * H2' + R2_i;
             K2  = (P_upd * H2') / S2;
             if freeze_gain; K2(4:7) = 0; end
@@ -1137,7 +1148,15 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         %     they stay exactly at the seed.
         x_upd(4) = min(max(x_upd(4), a_bar_floor), a_bar_ceil);
         if ~lm(1)
-            x_upd(5) = min(max(x_upd(5), da_clamp(1)), da_clamp(2));
+            % Slot 5 is b in THIS writing, so the guard is b's own numerical
+            % range [b_floor, b_ceil] -- not the sibling's da_clamp, which is
+            % the additive disturbance's range. The sibling's [-1, 1] excluded
+            % b's own seed (b_init 1.1396 > 1), so b was pinned at the upper
+            % bound on step 1 and stayed there for the whole run; the giveaway
+            % was x_upd(5) moving while P55 did not, which no Kalman update can
+            % do. A guard is a numerical guard only: how far b may travel is
+            % P55's job, because P55 records the travel and a clamp does not.
+            x_upd(5) = min(max(x_upd(5), b_floor), b_ceil);
         end
         if lambda_f < 1
             P_upd = P_upd / lambda_f;            % Menq (4.15)
@@ -1146,6 +1165,16 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         P_upd = freeze_locked_P(P_upd, lock_state_idx_ax{ax});
 
         if strcmp(ap_src, 'pred'); a_bar_slope_v(ax) = x_pred(4); end
+        if obs_dump_on
+            % One record per axis per step. H2_log is [] when the y2 gate was
+            % closed or y2 is off -- the empty slot is meaningful (that channel
+            % did not update), so it is kept rather than dropped.
+            obs_dump('append', struct('ax', ax, 'k', k_step, 'F', F_e, ...
+                'H', {{H1, H2_log}}, 'R', [R1_i, R2_i], ...
+                'x_pred', x_pred, 'x_upd', x_upd, 'P_pred', P_pred, ...
+                'P_upd', P_upd, 'gate', gate_off(ax)));
+        end
+
         x_e_per_axis(:, ax) = x_upd;
         P_per_axis{ax} = P_upd;
     end
