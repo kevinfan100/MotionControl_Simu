@@ -61,11 +61,6 @@ b_{\mathrm{true}}(\bw) := \frac{\bigl(1-\ba_{\mathrm{true}}\bigr)^{2}}
   + \mathcal{O}(\bw^{-4})
 \end{equation*}
 
-\begin{equation*}
-\ba(\bw) = 1 - \frac{b}{\bw-\bw_0}
-\qquad\text{(integrated law; used at the seed only)}
-\end{equation*}
-
 \section{Jacobians}
 
 \begin{equation*}
@@ -73,13 +68,6 @@ b_{\mathrm{true}}(\bw) := \frac{\bigl(1-\ba_{\mathrm{true}}\bigr)^{2}}
 \qquad
 \frac{\partial \ba'}{\partial b} = -\frac{\bigl(1-\ba\bigr)^{2}}{b^{2}}
   = -\frac{\ba'}{b}
-\end{equation*}
-
-\begin{equation*}
-\frac{\partial \ba}{\partial b}\bigg|_{\bw} = -\frac{1}{\bw-\bw_0}
-  = -\frac{1-\ba}{b},
-\qquad
-\frac{\partial \ba}{\partial \bw_0}\bigg|_{\bw} = -\,\ba'
 \end{equation*}
 
 \section{True dynamics}
@@ -231,13 +219,6 @@ F_e[k] =
 \frac{\bigl(1-\hat{\ba}_w\bigr)^{2}}{\hat{b}}\varepsilon_w,\ 0,\ 0,\ 0\,\Bigr]^{\top}
 \end{equation*}
 
-\begin{equation*}
-e_{\ba}(\bw)\big|_{\bw_0} = -\,\ba'(\bw)\,e_{\bw_0}
-\ \propto\ \frac{b}{(\bw-\bw_0)^{2}},
-\qquad
-e_{\ba}(\bw)\big|_{b} = -\frac{e_b}{\bw-\bw_0}
-\end{equation*}
-
 \section{Measurement and innovation}
 
 \begin{align*}
@@ -324,24 +305,41 @@ K_{\mathrm{var}} = \frac{2a_{\mathrm{cov}}}{2-a_{\mathrm{cov}}}
 \section*{Seed and prior}
 
 \begin{equation*}
-\hat{b}[0] = \frac{9}{8} = \lim_{\bw\to\infty} b_{\mathrm{true}}(\bw),
+\ba(\bw) = 1 - \frac{b}{\bw-\bw_s},
 \qquad
-\hat{\ba}_w[0] = 1 - \frac{\hat{b}[0]}{\bw[0]-\hat{\bw}_0},
+\frac{\partial \ba}{\partial b}\bigg|_{\bw} = -\frac{1}{\bw-\bw_s}
+  = -\frac{1-\ba}{b},
+\qquad
+\frac{\partial \ba}{\partial \bw_s}\bigg|_{\bw} = -\,\ba'
+\end{equation*}
+
+\begin{equation*}
+\hat{b}[0] = \tfrac{1}{2}\Bigl[\inf_{\bw\in\mathcal{E}} b_{\mathrm{true}}
+  + \sup_{\bw\in\mathcal{E}} b_{\mathrm{true}}\Bigr],
+\qquad
+P_{55}[0] = P_{bb} = \Bigl[\tfrac{1}{2}\Bigl(\sup_{\bw\in\mathcal{E}}
+  b_{\mathrm{true}} - \inf_{\bw\in\mathcal{E}} b_{\mathrm{true}}\Bigr)\Bigr]^{2}
+\end{equation*}
+
+\begin{equation*}
+\hat{\ba}_w[0] = 1 - \frac{\hat{b}[0]}{\bw[0]-\hat{\bw}_s},
 \qquad
 \hat{\bw}_D[0] = \delta\hat{\bw}_D[0] = 0
 \end{equation*}
 
 \begin{equation*}
-P_{55}[0] = P_{bb} = \Bigl[\sup_{\bw\in\mathcal{E}}
-  \bigl|\,b_{\mathrm{true}}(\bw) - \tfrac{9}{8}\,\bigr|\Bigr]^{2}
-\end{equation*}
-
-\begin{equation*}
-P_{44}[0] = \bigl(\hat{\ba}'[0]\bigr)^{2}P_{\bw_0}
+P_{44}[0] = \bigl(\hat{\ba}'[0]\bigr)^{2}P_{\bw_s}
   + \left(\frac{1-\hat{\ba}_w[0]}{\hat{b}[0]}\right)^{2}P_{bb}
   + \mathrm{floor}_a^{2},
 \qquad
 P_{45}[0] = -\,\frac{1-\hat{\ba}_w[0]}{\hat{b}[0]}\,P_{bb}
+\end{equation*}
+
+\begin{equation*}
+e_{\ba}(\bw)\big|_{\bw_s} = -\,\ba'(\bw)\,e_{\bw_s}
+\ \propto\ \frac{b}{(\bw-\bw_s)^{2}},
+\qquad
+e_{\ba}(\bw)\big|_{b} = -\frac{e_b}{\bw-\bw_s}
 \end{equation*}
 
 \begin{equation*}
