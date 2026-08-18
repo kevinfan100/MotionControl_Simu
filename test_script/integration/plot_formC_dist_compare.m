@@ -61,7 +61,17 @@ function s = local_pull(r, ax, Ts)
     % Tracking error in the derivation's sign and units: S3 writes
     % w_bar[k] = w_bar_d[k] - dw3[k], so dw3 = commanded minus actual, and
     % R*dw3 is that in um.
-    s.dw = r.p_d_out(:, ax) - r.p_true_out(:, ax);
+    %
+    % p_d_out and p_true_out are logged one sample apart: p_d_out[k] is the
+    % command the step is driving TOWARDS, p_true_out[k] the position it starts
+    % from. Differencing them at the same index adds one commanded step of bias
+    % -- 28.455 nm on this trajectory, against a measured descent bias of
+    % 27.70 nm, which is the whole of it. Aligned, the descent bias is
+    % -0.74 nm and the overall RMS falls 29.12 -> 25.08 nm.
+    % Caught 2026-08-18 by a cross-arm check: the bias did not move when the
+    % gain error changed 8x across arms, which killed the gain-overshoot
+    % explanation and left the indexing.
+    s.dw = [NaN; r.p_d_out(2:end, ax) - r.p_true_out(1:end-1, ax)];
     s.t  = (0:numel(s.aH)-1).' * Ts;
 end
 
