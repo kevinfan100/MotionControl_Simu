@@ -42,7 +42,7 @@ function plot_formC_dist_compare(oB, oD, opts)
         d = {local_pull(oB.runs{q}, AX, opts.Ts), local_pull(oD.runs{q}, AX, opts.Ts)};
         out = fullfile(fig_dir, sprintf('formC_dist_cmp%s_s%02d.png', ...
                                         opts.suffix, seeds(q)));
-        local_page(d, seeds(q), out, opts.names);
+        local_page(d, seeds(q), out, opts.names, opts.slot5_name);
         fprintf('seed %3d : no-da relerr RMS %6.3f %%  |  with-da %6.3f %%   da_end %+.3e\n', ...
                 seeds(q), sqrt(mean(d{1}.e.^2)), sqrt(mean(d{2}.e.^2)), d{2}.da(end));
     end
@@ -61,7 +61,7 @@ function s = local_pull(r, ax, Ts)
     s.t  = (0:numel(s.aH)-1).' * Ts;
 end
 
-function local_page(d, sq, out, NAME)
+function local_page(d, sq, out, NAME, SLOT5)
     COL_TRUE = [0.8 0 0]; COL_HAT = [0 0.2 0.9]; COL_MEAS = [0.45 0.72 0.95];
     BANDC = [0.45 0.55 0.95];
     FS = 18; LFS = 13; AXLW = 2.0; LW = 2.0;
@@ -104,13 +104,13 @@ function local_page(d, sq, out, NAME)
                          BANDC, 'EdgeColor', 'none', 'FaceAlpha', 0.30, ...
                          'DisplayName', '\pm sqrt(P_{55})');
                     plot(a, s.t, s.da, '-', 'Color', COL_HAT, 'LineWidth', LW, ...
-                         'DisplayName', [opts.slot5_name '_{hat}']);
+                         'DisplayName', [SLOT5 '_{hat}']);
                     yline(a, 0, '-', 'Color', COL_TRUE, 'LineWidth', LW, ...
                           'DisplayName', 'zero');
                     legend(a, 'Location', 'northoutside', 'Orientation', 'horizontal', ...
                            'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
                     if c == 1
-                        ylabel(a, opts.slot5_name, 'FontSize', FS, 'FontWeight', 'bold');
+                        ylabel(a, SLOT5, 'FontSize', FS, 'FontWeight', 'bold');
                     end
                     xlabel(a, 'time  [s]', 'FontSize', FS, 'FontWeight', 'bold');
             end
