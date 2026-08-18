@@ -27,6 +27,11 @@ function plot_formC_dist_compare(oB, oD, opts)
     if ~isfield(opts, 'Ts');     opts.Ts = 6.25e-4; end   % logged dt (1600 Hz)
     if ~isfield(opts, 'suffix'); opts.suffix = ''; end     % scenario tag
     if ~isfield(opts, 'names');  opts.names  = {'no \delta a', 'with \delta a'}; end
+    % Row 3 plots STATE SLOT 5, whose meaning depends on the writing: the
+    % additive disturbance in formC_state_dist, the law constant b in
+    % formC_state_b. The label must follow the caller, not the file it was
+    % forked from.
+    if ~isfield(opts, 'slot5_name'); opts.slot5_name = '\delta a'; end
 
     here = fileparts(mfilename('fullpath'));
     root = fileparts(fileparts(here));
@@ -99,13 +104,13 @@ function local_page(d, sq, out, NAME)
                          BANDC, 'EdgeColor', 'none', 'FaceAlpha', 0.30, ...
                          'DisplayName', '\pm sqrt(P_{55})');
                     plot(a, s.t, s.da, '-', 'Color', COL_HAT, 'LineWidth', LW, ...
-                         'DisplayName', '\delta a_{hat}');
+                         'DisplayName', [opts.slot5_name '_{hat}']);
                     yline(a, 0, '-', 'Color', COL_TRUE, 'LineWidth', LW, ...
                           'DisplayName', 'zero');
                     legend(a, 'Location', 'northoutside', 'Orientation', 'horizontal', ...
                            'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
                     if c == 1
-                        ylabel(a, '\delta a', 'FontSize', FS, 'FontWeight', 'bold');
+                        ylabel(a, opts.slot5_name, 'FontSize', FS, 'FontWeight', 'bold');
                     end
                     xlabel(a, 'time  [s]', 'FontSize', FS, 'FontWeight', 'bold');
             end
