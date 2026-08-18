@@ -1,16 +1,13 @@
-% STATUS: AHEAD OF CODE -- do NOT run against this until the controller is
-%         converted. 2026-08-18 the law was reparameterised from (1-a)^2/b to
-%         b(1-a)^2. model/controller/motion_control_law_formC_b.m and
-%         test_script/integration/run_formC_b.m are still the DIVISION form, so
-%         F_e(4,5) and P45[0] disagree with this file IN SIGN and every b power
-%         is inverted. The numerical guard b_floor/b_ceil = [0.5, 2.0] brackets
-%         both 1.14 and 0.878, so a run mixing the two conventions completes and
-%         prints plausible numbers rather than failing. Convert the code, or read
-%         this file as a proposal.
-% SSOT for the state-writing gain law with b ESTIMATED.
-%         Two versions in one file:
-%           (a) x = [dw1 dw2 dw3, a_bar_w, b]              5 states
-%           (b) (a) + a position-disturbance pair          7 states
+% STATUS: ACTIVE | SSOT for the state-writing gain law with b ESTIMATED.
+%   Implemented by model/controller/motion_control_law_formC_b.m and
+%   test_script/integration/run_formC_b.m, both converted to this
+%   parameterisation on 2026-08-18 (f7a33d0) and checked against it by an
+%   identity: b_new = 1/b_old exactly, so a run locked at b_old = 9/8 must
+%   reproduce one locked at b_new = 8/9, which it does to 6.1e-16.
+%   x = [dw1 dw2 dw3, a_bar_w, b], 5 states. An earlier header advertised a
+%   second 7-state version carrying a position-disturbance pair; it was never
+%   written and the claim is withdrawn rather than left dangling. Production
+%   comments referencing "S5(b)" point at it and are stale.
 %         Equation-only by house convention; everything that is not an
 %         equation lives in formC_state_b_ref.tex.
 %         delta a does NOT appear here. Its derivation and its falsification
