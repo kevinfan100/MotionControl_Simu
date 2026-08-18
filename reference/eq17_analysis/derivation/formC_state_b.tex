@@ -1,4 +1,13 @@
-% STATUS: ACTIVE -- SSOT for the state-writing gain law with b ESTIMATED.
+% STATUS: AHEAD OF CODE -- do NOT run against this until the controller is
+%         converted. 2026-08-18 the law was reparameterised from (1-a)^2/b to
+%         b(1-a)^2. model/controller/motion_control_law_formC_b.m and
+%         test_script/integration/run_formC_b.m are still the DIVISION form, so
+%         F_e(4,5) and P45[0] disagree with this file IN SIGN and every b power
+%         is inverted. The numerical guard b_floor/b_ceil = [0.5, 2.0] brackets
+%         both 1.14 and 0.878, so a run mixing the two conventions completes and
+%         prints plausible numbers rather than failing. Convert the code, or read
+%         this file as a proposal.
+% SSOT for the state-writing gain law with b ESTIMATED.
 %         Two versions in one file:
 %           (a) x = [dw1 dw2 dw3, a_bar_w, b]              5 states
 %           (b) (a) + a position-disturbance pair          7 states
@@ -45,31 +54,31 @@ $\bar{f} = a_o f$; $0 < \ba < 1$; $e_{\theta} = \theta - \hat{\theta}$)
 \begin{equation*}
 \ba'_{\mathrm{true}}(\bw) > 0 \ \ \text{on} \ \ \bw > 1
 \qquad\Longrightarrow\qquad
-\ba' = \frac{\bigl(1-\ba\bigr)^{2}}{b_{\mathrm{true}}(\ba)}
+\ba' = b_{\mathrm{true}}(\ba)\bigl(1-\ba\bigr)^{2}
 \ \ \text{exactly},
 \qquad
-b_{\mathrm{true}} := \frac{\bigl(1-\ba_{\mathrm{true}}\bigr)^{2}}
-  {\ba'_{\mathrm{true}}}
+b_{\mathrm{true}} := \frac{\ba'_{\mathrm{true}}}
+  {\bigl(1-\ba_{\mathrm{true}}\bigr)^{2}}
 \end{equation*}
 
 \begin{align*}
 \ba_{\mathrm{true}}(1) = 0, \quad \ba'_{\mathrm{true}}(1) = 1
   &\quad\Longrightarrow\quad b_{\mathrm{true}}\bigl(\ba = 0\bigr) = 1 \\
 1 - \ba_{\mathrm{true}} = \frac{9}{8\bw} + \mathcal{O}(\bw^{-3})
-  &\quad\Longrightarrow\quad b_{\mathrm{true}}\bigl(\ba \to 1\bigr) = \frac{9}{8}
+  &\quad\Longrightarrow\quad b_{\mathrm{true}}\bigl(\ba \to 1\bigr) = \frac{8}{9}
 \end{align*}
 
 \begin{align*}
-\ba'(\ba,b) &:= \frac{\bigl(1-\ba\bigr)^{2}}{b} \\
+\ba'(\ba,b) &:= b\bigl(1-\ba\bigr)^{2} \\
 a_w &= a_o\,\ba_w , \qquad a_o = \frac{\Delta t}{\gamma_N R}
 \end{align*}
 
 \section{Jacobians}
 
 \begin{align*}
-\frac{\partial \ba'}{\partial \ba} &= -\frac{2\bigl(1-\ba\bigr)}{b} \\
-\frac{\partial \ba'}{\partial b}   &= -\frac{\bigl(1-\ba\bigr)^{2}}{b^{2}}
-  = -\frac{\ba'}{b}
+\frac{\partial \ba'}{\partial \ba} &= -2b\bigl(1-\ba\bigr) \\
+\frac{\partial \ba'}{\partial b}   &= \bigl(1-\ba\bigr)^{2}
+  = \frac{\ba'}{b}
 \end{align*}
 
 \section{True dynamics}
@@ -110,7 +119,7 @@ F_{dw}[k] &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
 \delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k] \\
 \delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k] \\
 \hat{\ba}_w[k+1]       &= \hat{\ba}_w[k]
-  + \frac{\bigl(1-\hat{\ba}_w[k]\bigr)^{2}}{\hat{b}[k]}
+  + \hat{b}[k]\bigl(1-\hat{\ba}_w[k]\bigr)^{2}
     \Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr] \\
 \hat{b}[k+1]           &= \hat{b}[k]
 \end{align*}
@@ -125,14 +134,14 @@ e_{\delta\bw_2}[k+1] &= e_{\delta\bw_3}[k] \\
 e_{\delta\bw_3}[k+1] &= \lambda_c\,e_{\delta\bw_3}[k]
   - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
 e_{\ba_w}[k+1] &= \Bigl[\,1
-  + \frac{\bigl(1-\hat{\ba}_w\bigr)^{2}}{\hat{b}}F_{dw}
-  - \frac{2\bigl(1-\hat{\ba}_w\bigr)}{\hat{b}}
+  + \hat{b}\bigl(1-\hat{\ba}_w\bigr)^{2}F_{dw}
+  - 2\hat{b}\bigl(1-\hat{\ba}_w\bigr)
     \bigl(\Delta\bw_d + (1-\lambda_c)\delta\hat{\bw}_3\bigr)\Bigr] e_{\ba_w}[k] \\
-  &\qquad + \frac{(1-\lambda_c)\bigl(1-\hat{\ba}_w\bigr)^{2}}{\hat{b}}
+  &\qquad + (1-\lambda_c)\,\hat{b}\bigl(1-\hat{\ba}_w\bigr)^{2}
       e_{\delta\bw_3}[k]
-    - \frac{\bigl(1-\hat{\ba}_w\bigr)^{2}}{\hat{b}^{2}}
+    + \bigl(1-\hat{\ba}_w\bigr)^{2}
       \bigl(\Delta\bw_d + (1-\lambda_c)\delta\hat{\bw}_3\bigr) e_b[k] \\
-  &\qquad + \frac{\bigl(1-\hat{\ba}_w\bigr)^{2}}{\hat{b}}\varepsilon_w[k] \\
+  &\qquad + \hat{b}\bigl(1-\hat{\ba}_w\bigr)^{2}\varepsilon_w[k] \\
 e_b[k+1] &= e_b[k]
 \end{align*}
 
@@ -143,14 +152,14 @@ F_e[k] =
 0 & 1 & 0 & 0 & 0 \\[0.4em]
 0 & 0 & 1 & 0 & 0 \\[0.4em]
 0 & 0 & \lambda_c & -F_{dw} & 0 \\[0.8em]
-0 & 0 & \dfrac{(1-\lambda_c)\bigl(1-\hat{\ba}_w\bigr)^{2}}{\hat{b}}
+0 & 0 & (1-\lambda_c)\,\hat{b}\bigl(1-\hat{\ba}_w\bigr)^{2}
   & \begin{array}{@{}l@{}}
-      1 + \dfrac{\bigl(1-\hat{\ba}_w\bigr)^{2}}{\hat{b}}F_{dw} \\[0.6em]
-      \quad - \dfrac{2\bigl(1-\hat{\ba}_w\bigr)}{\hat{b}}
+      1 + \hat{b}\bigl(1-\hat{\ba}_w\bigr)^{2}F_{dw} \\[0.6em]
+      \quad - 2\hat{b}\bigl(1-\hat{\ba}_w\bigr)
         \bigl(\Delta\bw_d + (1-\lambda_c)\,\delta\hat{\bw}_3\bigr)
     \end{array}
   & \begin{array}{@{}l@{}}
-      -\dfrac{\bigl(1-\hat{\ba}_w\bigr)^{2}}{\hat{b}^{2}} \\[0.6em]
+      \bigl(1-\hat{\ba}_w\bigr)^{2} \\[0.6em]
       \quad \times \bigl(\Delta\bw_d + (1-\lambda_c)\,\delta\hat{\bw}_3\bigr)
     \end{array} \\[1.6em]
 0 & 0 & 0 & 0 & 1
@@ -159,7 +168,7 @@ F_e[k] =
 
 \begin{equation*}
 \mathbf{q}[k] = \Bigl[\,0,\ 0,\ -\varepsilon_w,\
-\frac{\bigl(1-\hat{\ba}_w\bigr)^{2}}{\hat{b}}\varepsilon_w,\ 0\,\Bigr]^{\top}
+\hat{b}\bigl(1-\hat{\ba}_w\bigr)^{2}\varepsilon_w,\ 0\,\Bigr]^{\top}
 \end{equation*}
 
 \section{Measurement and innovation}
@@ -172,34 +181,34 @@ y_2[k] &= \ba_w[k-d] + n_a[k]
 
 \begin{equation*}
 \ba_w[k-d] = \ba_w[k]
-  - \frac{\bigl(1-\ba_w[k]\bigr)^{2}}{b}\nabla_d\bw_d[k]
+  - b\bigl(1-\ba_w[k]\bigr)^{2}\nabla_d\bw_d[k]
 \end{equation*}
 
 \begin{align*}
 \frac{\partial y_2}{\partial \ba_w}
-  &= 1 + \frac{2\bigl(1-\hat{\ba}_w\bigr)}{\hat{b}}\nabla_d\bw_d \\
+  &= 1 + 2\hat{b}\bigl(1-\hat{\ba}_w\bigr)\nabla_d\bw_d \\
 \frac{\partial y_2}{\partial b}
-  &= \frac{\bigl(1-\hat{\ba}_w\bigr)^{2}}{\hat{b}^{2}}\nabla_d\bw_d
+  &= -\bigl(1-\hat{\ba}_w\bigr)^{2}\nabla_d\bw_d
 \end{align*}
 
 \begin{equation*}
 H[k] =
 \begin{bmatrix}
 1 & 0 & 0 & 0 & 0 \\
-0 & 0 & 0 & 1 + \dfrac{2(1-\hat{\ba}_w)}{\hat{b}}\nabla_d\bw_d
-  & \dfrac{(1-\hat{\ba}_w)^{2}}{\hat{b}^{2}}\nabla_d\bw_d
+0 & 0 & 0 & 1 + 2\hat{b}(1-\hat{\ba}_w)\nabla_d\bw_d
+  & -(1-\hat{\ba}_w)^{2}\nabla_d\bw_d
 \end{bmatrix}
 \end{equation*}
 
 \begin{equation*}
-K[k] = P^f H^{\top}\bigl(HP^fH^{\top}+R\bigr)^{-1}
+L[k] = P^f H^{\top}\bigl(HP^fH^{\top}+R\bigr)^{-1}
 \end{equation*}
 
 \begin{align*}
 e_{y_1}[k] &= e_{\delta\bw_1}[k] + n_w[k] \\
-e_{y_2}[k] &= \Bigl[1 + \frac{2\bigl(1-\hat{\ba}_w\bigr)}{\hat{b}}
+e_{y_2}[k] &= \Bigl[1 + 2\hat{b}\bigl(1-\hat{\ba}_w\bigr)
     \nabla_d\bw_d\Bigr] e_{\ba_w}[k]
-  + \frac{\bigl(1-\hat{\ba}_w\bigr)^{2}}{\hat{b}^{2}}\nabla_d\bw_d\;e_b[k]
+  - \bigl(1-\hat{\ba}_w\bigr)^{2}\nabla_d\bw_d\;e_b[k]
   + n_a[k]
 \end{align*}
 
@@ -207,15 +216,15 @@ e_{y_2}[k] &= \Bigl[1 + \frac{2\bigl(1-\hat{\ba}_w\bigr)}{\hat{b}}
 
 \begin{align*}
 q_3 &= -\ba_w\,\bar{f}_T \\
-q_4 &= -\frac{\bigl(1-\hat{\ba}_w\bigr)^{2}}{\hat{b}}\,q_3 \\
+q_4 &= -\hat{b}\bigl(1-\hat{\ba}_w\bigr)^{2}q_3 \\
 \gamma(\bw) &= \gamma_N c(\bw) \\
 \sigma^{2}_{\bar{f}_T} &= a_o^{2}\,\frac{4k_BT\gamma(\bw)}{\Delta t}
 \end{align*}
 
 \begin{align*}
 Q_{33} &= \frac{4k_BT\,a_o}{R}\,\ba_w \\
-Q_{34} = Q_{43} &= -\frac{\bigl(1-\hat{\ba}_w\bigr)^{2}}{\hat{b}}\,Q_{33} \\
-Q_{44} &= \frac{\bigl(1-\hat{\ba}_w\bigr)^{4}}{\hat{b}^{2}}\,Q_{33} \\
+Q_{34} = Q_{43} &= -\hat{b}\bigl(1-\hat{\ba}_w\bigr)^{2}Q_{33} \\
+Q_{44} &= \hat{b}^{2}\bigl(1-\hat{\ba}_w\bigr)^{4}Q_{33} \\
 Q_{55} &= 0
 \end{align*}
 
@@ -231,9 +240,9 @@ K_{\mathrm{var}} &= \frac{2a_{\mathrm{cov}}}{2-a_{\mathrm{cov}}} \\
 \section*{Seed and prior}
 
 \begin{align*}
-\ba(\bw) &= 1 - \frac{b}{\bw-\bw_s} \\
+\ba(\bw) &= 1 - \frac{1}{b\,(\bw-\bw_s)} \\
 \frac{\partial \ba}{\partial b}\bigg|_{\bw}
-  &= -\frac{1}{\bw-\bw_s} = -\frac{1-\ba}{b} \\
+  &= \frac{1}{b^{2}(\bw-\bw_s)} = \frac{1-\ba}{b} \\
 \frac{\partial \ba}{\partial \bw_s}\bigg|_{\bw} &= -\,\ba'
 \end{align*}
 
@@ -242,20 +251,20 @@ K_{\mathrm{var}} &= \frac{2a_{\mathrm{cov}}}{2-a_{\mathrm{cov}}} \\
   + \sup_{\bw\in\mathcal{E}} b_{\mathrm{true}}\Bigr] \\
 P_{55}[0] = P_{bb} &= \Bigl[\tfrac{1}{2}\Bigl(\sup_{\bw\in\mathcal{E}}
   b_{\mathrm{true}} - \inf_{\bw\in\mathcal{E}} b_{\mathrm{true}}\Bigr)\Bigr]^{2} \\
-\hat{\ba}_w[0] &= 1 - \frac{\hat{b}[0]}{\bw[0]-\hat{\bw}_s}
+\hat{\ba}_w[0] &= 1 - \frac{1}{\hat{b}[0]\,(\bw[0]-\hat{\bw}_s)}
 \end{align*}
 
 \begin{align*}
 P_{44}[0] &= \bigl(\hat{\ba}'[0]\bigr)^{2}P_{\bw_s}
   + \left(\frac{1-\hat{\ba}_w[0]}{\hat{b}[0]}\right)^{2}P_{bb}
   + \mathrm{floor}_a^{2} \\
-P_{45}[0] &= -\,\frac{1-\hat{\ba}_w[0]}{\hat{b}[0]}\,P_{bb}
+P_{45}[0] &= \frac{1-\hat{\ba}_w[0]}{\hat{b}[0]}\,P_{bb}
 \end{align*}
 
 \begin{align*}
 e_{\ba}(\bw)\big|_{\bw_s} &= -\,\ba'(\bw)\,e_{\bw_s}
-  \ \propto\ \frac{b}{(\bw-\bw_s)^{2}} \\
-e_{\ba}(\bw)\big|_{b}     &= -\frac{e_b}{\bw-\bw_s}
+  \ \propto\ \frac{1}{b\,(\bw-\bw_s)^{2}} \\
+e_{\ba}(\bw)\big|_{b}     &= \frac{e_b}{b^{2}(\bw-\bw_s)}
 \end{align*}
 
 
@@ -265,26 +274,6 @@ e_{\ba}(\bw)\big|_{b}     &= -\frac{e_b}{\bw-\bw_s}
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{figures/formC_belief_vs_command.png}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/formC_dist_cmp_fin_est_s07.png}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/formC_dist_cmp_fin_est_s11.png}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/formC_dist_cmp_fin_true_s07.png}
-\end{figure}
-
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\textwidth]{figures/formC_dist_cmp_fin_true_s11.png}
 \end{figure}
 
 \end{document}
