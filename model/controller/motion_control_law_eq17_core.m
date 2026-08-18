@@ -238,7 +238,14 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         %   y2' = a_xm[k] - (1-a_cov)*a_xm[k-1] = a_cov*u[k]  (white),
         %   H2' = a_cov*H2,  R22' = a_cov*(2-a_cov)*R22.
         % Zero new constants. Default off (bit-identical legacy).
-        y2_whiten = isfield(ctrl_const, 'y2_whiten') && ctrl_const.y2_whiten;
+        % per-axis since ledger 45 (scalar broadcasts; B z-overshoot two-link
+        % chain is cut by whitening x/y only in oscillating-gain scenarios)
+        if isfield(ctrl_const, 'y2_whiten') && ~isempty(ctrl_const.y2_whiten)
+            y2_whiten = logical(ctrl_const.y2_whiten(:));
+            if isscalar(y2_whiten); y2_whiten = y2_whiten & true(3,1); end
+        else
+            y2_whiten = false(3, 1);
+        end
         % y2_ma2 (ledger 40): the whitened u-samples are MA(2)-correlated
         % (rho = [0.60 0.17], zero beyond lag 2 -- the d = 2 loop entangles
         % adjacent increments; measured ledger 39). Recover the booked-away
@@ -1032,7 +1039,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
             H_use = H_full;
             y_use = [delta_x_m(ax); a_xm(ax)];
             R_use = R_per_axis{ax};
-            if y2_whiten
+            if y2_whiten(ax)
                 % ledger 29: whitened increment consumes only the fresh
                 % sample: innov2 = a_cov*(u[k] - H2*x_hat) exactly.
                 H_use(2, :) = a_cov * H_use(2, :);
@@ -1081,7 +1088,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_core(del_pd, pd, p_m, pa
         end
 
         x_post = x_pred + K_state * innov;
-        if y2_whiten && y2_ma2 && ~gate_y2_off
+        if y2_whiten(ax) && y2_ma2 && ~gate_y2_off
             w_fresh = y_use(2) - H_use(2, :) * x_post;   % post-fit noise estimate
             ma2_w2(ax) = ma2_w1(ax);
             ma2_w1(ax) = w_fresh;

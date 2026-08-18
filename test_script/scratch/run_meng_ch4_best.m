@@ -16,7 +16,8 @@ cc.control_law='ch4'; cc.lambda_f=[0.9995;0.9995;0.999];
 cc.ch4_fdet=false; cc.ch4_stale_ff=true; cc.y2_whiten=true;   % fdet OFF ablation
 cc.lf_schedule=true; cc.lf_sched_scale=[2;2;1];
 cc.C_dpmr_eff=cd44.C_dpmr(1:3); cc.C_np_eff=cd44.C_n(1:3);
-cc.xi_per_axis=(cd44.C_n(1:3)./cd44.C_dpmr(1:3)).*SIGMA_N.^2/(4*kBT);
+cc.C_dpmr_eff = cc.C_dpmr_eff .* [1.232;1.194;0.938];   % ledger 44/45: readout-chain C_emp
+cc.xi_per_axis=(cd44.C_n(1:3)./cc.C_dpmr_eff).*SIGMA_N.^2/(4*kBT);
 params = struct('ctrl',struct('enable',1,'Ts',Ts,'k_B',pc.k_B,'T',pc.T,'gamma',gN,'sigma2_noise',SIGMA_N.^2), ...
     'common',struct('R',pc.R,'p0',[0;0;15],'gamma_N',gN), ...
     'wall',struct('w_hat',[0;0;1],'pz',0,'enable_wall_effect',1), ...
