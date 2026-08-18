@@ -38,7 +38,7 @@ for v = {{'E98  ',0.98,false},{'E9995',0.9995,false},{'ESCH ',0.9995,true}}
     cc = base;
     cc.control_law='ch4'; cc.lambda_f=lf*[1;1;1];
     pfl=lf; if pfl>=1; pfl=0.98; end; cc.Pf_init_lambda_f=pfl*[1;1;1];
-    cc.ch4_fdet=false; cc.ch4_stale_ff=true; cc.y2_whiten=true;   % champion stack (ledger 35-37): fdet retired
+    cc.ch4_fdet=false; cc.ch4_stale_ff=true; cc.y2_whiten=[true;true;false];   % champion-B (ledger 45): per-axis whiten
     cc.lf_schedule=sched;
     if sched; cc.lf_sched_scale=[2;2;1]; end
     cc.C_dpmr_eff=cd44.C_dpmr(1:3); cc.C_np_eff=cd44.C_n(1:3);

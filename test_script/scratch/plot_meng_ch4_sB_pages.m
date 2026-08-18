@@ -34,7 +34,7 @@ for ax=1:3
 end
 exportgraphics(f,fullfile(od,'meng_sB_delta_NvsE.png'),'Resolution',150); close(f);
 % ---- page 2: az tracking, E98 | ESCH, seed 7 ----
-S={D.E98_s7, D.ESCH_s7}; NM={'\lambda_f = 0.98 const','\lambda_f scheduled'};
+S={D.E98_s7, D.E98_s11}; NM={'seed 7','seed 11'};   % ledger 45: E98 per-axis whiten final
 f=figure('Position',[40 40 1500 1050],'Color','w','Visible','off');
 tl=tiledlayout(f,3,2,'TileSpacing','compact','Padding','compact');
 YL1=[0 0.008]; YL2=[-40 40]; YL3=[-2e-3 2e-3];
