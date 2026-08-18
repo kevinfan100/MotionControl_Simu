@@ -58,6 +58,10 @@ function s = local_pull(r, ax, Ts)
     s.e  = 100 * (s.aH - s.aT) ./ s.aT;
     s.da = r.b_hat_out(:, ax);          % slot 5 = the additive disturbance here
     s.sd = r.P_b_out(:, ax);            % already a std
+    % Tracking error in the derivation's sign and units: S3 writes
+    % w_bar[k] = w_bar_d[k] - dw3[k], so dw3 = commanded minus actual, and
+    % R*dw3 is that in um.
+    s.dw = r.p_d_out(:, ax) - r.p_true_out(:, ax);
     s.t  = (0:numel(s.aH)-1).' * Ts;
 end
 
@@ -66,16 +70,17 @@ function local_page(d, sq, out, NAME, SLOT5)
     BANDC = [0.45 0.55 0.95];
     FS = 18; LFS = 13; AXLW = 2.0; LW = 2.0;
 
-    YL = cell(3, 1);
+    YL = cell(4, 1);
     YL{1} = local_lim([d{1}.aT; d{1}.aH; d{1}.aM; d{2}.aT; d{2}.aH; d{2}.aM], 0.05);
     YL{2} = local_lim([d{1}.e;  d{2}.e], 0.08);
     YL{3} = local_lim([d{2}.da + d{2}.sd; d{2}.da - d{2}.sd; 0], 0.10);
+    YL{4} = local_lim([d{1}.dw; d{2}.dw], 0.08);
 
-    f = figure('Position', [40 40 1500 1050], 'Color', 'w', ...
+    f = figure('Position', [40 40 1500 1380], 'Color', 'w', ...
                'NumberTitle', 'off', 'Visible', 'off');
-    tl = tiledlayout(f, 3, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
+    tl = tiledlayout(f, 4, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
 
-    for row = 1:3
+    for row = 1:4
         for c = 1:2
             s = d{c};  a = nexttile(tl, (row-1)*2 + c);  hold(a, 'on');
             switch row
@@ -112,12 +117,27 @@ function local_page(d, sq, out, NAME, SLOT5)
                     if c == 1
                         ylabel(a, SLOT5, 'FontSize', FS, 'FontWeight', 'bold');
                     end
-                    xlabel(a, 'time  [s]', 'FontSize', FS, 'FontWeight', 'bold');
+                case 4
+                    % tracking error, R*dw3 in um. Two decimals everywhere so
+                    % the two columns' ticks line up.
+                    plot(a, s.t, s.dw, '-', 'Color', COL_HAT, 'LineWidth', 0.8);
+                    yline(a, 0, '-', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.0);
+                    if c == 1
+                        % \bar is not in MATLAB's tex interpreter, so this one
+                        % label uses latex. Everything else stays tex.
+                        ylabel(a, '$R\,\delta\bar{w}_3\ \ [\mu\mathrm{m}]$', ...
+                               'Interpreter', 'latex', ...
+                               'FontSize', FS, 'FontWeight', 'bold');
+                    end
+            end
+            if row == 4
+                xlabel(a, 'time  [s]', 'FontSize', FS, 'FontWeight', 'bold');
             end
             xlim(a, [s.t(1) s.t(end)]);  ylim(a, YL{row});
             set(a, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, ...
                    'Box', 'on', 'TickLabelInterpreter', 'tex');
-            if row < 3; set(a, 'XTickLabel', []); end
+            if row < 4; set(a, 'XTickLabel', []); end
+            if row == 4; ytickformat(a, '%.2f'); end
             if c == 2;  set(a, 'YTickLabel', []); end
             grid(a, 'off');
         end
