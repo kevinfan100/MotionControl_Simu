@@ -1,4 +1,4 @@
-% STATUS: ACTIVE | SSOT derivation: reference/eq17_analysis/derivation/formC_state_dist.tex
+% STATUS: ACTIVE | SSOT derivation: reference/eq17_analysis/derivation/formC_state_b.tex
 % FORK OF model/controller/motion_control_law_formC_state.m @ 2f2fef6 | PURPOSE:
 %   the ADDITIVE writing of the same parameter-free state gain law:
 %   a_bar' = (1-a_bar)^2 exactly (no law parameter anywhere), with an
@@ -555,8 +555,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % prior defined AS that same sup could never be.
         seed_b   = expand3(get_field_default(ctrl_const, 'b_init', 9/8));
         Pf_b_std = expand3(get_field_default(ctrl_const, 'Pf_b_std', 0));
-        b_floor  = get_field_default(ctrl_const, 'b_floor', 0.5);
-        b_ceil   = get_field_default(ctrl_const, 'b_ceil',  2.0);
+        b_floor  = get_field_default(ctrl_const, 'b_floor', 0.60);
+        b_ceil   = get_field_default(ctrl_const, 'b_ceil',  1.05);
 
         % --- 0G. P0 widths ---
         % Pf_da_std  : prior on the additive disturbance, the tex's ONLY
@@ -669,7 +669,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             % NONZERO and the seed carries a genuine cross term. (Contrast the
             % additive sibling, where P45[0] = 0 was structural because da did
             % not appear in the integrated law.)
-            dA_db = -(1 - a_bar_seed) / seed_b(ax);
+            dA_db = +(1 - a_bar_seed) / seed_b(ax);
             P7(4, 4) = dA_dw0^2 * Pf_w0_std(ax)^2 ...
                      + free_da * dA_db^2 * Pf_b_std(ax)^2 ...
                      + Pf_a_floor(ax)^2;
@@ -909,9 +909,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         b_hat_i = min(max(x_curr(5), b_floor), b_ceil);
 
         % --- Gain rate and Jacobians from the STATE (tex S1/S2):
-        %       a_bar'      = (1 - a_bar)^2 / b
-        %       d a_bar'/da = -2 (1 - a_bar) / b                       (< 0)
-        %       d a_bar'/db = -a_bar' / b                              (< 0)
+        %       a_bar'      = b (1 - a_bar)^2
+        %       d a_bar'/da = -2 b (1 - a_bar)                         (< 0)
+        %       d a_bar'/db = +a_bar' / b = (1 - a_bar)^2              (> 0)
         %     Both b Jacobians (F_e(4,5) and H(2,5)) carry a displacement
         %     factor, so they vanish together in a hold.
         lm = lock_mask_ax(:, ax);
@@ -941,7 +941,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % unobservable through this path in a hold -- the structural cost of
         % replacing the additive disturbance (whose column was a constant 1).
         % Built after M is known; the scalar factor is stored here.
-        J_b_fac_i = -a_prime_i / b_hat_i * double(~lm(1));
+        J_b_fac_i = +a_prime_i / b_hat_i * double(~lm(1));
         a_prime_v(ax) = a_prime_i;
 
         % --- Q (7x7): rank-1 gain block + Q33 (spec S8, at the estimate) ---
@@ -1117,7 +1117,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             end
             H2 = H2_scale * echo_fac * [0, 0, 0, ...
                              1 - Grad_wbar_d * A_a_i, ...
-                             (a_prime_i / b_hat_i) * Grad_wbar_d * double(~lm(1)), ...
+                             -(a_prime_i / b_hat_i) * Grad_wbar_d * double(~lm(1)), ...
                              0, 0, zeros(1, n_state - 7)];
             % NONLINEAR predicted measurement (S7 innovation line); H2*x_upd
             % would be wrong here -- see the header. The echo share S of the
@@ -1282,28 +1282,30 @@ function [a_bar_p, A_a] = local_gain_law_formC(a_bar, enable, law_b)
 %       A_a    = d a_bar'/d a_bar = -2 (1 - a_bar)               (< 0 always)
 %   The additive disturbance does NOT enter here (contrast the multiplicative
 %   sibling's (1+da) factor): it enters the state equation once per step.
-%   law_b (optional, default 1) divides the slope. The far-field limit of
-%   b_state is 9/8 EXACTLY (c_perp -> 1 + 9/(8 h_bar)), so law_b = 9/8 is the
-%   asymptotic anchor, not a fit. law_b = 1 is the unanchored form.
+%   law_b (optional, default 1) MULTIPLIES the slope. The far-field limit of
+%   b_true is 8/9 EXACTLY (c_perp -> 1 + 9/(8 h_bar)), so law_b = 8/9 is the
+%   asymptotic anchor, not a fit. law_b = 1 is the CONTACT anchor, where
+%   a_true(1) = 0 and a_true'(1) = 1 give b_true = 1 exactly.
     if nargin < 3 || isempty(law_b); law_b = 1; end
     if ~enable
         a_bar_p = 0; A_a = 0;
         return;
     end
     om      = 1 - a_bar;
-    a_bar_p = om^2 / law_b;
-    A_a     = -2 * om / law_b;
+    a_bar_p = law_b * om^2;
+    A_a     = -2 * law_b * om;
 end
 
 
 function [a_bar, dA_dw0] = local_seed_level_formC(w_bar, w0, enable, gap_floor, law_b)
 %LOCAL_SEED_LEVEL_FORMC  Integrated law at the seed height (tex, seed section).
-%       a_bar(w_bar) = 1 - law_b/(w_bar - w0)
+%       a_bar(w_bar) = 1 - 1/[law_b (w_bar - w0)]
 %   This IS the integral of a_bar' = (1-a_bar)^2/law_b: with u = 1/(1-a_bar),
-%   du/dw_bar = 1/law_b. The slope and the seed MUST carry the same law_b or
+%   du/dw_bar = law_b. The slope and the seed MUST carry the same law_b or
 %   the arm is estimating one family while seeded on another (defect found
 %   2026-08-13). At law_b = 9/8 and w0 = 0 this is the EXACT far-field truth,
-%   since c_perp -> 1 + (9/8)/h_bar gives a_bar -> 1 - (9/8)/h_bar.
+%   since c_perp -> 1 + (9/8)/h_bar gives a_bar -> 1 - (9/8)/h_bar, i.e.
+%   law_b = 8/9 with w0 = 0.
 %   w0 is the integration constant, so setting a_bar_hat[0] IS setting the
 %   wall position: this is the ONLY place a nominal wall enters the controller.
 %   da does not appear -- the integrated curve is parameter-free, which is
@@ -1315,8 +1317,8 @@ function [a_bar, dA_dw0] = local_seed_level_formC(w_bar, w0, enable, gap_floor, 
         return;
     end
     u      = max(w_bar - w0, gap_floor);
-    a_bar  = 1 - law_b / u;
-    dA_dw0 = -law_b / u^2;                % = -a_bar'
+    a_bar  = 1 - 1 / (law_b * u);
+    dA_dw0 = -1 / (law_b * u^2);          % = -a_bar'
 end
 
 

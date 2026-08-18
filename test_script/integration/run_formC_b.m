@@ -134,6 +134,8 @@ function out = run_formC_b(opts, test_opts)
     % state". Units: absolute a_bar. Implies the true-slope path.
     if ~isfield(opts, 'ap_law_bias'); opts.ap_law_bias = NaN; end
     if ~isfield(opts, 'law_b');       opts.law_b       = 1;   end
+    % true  = legacy envelope supremum; false = honest seed-local floor
+    if ~isfield(opts, 'floor_from_envelope'); opts.floor_from_envelope = false; end
     if ~isfield(opts, 'ap_ewma_a');   opts.ap_ewma_a   = 0.05;  end
     if ~isfield(opts, 'Pf_da_std');   opts.Pf_da_std   = [];    end   % [] = derive
     if ~isfield(opts, 'Pf_w0_std');   opts.Pf_w0_std   = 0.111; end
@@ -165,9 +167,9 @@ function out = run_formC_b(opts, test_opts)
     HOLD_SETTLE_S   = 0.3;   % skip osc->hold readout transient
                              % (~24 EWMA taus of a_cov = 0.05 at 1600 Hz)
 
-    assert(any(strcmpi(opts.arm, {'b1', 'bmid', 'best'})), ...
+    assert(any(strcmpi(opts.arm, {'b1', 'bmid', 'best', 'b98', 'bfree1'})), ...
            'run_formC_b:badArm', ...
-           'opts.arm must be ''b1'' | ''bmid'' | ''best''.');
+           'opts.arm must be b1 | bmid | best | b98 | bfree1.');
 
     seeds = opts.seeds;
     if isempty(seeds); seeds = SEEDS_DEFAULT; end
@@ -209,15 +211,27 @@ function out = run_formC_b(opts, test_opts)
 
     % b prior, straight off the published truth on the SAME envelope. b_true
     % is the exact factor the parameter-free law is missing,
-    %     b_true(w) = (1 - a_true)^2 / a_true'  ,
-    % which is 1 at contact and 9/8 in the far field. On this envelope it does
-    % NOT straddle 9/8 -- it sits above it everywhere -- so the centre is the
-    % midpoint of its realised range, not the far-field limit, and the width is
-    % the half-range. Nothing tuned; both numbers are read off the truth.
-    % Deliberately NOT sup|b_true - 9/8|: defining the prior as the same
+    %     b_true(w) = a_true' / (1 - a_true)^2  ,
+    % which is 1 at contact and 8/9 in the far field. b_true is NOT monotone:
+    % it rises from an interior minimum 0.866978 at w_bar 2.193 to 0.888225 at
+    % the envelope top and never reaches 8/9, so the centre is the midpoint of
+    % its realised range and the width is the half-range. Nothing tuned; both
+    % numbers are read off the truth.
+    % Deliberately NOT sup|b_true - 8/9|: defining the prior as the same
     % supremum the shape-acceptance test compares against makes that test
-    % vacuous (ratio identically 1, can never fail).
+    % vacuous (ratio identically 1.0000, can never fail; verified 2026-08-18).
+    % The midpoint keeps that ratio at 1.062, inside the 1.02-1.06 TIGHT band.
     [b_mid, b_half, b_lo_e, b_hi_e] = local_envelope_b_range(env_lo, env_hi);
+
+    % Shape floor for P44[0]. P[0] is a statement about the belief AT t = 0:
+    % E[(truth - a_bar_hat[0])^2]. The envelope supremum is the worst error
+    % over a band the run has not entered yet -- at the seed height the law is
+    % far better than that, and charging the supremum makes the filter distrust
+    % a seed it should trust. It is computed per-arm because the local error
+    % depends on the b this arm seeds with. The envelope value is kept and
+    % printed: it is the right number for a DIFFERENT question (how wrong can
+    % the law get anywhere on the planned band), which belongs to the model-
+    % error container, not to P[0].
 
     % Disturbance prior: sup of the S3(b) closed form on the PLANNED trajectory
     % (see the header). Derived, printed, overridable; contract = invariance.
@@ -231,12 +245,11 @@ function out = run_formC_b(opts, test_opts)
     end
 
     ov = struct();
-    ov.Pf_a_floor = floor_a_env;      % sup|1 - 1/w_bar - 1/c_perp| on the envelope
     ov.Pf_w0_std  = opts.Pf_w0_std;   % wall prior, carried over from formB_ws
     ov.ws0_perp   = 1;                % plane
     ov.lambda_f   = opts.lambda_f;    % Menq (4.15) forgetting factor
     ov.ap_src     = opts.ap_src;      % slope evaluation point
-    ov.law_b_formC = opts.law_b;      % 9/8 = far-field anchor, 1 = unanchored
+    ov.law_b_formC = opts.law_b;      % 8/9 = far-field anchor, 1 = contact anchor
     ov.ap_ewma_a  = opts.ap_ewma_a;
 
     % Three arms decompose the question. b1 reproduces the existing
@@ -251,10 +264,25 @@ function out = run_formC_b(opts, test_opts)
             ov.lock_b = true;   ov.b_init = b_mid;
         case 'best'
             ov.lock_b = false;  ov.b_init = b_mid;
+        case 'b98'
+            % free, seeded at the FAR-FIELD ANCHOR rather than the band centre
+            ov.lock_b = false;  ov.b_init = 8/9;
+        case 'bfree1'
+            % free, seeded AT the attractor. If b_hat still does not move, the
+            % collapse is not what stops it -- b simply receives no usable
+            % information over the whole run.
+            ov.lock_b = false;  ov.b_init = 1;
         otherwise
             error('run_formC_b:arm', 'opts.arm must be ''b1'' | ''bmid'' | ''best''.');
     end
     ov.Pf_b_std = (~ov.lock_b) * b_half;
+
+    floor_a_seed = local_seed_floor(env_hi - ENV_HI_MARGIN, W0_PLANE, ov.b_init);
+    if opts.floor_from_envelope
+        ov.Pf_a_floor = floor_a_env;      % legacy: envelope supremum
+    else
+        ov.Pf_a_floor = floor_a_seed;     % honest P[0]: local error at the seed
+    end
 
     if ~opts.y2_on
         ov.y2_off = true;                    % fingerprint arm
@@ -292,8 +320,11 @@ function out = run_formC_b(opts, test_opts)
             ov.Pf_w0_std, opts.y2_on, cfg.a_cov);
     fprintf('ENVELOPE on w_bar in [%.3f, %.3f]: shape floor %.5f (sup at w_bar %.3f)\n', ...
             env_lo, env_hi, floor_a_env, w_floor_sup);
+    fprintf('P44[0] shape floor in use: %.3e (%s)  | envelope sup %.3e, seed-local %.3e\n', ...
+            ov.Pf_a_floor, local_floor_words(opts.floor_from_envelope), ...
+            floor_a_env, floor_a_seed);
     fprintf(['b_true on the envelope: [%.5f, %.5f] -> b_init %.5f, ' ...
-             'sqrt(P55[0]) %.5f  (far-field limit 9/8 = 1.12500)\n'], ...
+             'sqrt(P55[0]) %.5f  (far-field limit 8/9 = 0.88889)\n'], ...
             b_lo_e, b_hi_e, b_mid, b_half);
     fprintf('da PRIOR sqrt(P55[0]) = %.4e  <- %s\n', Pf_da_used, Pf_da_src);
     fprintf('   S3(b) closed form on the planned trajectory: sup %.4e (at t=%.3f s, w_bar %.3f), RMS %.4e\n', ...
@@ -501,9 +532,25 @@ end
 
 
 
+function w = local_floor_words(from_env)
+    if from_env; w = 'envelope sup, legacy'; else; w = 'seed-local, honest P[0]'; end
+end
+
+
+function fl = local_seed_floor(w_seed, w0, b_seed)
+%LOCAL_SEED_FLOOR  |a_bar_law(w_seed) - a_bar_true(w_seed)| at the SEED only.
+%   This is what P[0]'s shape term means: how wrong the seeded curve is where
+%   the run actually starts. Not the envelope supremum, which prices a height
+%   the run has not reached and belongs to the model-error container instead.
+    [~, cp] = calc_correction_functions(w_seed);
+    fl = abs((1 - 1 / (b_seed * (w_seed - w0))) - 1 / cp);
+end
+
+
 function [b_mid, b_half, b_lo, b_hi] = local_envelope_b_range(w_lo, w_hi)
 %LOCAL_ENVELOPE_B_RANGE  Range of the exact law factor b_true on the envelope.
-%   b_true(w) = (1 - a_true)^2 / a_true'  with  a_true = 1/c_perp.
+%   b_true(w) = a_true' / (1 - a_true)^2  with  a_true = 1/c_perp.
+%   MULTIPLICATIVE form: a_bar' = b (1 - a_bar)^2.
 %   Returns the midpoint and half-range, which are the seed and the prior
 %   width for state 5. Offline only -- the controller never reads c(w).
     N_SWEEP = 20001;
@@ -513,7 +560,7 @@ function [b_mid, b_half, b_lo, b_hi] = local_envelope_b_range(w_lo, w_hi)
         [~, cp, d] = calc_correction_functions(w(i), true);
         a_t  = 1 / cp;
         ap_t = -d.dc_perp_dh / cp^2;          % d a_bar / d w_bar
-        b(i) = (1 - a_t)^2 / ap_t;
+        b(i) = ap_t / (1 - a_t)^2;
     end
     b_lo = min(b);  b_hi = max(b);
     b_mid  = 0.5 * (b_lo + b_hi);
