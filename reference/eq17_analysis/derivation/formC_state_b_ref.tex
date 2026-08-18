@@ -1,0 +1,279 @@
+% STATUS: ACTIVE -- companion to formC_state_b.tex. Everything that is not an
+%          equation lives here: declared truncations, the prior's reasoning,
+%          measured properties, corrections, and open items. Section numbers
+%          match the main file.
+% ======================================================
+% Compile: xelatex formC_state_b_ref.tex
+% Path:    reference/eq17_analysis/derivation/formC_state_b_ref.tex
+% ======================================================
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+
+\begin{document}
+
+\section*{What this writing is, and what it costs}
+
+The gain slope is read off the GAIN STATE rather than off a height:
+$\ba' = b(1-\ba)^{2}$ evaluated at $\hat{\ba}_w$. That is the whole difference
+from the height writing, and everything below follows from it.
+
+The price is structural, not a tuning failure. Because $\ba'$ depends on
+$\hat{\ba}_w$, the error recursion gains the term $-2\hat{b}(1-\hat{\ba}_w)M$,
+so the homogeneous coefficient exceeds 1 while the stage descends. Over the
+canonical descent that factor accumulates to $220\times$, and that number is not
+an artefact: the true slope at the trough is $107\times$ the slope at the seed,
+so the writing converts a real property of the physics into error growth. The
+height writing's coefficient for that path is exactly zero.
+
+The filter prices it correctly and can do nothing else. $F_e(4,4)$ carries the
+term, so $P_{44}$ grows $1.8\times$ during motion, $L$ grows $5.6\times$ on
+$y_1$ and $23$--$39\times$ on $y_2$, and the estimate leans on measurements that
+are unbiased and noisy. The across-seed spread is $6.4\times$ the exogenous
+arm's. That is the bias-for-scatter trade, bought deliberately by an optimal
+filter facing a model it should not trust.
+
+Demonstrated with a deterministic injection: seeding $b$ at 1 instead of $8/9$
+puts $\hat{\ba}_w[0]$ a known $+0.0056$ above the truth, identical across all
+eight seeds and carrying no random information. Fed $\ba'$ from the true height
+the offset is erased and the across-seed band stays narrow; fed $\ba'$ from the
+belief it is not erased and the band opens out. A common-mode model error
+becomes seed-dependent scatter, and the split appears only once the stage moves.
+Figure \texttt{formC\_belief\_vs\_command.png}.
+
+\section*{What the reparameterisation bought}
+
+$b$ multiplies rather than divides (user decision, 2026-08-18). Same curve
+family, $b_{\mathrm{new}} = 1/b_{\mathrm{old}}$, so the far-field limit inverts
+$9/8 \to 8/9$ while contact stays exactly 1.
+
+Every known truncation is unchanged in magnitude, for one structural reason:
+each is a statement about the product $\ba' = b(1-\ba)^{2}$, and that product is
+the reparameterisation invariant. Even the relative prior width is exactly
+invariant, since $\mathrm{half}/\mathrm{mid} = (hi-lo)/(hi+lo)$ is fixed under
+$x \mapsto 1/x$: $1.21052\,\%$ either way.
+
+One thing is strictly better and had not been written down. In the old form
+$\ba' = (1-\ba)^{2}/b$ is nonlinear in $b$, so
+$\partial^{2}\ba'/\partial b^{2} = 2(1-\ba)^{2}/b^{3}$ and a curvature term was
+dropped from $F_e(4,5)$ and $H(2,5)$ every step, worth $e_b/\hat{b} = 1.21\,\%$
+at the one-sigma prior. In the new form $\ba'$ is exactly linear in $b$ and that
+term is identically zero: the $b$ column is now exact.
+
+\section*{S1 --- the truth, and what the model replaces}
+
+$\ba_{\mathrm{true}}$ is $D_{\perp}$ from \texttt{calc\_correction\_functions}
+character for character, since $\ba := a/a_o = 1/c_{\perp}$ and
+$c_{\perp} = 1/D_{\perp}$.
+
+Because $\ba_{\mathrm{true}}$ is monotone in $\bw$, $\bw$ can be eliminated
+EXACTLY and the autonomous law $\ba' = b_{\mathrm{true}}(\ba)(1-\ba)^{2}$ carries
+no approximation. The model's single approximation is replacing the function
+$b_{\mathrm{true}}(\ba)$ by a constant. Stating it this way also dissolves the
+apparent conflict between the two anchors: $b_{\mathrm{true}}$ is a curve, its
+ends simply read differently, and choosing an end is a design decision.
+
+Verified at 30 digits: $\ba_{\mathrm{true}}(1) = 0$ to $5\times10^{-32}$,
+$\ba'_{\mathrm{true}}(1) = 1$ exactly, so $b_{\mathrm{true}}(\ba = 0) = 1$; and
+$b_{\mathrm{true}} \to 8/9$ FROM BELOW.
+
+$b_{\mathrm{true}}$ is NOT monotone. It rises from an interior minimum
+$0.866978$ at $\bw = 2.193$ to $0.888225$ at the envelope top and never reaches
+$8/9$. The envelope range is therefore $[0.866978,\ 0.888225]$, whose lower end
+is an interior extremum rather than an endpoint.
+
+\section*{Seed and prior --- the seed and the width come from different things}
+
+\begin{equation*}
+\hat{b}[0] = \tfrac{8}{9},
+\qquad
+\sqrt{P_{55}[0]} = \sup_{\bw\in\mathcal{E}}
+  \bigl|b_{\mathrm{true}}(\bw) - \tfrac{8}{9}\bigr| = 0.021911
+\end{equation*}
+
+THE SEED is the analytic anchor because $P[0]$ is the belief at $t=0$ and the
+run starts in the far field. At the seed height $\bw = 22.22$ the truth is
+$b_{\mathrm{true}} = 0.888167$; the anchor misses it by $7.2\times10^{-4}$, the
+envelope midpoint $0.877602$ by $1.06\times10^{-2}$ --- fifteen times worse,
+because the midpoint is dragged down by an interior minimum the run reaches
+twenty radii later. Measured over the eight house seeds, seeding at the midpoint
+costs $+1.81$ points of overall RMS, sd $1.52$, SEM $0.54$, $t = +3.38$, worse
+on $8/8$. This is the same defect as sizing $\mathrm{floor}_a$ from the envelope
+supremum, which cost $2.9$ points and was repaired the same day: both take a
+statistic over ground the run has not covered and use it to set a belief at
+$t=0$.
+
+THE WIDTH is a statement about the run, not about $t=0$. $b$ is a constant state
+($b[k+1] = b[k]$, $Q_{55} = 0$), so one number must serve the whole traverse
+including the near wall. That is step 4 of the $P[0]$ chain in
+\texttt{reference/shared/param\_prior\_rules.md}.
+
+KNOWN CONSEQUENCE, recorded rather than repaired. The shape-acceptance criterion
+compares $\sup|\theta_{\mathrm{eff}} - \theta_0|$ against $\sqrt{P[0]}$, and with
+$\theta_0 = 8/9$ those are the same supremum, so the ratio is identically
+$1.0000$ and the test cannot fail. That is a defect in the TEST's denominator.
+Distorting the prior to give the test something to do is what mis-seeded the
+filter, so it is not done. Related: the tool the criterion names,
+\texttt{verify\_shape\_exponent\_bound.m}, DOES NOT EXIST in this repository, so
+no member of this family has been through it. That is the missing acceptance
+artifact.
+
+CHARTER TENSION. $\mathcal{E}$ is built from \texttt{cfg.h\_bottom} and
+\texttt{cfg.h\_init}, so $\sqrt{P_{55}[0]}$ is trajectory-dependent, while
+CLAUDE.md describes this family's prior as global and trajectory-independent.
+The anchor form of the seed is global; the width is not.
+
+CORRECTION TO AN EARLIER READING. $b[k+1] = b[k]$ with $Q_{55} = 0$ alongside
+S1's varying $b_{\mathrm{true}}$ is NOT a self-contradiction. It is the six-step
+$P[0]$ chain executed correctly, with the prior serving as the container for the
+variation. What was genuinely missing was this citation.
+
+\section*{Truncations written with ``='' --- seven, none previously declared}
+
+Magnitudes are on the production scenario, $R = 2.25\,\mu$m, $\Delta t = 1/1600$,
+$\lambda_c = 0.7$, 1 Hz $\times$ 2.5 $\mu$m about $h = 7\,\mu$m,
+$\mathcal{E} = [1.9,\ 23.222]$.
+
+\begin{enumerate}
+\item S3's $\ba_w[k+1] = \ba_w + \ba'_{\mathrm{true}}\Sigma$ is forward Euler for
+$\ba(\bw+\Sigma)$. Dropped: $\tfrac12\ba''\Sigma^{2}$. Per-step relative error
+$b(1-\ba)|\Sigma| = 0.200\,\%$ at the trough, $0.133\,\%$ over the cycle;
+accumulated $+5.90\times10^{-4}$ per oscillation cycle. $\ba'' < 0$ everywhere
+and the term goes as $\Sigma^{2}$, so it does NOT change sign with direction of
+travel: a closed oscillation does not cancel it and the estimator runs high.
+This is the project's quadrature ratchet.
+
+\item S6's $e_{\ba_w}$ recursion is written as an identity but drops
+$+\hat{b}\,e^{2}M$, which no matrix $F_e$ can carry. Size against the retained
+$-2\hat{b}(1-\hat{\ba}_w)eM$ is $e/(2(1-\hat{\ba}_w)) \approx 0.31\,\%$. The same
+expansion also drops the cross term $-2(1-\hat{\ba}_w)e_{\ba}e_b M$, about
+$1.25\,\%$ of the retained $e_b$ column.
+
+\item S7's back-off uses the COMMANDED $\nabla_d\bw_d$; the actual $d$-step
+change is $\nabla_d\bw_d - \delta\bw_3[k] + \delta\bw_1[k]$. So
+$H(2,1) = -\ba'$ and $H(2,3) = +\ba'$ are MISSING COLUMNS, not small
+coefficients. At this project's reported $z$ tracking errors they are
+$25$--$50\,\%$ of the retained term, and $H(2,1)$ puts $y_2$ on the same column
+$y_1$ measures --- the channel the $y_1$-versus-$y_2$ decomposition found
+dominant.
+
+\item The same back-off is itself forward Euler over a $d=2$ gap, carrying four
+times the single-step quadrature error: $+8.56\times10^{-6}$ per application at
+the trough, landing as a one-signed bias on the $y_2$ innovation rather than
+integrating into the state. Independent of item 3; fixing one does not fix the
+other.
+
+\item S8's $q_3 = -\ba_w\bar{f}_T$ drops the MA(2) memory and the
+$(1-\lambda_c)n_w$ share of $\varepsilon_w$ that S3 itself defines.
+$\mathrm{Var}(\varepsilon_w)$ is understated $1.18\times$ and its DC power
+$2.17\times$ --- the same factor the formB MA(2) work landed on. HERE THE CODE IS
+RIGHT AND THIS DOCUMENT IS WRONG: the controller carries the full variance.
+
+\item $P_{44}[0]$ adds the $\bw_s$ and $b$ contributions as if the two priors
+were independent, while $P_{45}[0]$ on the next line asserts a nonzero
+correlation between $b$ and $\ba$. The independence is undeclared.
+
+\item S8 mixes $\ba_w$ and $\hat{\ba}_w$: $Q_{33}$, $R_2$ and
+$\sigma^{2}_{\delta\bw_r}$ are written at the TRUE gain while $Q_{34}$ and
+$Q_{44}$ use the estimate and the code uses the estimate throughout. For a
+document whose charter constraint is run-time $c$-free evaluation at the
+estimate, that is not a leavable typo.
+\end{enumerate}
+
+\section*{An assumption violation the truncations hide}
+
+$\varepsilon_w$ contains $(1-\lambda_c)n_w[k]$ and $y_1$'s noise IS $n_w[k]$, so
+$E[\mathbf{q}\mathbf{v}^{\top}] \neq 0$, which the standard Kalman filter this
+document invokes forbids, and $R = \mathrm{diag}(R_1,R_2)$ carries no cross
+term. Coefficient $0.0157$. Small, but structural rather than approximate --- and
+invisible inside S8's own truncated $q_3$, which drops the $n_w$ share. The
+truncation hides the violation, which is why it survived.
+
+\section*{Domain, and what the file does not contain}
+
+$\ba(\bw) = 1 - 1/[b(\bw-\bw_s)]$ has a pole at $\bw_s$ and is NEGATIVE for
+$\bw - \bw_s < 1/b \approx 1.125$, contradicting the main file's own
+$0 < \ba < 1$. The condition $\bw - \bw_s > 1/b$ is stated nowhere; production
+carries it as \texttt{GAP\_FLOOR} and the $\ba$ clamps. Separately, $0 < \ba < 1$
+is open at 0 while S1's contact anchor is stated AT $\ba = 0$.
+
+$P^{f}$ appears once, in $L[k]$, and is never defined. Missing with it: the
+covariance prediction, the covariance update, the state update --- so $L[k]$ is
+computed and nothing consumes it --- and the predicted measurement. The last is a
+trap rather than an omission: $\hat{y}_2$ is NONLINEAR,
+$\hat{y}_2 = \hat{\ba}_w - \hat{b}(1-\hat{\ba}_w)^{2}\nabla_d\bw_d$, not
+$H\hat{\mathbf{x}}$, and production carries an explicit warning that using $H$
+there is wrong. As the file stands the only available reading is the linear one.
+
+Also absent: $Q$ is never assembled ($Q_{11} = Q_{22} = 0$, $Q_{35}$, $Q_{45}$
+never stated); S4 is titled ``Process model'' but contains only the state vector;
+the MA(2) augmentation production runs by default has no representation at all,
+so the file is behind production in state dimension as well.
+
+\section*{Results}
+
+Canonical scenario, 8 house seeds, paired, overall relative gain-error RMS. All
+three arms use the seed-local $\mathrm{floor}_a$ and the anchored $b$ prior.
+
+\begin{equation*}
+\begin{array}{lcccc}
+ & \text{desc peak} & \text{osc RMS} & \text{overall} & \hat{b}[\mathrm{end}] \\[0.2em]
+b \text{ fixed at } 8/9 & 4.78\pm3.27 & 1.68\pm0.82 & 2.20\pm1.33 & 0.88889 \\
+b \text{ estimated}     & 5.33\pm3.39 & 1.96\pm1.01 & 2.46\pm1.58 & 0.89218\pm0.01096 \\
+\ba' \text{ from the TRUE height} & 1.21\pm0.32 & 0.68\pm0.47 & 1.16\pm0.52 & 0.88752\pm0.01505
+\end{array}
+\end{equation*}
+
+Estimating $b$ costs $+0.258$, sd $0.280$, SEM $0.099$, $t = +2.61$, better on
+$1/8$. Consistently a little worse: $b$ receives almost no information, so a
+free $b$ is a locked $b$ plus a noise source. The ceiling with a perfect
+integrand is $1.16\,\%$ against the $2.20\,\%$ achieved, and that gap is the
+price of reading $\ba'$ at the belief.
+
+TRACKING ERROR, the fourth figure row, is $R\,\delta\bw_3$ in $\mu$m. With the
+sample alignment corrected the bias is zero in every phase --- $-0.74$ nm on the
+descent, $-1.04 \pm 3.29$ nm over the eight seeds in the initial hold, $t=-0.89$
+--- and the row carries noise only, RMS $25.08$ nm against a $3.31$ nm
+measurement noise spec.
+
+\section*{Verification record}
+
+Thirteen relations CAS-checked, then an independent pass swept every occurrence
+of $b$ cell by cell including the nested arrays inside $F_e$, re-derived S6's
+recursion from scratch, and reconfirmed both limits at 30 digits. No missed or
+half-converted $b$; the five surviving denominators are all in the seed and all
+correct for the multiplicative form.
+
+The implementation was checked against the derivation by an IDENTITY rather than
+by agreement of numbers. $b_{\mathrm{new}} = 1/b_{\mathrm{old}}$ is exact, so a
+run locked at $b_{\mathrm{old}} = 1$ must reproduce one locked at
+$b_{\mathrm{new}} = 1$, and $9/8$ must reproduce $8/9$. Measured: $\hat{\ba}_w$
+identical to $0$ and to $6.1\times10^{-16}$ respectively. Only all eight
+conversion sites being right produces that.
+
+\section*{Open items}
+
+\begin{enumerate}
+\item The seven truncations above are now declared but not repaired. Items 3 and
+5 are the two where the document is wrong rather than merely silent.
+\item $P^{f}$ and the four missing filter lines. The nonlinear
+$\hat{y}_2$ is the one that changes what a reader would build.
+\item \texttt{verify\_shape\_exponent\_bound.m} does not exist, so the shape
+acceptance this family's charter names has never been run on any member.
+\item The acceptance criterion's denominator is the same supremum as its
+numerator when $\theta_0$ is the anchor. The criterion needs a different
+denominator, not a distorted prior.
+\item Production comments referencing ``S5(b)'' point at a 7-state version that
+was never written and whose header claim has been withdrawn.
+\end{enumerate}
+
+\end{document}
