@@ -214,13 +214,27 @@ function out = run_formC_b(opts, test_opts)
     %     b_true(w) = a_true' / (1 - a_true)^2  ,
     % which is 1 at contact and 8/9 in the far field. b_true is NOT monotone:
     % it rises from an interior minimum 0.866978 at w_bar 2.193 to 0.888225 at
-    % the envelope top and never reaches 8/9, so the centre is the midpoint of
-    % its realised range and the width is the half-range. Nothing tuned; both
-    % numbers are read off the truth.
-    % Deliberately NOT sup|b_true - 8/9|: defining the prior as the same
-    % supremum the shape-acceptance test compares against makes that test
-    % vacuous (ratio identically 1.0000, can never fail; verified 2026-08-18).
-    % The midpoint keeps that ratio at 1.062, inside the 1.02-1.06 TIGHT band.
+    % the envelope top, never reaching 8/9.
+    %
+    % SEED AND WIDTH ARE SET FROM DIFFERENT THINGS, on purpose.
+    %   b_hat[0] = 8/9, the analytic far-field anchor. It is what P[0] means:
+    %     the belief AT t = 0, and the run starts in the far field. At the seed
+    %     height w_bar 22.22 the truth is 0.888167, which the anchor misses by
+    %     7.2e-4 and the envelope midpoint misses by 1.06e-2 -- 15x worse,
+    %     because the midpoint is dragged down by the near-wall part of the
+    %     band the run has not entered yet. Measured 2026-08-18: seeding at the
+    %     midpoint costs +1.81 points of overall RMS, t = +3.38, worse on 8/8
+    %     seeds. Same defect as sizing Pf_a_floor from the envelope supremum.
+    %   sqrt(P55[0]) = sup|b_true - 8/9| over the envelope. The WIDTH is not a
+    %     statement about t = 0: b is a constant state (b[k+1] = b[k], Q55 = 0),
+    %     so one number must serve the whole run including the near wall. That
+    %     is step 4 of the P[0] chain in reference/shared/param_prior_rules.md.
+    %
+    % Known consequence: the shape-acceptance test compares sup|b_true - theta_0|
+    % against sqrt(P[0]), and with theta_0 = 8/9 those are the same supremum, so
+    % the ratio is identically 1.0000 and the test cannot fail. That is a defect
+    % in the TEST's denominator, not a reason to mis-seed the filter; it is
+    % recorded here rather than repaired by distorting the prior.
     [b_mid, b_half, b_lo_e, b_hi_e] = local_envelope_b_range(env_lo, env_hi);
 
     % Shape floor for P44[0]. P[0] is a statement about the belief AT t = 0:
@@ -265,7 +279,7 @@ function out = run_formC_b(opts, test_opts)
         case 'best'
             ov.lock_b = false;  ov.b_init = b_mid;
         case 'b98'
-            % free, seeded at the FAR-FIELD ANCHOR rather than the band centre
+            % retained as an explicit alias: b_mid IS 8/9 since 2026-08-18
             ov.lock_b = false;  ov.b_init = 8/9;
         case 'bfree1'
             % free, seeded AT the attractor. If b_hat still does not move, the
@@ -323,9 +337,9 @@ function out = run_formC_b(opts, test_opts)
     fprintf('P44[0] shape floor in use: %.3e (%s)  | envelope sup %.3e, seed-local %.3e\n', ...
             ov.Pf_a_floor, local_floor_words(opts.floor_from_envelope), ...
             floor_a_env, floor_a_seed);
-    fprintf(['b_true on the envelope: [%.5f, %.5f] -> b_init %.5f, ' ...
-             'sqrt(P55[0]) %.5f  (far-field limit 8/9 = 0.88889)\n'], ...
-            b_lo_e, b_hi_e, b_mid, b_half);
+    fprintf(['b_true on the envelope: [%.5f, %.5f] | seed = anchor 8/9 = %.5f, ' ...
+             'sqrt(P55[0]) = sup|b_true-8/9| = %.5f | ARM USES b_init %.5f\n'], ...
+            b_lo_e, b_hi_e, b_mid, b_half, ov.b_init);
     fprintf('da PRIOR sqrt(P55[0]) = %.4e  <- %s\n', Pf_da_used, Pf_da_src);
     fprintf('   S3(b) closed form on the planned trajectory: sup %.4e (at t=%.3f s, w_bar %.3f), RMS %.4e\n', ...
             da_prior.sup, da_prior.t_sup, da_prior.w_sup, da_prior.rms);
@@ -563,8 +577,10 @@ function [b_mid, b_half, b_lo, b_hi] = local_envelope_b_range(w_lo, w_hi)
         b(i) = ap_t / (1 - a_t)^2;
     end
     b_lo = min(b);  b_hi = max(b);
-    b_mid  = 0.5 * (b_lo + b_hi);
-    b_half = 0.5 * (b_hi - b_lo);
+    % Seed = the analytic far-field anchor; width = the anchor's supremum over
+    % the envelope. See the caller for why these come from different places.
+    b_mid  = 8/9;
+    b_half = max(abs(b - 8/9));
 end
 
 

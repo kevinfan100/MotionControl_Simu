@@ -247,10 +247,9 @@ K_{\mathrm{var}} &= \frac{2a_{\mathrm{cov}}}{2-a_{\mathrm{cov}}} \\
 \end{align*}
 
 \begin{align*}
-\hat{b}[0] &= \tfrac{1}{2}\Bigl[\inf_{\bw\in\mathcal{E}} b_{\mathrm{true}}
-  + \sup_{\bw\in\mathcal{E}} b_{\mathrm{true}}\Bigr] \\
-P_{55}[0] = P_{bb} &= \Bigl[\tfrac{1}{2}\Bigl(\sup_{\bw\in\mathcal{E}}
-  b_{\mathrm{true}} - \inf_{\bw\in\mathcal{E}} b_{\mathrm{true}}\Bigr)\Bigr]^{2} \\
+\hat{b}[0] &= b_{\mathrm{true}}\bigl(\ba \to 1\bigr) = \tfrac{8}{9} \\
+P_{55}[0] = P_{bb} &= \Bigl[\sup_{\bw\in\mathcal{E}}
+  \bigl|\,b_{\mathrm{true}}(\bw) - \tfrac{8}{9}\,\bigr|\Bigr]^{2} \\
 \hat{\ba}_w[0] &= 1 - \frac{1}{\hat{b}[0]\,(\bw[0]-\hat{\bw}_s)}
 \end{align*}
 
