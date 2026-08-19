@@ -44,7 +44,11 @@ function plot_formC_state_pairs(o, opts)
             s = struct();
             s.aT = r.a_true_out(:, AX) / ad;
             s.aH = r.a_bar_hat_out(:, AX);
-            s.aM = r.a_xm_out(:, AX) / ad;      % measured gain readout (y2 channel)
+            % RAW AR(1) readout a_bar_wm -- NOT what the KF is fed. Production
+            % whitens it (y2 = a_bar_wm[k] - (1-a_cov)*a_bar_wm[k-1]); the
+            % whitened increment is not logged, so this row shows the readout
+            % before whitening and the label says so.
+            s.aM = r.a_xm_out(:, AX) / ad;      % a_m readout, pre-whitening
             s.e  = 100 * (s.aH - s.aT) ./ s.aT;
             s.da = r.b_hat_out(:, AX);
             s.sd = r.P_b_out(:, AX);            % already a std, do not sqrt
@@ -88,7 +92,7 @@ function local_page(d, pr, out)
             switch row
                 case 1
                     h0 = plot(a, s.t, s.aM, '-', 'Color', COL_MEAS, 'LineWidth', 1.0, ...
-                              'DisplayName', 'a_{m} readout');
+                              'DisplayName', 'a_{m} readout (pre-whitening)');
                     h1 = plot(a, s.t, s.aT, '-', 'Color', COL_TRUE, 'LineWidth', LW + 0.6, ...
                               'DisplayName', 'a_{true}');
                     h2 = plot(a, s.t, s.aH, '-', 'Color', COL_HAT, 'LineWidth', LW, ...
