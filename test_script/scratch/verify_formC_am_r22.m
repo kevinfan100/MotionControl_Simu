@@ -275,14 +275,6 @@ function out = verify_formC_am_r22(opts)
         sf = opts.seed_fig;
         if isempty(sf); sf = 1; else; sf = find(opts.seeds == sf, 1); end
         FS = 18; LFS = 14; AXLW = 1.2;
-        fs = 1 / (t(2) - t(1));
-        % Time-average window. The cross-seed variance itself scatters by
-        % sqrt(2/(N-1)) = 22.6% at N = 40, and a_bar_wm carries ~1/a_cov = 20
-        % steps of memory, so a 25 ms window would hold only ~2 independent
-        % draws. 0.1 s holds ~8 for the readout and ~160 for the whitened
-        % channel, while still resolving the 1 Hz shape.
-        SM = 0.1;                                    % [s] time-average window
-        COL_RAW = [0.72 0.86 0.97];                  % faint background = raw scatter
         COL_TRUE = [0.8 0 0]; COL_MEAS = [0.45 0.72 0.95]; COL_HAT = [0 0.2 0.9];
         COL_TH   = [0 0.55 0.2];
 
@@ -324,11 +316,8 @@ function out = verify_formC_am_r22(opts)
         % --- FIG 2: raw R22 ---
         f = new_fig([80 80 1180 560]);
         hold on;
-        plot(t, var_raw_ms, '-', 'Color', COL_RAW, 'LineWidth', 0.5, ...
-             'HandleVisibility', 'off');
-        h1 = plot(t, smooth_t(var_raw_ms, fs, SM), '-', 'Color', COL_MEAS, ...
-                  'LineWidth', 2.0, ...
-                  'DisplayName', sprintf('measured (%d seeds, %.0f ms avg)', n_seed, SM * 1e3));
+        h1 = plot(t, var_raw_ms, '-', 'Color', COL_MEAS, 'LineWidth', 0.8, ...
+                  'DisplayName', sprintf('measured (%d seeds, pointwise)', n_seed));
         h2 = plot(t, var_raw_th, '-', 'Color', COL_TH, 'LineWidth', 3.0, ...
                   'DisplayName', 'K_{var} IF_{eff} (a+\xi)^2');
         xlim([t(1) t(end)]);
@@ -409,12 +398,8 @@ function out = verify_formC_am_r22(opts)
         for j = 1:n_beta
             f = new_fig([80 80 1180 560]);
             hold on;
-            plot(t, var_md_ms{j}, '-', 'Color', COL_RAW, 'LineWidth', 0.5, ...
-                 'HandleVisibility', 'off');
-            h1 = plot(t, smooth_t(var_md_ms{j}, fs, SM), '-', 'Color', COL_MEAS, ...
-                      'LineWidth', 2.0, ...
-                      'DisplayName', sprintf('measured (%d seeds, %.0f ms avg)', ...
-                                             n_seed, SM * 1e3));
+            h1 = plot(t, var_md_ms{j}, '-', 'Color', COL_MEAS, 'LineWidth', 0.8, ...
+                      'DisplayName', sprintf('measured (%d seeds, pointwise)', n_seed));
             h2 = plot(t, var_md_th{j}, '-', 'Color', COL_TH, 'LineWidth', 3.0, ...
                       'DisplayName', sprintf('[b/(2-b)] IF_2 Var(a_m),  IF_2 = %.1f', IF2(j)));
             xlim([t(1) t(end)]);
@@ -425,24 +410,36 @@ function out = verify_formC_am_r22(opts)
             set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on'); grid off;
             save_fig(f, out_dir, sprintf('fig7_r22_lpf_adet%g.png', opts.betas(j)));
         end
-        % --- FIG 5: what R(2,2) is made of ---
-        f = new_fig([80 80 1180 560]);
+        % --- FIG 5: how much the filter de-weights the readout ---
+        % One question only: R(2,2) is not the measurement variance, it is that
+        % variance times a deliberate serial-correlation penalty. So plot the
+        % penalty -- what the filter applies against what it intends to apply.
+        % Binned along a_bar with a jackknife bar, like the two scatter figures:
+        % y2 is a chi-squared-like variable (kurtosis 15), so its pointwise
+        % variance estimate scatters ~26% even at 200 seeds and a pointwise
+        % ratio is unreadable. The delay term is 0.1% of R2 and stays in the
+        % console rather than adding a curve that lies on top of another.
+        [cI, vI, eI] = binned_var_jk(Y2, a_tr_mean(2:end), edges);
+        R2b = zeros(size(cI));
+        for b = 1:numel(cI)
+            in = a_tr_mean(2:end) >= edges(b) & a_tr_mean(2:end) < edges(b + 1);
+            if b == numel(cI); in = in | a_tr_mean(2:end) == edges(end); end
+            R2b(b) = mean(R2_tot(find(in) + 1));
+        end
+        f = new_fig([80 80 1000 620]);
         hold on;
-        hm = plot(t2, smooth_t(var_y2_ms, fs, SM), '-', 'Color', COL_RAW, ...
-                  'LineWidth', 2.0, 'DisplayName', 'measured Var(y_2)');
-        h1 = plot(t, R2_A, '-', 'Color', COL_TH, 'LineWidth', 2.5, ...
-                  'DisplayName', '(1) per-sample  2a_{cov}^2(\ita\rm+\xi)^2');
-        h2 = plot(t, R2_AIF, '-', 'Color', COL_MEAS, 'LineWidth', 2.5, ...
-                  'DisplayName', '(2) + correlation \times IF_{eff}');
-        h3 = plot(t, R2_tot, '--', 'Color', COL_HAT, 'LineWidth', 2.0, ...
-                  'DisplayName', '(3) + delay = R(2,2)');
-        xlim([t(1) t(end)]);
-        ylabel(sprintf('R(2,2)_%c  [-]', axl(ax)), 'FontSize', FS, 'FontWeight', 'bold');
-        xlabel('Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');
-        legend([hm h1 h2 h3], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
-               'FontSize', LFS - 2, 'FontWeight', 'bold', 'Box', 'on');
-        set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on'); grid off;
-        save_fig(f, out_dir, 'fig5_r22_decomposition.png');
+        h2 = plot(a_grid, if_eff_local(a_grid, s2n_nd(ax), IF_abc, C_dpmr, C_n, kappa_T), ...
+                  '-', 'Color', COL_TH, 'LineWidth', 3.0, ...
+                  'DisplayName', 'IF_{eff}  (the designed inflation)');
+        h1 = errorbar(cI, R2b ./ vI, (R2b ./ vI) .* (eI ./ vI), 'o', ...
+                      'Color', COL_HAT, 'MarkerFaceColor', COL_HAT, 'MarkerSize', 6, ...
+                      'LineWidth', 1.0, 'CapSize', 3, 'LineStyle', 'none', ...
+                      'DisplayName', 'R(2,2) used  /  measured Var(y_2)');
+        ylim([0 6]);
+        style_scatter(gca, a_lo, a_hi, FS, AXLW, axl(ax), 'inflation factor  [-]');
+        legend([h2 h1], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
+               'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
+        save_fig(f, out_dir, 'fig5_r22_inflation.png');
 
         fprintf('\nfigures -> %s\n', out_dir);
     end
@@ -513,18 +510,6 @@ function style_scatter(ax_h, a_lo, a_hi, FS, AXLW, axl_c, ylab)
     xtickformat(ax_h, '%.2f');
     set(ax_h, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on');
     grid(ax_h, 'off');
-end
-
-
-function y = smooth_t(v, fs, win_s)
-%SMOOTH_T  Moving average over TIME. A cross-seed variance from N seeds has a
-%   relative scatter of sqrt(2/(N-1)) (22.6% at N = 40) -- that is the
-%   estimator's own noise, not a model mismatch. Neighbouring time points are
-%   near-independent realizations of the same underlying variance, so averaging
-%   over a short window buys back what more seeds would. Window 0.025 s = 40
-%   samples at 1600 Hz, the same choice verify_axm_cdpmr_6state uses.
-    w = max(1, round(win_s * fs));
-    y = movmean(v, w, 'omitnan');
 end
 
 
