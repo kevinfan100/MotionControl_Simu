@@ -37,6 +37,11 @@ function out = verify_formC_am_r22(opts)
     if ~isfield(opts, 'seed_fig'); opts.seed_fig = [];           end   % [] = first seed
     if ~isfield(opts, 'save_fig'); opts.save_fig = true;         end
     if ~isfield(opts, 'data');     opts.data     = [];           end   % preloaded run set
+    % Stack cache: the per-seed run set is ~5 MB per seed, so it is NOT kept.
+    % What the analysis needs is four N x n_seed matrices plus the constants;
+    % that is what gets written, and reloading it skips the simulation.
+    if ~isfield(opts, 'save_stack'); opts.save_stack = '';        end
+    if ~isfield(opts, 'stack');      opts.stack      = '';        end
 
     script_dir   = fileparts(mfilename('fullpath'));
     project_root = fileparts(fileparts(script_dir));
@@ -44,6 +49,25 @@ function out = verify_formC_am_r22(opts)
     out_dir = fullfile(project_root, 'test_results', 'am_r22');
     if ~exist(out_dir, 'dir'); mkdir(out_dir); end
 
+    ax    = opts.ax;
+    axl   = 'xyz';
+
+    if ~isempty(opts.stack)
+        % ---- reload a previously stacked run set (no simulation) ----
+        SK = load(opts.stack);
+        assert(SK.ax == ax, 'verify_formC_am_r22:stackAxis', ...
+               'the cached stack is axis %d, opts.ax is %d', SK.ax, ax);
+        A_wm = SK.A_wm; A_tr = SK.A_tr; R2_u = SK.R2_u; A_ht = SK.A_ht;
+        gate = SK.gate;
+        t = SK.t; N = numel(t); n_seed = size(A_wm, 2);
+        cc = SK.cc; a_cov = cc.a_cov; C_dpmr = cc.C_dpmr; C_n = cc.C_n;
+        K_var = cc.K_var; IF_abc = cc.IF_abc(:); d_delay = cc.d;
+        kappa_T = SK.kappa_T; s2n_nd = SK.s2n_nd; xi_bar = SK.xi_bar;
+        D = struct('cfg', SK.cfg);   % a_nom is not needed: A_wm is already normalized
+        opts.seeds = SK.seeds;
+        fprintf('\nstack reloaded: %s  (%d seeds, axis %c)\n', opts.stack, n_seed, axl(ax));
+        local_print_constants(cc, IF_abc, kappa_T, xi_bar, ax, axl, d_delay);
+    else
     % ------------------------------------------------------------------
     % [1] Run (or accept) the formC_b seed set
     % ------------------------------------------------------------------
@@ -54,8 +78,6 @@ function out = verify_formC_am_r22(opts)
     end
     runs  = D.runs;
     n_seed = numel(runs);
-    ax    = opts.ax;
-    axl   = 'xyz';
 
     % ------------------------------------------------------------------
     % [2] Constants -- taken from the run's own ctrl_const / params, never
@@ -79,13 +101,7 @@ function out = verify_formC_am_r22(opts)
     assert(abs(a_nom - a_o * R_radius) < 1e-9 * a_nom, ...
            'verify_formC_am_r22:aNom', 'a_nom does not match a_o*R');
 
-    fprintf('\n=== constants (from the run) ===\n');
-    fprintf('a_cov %.4g | a_pd %.4g | C_dpmr %.6f | C_n %.6f | K_var %.6f\n', ...
-            a_cov, cc.a_pd, C_dpmr, C_n, K_var);
-    fprintf('IF_abc [%.5g %.5g %.5g] | kappa_T %.6g | xi_bar(%c) %.4g | d %d\n', ...
-            IF_abc(1), IF_abc(2), IF_abc(3), kappa_T, axl(ax), xi_bar(ax), d_delay);
-    fprintf('amlpf_var_factor (production) %.6g\n', ...
-            get_field_or(cc, 'amlpf_var_factor', 1));
+    local_print_constants(cc, IF_abc, kappa_T, xi_bar, ax, axl, d_delay);
 
     % ------------------------------------------------------------------
     % [3] Stack the per-seed series (normalized gain units)
@@ -116,6 +132,14 @@ function out = verify_formC_am_r22(opts)
     A_wm = A_wm(2:end, :);  A_tr = A_tr(2:end, :);
     R2_u = R2_u(2:end, :);  gate = gate(2:end, :);  A_ht = A_ht(2:end, :);
     t    = t(2:end);        N    = numel(t);
+
+    if ~isempty(opts.save_stack)
+        cfg = D.cfg;  seeds = opts.seeds;
+        save(opts.save_stack, 'A_wm', 'A_tr', 'R2_u', 'A_ht', 'gate', 't', 'cc', ...
+             'kappa_T', 's2n_nd', 'xi_bar', 'a_nom', 'cfg', 'seeds', 'ax', '-v7.3');
+        fprintf('stack saved: %s\n', opts.save_stack);
+    end
+    end   % <- end of the "run vs reload" branch
 
     % Whitened increment, rebuilt EXACTLY as the controller builds it
     % (formC_b:829). The first retained sample has no predecessor and is
@@ -215,6 +239,22 @@ function out = verify_formC_am_r22(opts)
     fprintf('gate-off fraction (axis %c): %.2f %%   [G3 h_bar_safe = %.2f]\n', ...
             axl(ax), 100 * mean(gate(:), 'all'), cc.h_bar_safe);
 
+    % Where the LPF cascade's error comes from: IF2 assumes rho_axm(tau) =
+    % (1-a_cov)^tau, but the readout is an EWMA of a COLORED input and decays
+    % slower than that. Rebuilding IF2 from the measured rho says how much of
+    % the cascade ratio that accounts for -- the 2026-06 "L1 crude AR(1)"
+    % defect, measured in this scenario instead of assumed.
+    L_if2 = 600;
+    rho_raw_long = rho_profile(A_wm(ih, :), L_if2);
+    fprintf('\nIF2 (LPF cascade), final hold:\n');
+    for j = 1:n_beta
+        b = opts.betas(j);
+        IF2_meas_j = 1 + 2 * sum(((1 - b) .^ (1:L_if2)) .* rho_raw_long);
+        fprintf(['  a_det %.3f : model %.2f  vs  from measured rho %.2f  ', ...
+                 '(x%.3f -- compare the cascade row below)\n'], ...
+                b, IF2(j), IF2_meas_j, IF2_meas_j / IF2(j));
+    end
+
     fprintf('\n=== variance ratios (measured / theory), median per window ===\n');
     fprintf('%-28s %17s %17s %17s\n', 'quantity  [agg | med]', 'descent', 'osc', 'hold');
     print_ratio('Var(a_bar_wm) / closed form', var_raw_ms, var_raw_th, t, win);
@@ -247,15 +287,23 @@ function out = verify_formC_am_r22(opts)
         COL_TH   = [0 0.55 0.2];
 
         % --- FIG 1: whitening, before | after (single seed, shared y) ---
+        % Zoomed to half a second in the oscillation: over a full run the two
+        % panels are solid ink and the point (memory vs no memory) is invisible.
+        % Shared y is kept -- the whitened channel really is ~3x noisier per
+        % sample, and hiding that with separate axes would misrepresent the
+        % trade the whitening makes.
+        ZW = [2.0, 2.5];
         f = new_fig([80 80 1200 520]);
         tiledlayout(1, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
-        yl = [min([A_wm(:, sf); Y2(:, sf) / a_cov]), max([A_wm(:, sf); Y2(:, sf) / a_cov])];
+        iz = t >= ZW(1) & t <= ZW(2);  iz2 = t2 >= ZW(1) & t2 <= ZW(2);
+        yl = [min([A_wm(iz, sf); Y2(iz2, sf) / a_cov]), ...
+              max([A_wm(iz, sf); Y2(iz2, sf) / a_cov])];
         nexttile; hold on;
         h1 = plot(t, A_wm(:, sf), '-', 'Color', COL_MEAS, 'LineWidth', 0.8, ...
                   'DisplayName', 'a_{m} readout (before)');
         h2 = plot(t, a_tr_mean, '-', 'Color', COL_TRUE, 'LineWidth', 2.4, ...
                   'DisplayName', 'a_{true}');
-        ylim(yl); xlim([t(1) t(end)]);
+        ylim(yl); xlim(ZW);
         ylabel(sprintf('a_%c / a_o', axl(ax)), 'FontSize', FS, 'FontWeight', 'bold');
         xlabel('Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');
         legend([h2 h1], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
@@ -266,7 +314,7 @@ function out = verify_formC_am_r22(opts)
                   'DisplayName', 'y_2 / a_{cov}  (after)');
         h4 = plot(t, a_tr_mean, '-', 'Color', COL_TRUE, 'LineWidth', 2.4, ...
                   'DisplayName', 'a_{true}');
-        ylim(yl); xlim([t(1) t(end)]);
+        ylim(yl); xlim(ZW);
         xlabel('Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');
         legend([h4 h3], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
                'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
@@ -289,30 +337,53 @@ function out = verify_formC_am_r22(opts)
         legend([h1 h2], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
                'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
         set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on'); grid off;
-        save_fig(f, out_dir, 'fig2_r22_raw.png');
+        save_fig(f, out_dir, 'fig2_r22_raw_time.png');
 
-        % --- FIG 3: whitened channel (what the KF is fed) ---
-        f = new_fig([80 80 1180 560]);
+        % --- FIG 3 / 4: variance vs a_bar, binned along a (the 2026-06 view) ---
+        % The time plots answer "how big"; these answer "how does it depend on
+        % a". Bins are uniform along a_true (NOT time slices), the error bar is
+        % a jackknife over SEEDS, and both panels share the same x range and
+        % plain decimal ticks so the readout and the whitened channel can be
+        % read against each other.
+        NBIN = 28;
+        a_lo = min(a_tr_mean); a_hi = max(a_tr_mean);
+        edges = linspace(a_lo, a_hi, NBIN + 1);
+        a_grid = linspace(a_lo, a_hi, 200).';
+        IF_grid = if_eff_local(a_grid, s2n_nd(ax), IF_abc, C_dpmr, C_n, kappa_T);
+
+        [cR, vR, eR] = binned_var_jk(A_wm, a_tr_mean, edges);
+        f = new_fig([80 80 1000 620]);
         hold on;
-        plot(t2, var_y2_ms, '-', 'Color', COL_RAW, 'LineWidth', 0.5, ...
-             'HandleVisibility', 'off');
-        h1 = plot(t2, smooth_t(var_y2_ms, fs, SM), '-', 'Color', COL_MEAS, ...
-                  'LineWidth', 2.0, ...
-                  'DisplayName', sprintf('measured (%d seeds, %.0f ms avg)', ...
-                                         n_seed, SM * 1e3));
-        h2 = plot(t2, var_y2_th, '-', 'Color', COL_TH, 'LineWidth', 3.0, ...
-                  'DisplayName', '2 a_{cov}^2 (a+\xi)^2  per-sample');
-        h3 = plot(t2, mean(R2_u(2:end, :), 2), '--', 'Color', COL_HAT, 'LineWidth', 2.0, ...
-                  'DisplayName', 'R(2,2) used = green \times IF_{eff}');
-        xlim([t(1) t(end)]);
-        ylabel(sprintf('Var(y_{2,%c})  [-]', axl(ax)), 'FontSize', FS, 'FontWeight', 'bold');
-        xlabel('Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');
-        legend([h1 h2 h3], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
+        hT = plot(a_grid, K_var * IF_grid .* (a_grid + xi_bar(ax)).^2, '-', ...
+                  'Color', COL_TH, 'LineWidth', 3.0, ...
+                  'DisplayName', 'K_{var} IF_{eff} (a+\xi)^2');
+        hM = errorbar(cR, vR, eR, 'o', 'Color', COL_HAT, 'MarkerFaceColor', COL_HAT, ...
+                      'MarkerSize', 6, 'LineWidth', 1.0, 'CapSize', 3, 'LineStyle', 'none', ...
+                      'DisplayName', sprintf('measured, a = â arm (%d seeds)', n_seed));
+        set(gca, 'XScale', 'log', 'YScale', 'log');
+        style_scatter(gca, a_lo, a_hi, FS, AXLW, axl(ax), ...
+                      sprintf('Var(a_{m,%c})  [-]', axl(ax)));
+        legend([hT hM], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
                'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
-        set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on'); grid off;
-        save_fig(f, out_dir, 'fig3_r22_whitened.png');
+        save_fig(f, out_dir, 'fig3_r22_raw_vs_a.png');
 
-        % --- FIG 4: LPF before / after, single seed ---
+        [cW, vW, eW] = binned_var_jk(Y2, a_tr_mean(2:end), edges);
+        f = new_fig([80 80 1000 620]);
+        hold on;
+        hT = plot(a_grid, 2 * a_cov^2 * (a_grid + xi_bar(ax)).^2, '-', ...
+                  'Color', COL_TH, 'LineWidth', 3.0, ...
+                  'DisplayName', '2 a_{cov}^2 (a+\xi)^2  per-sample');
+        hM = errorbar(cW, vW, eW, 'o', 'Color', COL_HAT, 'MarkerFaceColor', COL_HAT, ...
+                      'MarkerSize', 6, 'LineWidth', 1.0, 'CapSize', 3, 'LineStyle', 'none', ...
+                      'DisplayName', sprintf('measured, a = â arm (%d seeds)', n_seed));
+        set(gca, 'XScale', 'log', 'YScale', 'log');
+        style_scatter(gca, a_lo, a_hi, FS, AXLW, axl(ax), ...
+                      sprintf('Var(y_{2,%c})  [-]', axl(ax)));
+        legend([hT hM], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
+               'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
+        save_fig(f, out_dir, 'fig4_r22_whitened_vs_a.png');
+
+        % --- FIG 6: LPF before / after, single seed ---
         f = new_fig([80 80 1180 560]);
         hold on;
         hh = plot(t, A_wm(:, sf), '-', 'Color', COL_MEAS, 'LineWidth', 0.8, ...
@@ -332,9 +403,9 @@ function out = verify_formC_am_r22(opts)
         legend([ht; hh; hs(:)], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
                'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
         set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on'); grid off;
-        save_fig(f, out_dir, 'fig4_lpf_before_after.png');
+        save_fig(f, out_dir, 'fig6_lpf_before_after.png');
 
-        % --- FIG 5: LPF cascade variance, one figure per a_det ---
+        % --- FIG 7: LPF cascade variance, one figure per a_det ---
         for j = 1:n_beta
             f = new_fig([80 80 1180 560]);
             hold on;
@@ -352,9 +423,9 @@ function out = verify_formC_am_r22(opts)
             legend([h1 h2], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
                    'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
             set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on'); grid off;
-            save_fig(f, out_dir, sprintf('fig5_r22_lpf_adet%g.png', opts.betas(j)));
+            save_fig(f, out_dir, sprintf('fig7_r22_lpf_adet%g.png', opts.betas(j)));
         end
-        % --- FIG 6: what R(2,2) is made of ---
+        % --- FIG 5: what R(2,2) is made of ---
         f = new_fig([80 80 1180 560]);
         hold on;
         hm = plot(t2, smooth_t(var_y2_ms, fs, SM), '-', 'Color', COL_RAW, ...
@@ -371,7 +442,7 @@ function out = verify_formC_am_r22(opts)
         legend([hm h1 h2 h3], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
                'FontSize', LFS - 2, 'FontWeight', 'bold', 'Box', 'on');
         set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on'); grid off;
-        save_fig(f, out_dir, 'fig6_r22_decomposition.png');
+        save_fig(f, out_dir, 'fig5_r22_decomposition.png');
 
         fprintf('\nfigures -> %s\n', out_dir);
     end
@@ -385,7 +456,63 @@ function out = verify_formC_am_r22(opts)
                  'R2_delay', R2_delay, 'IF_meas', IF_meas, ...
                  'IF_eff', IF_eff, 'IF2', IF2, 'betas', opts.betas, ...
                  'rho_raw', rho_raw, 'rho_y2', rho_y2, 'out_dir', out_dir, ...
-                 'seeds', opts.seeds, 'D', D);
+                 'seeds', opts.seeds, 'D', D, 'n_seed', n_seed);
+end
+
+
+function local_print_constants(cc, IF_abc, kappa_T, xi_bar, ax, axl, d_delay)
+%LOCAL_PRINT_CONSTANTS  The chain's offline scalars, straight from the run.
+    fprintf('\n=== constants (from the run) ===\n');
+    fprintf('a_cov %.4g | a_pd %.4g | C_dpmr %.6f | C_n %.6f | K_var %.6f\n', ...
+            cc.a_cov, cc.a_pd, cc.C_dpmr, cc.C_n, cc.K_var);
+    fprintf('IF_abc [%.5g %.5g %.5g] | kappa_T %.6g | xi_bar(%c) %.4g | d %d\n', ...
+            IF_abc(1), IF_abc(2), IF_abc(3), kappa_T, axl(ax), xi_bar(ax), d_delay);
+    fprintf('amlpf_var_factor (production) %.6g\n', ...
+            get_field_or(cc, 'amlpf_var_factor', 1));
+end
+
+
+function [ctr, val, sem] = binned_var_jk(X, a_ref, edges)
+%BINNED_VAR_JK  Cross-seed variance binned along a_bar, with a jackknife SEM.
+%   X      [N x S] per-seed series      a_ref [N x 1] the a_bar of each step
+%   Bins are uniform in a_bar, so a slow descent and a fast oscillation
+%   contribute to the same bin whenever they visit the same gain -- that is the
+%   point: the bin's spread then reflects the estimator, not the schedule.
+%   The error bar is a delete-one-SEED jackknife (the seeds are the independent
+%   replicates; neighbouring time samples are not), computed from running sums
+%   so the leave-one-out variances cost one pass:
+%       var_(s)[k] = (S2 - x_s^2 - (S1 - x_s)^2/(n-1)) / (n-2)
+    n = size(X, 2);
+    S1 = sum(X, 2);  S2 = sum(X.^2, 2);
+    v_all = (S2 - S1.^2 / n) / (n - 1);                       % [N x 1]
+    v_loo = (S2 - X.^2 - (S1 - X).^2 / (n - 1)) / (n - 2);    % [N x S]
+    nb = numel(edges) - 1;
+    ctr = zeros(nb, 1); val = zeros(nb, 1); sem = zeros(nb, 1);
+    for b = 1:nb
+        in = a_ref >= edges(b) & a_ref < edges(b + 1);
+        if b == nb; in = in | a_ref == edges(end); end
+        if ~any(in); ctr(b) = NaN; val(b) = NaN; sem(b) = NaN; continue; end
+        ctr(b) = mean(a_ref(in));
+        val(b) = mean(v_all(in));
+        th = mean(v_loo(in, :), 1);                            % [1 x S]
+        sem(b) = sqrt((n - 1) / n * sum((th - mean(th)).^2));
+    end
+    keep = ~isnan(ctr);
+    ctr = ctr(keep); val = val(keep); sem = sem(keep);
+end
+
+
+function style_scatter(ax_h, a_lo, a_hi, FS, AXLW, axl_c, ylab)
+%STYLE_SCATTER  Shared x range and plain decimal ticks, so the two scatter
+%   figures can be read against one another (the 2026-06 alignment fix: the
+%   default exponent labelling made x and z look like different variables).
+    xlim(ax_h, [a_lo * 0.95, a_hi * 1.05]);
+    xlabel(ax_h, sprintf('a_%c / a_o', axl_c), 'FontSize', FS, 'FontWeight', 'bold');
+    ylabel(ax_h, ylab, 'FontSize', FS, 'FontWeight', 'bold');
+    ax_h.XAxis.Exponent = 0;
+    xtickformat(ax_h, '%.2f');
+    set(ax_h, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on');
+    grid(ax_h, 'off');
 end
 
 
