@@ -95,11 +95,13 @@ function out = verify_formC_am_r22(opts)
     A_wm = zeros(N, n_seed);    % raw readout a_bar_wm
     A_tr = zeros(N, n_seed);    % true a_bar
     R2_u = zeros(N, n_seed);    % R(2,2) the filter actually used
+    A_ht = zeros(N, n_seed);    % a_bar_hat (posterior)
     gate = false(N, n_seed);
     for s = 1:n_seed
         A_wm(:, s) = runs{s}.a_xm_out(:, ax)   / a_nom;
         A_tr(:, s) = runs{s}.a_true_out(:, ax) / a_nom;
         R2_u(:, s) = runs{s}.R2_out(:, ax);
+        A_ht(:, s) = runs{s}.a_bar_hat_out(:, ax);   % posterior a_bar (R2 is built on it)
         gate(:, s) = logical(runs{s}.gate_out(:, ax));
     end
 
@@ -112,7 +114,7 @@ function out = verify_formC_am_r22(opts)
     assert(all(A_wm(1, :) == 0), 'verify_formC_am_r22:initRow', ...
            'row 1 is expected to be the init-only call (all-zero diag)');
     A_wm = A_wm(2:end, :);  A_tr = A_tr(2:end, :);
-    R2_u = R2_u(2:end, :);  gate = gate(2:end, :);
+    R2_u = R2_u(2:end, :);  gate = gate(2:end, :);  A_ht = A_ht(2:end, :);
     t    = t(2:end);        N    = numel(t);
 
     % Whitened increment, rebuilt EXACTLY as the controller builds it
@@ -134,6 +136,22 @@ function out = verify_formC_am_r22(opts)
 
     var_raw_ms = var(A_wm, 0, 2);
     var_y2_ms  = var(Y2,   0, 2);
+
+    % ------------------------------------------------------------------
+    % [4b] The three pieces R(2,2) is made of, evaluated where the controller
+    %      evaluates them (at the POSTERIOR a_bar_hat, not at a_true):
+    %        A = 2 a_cov^2 (a_hat + xi)^2      per-sample variance of y2
+    %        A * IF_eff                        + serial-correlation penalty
+    %        + a_cov^2 * d * Q44               + the gain moved during the delay
+    %      The last piece is recovered by difference from the LOGGED R2, so the
+    %      reconstruction is also its own cross-check.
+    % ------------------------------------------------------------------
+    a_ht_mean = mean(A_ht, 2);
+    IF_hat    = if_eff_local(a_ht_mean, s2n_nd(ax), IF_abc, C_dpmr, C_n, kappa_T);
+    R2_A      = 2 * a_cov^2 .* (a_ht_mean + xi_bar(ax)).^2;
+    R2_AIF    = R2_A .* IF_hat;
+    R2_tot    = mean(R2_u, 2);
+    R2_delay  = R2_tot - R2_AIF;
 
     % ------------------------------------------------------------------
     % [5] Offline LPF cascade on the SAME readout
@@ -177,6 +195,17 @@ function out = verify_formC_am_r22(opts)
     fprintf('  a_bar_wm      ');  fprintf(' %+6.3f', pr_raw); fprintf('\n');
     fprintf('  y2            ');  fprintf(' %+6.3f', pr_y2);  fprintf('\n');
     fprintf('  (1-a_cov)^tau ');  fprintf(' %+6.3f', (1 - a_cov).^(1:tau_max)); fprintf('\n');
+    tau_int = 30;
+    pr_long = rho_profile(Y2(ih2, :), tau_int);
+    IF_meas = 1 + 2 * sum(pr_long);
+    fprintf(['IF (correlation penalty), final hold: measured 1+2*sum(rho) = %.3f  vs  ', ...
+             'IF_eff used = %.3f  (%+.1f %%)\n'], IF_meas, IF_hat(end), ...
+            100 * (IF_hat(end) / IF_meas - 1));
+    fprintf(['R2 pieces at the trough: per-sample %.4g  x IF %.3f  + delay %.4g  ', ...
+             '= %.4g  (logged %.4g)\n'], R2_A(end), IF_hat(end), R2_delay(end), ...
+            R2_AIF(end) + R2_delay(end), R2_tot(end));
+    fprintf('delay share of R2: %.1f %% at the trough, %.1f %% at the start\n', ...
+            100 * R2_delay(end) / R2_tot(end), 100 * R2_delay(1) / R2_tot(1));
     fprintf(['estimator noise: a cross-seed variance from %d seeds scatters by ', ...
              '%.1f %% (1-sigma);\n   the figures time-average 0.1 s on top of that ', ...
              '(a_bar_wm keeps ~1/a_cov = %d steps of\n   memory, so that window holds ', ...
@@ -325,6 +354,25 @@ function out = verify_formC_am_r22(opts)
             set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on'); grid off;
             save_fig(f, out_dir, sprintf('fig5_r22_lpf_adet%g.png', opts.betas(j)));
         end
+        % --- FIG 6: what R(2,2) is made of ---
+        f = new_fig([80 80 1180 560]);
+        hold on;
+        hm = plot(t2, smooth_t(var_y2_ms, fs, SM), '-', 'Color', COL_RAW, ...
+                  'LineWidth', 2.0, 'DisplayName', 'measured Var(y_2)');
+        h1 = plot(t, R2_A, '-', 'Color', COL_TH, 'LineWidth', 2.5, ...
+                  'DisplayName', '(1) per-sample  2a_{cov}^2(\ita\rm+\xi)^2');
+        h2 = plot(t, R2_AIF, '-', 'Color', COL_MEAS, 'LineWidth', 2.5, ...
+                  'DisplayName', '(2) + correlation \times IF_{eff}');
+        h3 = plot(t, R2_tot, '--', 'Color', COL_HAT, 'LineWidth', 2.0, ...
+                  'DisplayName', '(3) + delay = R(2,2)');
+        xlim([t(1) t(end)]);
+        ylabel(sprintf('R(2,2)_%c  [-]', axl(ax)), 'FontSize', FS, 'FontWeight', 'bold');
+        xlabel('Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');
+        legend([hm h1 h2 h3], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
+               'FontSize', LFS - 2, 'FontWeight', 'bold', 'Box', 'on');
+        set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on'); grid off;
+        save_fig(f, out_dir, 'fig6_r22_decomposition.png');
+
         fprintf('\nfigures -> %s\n', out_dir);
     end
 
@@ -333,6 +381,8 @@ function out = verify_formC_am_r22(opts)
                  'var_y2_ms', var_y2_ms, 'var_y2_th', var_y2_th, ...
                  'R2_used_th', R2_used_th, 'R2_used', mean(R2_u, 2), ...
                  'var_md_ms', {var_md_ms}, 'var_md_th', {var_md_th}, ...
+                 'R2_A', R2_A, 'R2_AIF', R2_AIF, 'R2_tot', R2_tot, ...
+                 'R2_delay', R2_delay, 'IF_meas', IF_meas, ...
                  'IF_eff', IF_eff, 'IF2', IF2, 'betas', opts.betas, ...
                  'rho_raw', rho_raw, 'rho_y2', rho_y2, 'out_dir', out_dir, ...
                  'seeds', opts.seeds, 'D', D);
