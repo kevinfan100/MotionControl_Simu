@@ -420,13 +420,24 @@ function simOut = run_pure_simulation(config, opts)
     % the controller acts on at step k; p_true_out logs post-integration).
     a_nom_drv   = P.common.Ts / P.common.gamma_N;
     wall_on_drv = isfield(P, 'wall') && P.wall.enable_wall_effect > 0.5;
-    % True-gain h̄ clip floor: keep consistent with the physics h_min floor so
-    % diverged excursions do not silently use a different singularity limit.
-    if wall_on_drv && isfield(P.wall, 'h_bar_min')
-        h_bar_floor_drv = P.wall.h_bar_min;
-    else
-        h_bar_floor_drv = 1.001;
-    end
+    % True-gain h̄ clip floor. This guards ONE thing: keeping the LOGGED
+    % a_true finite if an excursion approaches contact. It is not the physics
+    % floor -- step_dynamics/calc_gamma_inv are never clipped -- and it is not
+    % the prior-envelope floor either.
+    %
+    % It used to be P.wall.h_bar_min, which is h_min/R. That made one number do
+    % two unrelated jobs: h_min is the floor the DRIVERS use to decide where the
+    % truth curve may be read for deriving priors (1.10 R, the two-sphere
+    % validity limit). Borrowing it here froze the logged reference whenever the
+    % particle dipped below the trough, which is exactly what a deep trajectory
+    % does: at a commanded trough of w_bar = 1.10 the tracking error carries the
+    % particle to 1.0846 for 14 % of the run, and the yardstick then reads 16 %
+    % high while the simulated physics is perfectly correct.
+    %
+    % The right floor here is where calc_correction_functions stops being
+    % evaluable (it errors below h_bar = 1), so 1.001. Provably inert on the
+    % shallow canonical scenario, whose minimum is w_bar = 1.96.
+    h_bar_floor_drv = 1.001;
 
     % ------------------------------------------------------------------
     % 7. Allocate logs (mirror Simulink ToWorkspace schema, [N x 3])

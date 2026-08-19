@@ -308,7 +308,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
     persistent enable_wall w_hat_n pz_wall
     persistent Q_theta_floor a_bar_floor a_bar_ceil da_clamp ws_margin gap_floor
     persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off t2_pure_prop lambda_f obs_dump_on
-    persistent ap_src ap_ewma_a a_bar_slope_v law_b_formC
+    persistent ap_src ap_ewma_a a_bar_slope_v law_b_formC dist_mode
     persistent q33_dc_match q33_dc_fac
     persistent y2_echo_corr S_echo_T S_echo_n
     persistent ma2_aug alpha_ma2 n_state    % MA(2) noise-memory augmentation
@@ -467,8 +467,23 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
         ap_src    = lower(get_field_default(ctrl_const, 'ap_src', 'post'));
         law_b_formC = get_field_default(ctrl_const, 'law_b_formC', 1);
         ap_ewma_a = get_field_default(ctrl_const, 'ap_ewma_a', 0.05);
-        assert(any(strcmp(ap_src, {'post','pred','ewma'})), ...
-               'motion_control_law_formC_dist:apSrc', 'ap_src must be post|pred|ewma.');
+        assert(any(strcmp(ap_src, {'post','pred','ewma','cmd'})), ...
+               'motion_control_law_formC_dist:apSrc', ...
+               'ap_src must be post|pred|ewma|cmd.');
+        % WHERE slot 5 acts. 'gain' is the shipped meaning (additive on the
+        % row-4 increment, tex S5(b)); 'height' moves it into the LAW's
+        % argument instead, a_bar' = law_b/(law_b (w_bar_d - w0 - delta))^2.
+        % The two differ in kind, not degree: 'gain' corrects the increment
+        % ADDITIVELY and 'height' corrects the slope MULTIPLICATIVELY, and a
+        % wall-law error is a slope RATIO error, so only 'height' needs a
+        % value that does not change sign with the direction of travel.
+        dist_mode = lower(get_field_default(ctrl_const, 'dist_mode', 'gain'));
+        assert(any(strcmp(dist_mode, {'gain','height'})), ...
+               'motion_control_law_formC_dist:distMode', ...
+               'dist_mode must be gain|height.');
+        assert(~strcmp(dist_mode,'height') || strcmp(ap_src,'cmd'), ...
+               'motion_control_law_formC_dist:heightNeedsCmd', ...
+               'dist_mode = height requires ap_src = cmd (the offset is ON the command).');
         a_bar_slope_v = [];
         lambda_f = get_field_default(ctrl_const, 'lambda_f', 1);
         assert(isscalar(lambda_f) && lambda_f > 0 && lambda_f <= 1, ...
@@ -877,6 +892,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
     gate_off   = false(3, 1);
     G_flags    = false(3, 3);
     a_prime_v  = zeros(3, 1);
+    dap_dd_v   = zeros(3, 1);   % d(a_bar')/d(delta), 'height' mode only
     Q44_v      = zeros(3, 1);
     Q33_v      = zeros(3, 1);
     a_barQ_v   = zeros(3, 1);
@@ -912,6 +928,16 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
             case 'ewma'
                 a_bar_slope_v(ax) = (1 - ap_ewma_a) * a_bar_slope_v(ax) + ap_ewma_a * a_bar_i;
                 a_bar_sl = min(max(a_bar_slope_v(ax), a_bar_floor), a_bar_ceil);
+            case 'cmd'
+                % Slope read at the COMMANDED height (minus the disturbance
+                % in 'height' mode). Realizable only because the wall origin
+                % is known; unlike post/pred/ewma it reads no state, so a
+                % wrong a_bar_hat cannot corrupt the slope.
+                w0_k = w0_nominal;
+                if par_law && any(ax == AX_PAR); w0_k = w0_par; end
+                off_k = double(strcmp(dist_mode,'height')) * da_i;
+                gap_k = max(law_b_formC * (w_bar_d - w0_k - off_k), gap_floor);
+                a_bar_sl = min(max(1 - 1/gap_k, a_bar_floor), a_bar_ceil);
         end
         % Jacobian is taken AT the evaluation point. Zeroing A_a instead was a
         % defect (2026-08-13): A_a*M is what grows P44 along the descent, so
@@ -924,14 +950,31 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
             a_prime_i = ap_known(ax);   % exogenous integrand
             A_a_i     = 0;              % no state dependence left
         end
-        J_da_i = double(~lm(1));
+        % d(a_bar')/d(delta) in 'height' mode. With a_bar' = law_b/gap^2 and
+        % gap = law_b (w_bar_d - w0 - delta), d(a_bar')/d(delta) = 2 law_b
+        % a_bar'/gap. Zero in 'gain' mode, where delta does not touch a_bar'.
+        dap_dd_i = 0;
+        if strcmp(dist_mode, 'height')
+            dap_dd_i = 2 * law_b_formC * a_prime_i / gap_k;
+        end
+        % F_e(4,5) and H(2,5). 'gain': both are STRUCTURAL CONSTANTS (1 and
+        % -d), so the slot is visible even in a hold. 'height': both carry a
+        % displacement factor (M and Grad), so the slot goes blind in a hold
+        % -- the same structure the b-as-state arm has. That trade is the
+        % point of the comparison, not a defect of either.
+        J_da_i = double(~lm(1));   % 'height' rebuilds this once M is known
+        if strcmp(dist_mode, 'height'); J_da_i = 0; end
         if has_da_known
+            assert(strcmp(dist_mode,'gain'), ...
+                   'motion_control_law_formC_dist:knownNeedsGain', ...
+                   'da_known is derived for the additive (gain) placement only.');
             % Exogenous input, not a state: it enters predict at unit gain but
             % carries no Jacobian, so F_e(4,5) = 0 and no covariance is built
             % for it. Slot 5 must also be locked (lock_da = true) so nothing
             % tries to update it.
             J_da_i = 0;
         end
+        dap_dd_v(ax)  = dap_dd_i;
         a_prime_v(ax) = a_prime_i;
 
         % --- Q (7x7): rank-1 gain block + Q33 (spec S8, at the estimate) ---
@@ -1018,6 +1061,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
         end
         F_dw = F_dw_km1(ax);
         if t2_pure_prop; F_dw = 0; Q_i = zeros(n_state); end
+        if strcmp(dist_mode, 'height')
+            % d(row 4)/d(delta) = M * d(a_bar')/d(delta); M is only known here.
+            J_da_i = dap_dd_i * M_tot * double(~lm(1));
+        end
         F_e = local_build_F_e_formC(lambda_c, F_dw, a_prime_i, A_a_i, J_da_i, M_tot);
 
         % --- EKF predict (tex S5(b)). Row 4 carries the ADDITIVE disturbance
@@ -1027,7 +1074,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
                   x_curr(3); ...
                   lambda_c * x_curr(3); ...
                   x_curr(4) + a_prime_i * (Delta_wbar_d_km1 + one_minus_lc * x_curr(3)) ...
-                            + local_da_inject(has_da_known, J_da_i, da_i); ...
+                            + local_da_inject(has_da_known, ...
+                                double(strcmp(dist_mode,'gain')) * J_da_i, da_i); ...
                   x_curr(5); ...
                   x_curr(6); ...
                   x_curr(7)];
@@ -1106,7 +1154,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
             end
             H2 = H2_scale * echo_fac * [0, 0, 0, ...
                              1 - Grad_wbar_d * A_a_i, ...
-                             -d_delay * J_da_i, ...
+                             local_H25_formC(dist_mode, d_delay, J_da_i, ...
+                                             Grad_wbar_d, dap_dd_i, lm(1)), ...
                              0, 0, zeros(1, n_state - 7)];
             % NONLINEAR predicted measurement (S7 innovation line); H2*x_upd
             % would be wrong here -- see the header. The echo share S of the
@@ -1116,7 +1165,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
             % of the disturbance d*da_hat -- scale by (1-S), exactly as their
             % Jacobians do in H2 above.
             y2_pred = H2_scale * (x_upd(4) ...
-                        - echo_fac * (a_prime_i * Grad_wbar_d + d_delay * x_upd(5)));
+                        - echo_fac * (a_prime_i * Grad_wbar_d ...
+                          + double(strcmp(dist_mode,'gain')) * d_delay * x_upd(5)));
             H2_log = H2;
             S2  = H2 * P_upd * H2' + R2_i;
             K2  = (P_upd * H2') / S2;
@@ -1495,5 +1545,17 @@ function v = local_da_inject(has_known, J_da, da)
         v = da;
     else
         v = J_da * da;
+    end
+end
+
+% --------------------------------------------------------------------------
+function h = local_H25_formC(dist_mode, d_delay, J_da, Grad_wbar_d, dap_dd, locked)
+%LOCAL_H25_FORMC  The y2 column for slot 5, which depends on where delta acts.
+%   'gain'   : y2 backs off d applications of the additive term  -> -d
+%   'height' : delta moves a_bar', and y2 backs off a_bar'*Grad   -> -Grad*da'/ddelta
+    if strcmp(dist_mode, 'height')
+        h = -Grad_wbar_d * dap_dd * double(~locked);
+    else
+        h = -d_delay * J_da;
     end
 end

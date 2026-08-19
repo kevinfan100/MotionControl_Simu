@@ -134,6 +134,13 @@ function out = run_formC_dist(opts, test_opts)
     % state". Units: absolute a_bar. Implies the true-slope path.
     if ~isfield(opts, 'ap_law_bias'); opts.ap_law_bias = NaN; end
     if ~isfield(opts, 'law_b');       opts.law_b       = 1;   end
+    % WHERE slot 5 acts: 'gain' (additive on the row-4 increment, shipped)
+    % or 'height' (offset inside the law's argument). See the controller.
+    if ~isfield(opts, 'dist_mode');   opts.dist_mode   = 'gain'; end
+    % PLANT-SIDE WALL KNOB. NaN = published plane polynomial. Set it and the
+    % TRUE c_perp becomes the law's own curve on b_plant, with w0 = 0 -- the
+    % SAME definition run_formC_b uses, so the two drivers describe one plant.
+    if ~isfield(opts, 'plant_law_b'); opts.plant_law_b = NaN;  end
     if ~isfield(opts, 'ap_ewma_a');   opts.ap_ewma_a   = 0.05;  end
     if ~isfield(opts, 'Pf_da_std');   opts.Pf_da_std   = [];    end   % [] = derive
     if ~isfield(opts, 'Pf_w0_std');   opts.Pf_w0_std   = 0.111; end
@@ -176,7 +183,12 @@ function out = run_formC_dist(opts, test_opts)
     % ------------------------------------------------------------------
     % Canonical scenario config (+ optional overrides, then the h_min gate)
     % ------------------------------------------------------------------
-    cfg = local_canonical_config(A_COV_BASE * opts.a_cov_scale, H_BAR_MIN_PRIOR);
+    % Trajectory band. 'deep' (trough w_bar = 1.10) is the standard since
+    % 2026-08-19; 'shallow' (2.00) reproduces anything measured before it.
+    % Percentages are NOT comparable across the two -- see canonical_scenario.
+    if ~isfield(opts, 'scenario'); opts.scenario = 'deep'; end
+    cfg = local_canonical_config(A_COV_BASE * opts.a_cov_scale, H_BAR_MIN_PRIOR, ...
+                                 opts.scenario);
     fn = fieldnames(opts.config_override);
     for idx = 1:numel(fn)
         cfg.(fn{idx}) = opts.config_override.(fn{idx});
@@ -198,7 +210,11 @@ function out = run_formC_dist(opts, test_opts)
     % Envelope priors: derived from the planned trajectory, not tuned. The
     % triple is scenario-dependent by construction, so it is printed, never
     % asserted against a hard reference.
-    env_lo = cfg.h_bottom / pc.R - ENV_LO_MARGIN;
+    % Never below the truth-curve validity floor: the envelope is where the
+    % priors READ c_perp, and the two-sphere series is not trusted under
+    % H_BAR_MIN_PRIOR (c_perp diverges at w_bar = 1). Inert on the shallow
+    % band, where the trough is 2.00 and the margin lands at 1.90.
+    env_lo = max(cfg.h_bottom / pc.R - ENV_LO_MARGIN, H_BAR_MIN_PRIOR);
     env_hi = cfg.h_init   / pc.R + ENV_HI_MARGIN;
     % Shape floor for the curve this writing ACTUALLY seeds, a_bar = 1 - 1/w_bar
     % (w0 = ws0_perp - 1 = 0 for a plane). The multiplicative sibling reused the
@@ -225,6 +241,7 @@ function out = run_formC_dist(opts, test_opts)
     ov.ws0_perp   = 1;                % plane
     ov.lambda_f   = opts.lambda_f;    % Menq (4.15) forgetting factor
     ov.ap_src     = opts.ap_src;      % slope evaluation point
+    ov.dist_mode  = opts.dist_mode;   % where slot 5 acts
     ov.law_b_formC = opts.law_b;      % 9/8 = far-field anchor, 1 = unanchored
     ov.ap_ewma_a  = opts.ap_ewma_a;
     ov.da_init    = 0;                % tex seed, both derivations
@@ -291,7 +308,13 @@ function out = run_formC_dist(opts, test_opts)
             'da end', 'sqrtP55end', 'frz', 'da@1.5', ...
             'hold %/s', 'unopp %/s', 'NaN');
 
-    plant_cperp = [];   % plant-side boundary arms are not forked (plane only)
+    plant_cperp = [];   % [] = published plane polynomial
+    if isfinite(opts.plant_law_b)
+        plant_cperp = @(hb) local_plant_cperp_law(hb, opts.plant_law_b, 0);
+        fprintf(['PLANT WALL OVERRIDE: c_perp from the law with b_plant = %.5f ' ...
+                 '(estimator law_b = %.5f, slope ratio true/model = %.4f)\n'], ...
+                opts.plant_law_b, opts.law_b, opts.law_b/opts.plant_law_b);
+    end
     n_seeds = numel(seeds);
     runs  = cell(n_seeds, 1);
     Mrows = zeros(n_seeds, 7);   % desc | osc | hold | rms_all | bud_b | bud_p | nan
@@ -421,30 +444,15 @@ end
 
 %% =================== Local Helpers ===================
 
-function cfg = local_canonical_config(a_cov, h_bar_min_prior)
-%LOCAL_CANONICAL_CONFIG  Canonical hold->descend->osc->hold scenario (the
-%   expgain/powerlaw acceptance scenario, with h_min raised to the prior
-%   domain floor 1.1*R).
-    pc = physical_constants();
-    cfg = user_config();
-    cfg.trajectory_type = 'osc';
-    cfg.h_init    = 50;                  % [um] h_bar_0 = 22.2
-    cfg.h_bottom  = 4.5;                 % [um] trough h_bar = 2.0
-    cfg.amplitude = 2.5;                 % [um] oscillation half-amplitude
-    cfg.frequency = 1;                   % [Hz]
-    cfg.n_cycles  = 2;
-    cfg.t_hold    = 0.5;                 % [s] initial hold
-    cfg.t_descend_override = 1.0;        % [s] descent duration
-    cfg.T_sim     = 4.8;                 % [s] leaves a 1.3 s final hold
-    cfg.h_min     = h_bar_min_prior * pc.R;   % [um] prior-domain clamp
-    cfg.ctrl_enable       = true;
-    cfg.thermal_enable    = true;
-    cfg.meas_noise_enable = true;
-    cfg.lambda_c = 0.7;                  % closed-loop pole (canonical)
-    cfg.a_pd     = 0.05;                 % LP EWMA weight (canonical)
-    cfg.a_cov    = a_cov;                % variance EWMA weight (base 0.05)
-    cfg.meas_noise_std = [0.00062; 0.00057; 0.00331];   % [um] per axis
-    cfg.h_bar_safe = 1.5;                % near-wall y2 gate (house value)
+function cfg = local_canonical_config(a_cov, h_bar_min_prior, name)
+%LOCAL_CANONICAL_CONFIG  Thin wrapper on the shared scenario definition.
+%   The five gain-law drivers each carried a byte-identical copy of this
+%   scenario until 2026-08-19; they now all read model/config/canonical_scenario
+%   so a change to the trajectory cannot reach four drivers and miss the fifth.
+%   Default is 'deep' (trough w_bar = 1.10); pass 'shallow' to reproduce a
+%   number measured before that date.
+    if nargin < 3 || isempty(name); name = 'deep'; end
+    cfg = canonical_scenario(a_cov, h_bar_min_prior, name);
 end
 
 
@@ -1128,4 +1136,14 @@ function r = local_row3(v)
 %LOCAL_ROW3  [] -> zeros(1,3); 3x1 -> row. Keeps the known-disturbance log
 %   shaped even on arms where it is not used.
     if isempty(v); r = zeros(1, 3); else; r = v(:).'; end
+end
+
+% --------------------------------------------------------------------------
+function cp = local_plant_cperp_law(h_bar, b_plant, w0)
+%LOCAL_PLANT_CPERP_LAW  TRUE c_perp built from the estimator's own law shape.
+%   a_bar(w) = 1 - 1/(b_plant*(w - w0)),  c_perp = 1/a_bar.  Identical to the
+%   helper in run_formC_b so both drivers mean the same plant.
+    GAP_FLOOR = 1.05;
+    gap = max(b_plant * (h_bar - w0), GAP_FLOOR);
+    cp  = 1 ./ (1 - 1 ./ gap);
 end

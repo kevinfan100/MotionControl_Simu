@@ -217,7 +217,12 @@ function out = run_formB_ws(opts, test_opts)
     % ------------------------------------------------------------------
     % Canonical scenario config (+ optional overrides, then the h_min gate)
     % ------------------------------------------------------------------
-    cfg = local_canonical_config(A_COV_BASE * opts.a_cov_scale, H_BAR_MIN_PRIOR);
+    % Trajectory band. 'deep' (trough w_bar = 1.10) is the standard since
+    % 2026-08-19; 'shallow' (2.00) reproduces anything measured before it.
+    % Percentages are NOT comparable across the two -- see canonical_scenario.
+    if ~isfield(opts, 'scenario'); opts.scenario = 'deep'; end
+    cfg = local_canonical_config(A_COV_BASE * opts.a_cov_scale, H_BAR_MIN_PRIOR, ...
+                                 opts.scenario);
     fn = fieldnames(opts.config_override);
     for idx = 1:numel(fn)
         cfg.(fn{idx}) = opts.config_override.(fn{idx});
@@ -239,7 +244,11 @@ function out = run_formB_ws(opts, test_opts)
     % Envelope priors: derived from the planned trajectory, not tuned. The
     % triple is scenario-dependent by construction, so it is printed, never
     % asserted against a hard reference.
-    env_lo = cfg.h_bottom / pc.R - ENV_LO_MARGIN;
+    % Never below the truth-curve validity floor: the envelope is where the
+    % priors READ c_perp, and the two-sphere series is not trusted under
+    % H_BAR_MIN_PRIOR (c_perp diverges at w_bar = 1). Inert on the shallow
+    % band, where the trough is 2.00 and the margin lands at 1.90.
+    env_lo = max(cfg.h_bottom / pc.R - ENV_LO_MARGIN, H_BAR_MIN_PRIOR);
     env_hi = cfg.h_init   / pc.R + ENV_HI_MARGIN;
     [sPbb_env, sPpp_env, floor_a_env] = local_envelope_priors(env_lo, env_hi);
     [sPbb_amp, floor_a_amp] = local_envelope_priors_amp(env_lo, env_hi);
@@ -254,7 +263,7 @@ function out = run_formB_ws(opts, test_opts)
     ov.par_law = opts.par_law;
     par_pkg = [];
     if opts.par_law
-        par_pkg = local_parallel_law_package(env_lo, env_hi);
+        par_pkg = local_parallel_law_package(env_lo, env_hi, H_BAR_MIN_PRIOR);
         ov.b_par          = par_pkg.b;
         ov.p_par          = par_pkg.p;
         ov.ws0_par        = par_pkg.ws0;
@@ -526,30 +535,15 @@ end
 
 %% =================== Local Helpers ===================
 
-function cfg = local_canonical_config(a_cov, h_bar_min_prior)
-%LOCAL_CANONICAL_CONFIG  Canonical hold->descend->osc->hold scenario (the
-%   expgain/powerlaw acceptance scenario, with h_min raised to the prior
-%   domain floor 1.1*R).
-    pc = physical_constants();
-    cfg = user_config();
-    cfg.trajectory_type = 'osc';
-    cfg.h_init    = 50;                  % [um] h_bar_0 = 22.2
-    cfg.h_bottom  = 4.5;                 % [um] trough h_bar = 2.0
-    cfg.amplitude = 2.5;                 % [um] oscillation half-amplitude
-    cfg.frequency = 1;                   % [Hz]
-    cfg.n_cycles  = 2;
-    cfg.t_hold    = 0.5;                 % [s] initial hold
-    cfg.t_descend_override = 1.0;        % [s] descent duration
-    cfg.T_sim     = 4.8;                 % [s] leaves a 1.3 s final hold
-    cfg.h_min     = h_bar_min_prior * pc.R;   % [um] prior-domain clamp
-    cfg.ctrl_enable       = true;
-    cfg.thermal_enable    = true;
-    cfg.meas_noise_enable = true;
-    cfg.lambda_c = 0.7;                  % closed-loop pole (canonical)
-    cfg.a_pd     = 0.05;                 % LP EWMA weight (canonical)
-    cfg.a_cov    = a_cov;                % variance EWMA weight (base 0.05)
-    cfg.meas_noise_std = [0.00062; 0.00057; 0.00331];   % [um] per axis
-    cfg.h_bar_safe = 1.5;                % near-wall y2 gate (house value)
+function cfg = local_canonical_config(a_cov, h_bar_min_prior, name)
+%LOCAL_CANONICAL_CONFIG  Thin wrapper on the shared scenario definition.
+%   The five gain-law drivers each carried a byte-identical copy of this
+%   scenario until 2026-08-19; they now all read model/config/canonical_scenario
+%   so a change to the trajectory cannot reach four drivers and miss the fifth.
+%   Default is 'deep' (trough w_bar = 1.10); pass 'shallow' to reproduce a
+%   number measured before that date.
+    if nargin < 3 || isempty(name); name = 'deep'; end
+    cfg = canonical_scenario(a_cov, h_bar_min_prior, name);
 end
 
 
@@ -685,7 +679,7 @@ function [sPbb, floor_a] = local_envelope_priors_amp(h_lo, h_hi)
 end
 
 
-function pkg = local_parallel_law_package(w_lo, w_hi)
+function pkg = local_parallel_law_package(w_lo, w_hi, truth_floor)
 %LOCAL_PARALLEL_LAW_PACKAGE  Form B constants for the WALL-PARALLEL axes.
 %   pkg = local_parallel_law_package(w_lo, w_hi)
 %
@@ -723,16 +717,30 @@ function pkg = local_parallel_law_package(w_lo, w_hi)
     HI_PROBE   = 15;                   % far-end probe: where the envelope sups
                                        % have already gone flat
 
-    assert(w_lo - LO_PROBE > 1, 'run_formB_ws:parProbeBelowContact', ...
+    % The downward probe asks for the truth LO_PROBE below the envelope floor,
+    % to price how much the fitted law moves if the scenario floor were lower.
+    % On the deep band the floor already sits ON the two-sphere validity limit,
+    % so there is nothing valid down there and the probe is clamped to it. The
+    % width contributed in that direction is then zero -- which is honest, we
+    % cannot price an uncertainty from a series that does not reach it -- but it
+    % must be VISIBLE rather than a silent zero, hence the banner line below.
+    w_lo_probe = max(w_lo - LO_PROBE, truth_floor);
+    pkg.lo_probe_clamped = (w_lo_probe > w_lo - LO_PROBE + 1e-12);
+    assert(w_lo_probe > 1, 'run_formB_ws:parProbeBelowContact', ...
            'near-wall boundary probe w_bar = %.3f is not > 1 (c_para domain).', ...
-           w_lo - LO_PROBE);
+           w_lo_probe);
+    if pkg.lo_probe_clamped
+        fprintf(['PAR LAW: downward envelope probe clamped %.3f -> %.3f (truth-curve ' ...
+                 'floor); its share of the theta width is 0 by construction.\n'], ...
+                w_lo - LO_PROBE, w_lo_probe);
+    end
     assert(HI_PROBE > w_lo, 'run_formB_ws:parProbeDegenerate', ...
            'far-end probe cap %.3f must exceed the envelope floor %.3f.', HI_PROBE, w_lo);
 
     [th, sup] = local_fit_par_law(w_lo, w_hi, TH_START, N_FIT, GAP_FLOOR);
 
     probes = [w_lo + LO_PROBE, w_hi; ...
-              w_lo - LO_PROBE, w_hi; ...
+              w_lo_probe,        w_hi; ...
               w_lo,            min(HI_PROBE, w_hi)];
     dth = zeros(size(probes, 1), 3);
     for j = 1:size(probes, 1)

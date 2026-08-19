@@ -461,8 +461,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         ap_src    = lower(get_field_default(ctrl_const, 'ap_src', 'post'));
         law_b_formC = get_field_default(ctrl_const, 'law_b_formC', 1);
         ap_ewma_a = get_field_default(ctrl_const, 'ap_ewma_a', 0.05);
-        assert(any(strcmp(ap_src, {'post','pred','ewma'})), ...
-               'motion_control_law_formC_b:apSrc', 'ap_src must be post|pred|ewma.');
+        assert(any(strcmp(ap_src, {'post','pred','ewma','cmd'})), ...
+               'motion_control_law_formC_b:apSrc', 'ap_src must be post|pred|ewma|cmd.');
         a_bar_slope_v = [];
         lambda_f = get_field_default(ctrl_const, 'lambda_f', 1);
         assert(isscalar(lambda_f) && lambda_f > 0 && lambda_f <= 1, ...
@@ -922,6 +922,22 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             case 'ewma'
                 a_bar_slope_v(ax) = (1 - ap_ewma_a) * a_bar_slope_v(ax) + ap_ewma_a * a_bar_i;
                 a_bar_sl = min(max(a_bar_slope_v(ax), a_bar_floor), a_bar_ceil);
+            case 'cmd'
+                % Slope read at the COMMANDED height instead of at the belief.
+                % The law's own integral, a_bar = 1 - 1/(b (w_bar - w0)), which
+                % is what local_seed_level_formC already uses at the seed; here
+                % it is evaluated every step at w_bar_d. 'post'/'pred'/'ewma'
+                % all read a STATE, so a wrong a_bar_hat corrupts the slope and
+                % the next a_bar_hat -- the self-loop measured at 2.24 pp on a
+                % plant that IS the estimator's own law. This case has no such
+                % loop: w_bar_d is exogenous.
+                %
+                % Realizable ONLY because the wall origin w0 is known. That is
+                % the premise this case exists to test; it is not a free lunch.
+                w0_k = w0_nominal;
+                if par_law && any(ax == AX_PAR); w0_k = w0_par; end
+                gap_k = max(b_hat_i * (w_bar_d - w0_k), gap_floor);
+                a_bar_sl = min(max(1 - 1/gap_k, a_bar_floor), a_bar_ceil);
         end
         % Jacobian is taken AT the evaluation point. Zeroing A_a instead was a
         % defect (2026-08-13): A_a*M is what grows P44 along the descent, so
@@ -931,6 +947,20 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % Jacobian is the standard approximation and keeps P intact.
         % b is STATE 5 here, not a constant: a_bar' = (1-a_bar)^2 / b_hat.
         [a_prime_i, A_a_i] = local_gain_law_formC(a_bar_sl, enable_wall, b_hat_i);
+        if strcmp(ap_src, 'cmd')
+            % b MUST be locked here. With the slope read at the command,
+            % a_bar' = 1/(b (w_bar_d - w0)^2), so d(a_bar')/db = -a_bar'/b --
+            % the OPPOSITE sign to the state form the J_b/H(2,5) columns below
+            % are built with. Rather than carry two conventions, refuse.
+            assert(all(lm(1)), 'motion_control_law_formC_b:cmdFreeB', ...
+                   ['ap_src = cmd requires slot 5 (b) locked: the b Jacobian ', ...
+                    'flips sign in this parameterisation and is not derived.']);
+            % Same reason the ap_known branch zeroes it: the integrand no
+            % longer depends on the gain state, so d(a_bar')/d(a_bar) = 0.
+            % Leaving the state-form Jacobian in would claim a coupling the
+            % arm does not have and would grow P44 for nothing.
+            A_a_i = 0;
+        end
         if has_ap_known
             a_prime_i = ap_known(ax);   % exogenous integrand
             A_a_i     = 0;              % no state dependence left

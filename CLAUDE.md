@@ -39,6 +39,13 @@
 
 ---
 
+## 通用軌跡（2026-08-19 起）
+
+SSOT = `model/config/canonical_scenario.m`，預設 `deep`（谷底 w̄ = 1.10）。
+2026-08-19 之前的 `shallow`（谷底 2.00）仍可用 `opts.scenario` 取回，已驗逐位相同。
+**跨帶不得比百分比**（谷底分母差 5.4 倍），該日之前的驗收數字全部量在 shallow。
+細則與改動時必跑的四件事：`.claude/rules/canonical-trajectory.md`。
+
 ## 三條執行路徑
 
 | 路徑 | 入口 | 選擇器 |

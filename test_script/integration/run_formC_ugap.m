@@ -182,7 +182,12 @@ function out = run_formC_ugap(opts, test_opts)
     % ------------------------------------------------------------------
     % Canonical scenario config (+ optional overrides, then the h_min gate)
     % ------------------------------------------------------------------
-    cfg = local_canonical_config(A_COV_BASE * opts.a_cov_scale, H_BAR_MIN_PRIOR);
+    % Trajectory band. 'deep' (trough w_bar = 1.10) is the standard since
+    % 2026-08-19; 'shallow' (2.00) reproduces anything measured before it.
+    % Percentages are NOT comparable across the two -- see canonical_scenario.
+    if ~isfield(opts, 'scenario'); opts.scenario = 'deep'; end
+    cfg = local_canonical_config(A_COV_BASE * opts.a_cov_scale, H_BAR_MIN_PRIOR, ...
+                                 opts.scenario);
     fn = fieldnames(opts.config_override);
     for idx = 1:numel(fn)
         cfg.(fn{idx}) = opts.config_override.(fn{idx});
@@ -201,7 +206,11 @@ function out = run_formC_ugap(opts, test_opts)
     % ------------------------------------------------------------------
     % Envelope, seed height, and the two shape-floor candidates
     % ------------------------------------------------------------------
-    env_lo   = cfg.h_bottom / pc.R - ENV_LO_MARGIN;
+    % Never below the truth-curve validity floor: the envelope is where the
+    % priors READ c_perp, and the two-sphere series is not trusted under
+    % H_BAR_MIN_PRIOR (c_perp diverges at w_bar = 1). Inert on the shallow
+    % band, where the trough is 2.00 and the margin lands at 1.90.
+    env_lo   = max(cfg.h_bottom / pc.R - ENV_LO_MARGIN, H_BAR_MIN_PRIOR);
     env_hi   = cfg.h_init   / pc.R + ENV_HI_MARGIN;
     w_seed   = cfg.h_init / pc.R;          % the controller's seed height
     da_seed  = 0;                          % tex seed section
@@ -440,29 +449,15 @@ end
 
 %% =================== Local Helpers ===================
 
-function cfg = local_canonical_config(a_cov, h_bar_min_prior)
-%LOCAL_CANONICAL_CONFIG  Canonical hold->descend->osc->hold scenario, verbatim
-%   from run_formC_dist so the two drivers are a paired comparison.
-    pc = physical_constants();
-    cfg = user_config();
-    cfg.trajectory_type = 'osc';
-    cfg.h_init    = 50;                  % [um] h_bar_0 = 22.2
-    cfg.h_bottom  = 4.5;                 % [um] trough h_bar = 2.0
-    cfg.amplitude = 2.5;                 % [um] oscillation half-amplitude
-    cfg.frequency = 1;                   % [Hz]
-    cfg.n_cycles  = 2;
-    cfg.t_hold    = 0.5;                 % [s] initial hold
-    cfg.t_descend_override = 1.0;        % [s] descent duration
-    cfg.T_sim     = 4.8;                 % [s] leaves a 1.3 s final hold
-    cfg.h_min     = h_bar_min_prior * pc.R;   % [um] prior-domain clamp
-    cfg.ctrl_enable       = true;
-    cfg.thermal_enable    = true;
-    cfg.meas_noise_enable = true;
-    cfg.lambda_c = 0.7;                  % closed-loop pole (canonical)
-    cfg.a_pd     = 0.05;                 % LP EWMA weight (canonical)
-    cfg.a_cov    = a_cov;                % variance EWMA weight (base 0.05)
-    cfg.meas_noise_std = [0.00062; 0.00057; 0.00331];   % [um] per axis
-    cfg.h_bar_safe = 1.5;                % near-wall y2 gate (house value)
+function cfg = local_canonical_config(a_cov, h_bar_min_prior, name)
+%LOCAL_CANONICAL_CONFIG  Thin wrapper on the shared scenario definition.
+%   The five gain-law drivers each carried a byte-identical copy of this
+%   scenario until 2026-08-19; they now all read model/config/canonical_scenario
+%   so a change to the trajectory cannot reach four drivers and miss the fifth.
+%   Default is 'deep' (trough w_bar = 1.10); pass 'shallow' to reproduce a
+%   number measured before that date.
+    if nargin < 3 || isempty(name); name = 'deep'; end
+    cfg = canonical_scenario(a_cov, h_bar_min_prior, name);
 end
 
 
