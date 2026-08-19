@@ -177,6 +177,12 @@ function out = verify_formC_am_r22(opts)
     fprintf('  a_bar_wm      ');  fprintf(' %+6.3f', pr_raw); fprintf('\n');
     fprintf('  y2            ');  fprintf(' %+6.3f', pr_y2);  fprintf('\n');
     fprintf('  (1-a_cov)^tau ');  fprintf(' %+6.3f', (1 - a_cov).^(1:tau_max)); fprintf('\n');
+    fprintf(['estimator noise: a cross-seed variance from %d seeds scatters by ', ...
+             '%.1f %% (1-sigma);\n   the figures time-average 0.1 s on top of that ', ...
+             '(a_bar_wm keeps ~1/a_cov = %d steps of\n   memory, so that window holds ', ...
+             'only ~%d independent draws; y2 is white, so it holds ~%d).\n'], ...
+            n_seed, 100 * sqrt(2 / (n_seed - 1)), round(1 / a_cov), ...
+            round(0.1 / (t(2) - t(1)) * a_cov / 2), round(0.1 / (t(2) - t(1))));
     fprintf('gate-off fraction (axis %c): %.2f %%   [G3 h_bar_safe = %.2f]\n', ...
             axl(ax), 100 * mean(gate(:), 'all'), cc.h_bar_safe);
 
@@ -200,6 +206,14 @@ function out = verify_formC_am_r22(opts)
         sf = opts.seed_fig;
         if isempty(sf); sf = 1; else; sf = find(opts.seeds == sf, 1); end
         FS = 18; LFS = 14; AXLW = 1.2;
+        fs = 1 / (t(2) - t(1));
+        % Time-average window. The cross-seed variance itself scatters by
+        % sqrt(2/(N-1)) = 22.6% at N = 40, and a_bar_wm carries ~1/a_cov = 20
+        % steps of memory, so a 25 ms window would hold only ~2 independent
+        % draws. 0.1 s holds ~8 for the readout and ~160 for the whitened
+        % channel, while still resolving the 1 Hz shape.
+        SM = 0.1;                                    % [s] time-average window
+        COL_RAW = [0.72 0.86 0.97];                  % faint background = raw scatter
         COL_TRUE = [0.8 0 0]; COL_MEAS = [0.45 0.72 0.95]; COL_HAT = [0 0.2 0.9];
         COL_TH   = [0 0.55 0.2];
 
@@ -231,10 +245,13 @@ function out = verify_formC_am_r22(opts)
         save_fig(f, out_dir, 'fig1_whiten_before_after.png');
 
         % --- FIG 2: raw R22 ---
-        f = new_fig([80 80 1000 560]);
+        f = new_fig([80 80 1180 560]);
         hold on;
-        h1 = plot(t, var_raw_ms, '-', 'Color', COL_MEAS, 'LineWidth', 1.0, ...
-                  'DisplayName', sprintf('measured (%d seeds)', n_seed));
+        plot(t, var_raw_ms, '-', 'Color', COL_RAW, 'LineWidth', 0.5, ...
+             'HandleVisibility', 'off');
+        h1 = plot(t, smooth_t(var_raw_ms, fs, SM), '-', 'Color', COL_MEAS, ...
+                  'LineWidth', 2.0, ...
+                  'DisplayName', sprintf('measured (%d seeds, %.0f ms avg)', n_seed, SM * 1e3));
         h2 = plot(t, var_raw_th, '-', 'Color', COL_TH, 'LineWidth', 3.0, ...
                   'DisplayName', 'K_{var} IF_{eff} (a+\xi)^2');
         xlim([t(1) t(end)]);
@@ -246,14 +263,18 @@ function out = verify_formC_am_r22(opts)
         save_fig(f, out_dir, 'fig2_r22_raw.png');
 
         % --- FIG 3: whitened channel (what the KF is fed) ---
-        f = new_fig([80 80 1000 560]);
+        f = new_fig([80 80 1180 560]);
         hold on;
-        h1 = plot(t2, var_y2_ms, '-', 'Color', COL_MEAS, 'LineWidth', 1.0, ...
-                  'DisplayName', sprintf('measured Var(y_2), %d seeds', n_seed));
+        plot(t2, var_y2_ms, '-', 'Color', COL_RAW, 'LineWidth', 0.5, ...
+             'HandleVisibility', 'off');
+        h1 = plot(t2, smooth_t(var_y2_ms, fs, SM), '-', 'Color', COL_MEAS, ...
+                  'LineWidth', 2.0, ...
+                  'DisplayName', sprintf('measured (%d seeds, %.0f ms avg)', ...
+                                         n_seed, SM * 1e3));
         h2 = plot(t2, var_y2_th, '-', 'Color', COL_TH, 'LineWidth', 3.0, ...
                   'DisplayName', '2 a_{cov}^2 (a+\xi)^2  per-sample');
         h3 = plot(t2, mean(R2_u(2:end, :), 2), '--', 'Color', COL_HAT, 'LineWidth', 2.0, ...
-                  'DisplayName', 'R(2,2) used by the KF');
+                  'DisplayName', 'R(2,2) used = green \times IF_{eff}');
         xlim([t(1) t(end)]);
         ylabel(sprintf('Var(y_{2,%c})  [-]', axl(ax)), 'FontSize', FS, 'FontWeight', 'bold');
         xlabel('Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');
@@ -263,7 +284,7 @@ function out = verify_formC_am_r22(opts)
         save_fig(f, out_dir, 'fig3_r22_whitened.png');
 
         % --- FIG 4: LPF before / after, single seed ---
-        f = new_fig([80 80 1000 560]);
+        f = new_fig([80 80 1180 560]);
         hold on;
         hh = plot(t, A_wm(:, sf), '-', 'Color', COL_MEAS, 'LineWidth', 0.8, ...
                   'DisplayName', 'a_{m} readout');
@@ -286,12 +307,16 @@ function out = verify_formC_am_r22(opts)
 
         % --- FIG 5: LPF cascade variance, one figure per a_det ---
         for j = 1:n_beta
-            f = new_fig([80 80 1000 560]);
+            f = new_fig([80 80 1180 560]);
             hold on;
-            h1 = plot(t, var_md_ms{j}, '-', 'Color', COL_MEAS, 'LineWidth', 1.0, ...
-                      'DisplayName', sprintf('measured (%d seeds)', n_seed));
+            plot(t, var_md_ms{j}, '-', 'Color', COL_RAW, 'LineWidth', 0.5, ...
+                 'HandleVisibility', 'off');
+            h1 = plot(t, smooth_t(var_md_ms{j}, fs, SM), '-', 'Color', COL_MEAS, ...
+                      'LineWidth', 2.0, ...
+                      'DisplayName', sprintf('measured (%d seeds, %.0f ms avg)', ...
+                                             n_seed, SM * 1e3));
             h2 = plot(t, var_md_th{j}, '-', 'Color', COL_TH, 'LineWidth', 3.0, ...
-                      'DisplayName', sprintf('[b/(2-b)] IF_2 Var(a_m),  IF_2 = %.2f', IF2(j)));
+                      'DisplayName', sprintf('[b/(2-b)] IF_2 Var(a_m),  IF_2 = %.1f', IF2(j)));
             xlim([t(1) t(end)]);
             ylabel(sprintf('Var(a_{m,det,%c})  [-]', axl(ax)), 'FontSize', FS, 'FontWeight', 'bold');
             xlabel('Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');
@@ -311,6 +336,18 @@ function out = verify_formC_am_r22(opts)
                  'IF_eff', IF_eff, 'IF2', IF2, 'betas', opts.betas, ...
                  'rho_raw', rho_raw, 'rho_y2', rho_y2, 'out_dir', out_dir, ...
                  'seeds', opts.seeds, 'D', D);
+end
+
+
+function y = smooth_t(v, fs, win_s)
+%SMOOTH_T  Moving average over TIME. A cross-seed variance from N seeds has a
+%   relative scatter of sqrt(2/(N-1)) (22.6% at N = 40) -- that is the
+%   estimator's own noise, not a model mismatch. Neighbouring time points are
+%   near-independent realizations of the same underlying variance, so averaging
+%   over a short window buys back what more seeds would. Window 0.025 s = 40
+%   samples at 1600 Hz, the same choice verify_axm_cdpmr_6state uses.
+    w = max(1, round(win_s * fs));
+    y = movmean(v, w, 'omitnan');
 end
 
 
