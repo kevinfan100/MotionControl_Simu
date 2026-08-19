@@ -410,36 +410,30 @@ function out = verify_formC_am_r22(opts)
             set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on'); grid off;
             save_fig(f, out_dir, sprintf('fig7_r22_lpf_adet%g.png', opts.betas(j)));
         end
-        % --- FIG 5: how much the filter de-weights the readout ---
-        % One question only: R(2,2) is not the measurement variance, it is that
-        % variance times a deliberate serial-correlation penalty. So plot the
-        % penalty -- what the filter applies against what it intends to apply.
-        % Binned along a_bar with a jackknife bar, like the two scatter figures:
-        % y2 is a chi-squared-like variable (kurtosis 15), so its pointwise
-        % variance estimate scatters ~26% even at 200 seeds and a pointwise
-        % ratio is unreadable. The delay term is 0.1% of R2 and stays in the
-        % console rather than adding a curve that lies on top of another.
-        [cI, vI, eI] = binned_var_jk(Y2, a_tr_mean(2:end), edges);
-        R2b = zeros(size(cI));
-        for b = 1:numel(cI)
-            in = a_tr_mean(2:end) >= edges(b) & a_tr_mean(2:end) < edges(b + 1);
-            if b == numel(cI); in = in | a_tr_mean(2:end) == edges(end); end
-            R2b(b) = mean(R2_tot(find(in) + 1));
-        end
-        f = new_fig([80 80 1000 620]);
+        % --- FIG 5: what R(2,2) is made of (restored 2026-08-19) ---
+        %   (1) 2 a_cov^2 (a_hat+xi)^2   the per-sample variance of y2
+        %   (2) x IF_eff                 the serial-correlation penalty
+        %   (3) + a_cov^2 d Q44          the gain moved during the delay
+        % (2) and (3) sit on each other because the delay term is 0.1% of the
+        % total; that overlap IS the finding, so both are drawn. The measured
+        % curve is pointwise (no smoothing window).
+        f = new_fig([80 80 1180 560]);
         hold on;
-        h2 = plot(a_grid, if_eff_local(a_grid, s2n_nd(ax), IF_abc, C_dpmr, C_n, kappa_T), ...
-                  '-', 'Color', COL_TH, 'LineWidth', 3.0, ...
-                  'DisplayName', 'IF_{eff}  (the designed inflation)');
-        h1 = errorbar(cI, R2b ./ vI, (R2b ./ vI) .* (eI ./ vI), 'o', ...
-                      'Color', COL_HAT, 'MarkerFaceColor', COL_HAT, 'MarkerSize', 6, ...
-                      'LineWidth', 1.0, 'CapSize', 3, 'LineStyle', 'none', ...
-                      'DisplayName', 'R(2,2) used  /  measured Var(y_2)');
-        ylim([0 6]);
-        style_scatter(gca, a_lo, a_hi, FS, AXLW, axl(ax), 'inflation factor  [-]');
-        legend([h2 h1], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
-               'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
-        save_fig(f, out_dir, 'fig5_r22_inflation.png');
+        hm = plot(t2, var_y2_ms, '-', 'Color', [0.72 0.86 0.97], ...
+                  'LineWidth', 0.8, 'DisplayName', 'measured Var(y_2)');
+        h1 = plot(t, R2_A, '-', 'Color', COL_TH, 'LineWidth', 2.5, ...
+                  'DisplayName', '(1) per-sample  2a_{cov}^2(\ita\rm+\xi)^2');
+        h2 = plot(t, R2_AIF, '-', 'Color', COL_MEAS, 'LineWidth', 2.5, ...
+                  'DisplayName', '(2) + correlation \times IF_{eff}');
+        h3 = plot(t, R2_tot, '--', 'Color', COL_HAT, 'LineWidth', 2.0, ...
+                  'DisplayName', '(3) + delay = R(2,2)');
+        xlim([t(1) t(end)]);
+        ylabel(sprintf('R(2,2)_%c  [-]', axl(ax)), 'FontSize', FS, 'FontWeight', 'bold');
+        xlabel('Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');
+        legend([hm h1 h2 h3], 'Location', 'northoutside', 'Orientation', 'horizontal', ...
+               'FontSize', LFS - 2, 'FontWeight', 'bold', 'Box', 'on');
+        set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on'); grid off;
+        save_fig(f, out_dir, 'fig5_r22_decomposition.png');
 
         fprintf('\nfigures -> %s\n', out_dir);
     end
