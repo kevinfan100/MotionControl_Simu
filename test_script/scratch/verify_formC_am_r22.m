@@ -42,11 +42,16 @@ function out = verify_formC_am_r22(opts)
     % that is what gets written, and reloading it skips the simulation.
     if ~isfield(opts, 'save_stack'); opts.save_stack = '';        end
     if ~isfield(opts, 'stack');      opts.stack      = '';        end
+    if ~isfield(opts, 'out_dir');    opts.out_dir    = '';        end   % '' = default
 
     script_dir   = fileparts(mfilename('fullpath'));
     project_root = fileparts(fileparts(script_dir));
     addpath(fullfile(project_root, 'test_script', 'integration'));
-    out_dir = fullfile(project_root, 'test_results', 'am_r22');
+    if isempty(opts.out_dir)
+        out_dir = fullfile(project_root, 'test_results', 'am_r22');
+    else
+        out_dir = opts.out_dir;
+    end
     if ~exist(out_dir, 'dir'); mkdir(out_dir); end
 
     ax    = opts.ax;
@@ -328,19 +333,48 @@ function out = verify_formC_am_r22(opts)
         set(gca, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on'); grid off;
         save_fig(f, out_dir, 'fig2_r22_raw_time.png');
 
+        % --- FIG 0: the whole chain on one axis (the minimal presentation) ---
+        % a_m, y2 and R(2,2) differ only by constant factors, so against a_bar
+        % on log-log they are three parallel bands of slope 2. One figure then
+        % carries: how noisy the readout is -> how noisy it is after whitening
+        % -> how noisy the filter DECIDES it is. Points are measured (binned,
+        % jackknife over seeds); lines are the closed forms. R(2,2) is not a
+        % measurement, so it is drawn as a line only.
+        NBIN = 28;
+        a_lo = min(a_tr_mean); a_hi = max(a_tr_mean);
+        edges = linspace(a_lo, a_hi, NBIN + 1);
+        a_grid = linspace(a_lo, a_hi, 200).';
+        IF_grid = if_eff_local(a_grid, s2n_nd(ax), IF_abc, C_dpmr, C_n, kappa_T);
+        gap_grid = a_grid + xi_bar(ax);
+        [cR, vR, eR] = binned_var_jk(A_wm, a_tr_mean, edges);
+        [cW, vW, eW] = binned_var_jk(Y2, a_tr_mean(2:end), edges);
+
+        f = new_fig([80 80 1080 700]);
+        hold on;
+        L1 = plot(a_grid, K_var * IF_grid .* gap_grid.^2, '-', 'Color', COL_TH, ...
+                  'LineWidth', 3.0, 'DisplayName', 'Var(a_m) = K_{var} IF_{eff} (a+\xi)^2');
+        P1 = errorbar(cR, vR, eR, 'o', 'Color', COL_HAT, 'MarkerFaceColor', COL_HAT, ...
+                      'MarkerSize', 6, 'LineWidth', 1.0, 'CapSize', 3, 'LineStyle', 'none', ...
+                      'DisplayName', sprintf('measured (%d seeds)', n_seed));
+        L2 = plot(a_grid, 2 * a_cov^2 * gap_grid.^2, '-', 'Color', [0 0.75 0.35], ...
+                  'LineWidth', 3.0, 'DisplayName', 'Var(y_2) = 2a_{cov}^2 (a+\xi)^2');
+        P2 = errorbar(cW, vW, eW, 's', 'Color', COL_MEAS, 'MarkerFaceColor', COL_MEAS, ...
+                      'MarkerSize', 6, 'LineWidth', 1.0, 'CapSize', 3, 'LineStyle', 'none', ...
+                      'HandleVisibility', 'off');
+        L3 = plot(a_grid, 2 * a_cov^2 * IF_grid .* gap_grid.^2, '--', 'Color', COL_TRUE, ...
+                  'LineWidth', 2.5, 'DisplayName', 'R(2,2) = Var(y_2) \times IF_{eff}');
+        set(gca, 'XScale', 'log', 'YScale', 'log');
+        style_scatter(gca, a_lo, a_hi, FS, AXLW, axl(ax), 'variance  [-]');
+        legend([L1 L3 L2 P1], 'Location', 'northoutside', 'FontSize', LFS - 1, ...
+               'FontWeight', 'bold', 'Box', 'on', 'NumColumns', 2);
+        save_fig(f, out_dir, 'fig0_am_r22_summary.png');
+
         % --- FIG 3 / 4: variance vs a_bar, binned along a (the 2026-06 view) ---
         % The time plots answer "how big"; these answer "how does it depend on
         % a". Bins are uniform along a_true (NOT time slices), the error bar is
         % a jackknife over SEEDS, and both panels share the same x range and
         % plain decimal ticks so the readout and the whitened channel can be
         % read against each other.
-        NBIN = 28;
-        a_lo = min(a_tr_mean); a_hi = max(a_tr_mean);
-        edges = linspace(a_lo, a_hi, NBIN + 1);
-        a_grid = linspace(a_lo, a_hi, 200).';
-        IF_grid = if_eff_local(a_grid, s2n_nd(ax), IF_abc, C_dpmr, C_n, kappa_T);
-
-        [cR, vR, eR] = binned_var_jk(A_wm, a_tr_mean, edges);
         f = new_fig([80 80 1000 620]);
         hold on;
         hT = plot(a_grid, K_var * IF_grid .* (a_grid + xi_bar(ax)).^2, '-', ...
@@ -356,7 +390,6 @@ function out = verify_formC_am_r22(opts)
                'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
         save_fig(f, out_dir, 'fig3_r22_raw_vs_a.png');
 
-        [cW, vW, eW] = binned_var_jk(Y2, a_tr_mean(2:end), edges);
         f = new_fig([80 80 1000 620]);
         hold on;
         hT = plot(a_grid, 2 * a_cov^2 * (a_grid + xi_bar(ax)).^2, '-', ...
