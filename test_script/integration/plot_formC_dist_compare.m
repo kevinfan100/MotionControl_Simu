@@ -72,6 +72,15 @@ function s = local_pull(r, ax, Ts)
     % gain error changed 8x across arms, which killed the gain-overshoot
     % explanation and left the indexing.
     s.dw = [NaN; r.p_d_out(2:end, ax) - r.p_true_out(1:end-1, ax)];
+    % Row 3's reference. Slot 5 used to be an additive disturbance whose true
+    % value is zero, so the row carried a yline at 0 labelled "zero". Slot 5 is
+    % now the law constant b, whose reference is b_true AT THE PARTICLE'S OWN
+    % HEIGHT -- a curve, not a level. Keeping the zero line was the same mistake
+    % as drawing one placement's target on another placement's column: it made
+    % the axis span 0..1 and hid the whole of b_hat's motion in the top decile.
+    %   b_true(w_bar) = a_bar'_true / (1 - a_bar_true)^2
+    pc   = physical_constants();
+    s.bT = local_b_true(max(r.p_true_out(:, ax) / pc.R, 1.0005));
     s.t  = (0:numel(s.aH)-1).' * Ts;
 end
 
@@ -83,7 +92,9 @@ function local_page(d, sq, out, NAME, SLOT5)
     YL = cell(4, 1);
     YL{1} = local_lim([d{1}.aT; d{1}.aH; d{1}.aM; d{2}.aT; d{2}.aH; d{2}.aM], 0.05);
     YL{2} = local_lim([d{1}.e;  d{2}.e], 0.08);
-    YL{3} = local_lim([d{2}.da + d{2}.sd; d{2}.da - d{2}.sd; 0], 0.10);
+    YL{3} = local_lim([d{1}.da + d{1}.sd; d{1}.da - d{1}.sd; ...
+                       d{2}.da + d{2}.sd; d{2}.da - d{2}.sd; ...
+                       d{1}.bT; d{2}.bT], 0.10);
     YL{4} = local_lim([d{1}.dw; d{2}.dw], 0.08);
 
     f = figure('Position', [40 40 1500 1380], 'Color', 'w', ...
@@ -118,10 +129,10 @@ function local_page(d, sq, out, NAME, SLOT5)
                     fill(a, [s.t; flipud(s.t)], [s.da + s.sd; flipud(s.da - s.sd)], ...
                          BANDC, 'EdgeColor', 'none', 'FaceAlpha', 0.30, ...
                          'DisplayName', '\pm sqrt(P_{55})');
+                    plot(a, s.t, s.bT, '-', 'Color', COL_TRUE, 'LineWidth', LW, ...
+                         'DisplayName', [SLOT5 '_{true} at the particle']);
                     plot(a, s.t, s.da, '-', 'Color', COL_HAT, 'LineWidth', LW, ...
                          'DisplayName', [SLOT5 '_{hat}']);
-                    yline(a, 0, '-', 'Color', COL_TRUE, 'LineWidth', LW, ...
-                          'DisplayName', 'zero');
                     legend(a, 'Location', 'northoutside', 'Orientation', 'horizontal', ...
                            'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
                     if c == 1
@@ -133,10 +144,11 @@ function local_page(d, sq, out, NAME, SLOT5)
                     plot(a, s.t, s.dw, '-', 'Color', COL_HAT, 'LineWidth', 0.8);
                     yline(a, 0, '-', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.0);
                     if c == 1
-                        % \bar is not in MATLAB's tex interpreter, so this one
-                        % label uses latex. Everything else stays tex.
-                        ylabel(a, '$R\,\delta\bar{w}_3\ \ [\mu\mathrm{m}]$', ...
-                               'Interpreter', 'latex', ...
+                        % tex, like every other row. Using latex for this one
+                        % label rendered it in Computer Modern while the rest of
+                        % the page was the default sans bold -- one serif label
+                        % among four sans ones. The bar over w is the price.
+                        ylabel(a, 'R \delta w_3   [\mum]', ...
                                'FontSize', FS, 'FontWeight', 'bold');
                     end
             end
@@ -160,4 +172,20 @@ function L = local_lim(v, pad)
     lo = min(v); hi = max(v); r = hi - lo;
     if r <= 0; r = 1; end
     L = [lo - pad*r, hi + pad*r];
+end
+
+% --------------------------------------------------------------------------
+function b = local_b_true(w_bar)
+%LOCAL_B_TRUE  The law constant the truth actually has at each height.
+%   b_true = a_bar'_true / (1 - a_bar_true)^2, with a_bar_true = 1/c_perp.
+%   Exactly 1 at contact and 8/9 in the far field, with an interior minimum
+%   0.866978 at w_bar = 2.193 -- so a CONSTANT b cannot sit on it everywhere,
+%   and the gap between the curve and the estimate is the shape error the
+%   one-parameter law is making, drawn where it can be seen.
+    b = zeros(size(w_bar));
+    for i = 1:numel(w_bar)
+        [~, cp, dd] = calc_correction_functions(w_bar(i), true);
+        a = 1 / cp;
+        b(i) = (-(1/cp^2) * dd.dc_perp_dh) / (1 - a)^2;
+    end
 end

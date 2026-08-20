@@ -806,7 +806,14 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
     w_desc = t >= w.descent(1) & t <= w.descent(2);
     w_osc  = t >  w.osc(1)     & t <= w.osc(2);
     w_hold = t >  w.hold(1);
-    assert(any(w_desc) && any(w_osc) && any(w_hold), ...
+    % The DESCENT window always exists -- every scenario has one, and an empty
+    % one really is a timing mistake. The oscillation and hold windows do not:
+    % a pure ramp (Fei Long 4.3.2, amplitude 0 and no trailing hold) is a
+    % legitimate trajectory with neither, and refusing to run it would force a
+    % fabricated hold to be appended just to satisfy the metric layout. A NaN in
+    % a segment that does not exist is more honest than a number measured on a
+    % phase invented to keep the guard quiet.
+    assert(any(w_desc), ...
            'run_formC_b:emptyMetricWindow', ...
            'A metric window is empty -- check trajectory timing overrides.');
 
@@ -861,15 +868,24 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
     % window and the end-minus-start change across it.
     t_h  = t(w_hold);
     e_h  = e_pct(w_hold);
-    pfit = polyfit(t_h - t_h(1), e_h, 1);
-    m.hold_drift_pct_per_s = pfit(1);
-    m.hold_delta_pct       = e_h(end) - e_h(1);
-    m.hold_span_s          = t_h(end) - t_h(1);
-    % what an UNOPPOSED injection of the converged da_hat would give over the
-    % same window, in the same percent units (a_bar per step * steps / a_true)
-    n_hold = numel(t_h);
-    a_true_hold = mean(aT(w_hold)) / s.a_nom;      % normalized true gain
-    m.hold_unopposed_pct = 100 * n_hold * da_hat(end) / a_true_hold;
+    if isempty(t_h)
+        % Trajectories without a trailing hold (a pure ramp) have nothing to
+        % measure here. NaN says that; a zero would read as "no drift".
+        m.hold_drift_pct_per_s = NaN;
+        m.hold_delta_pct       = NaN;
+        m.hold_span_s          = NaN;
+        m.hold_unopposed_pct   = NaN;
+    else
+        pfit = polyfit(t_h - t_h(1), e_h, 1);
+        m.hold_drift_pct_per_s = pfit(1);
+        m.hold_delta_pct       = e_h(end) - e_h(1);
+        m.hold_span_s          = t_h(end) - t_h(1);
+        % what an UNOPPOSED injection of the converged da_hat would give over
+        % the same window, in the same percent units
+        n_hold = numel(t_h);
+        a_true_hold = mean(aT(w_hold)) / s.a_nom;      % normalized true gain
+        m.hold_unopposed_pct = 100 * n_hold * da_hat(end) / a_true_hold;
+    end
 
     % P_*_out store sqrt(P); square back for the budget. Row 1 is the
     % controller's init call, which must report the prior widths (contract).
@@ -1001,6 +1017,7 @@ if nargin < 8; plant_cperp = []; end
     ekf_out  = zeros(N, 4);
     a_hat_out  = zeros(N, 3);
     b_hat_out  = zeros(N, 3);
+    lam_b_out = ones(N, 3);
     p_hat_out  = zeros(N, 3);
     ws_hat_out = zeros(N, 3);
     h_bar_out = zeros(N, 1);
@@ -1133,6 +1150,9 @@ if nargin < 8; plant_cperp = []; end
         ekf_out(k, :)  = ekf_k.';
         a_hat_out(k, :)  = diag_k.a_hat.';
         b_hat_out(k, :)  = diag_k.b_hat.';
+        % Adaptive slot-5 forgetting actually applied this step. 1 when the
+        % feature is off, so the column is always meaningful.
+        if isfield(diag_k, 'lam_b'); lam_b_out(k, :) = diag_k.lam_b(:).'; end
         p_hat_out(k, :)  = diag_k.p_hat.';
         ws_hat_out(k, :) = diag_k.ws_hat.';
         h_bar_out(k)    = diag_k.h_bar;
@@ -1186,6 +1206,7 @@ if nargin < 8; plant_cperp = []; end
     simOut.ekf_out    = ekf_out;
     simOut.a_hat_out  = a_hat_out;
     simOut.b_hat_out  = b_hat_out;
+    simOut.lam_b_out = lam_b_out;
     simOut.p_hat_out  = p_hat_out;
     simOut.ws_hat_out = ws_hat_out;
     simOut.h_bar_out  = h_bar_out;

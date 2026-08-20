@@ -302,6 +302,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent Q_theta_floor a_bar_floor a_bar_ceil ws_margin gap_floor
     persistent b_floor b_ceil
     persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off t2_pure_prop lambda_f obs_dump_on
+    persistent lambda_f_b lfb_alpha lfb_floor lam_b_spend
     persistent ap_src ap_ewma_a a_bar_slope_v law_b_formC
     persistent q33_dc_match q33_dc_fac
     persistent y2_echo_corr S_echo_T S_echo_n
@@ -461,13 +462,94 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         ap_src    = lower(get_field_default(ctrl_const, 'ap_src', 'post'));
         law_b_formC = get_field_default(ctrl_const, 'law_b_formC', 1);
         ap_ewma_a = get_field_default(ctrl_const, 'ap_ewma_a', 0.05);
-        assert(any(strcmp(ap_src, {'post','pred','ewma','cmd'})), ...
-               'motion_control_law_formC_b:apSrc', 'ap_src must be post|pred|ewma|cmd.');
+        assert(any(strcmp(ap_src, {'post','pred','ewma','cmd','act'})), ...
+               'motion_control_law_formC_b:apSrc', 'ap_src must be post|pred|ewma|cmd|act.');
         a_bar_slope_v = [];
         lambda_f = get_field_default(ctrl_const, 'lambda_f', 1);
         assert(isscalar(lambda_f) && lambda_f > 0 && lambda_f <= 1, ...
                'motion_control_law_formC_b:lambdaF', ...
                'lambda_f must be a scalar in (0, 1]; got %g.', lambda_f);
+        % SLOT-5-ONLY forgetting. The Menq factor above inflates the whole
+        % posterior; its 2026-08-12 falsification (12/12 harmful) rested on
+        % rho(t) being NON-UNIFORMLY biased -- pessimistic early, confident late
+        % -- so a uniform-in-time, uniform-in-state inflation cannot help.
+        %
+        % For slot 5 alone the deficit IS one-sided and late. Measured
+        % 2026-08-20 on the deep band: 77-90 % of b_hat's total travel happens
+        % inside the 1 s descent, the 1.9 s oscillation contributes -0.7 to
+        % +18.8 %, and both holds contribute nothing -- yet P55 keeps shrinking
+        % all the way to 4.8 s, by up to 512x. The information stops arriving at
+        % t = 1.5 s and the covariance does not notice. That is a different
+        % object from the one that was falsified, which is why this exists.
+        %
+        % Applied as a CONGRUENCE transform, D P D with D = diag(1,1,1,1,
+        % 1/sqrt(lambda),1,1): P(5,5) gains 1/lambda and every cross term
+        % P(i,5) gains 1/sqrt(lambda). Scaling P(5,5) alone would inflate the
+        % variance without the covariances and can leave P indefinite; a
+        % congruence cannot, whatever lambda is.
+        %
+        % STATUS: DIAGNOSTIC. lambda_f_b has NO derivation -- it is a knob, and
+        % the charter forbids tuned numbers in production. Report it as a sweep,
+        % never as a chosen value. 1 disables it exactly.
+        lambda_f_b = get_field_default(ctrl_const, 'lambda_f_b', 1);
+        assert(isscalar(lambda_f_b) && lambda_f_b > 0 && lambda_f_b <= 1, ...
+               'motion_control_law_formC_b:lambdaFb', ...
+               'lambda_f_b must be a scalar in (0, 1]; got %g.', lambda_f_b);
+        % ADAPTIVE slot-5 forgetting, after Meng's dissertation Ch.6 p.100:
+        %     lambda[k+1] = exp(-alpha * residual^2)
+        % (the 2025 TIE version deleted the forgetting factor entirely, so our
+        % lineage inherited the constant-lambda form from the paper, not this
+        % one). Large residual forgets hard, small residual does not forget --
+        % the loop is self-limiting, which is exactly the property a CONSTANT
+        % lambda lacks and the reason its 2026-08-12 falsification does not
+        % transfer.
+        %
+        % Two deliberate departures from his form, both to make alpha a
+        % BANDWIDTH rather than a scenario-specific value:
+        %
+        %  1. the residual is NORMALISED, innov2^2/S2 instead of innov2^2. The
+        %     raw square carries units, so alpha would have to be re-tuned for
+        %     every gain scale and every R. Normalised it is a chi-square(1)
+        %     statistic and dimensionless.
+        %  2. the EXCESS over unity is used, max(0, innov2^2/S2 - 1). Under a
+        %     correct model E[innov2^2/S2] = 1, so feeding the raw ratio would
+        %     forget CONSTANTLY even when nothing is wrong. Subtracting one
+        %     makes lambda = 1 the resting state and forgetting a response to
+        %     the filter being surprised BY ITS OWN standard.
+        %
+        % Only y2 matters: H(1,5) = 0, so y1 carries no information about b.
+        %
+        % The floor is a SAFETY clamp only, not the operating constraint. The
+        % real constraint is a BUDGET on the total forgetting over the run:
+        %
+        %     sum_k (1 - lambda[k])  <=  1
+        %
+        % because a constant lambda at the information floor gives exactly
+        % N*(1-lambda) = 1, i.e. one run's worth of data discarded. Applying
+        % that steady-state number POINTWISE was measured (2026-08-20) to be
+        % ~20x too strict: the adaptive law sits at lambda = 1 for 94.8 % of
+        % steps, so its total spend was 0.052 of the budget, and every alpha
+        % from 0.5 to 10 gave bit-identical output because each one saturated
+        % the pointwise clamp on the first surprised step. A clamp that makes
+        % the tuning parameter irrelevant is measuring the clamp, not the law.
+        %
+        % So the floor is set well below the steady-state value and the spend
+        % is REPORTED (diag.lam_b_spend) for the caller to check after the run.
+        % alpha = 0 disables the whole thing exactly.
+        lfb_alpha = get_field_default(ctrl_const, 'lambda_f_b_alpha', 0);
+        % Safety clamp only -- see the budget note above. 0.99 is far below
+        % the steady-state information floor on purpose, so that alpha, not
+        % the clamp, decides how hard a surprised step forgets.
+        lfb_floor = get_field_default(ctrl_const, 'lambda_f_b_floor', 0.99);
+        assert(isscalar(lfb_alpha) && lfb_alpha >= 0, ...
+               'motion_control_law_formC_b:lambdaFbAlpha', ...
+               'lambda_f_b_alpha must be a non-negative scalar; got %g.', lfb_alpha);
+        assert(isscalar(lfb_floor) && lfb_floor > 0 && lfb_floor <= 1, ...
+               'motion_control_law_formC_b:lambdaFbFloor', ...
+               'lambda_f_b_floor must be in (0, 1]; got %g.', lfb_floor);
+        assert(~(lfb_alpha > 0 && lambda_f_b < 1), ...
+               'motion_control_law_formC_b:lambdaFbBoth', ...
+               'lambda_f_b_alpha and a fixed lambda_f_b < 1 are alternatives, not a stack.');
         Q_theta_floor = get_field_default(ctrl_const, 'Q_theta_floor', 0);
 
         % --- 0C. Parallel-axis law (x/y); constants are caller-supplied ---
@@ -718,6 +800,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         a_ctrl_km1 = a_bar_seed_v;
         a_ctrl_km2 = a_bar_seed_v;
         Delta_wbar_d_km1 = 0;
+        lam_b_spend = zeros(3, 1);   % running total of (1 - lambda), the budget
         F_dw_km1 = zeros(3, 1);
         k_step = 1;
 
@@ -893,12 +976,16 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     gate_off   = false(3, 1);
     G_flags    = false(3, 3);
     a_prime_v  = zeros(3, 1);
+    lam_b_v    = ones(3, 1);    % adaptive slot-5 forgetting, per axis (diag)
     Q44_v      = zeros(3, 1);
     Q33_v      = zeros(3, 1);
     a_barQ_v   = zeros(3, 1);
     R2_v       = zeros(3, 1);
 
     for ax = 1:3
+        % Reset every step: if the y2 gate closes, these must NOT carry the
+        % previous step's values into the adaptive forgetting law.
+        innov2 = NaN;  S2 = NaN;
         x_curr = x_e_per_axis(:, ax);
         P_curr = P_per_axis{ax};
         a_bar_i = min(max(x_curr(4), a_bar_floor), a_bar_ceil);
@@ -922,21 +1009,28 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             case 'ewma'
                 a_bar_slope_v(ax) = (1 - ap_ewma_a) * a_bar_slope_v(ax) + ap_ewma_a * a_bar_i;
                 a_bar_sl = min(max(a_bar_slope_v(ax), a_bar_floor), a_bar_ceil);
-            case 'cmd'
-                % Slope read at the COMMANDED height instead of at the belief.
-                % The law's own integral, a_bar = 1 - 1/(b (w_bar - w0)), which
-                % is what local_seed_level_formC already uses at the seed; here
-                % it is evaluated every step at w_bar_d. 'post'/'pred'/'ewma'
-                % all read a STATE, so a wrong a_bar_hat corrupts the slope and
-                % the next a_bar_hat -- the self-loop measured at 2.24 pp on a
-                % plant that IS the estimator's own law. This case has no such
-                % loop: w_bar_d is exogenous.
+            case {'cmd', 'act'}
+                % HEIGHT WRITING (formC_height_b.tex). The slope is read at a
+                % HEIGHT, not at the gain state:
+                %     a_bar(u) = 1 - 1/(b u) ,   a_bar'(u) = 1/(b u^2)
+                % 'cmd' takes u at the commanded height; 'act' also subtracts the
+                % tracking-error estimate, so u is where the filter believes the
+                % particle ACTUALLY is. Both are realizable only because the wall
+                % origin w0 is known -- that premise is what these cases test.
                 %
-                % Realizable ONLY because the wall origin w0 is known. That is
-                % the premise this case exists to test; it is not a free lunch.
+                % Neither reads the gain state, so the self-loop the three
+                % state-reading cases carry (gain wrong -> slope wrong -> gain
+                % more wrong; 2.24 pp even on a plant that IS the estimator's own
+                % law) is absent, and A_a = 0 is the derivative, not a
+                % simplification. 'act' does read a state, dw_3, but that is the
+                % best-observed one in the filter -- y1 measures it directly at
+                % unit gain -- rather than the worst.
                 w0_k = w0_nominal;
                 if par_law && any(ax == AX_PAR); w0_k = w0_par; end
-                gap_k = max(b_hat_i * (w_bar_d - w0_k), gap_floor);
+                u_k = w_bar_d - w0_k;
+                if strcmp(ap_src, 'act'); u_k = u_k - x_curr(3); end
+                u_k   = max(u_k, gap_floor / max(b_hat_i, eps));
+                gap_k = max(b_hat_i * u_k, gap_floor);
                 a_bar_sl = min(max(1 - 1/gap_k, a_bar_floor), a_bar_ceil);
         end
         % Jacobian is taken AT the evaluation point. Zeroing A_a instead was a
@@ -947,19 +1041,27 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % Jacobian is the standard approximation and keeps P intact.
         % b is STATE 5 here, not a constant: a_bar' = (1-a_bar)^2 / b_hat.
         [a_prime_i, A_a_i] = local_gain_law_formC(a_bar_sl, enable_wall, b_hat_i);
-        if strcmp(ap_src, 'cmd')
-            % b MUST be locked here. With the slope read at the command,
-            % a_bar' = 1/(b (w_bar_d - w0)^2), so d(a_bar')/db = -a_bar'/b --
-            % the OPPOSITE sign to the state form the J_b/H(2,5) columns below
-            % are built with. Rather than carry two conventions, refuse.
-            assert(all(lm(1)), 'motion_control_law_formC_b:cmdFreeB', ...
-                   ['ap_src = cmd requires slot 5 (b) locked: the b Jacobian ', ...
-                    'flips sign in this parameterisation and is not derived.']);
-            % Same reason the ap_known branch zeroes it: the integrand no
-            % longer depends on the gain state, so d(a_bar')/d(a_bar) = 0.
-            % Leaving the state-form Jacobian in would claim a coupling the
-            % arm does not have and would grow P44 for nothing.
-            A_a_i = 0;
+        % d(a_bar')/db and d(a_bar')/d(dw_3), SIGNED per writing. Both feed the
+        % columns below through one convention -- F_e(4,5) = dap_db*M and
+        % H(2,5) = -Grad*dap_db, likewise for the dw_3 pair -- so carrying the
+        % signed derivative rather than a magnitude is what lets the two writings
+        % share this code instead of keeping a second set of columns in step.
+        %
+        %   state  writing   a_bar' = b (1-a_bar)^2   =>   d/db = +a_bar'/b
+        %   height writing   a_bar' = 1/(b u^2)       =>   d/db = -a_bar'/b
+        %
+        % The sign genuinely flips. It is a reparameterisation: b multiplies the
+        % slope in one writing and divides it in the other (formC_height_b.tex).
+        dap_db_i  = +a_prime_i / b_hat_i;
+        dap_dd3_i = 0;
+        if any(strcmp(ap_src, {'cmd','act'}))
+            dap_db_i = -a_prime_i / b_hat_i;
+            if strcmp(ap_src, 'act')
+                % d(a_bar')/d(dw_3) = +2 a_bar'/u. u = w_d - w0 - dw_3, so a
+                % LARGER tracking error is a LOWER height and a STEEPER slope.
+                dap_dd3_i = 2 * a_prime_i / u_k;
+            end
+            A_a_i = 0;   % the derivative, not an approximation
         end
         if has_ap_known
             a_prime_i = ap_known(ax);   % exogenous integrand
@@ -971,7 +1073,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % unobservable through this path in a hold -- the structural cost of
         % replacing the additive disturbance (whose column was a constant 1).
         % Built after M is known; the scalar factor is stored here.
-        J_b_fac_i = +a_prime_i / b_hat_i * double(~lm(1));
+        J_b_fac_i = dap_db_i * double(~lm(1));
         a_prime_v(ax) = a_prime_i;
 
         % --- Q (7x7): rank-1 gain block + Q33 (spec S8, at the estimate) ---
@@ -1059,7 +1161,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         F_dw = F_dw_km1(ax);
         if t2_pure_prop; F_dw = 0; Q_i = zeros(n_state); end
         F_e = local_build_F_e_formC(lambda_c, F_dw, a_prime_i, A_a_i, ...
-                                    J_b_fac_i * M_tot, M_tot);
+                                    J_b_fac_i * M_tot, M_tot, dap_dd3_i);
 
         % --- EKF predict (tex S5(b)). Row 4 carries the ADDITIVE disturbance
         %     x_curr(5) outside the a_bar' bracket; row 5 is an integrator of
@@ -1145,9 +1247,13 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                       / (a_bar_i + xi_bar(ax));
                 echo_fac = 1 - S_i;
             end
-            H2 = H2_scale * echo_fac * [0, 0, 0, ...
+            % y2 = a_bar_w - a_bar'*Grad, so every column is -Grad times that
+            % state's share of d(a_bar'). Column 3 is nonzero only in 'act',
+            % where the slope depends on the tracking-error estimate.
+            H2 = H2_scale * echo_fac * [0, 0, ...
+                             -Grad_wbar_d * dap_dd3_i, ...
                              1 - Grad_wbar_d * A_a_i, ...
-                             -(a_prime_i / b_hat_i) * Grad_wbar_d * double(~lm(1)), ...
+                             -Grad_wbar_d * dap_db_i * double(~lm(1)), ...
                              0, 0, zeros(1, n_state - 7)];
             % NONLINEAR predicted measurement (S7 innovation line); H2*x_upd
             % would be wrong here -- see the header. The echo share S of the
@@ -1192,6 +1298,23 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             P_upd = P_upd / lambda_f;            % Menq (4.15)
             P_upd = 0.5 * (P_upd + P_upd');
         end
+        lam_b_k = 1;
+        if lambda_f_b < 1
+            lam_b_k = lambda_f_b;                       % fixed
+        elseif lfb_alpha > 0 && isfinite(innov2) && isfinite(S2) && S2 > 0
+            % Adaptive. No y2 this step (gate closed / y2 off) means no
+            % evidence, so no forgetting -- NOT "forget by default".
+            excess  = max(0, innov2^2 / S2 - 1);
+            lam_b_k = max(exp(-lfb_alpha * excess), lfb_floor);
+            lam_b_spend(ax) = lam_b_spend(ax) + (1 - lam_b_k);
+        end
+        if lam_b_k < 1
+            % Slot-5-only forgetting, as a congruence so P stays PSD.
+            dv = ones(n_state, 1);  dv(5) = 1 / sqrt(lam_b_k);
+            P_upd = (dv * dv.') .* P_upd;
+            P_upd = 0.5 * (P_upd + P_upd');
+        end
+        lam_b_v(ax) = lam_b_k;
         P_upd = freeze_locked_P(P_upd, lock_state_idx_ax{ax});
 
         if strcmp(ap_src, 'pred'); a_bar_slope_v(ax) = x_pred(4); end
@@ -1273,7 +1396,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         diag.gate_active_per_axis = gate_off;
         diag.guards_individual    = G_flags;
         diag.h_bar          = h_bar;
-        diag.h_bar_d        = w_bar_d;
+        diag.lam_b          = lam_b_v;
+    diag.lam_b_spend    = lam_b_spend;
+    diag.h_bar_d        = w_bar_d;
         diag.f_d            = f_d;                    % [pN]
         diag.f_det          = fbar_det / a_o;         % [pN]
         diag.F_dh           = F_dw_vec / a_o;         % [pN]
@@ -1352,7 +1477,7 @@ function [a_bar, dA_dw0] = local_seed_level_formC(w_bar, w0, enable, gap_floor, 
 end
 
 
-function F_e = local_build_F_e_formC(lambda_c, F_dw, a_bar_p, A_a, J_da, M)
+function F_e = local_build_F_e_formC(lambda_c, F_dw, a_bar_p, A_a, J_da, M, J_d3)
 %LOCAL_BUILD_F_E_FORMC  7x7 error-dynamics Jacobian (tex S6(b)).
 %   cols: 1=dw1 2=dw2 3=dw3 4=a_bar 5=da 6,7=inert (locked, zero P0/J/K)
 %   Row 3 = [0 0 lc -F_dw 0 0 0]      <- F_e(3,5) = 0: the control law is
@@ -1369,12 +1494,13 @@ function F_e = local_build_F_e_formC(lambda_c, F_dw, a_bar_p, A_a, J_da, M)
 %   not depend on a_bar and F_e(4,4) was exactly 1 + a_bar'*F_dw.
 %   M = the FULL row-4 increment (command step + (1-lc) dw_3_hat + MA(2)
 %   memory feedthrough) -- exactly what a_bar' multiplies in predict.
+    if nargin < 7 || isempty(J_d3); J_d3 = 0; end
     one_minus_lc = 1 - lambda_c;
     F_e = zeros(7);
     F_e(1, 2) = 1;
     F_e(2, 3) = 1;
     F_e(3, 3) = lambda_c;   F_e(3, 4) = -F_dw;
-    F_e(4, 3) = one_minus_lc * a_bar_p;
+    F_e(4, 3) = one_minus_lc * a_bar_p + J_d3 * M;
     F_e(4, 4) = 1 + a_bar_p * F_dw + A_a * M;
     F_e(4, 5) = J_da;
     F_e(5, 5) = 1;

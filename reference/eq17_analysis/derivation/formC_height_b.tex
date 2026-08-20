@@ -1,0 +1,319 @@
+% STATUS: ACTIVE | SSOT for the state-writing gain law with b ESTIMATED.
+%   Implemented by model/controller/motion_control_law_formC_b.m and
+%   test_script/integration/run_formC_b.m, both converted to this
+%   parameterisation on 2026-08-18 (f7a33d0) and checked against it by an
+%   identity: b_new = 1/b_old exactly, so a run locked at b_old = 9/8 must
+%   reproduce one locked at b_new = 8/9, which it does to 6.1e-16.
+%   x = [dw1 dw2 dw3, a_bar_w, b], 5 states. An earlier header advertised a
+%   second 7-state version carrying a position-disturbance pair; it was never
+%   written and the claim is withdrawn rather than left dangling. Production
+%   comments referencing "S5(b)" point at it and are stale.
+%         Equation-only by house convention; everything that is not an
+%         equation lives in formC_state_b_ref.tex.
+%         delta a does NOT appear here. Its derivation and its falsification
+%         are in formC_state_dist.tex / _ref.tex, which this file does not
+%         supersede and does not repeat.
+% ======================================================
+% Compile: xelatex formC_state_b.tex
+% Path:    reference/eq17_analysis/derivation/formC_state_b.tex
+% ======================================================
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{graphicx}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+
+
+\begin{document}
+
+\section{Gain law}
+
+(bars denote normalized quantities: lengths by $R$, $\ba = a/a_o$,
+$\bar{f} = a_o f$; $0 < \ba < 1$; $e_{\theta} = \theta - \hat{\theta}$)
+
+\begin{equation*}
+\ba_{\mathrm{true}}(\bw) = 1 - \frac{9}{8\bw} + \frac{1}{2\bw^{3}}
+  - \frac{57}{100\,\bw^{4}} + \frac{1}{5\bw^{5}}
+  + \frac{7}{200\,\bw^{11}} - \frac{1}{25\,\bw^{12}}
+\end{equation*}
+
+\begin{equation*}
+\ba'_{\mathrm{true}}(\bw) > 0 \ \ \text{on} \ \ \bw > 1
+\qquad\Longrightarrow\qquad
+\ba' = b_{\mathrm{true}}(\ba)\bigl(1-\ba\bigr)^{2}
+\ \ \text{exactly},
+\qquad
+b_{\mathrm{true}} := \frac{\ba'_{\mathrm{true}}}
+  {\bigl(1-\ba_{\mathrm{true}}\bigr)^{2}}
+\end{equation*}
+
+\begin{align*}
+\ba_{\mathrm{true}}(1) = 0, \quad \ba'_{\mathrm{true}}(1) = 1
+  &\quad\Longrightarrow\quad b_{\mathrm{true}}\bigl(\ba = 0\bigr) = 1 \\
+1 - \ba_{\mathrm{true}} = \frac{9}{8\bw} + \mathcal{O}(\bw^{-3})
+  &\quad\Longrightarrow\quad b_{\mathrm{true}}\bigl(\ba \to 1\bigr) = \frac{8}{9}
+\end{align*}
+
+The slope is evaluated at a HEIGHT, not at the gain state. Integrating the law
+once gives the level it is evaluated through:
+
+\begin{align*}
+\ba(u) &= 1 - \frac{1}{b\,u} \\
+\ba'(u) &= b\bigl(1-\ba(u)\bigr)^{2} = \frac{1}{b\,u^{2}}
+\end{align*}
+
+\begin{align*}
+u[k] &= \bw_d[k] - \bw_0 - \delta\hat{\bw}_3[k]
+  \qquad \text{(\texttt{act}: the estimated ACTUAL height)} \\
+u[k] &= \bw_d[k] - \bw_0
+  \qquad\qquad\quad\ \ \text{(\texttt{cmd}: the COMMANDED height)}
+\end{align*}
+
+\begin{equation*}
+a_w = a_o\,\ba_w , \qquad a_o = \frac{\Delta t}{\gamma_N R}
+\end{equation*}
+
+\section{Jacobians}
+
+\begin{align*}
+\frac{\partial \ba'}{\partial \ba_w}      &= 0 \\
+\frac{\partial \ba'}{\partial b}          &= -\frac{1}{b^{2}u^{2}} = -\frac{\ba'}{b} \\
+\frac{\partial \ba'}{\partial \delta\bw_3} &= +\frac{2}{b\,u^{3}} = +\frac{2\ba'}{u}
+  \qquad (\texttt{act}; \ 0 \ \text{for} \ \texttt{cmd})
+\end{align*}
+
+\section{True dynamics}
+
+$\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2\bigr)$
+
+\begin{align*}
+\bw[k]           &= \bw_d[k] - \delta\bw_3[k] \\
+\bw_d[k+1]       &= \bw_d[k] + \Delta\bw_d[k] \\
+\delta\bw_1[k+1] &= \delta\bw_2[k] \\
+\delta\bw_2[k+1] &= \delta\bw_3[k] \\
+\delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k] - F_{dw}[k]\,e_{\ba_w}[k]
+                    - \varepsilon_w[k] \\
+\ba_w[k+1]       &= \ba_w[k] + \ba'_{\mathrm{true}}[k]\Bigl[
+                    \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k]
+                    + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] \\
+b[k+1]           &= b[k]
+\end{align*}
+
+\begin{align*}
+F_{dw}[k] &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
+\varepsilon_w[k] &= \ba_w[k]\,\bar{f}_T[k]
+  + (1-\lambda_c)\sum_{i=1}^{d}\ba_w[k-i]\,\bar{f}_T[k-i]
+  + (1-\lambda_c)\,n_w[k]
+\end{align*}
+
+\section{Process model}
+
+\begin{equation*}
+\mathbf{x} = \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w,\ b\,\bigr]^{\top}
+\qquad (d = 2)
+\end{equation*}
+
+\section{Estimator}
+
+\begin{align*}
+\delta\hat{\bw}_1[k+1] &= \delta\hat{\bw}_2[k] \\
+\delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k] \\
+\delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k] \\
+\hat{\ba}_w[k+1]       &= \hat{\ba}_w[k]
+  + \frac{1}{\hat{b}[k]\,\hat{u}[k]^{2}}
+    \Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr] \\
+\hat{b}[k+1]           &= \hat{b}[k]
+\end{align*}
+
+\begin{equation*}
+\hat{u}[k] = \bw_d[k] - \bw_0 - \delta\hat{\bw}_3[k]
+\end{equation*}
+
+\section{Error dynamics}
+
+(True $-$ Estimator; coefficients at the estimate)
+
+\begin{align*}
+e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k] \\
+e_{\delta\bw_2}[k+1] &= e_{\delta\bw_3}[k] \\
+e_{\delta\bw_3}[k+1] &= \lambda_c\,e_{\delta\bw_3}[k]
+  - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
+e_{\ba_w}[k+1] &= \Bigl[\,1 + \frac{1}{\hat{b}\hat{u}^{2}}F_{dw}\Bigr] e_{\ba_w}[k] \\
+  &\qquad + \Bigl[\frac{1-\lambda_c}{\hat{b}\hat{u}^{2}}
+      + \frac{2}{\hat{b}\hat{u}^{3}}
+        \bigl(\Delta\bw_d + (1-\lambda_c)\delta\hat{\bw}_3\bigr)\Bigr]
+      e_{\delta\bw_3}[k] \\
+  &\qquad - \frac{1}{\hat{b}^{2}\hat{u}^{2}}
+      \bigl(\Delta\bw_d + (1-\lambda_c)\delta\hat{\bw}_3\bigr) e_b[k] \\
+  &\qquad + \frac{1}{\hat{b}\hat{u}^{2}}\,\varepsilon_w[k] \\
+e_b[k+1] &= e_b[k]
+\end{align*}
+
+\begin{equation*}
+\small
+F_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\[0.4em]
+0 & 0 & 1 & 0 & 0 \\[0.4em]
+0 & 0 & \lambda_c & -F_{dw} & 0 \\[0.8em]
+0 & 0
+  & \begin{array}{@{}l@{}}
+      \dfrac{1-\lambda_c}{\hat{b}\hat{u}^{2}} \\[0.9em]
+      \quad + \dfrac{2}{\hat{b}\hat{u}^{3}}
+        \bigl(\Delta\bw_d + (1-\lambda_c)\,\delta\hat{\bw}_3\bigr)
+    \end{array}
+  & 1 + \dfrac{1}{\hat{b}\hat{u}^{2}}F_{dw}
+  & \begin{array}{@{}l@{}}
+      -\dfrac{1}{\hat{b}^{2}\hat{u}^{2}} \\[0.9em]
+      \quad \times \bigl(\Delta\bw_d + (1-\lambda_c)\,\delta\hat{\bw}_3\bigr)
+    \end{array} \\[2.2em]
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\end{equation*}
+
+\begin{equation*}
+\mathbf{q}[k] = \Bigl[\,0,\ 0,\ -\varepsilon_w,\
+\frac{1}{\hat{b}\hat{u}^{2}}\,\varepsilon_w,\ 0\,\Bigr]^{\top}
+\end{equation*}
+
+\section{Measurement and innovation}
+
+\begin{align*}
+\nabla_d\bw_d[k] &= \bw_d[k] - \bw_d[k-d] \\
+y_1[k] &= \delta\bw_1[k] + n_w[k] \\
+y_2[k] &= \ba_w[k-d] + n_a[k]
+\end{align*}
+
+\begin{equation*}
+\ba_w[k-d] = \ba_w[k] - \frac{1}{b\,u^{2}}\,\nabla_d\bw_d[k]
+\end{equation*}
+
+\begin{align*}
+\frac{\partial y_2}{\partial \ba_w} &= 1 \\
+\frac{\partial y_2}{\partial \delta\bw_3}
+  &= -\frac{2}{\hat{b}\hat{u}^{3}}\,\nabla_d\bw_d
+  \qquad (\texttt{act}; \ 0 \ \text{for} \ \texttt{cmd}) \\
+\frac{\partial y_2}{\partial b}
+  &= +\frac{1}{\hat{b}^{2}\hat{u}^{2}}\,\nabla_d\bw_d
+\end{align*}
+
+\begin{equation*}
+H[k] =
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\[0.6em]
+0 & 0 & -\dfrac{2}{\hat{b}\hat{u}^{3}}\nabla_d\bw_d & 1
+  & +\dfrac{1}{\hat{b}^{2}\hat{u}^{2}}\nabla_d\bw_d
+\end{bmatrix}
+\end{equation*}
+
+\begin{equation*}
+L[k] = P^f H^{\top}\bigl(HP^fH^{\top}+R\bigr)^{-1}
+\end{equation*}
+
+\begin{align*}
+e_{y_1}[k] &= e_{\delta\bw_1}[k] + n_w[k] \\
+e_{y_2}[k] &= e_{\ba_w}[k]
+  - \frac{2}{\hat{b}\hat{u}^{3}}\nabla_d\bw_d\;e_{\delta\bw_3}[k]
+  + \frac{1}{\hat{b}^{2}\hat{u}^{2}}\nabla_d\bw_d\;e_b[k]
+  + n_a[k]
+\end{align*}
+
+\section{Process and measurement noise}
+
+\begin{align*}
+q_3 &= -\ba_w\,\bar{f}_T \\
+q_4 &= -\frac{1}{\hat{b}\hat{u}^{2}}\,q_3 \\
+\gamma(\bw) &= \gamma_N c(\bw) \\
+\sigma^{2}_{\bar{f}_T} &= a_o^{2}\,\frac{4k_BT\gamma(\bw)}{\Delta t}
+\end{align*}
+
+\begin{align*}
+Q_{33} &= \frac{4k_BT\,a_o}{R}\,\ba_w \\
+Q_{34} = Q_{43} &= -\frac{1}{\hat{b}\hat{u}^{2}}\,Q_{33} \\
+Q_{44} &= \frac{1}{\hat{b}^{2}\hat{u}^{4}}\,Q_{33} \\
+Q_{55} &= 0
+\end{align*}
+
+\begin{align*}
+R &= \mathrm{diag}(R_1, R_2) \\
+R_1 &= \sigma^{2}_{n_w} \\
+R_2 &= K_{\mathrm{var}} IF_{\mathrm{var}}\bigl(\ba_w+\xi\bigr)^{2} + d\,Q_{44} \\
+K_{\mathrm{var}} &= \frac{2a_{\mathrm{cov}}}{2-a_{\mathrm{cov}}} \\
+\sigma^{2}_{\delta\bw_r} &= C_{dpmr}\frac{4k_BT\,a_o}{R}\bigl(\ba_w+\xi\bigr) \\
+\xi &= \frac{C_n\sigma^{2}_{n_w}}{C_{dpmr}\bigl(4k_BT a_o/R\bigr)}
+\end{align*}
+
+\section*{Seed and prior}
+
+\begin{align*}
+\hat{b}[0] &= 1 \\
+P_{55}[0] = P_{bb} &= \Bigl[\sup_{\bw\in\mathcal{E}}
+  \bigl|\,b_{\mathrm{true}}(\bw) - 1\,\bigr|\Bigr]^{2} \\
+\hat{\ba}_w[0] &= 1 - \frac{1}{\hat{b}[0]\,\hat{u}[0]}
+\end{align*}
+
+\begin{align*}
+\frac{\partial \ba}{\partial b}\bigg|_{u}
+  &= \frac{1}{b^{2}u} = \frac{1-\ba}{b} \\
+P_{44}[0] &= \left(\frac{1-\hat{\ba}_w[0]}{\hat{b}[0]}\right)^{2}P_{bb}
+  + \mathrm{floor}_a^{2} \\
+P_{45}[0] &= \frac{1-\hat{\ba}_w[0]}{\hat{b}[0]}\,P_{bb}
+\end{align*}
+
+\section*{Observability}
+
+Gate 1. Both routes for $b$:
+
+\begin{align*}
+\text{state route} \quad
+  \frac{\partial \ba_w[k+1]}{\partial b}
+    &= -\frac{1}{\hat{b}^{2}\hat{u}^{2}}
+       \bigl(\Delta\bw_d + (1-\lambda_c)\delta\hat{\bw}_3\bigr) \\
+\text{measurement route} \quad
+  \frac{\partial y_2}{\partial b}
+    &= +\frac{1}{\hat{b}^{2}\hat{u}^{2}}\,\nabla_d\bw_d
+\end{align*}
+
+Gate 2. Time signatures on the gain channel:
+
+\begin{align*}
+e_b &\ \longrightarrow\ \text{scaled by the commanded DISPLACEMENT} \\
+e_{\delta\bw_3} &\ \longrightarrow\ \text{scaled by the commanded displacement AND by } 1/\hat{u} \\
+e_{\ba_w} &\ \longrightarrow\ \text{scaled by the applied force } F_{dw}
+\end{align*}
+
+Gate 3. Reduction on $(\ba_w, b)$, with
+$h := 1$ and $\Sigma := \Delta\bw_d + (1-\lambda_c)\delta\hat{\bw}_3$:
+
+\begin{align*}
+A_2 &= \begin{bmatrix}
+  1 + \dfrac{F_{dw}}{\hat{b}\hat{u}^{2}}
+  & -\dfrac{\Sigma}{\hat{b}^{2}\hat{u}^{2}} \\[0.9em]
+  0 & 1
+\end{bmatrix} ,
+\qquad
+C_2 = \begin{bmatrix} 1 & \dfrac{\nabla_d\bw_d}{\hat{b}^{2}\hat{u}^{2}} \end{bmatrix} \\[0.8em]
+\det O_2 &= -\frac{\Sigma}{\hat{b}^{2}\hat{u}^{2}}
+  - \frac{\nabla_d\bw_d}{\hat{b}^{2}\hat{u}^{2}}\,
+    \frac{F_{dw}}{\hat{b}\hat{u}^{2}} \\[0.4em]
+\det O_2 = 0 &\iff
+  \Sigma = -\,\frac{\nabla_d\bw_d\,F_{dw}}{\hat{b}\hat{u}^{2}}
+\end{align*}
+
+In a hold both $\Sigma$ and $\nabla_d\bw_d$ vanish and the condition is met
+identically: $b$ carries no information there, in this writing as in the
+state writing.
+
+\end{document}
