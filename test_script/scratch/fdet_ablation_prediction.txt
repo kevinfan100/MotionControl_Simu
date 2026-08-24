@@ -1,0 +1,25 @@
+PRE-REGISTERED PREDICTION (written before running use_fdet=false arm)
+
+Baseline (use_fdet=true, default): descent y1-leg Cov(K1,innov1) share = 86.0%,
+final a_hat bias (z, trough hold) = +19.5% (from earlier true-a comparison /
+budget run), E[K1] at trough = -0.496 (persistent sign).
+
+use_fdet controls whether F_e(3,4) = -F_dw uses:
+  F_dw_det (deterministic mirror, dw_m:=0, own history) -- default, designed
+    to avoid rectification (per code comment: "using the realised force
+    instead rectifies -- the ancestor's measured 24.3% drag-down")
+  F_dw_raw (raw realized force) -- explicitly commented "ablation only:
+    reproduces the rectification"
+
+HYPOTHESIS A: fdet is currently suppressing (all or part of) the descent
+  rectification we measured. Turning it OFF (F_dw_raw) should INCREASE the
+  descent Cov(K1,i1) share above 86%, and should worsen (increase) the final
+  a_hat bias above +19.5%.
+HYPOTHESIS B: fdet is not the operative mechanism for THIS writing/scenario
+  (per memory: prior mirror-audit on formB found "the ancestor's -24.3%
+  evidence does not transfer" to short scenarios). Turning it off should
+  leave the descent Cov share and final bias roughly unchanged (within
+  seed noise, ~+-2-3pp).
+
+Discriminator: run use_fdet=false, 100 seeds, same seed set (1:100), deep
+band, z axis. Measure identical quantities as the baseline budget run.
