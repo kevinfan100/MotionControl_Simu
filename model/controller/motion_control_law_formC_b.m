@@ -295,7 +295,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent k_step
 
     persistent initialized
-    persistent lambda_c d_delay Ts kappa_T R_radius a_o a_disp
+    persistent lambda_c d_delay Ts kappa_T R_radius a_o a_disp r22_delay_scale
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_bar amlpf_var_factor
     persistent t_warmup_kf h_bar_safe sigma2_n_nd
     persistent enable_wall w_hat_n pz_wall
@@ -333,6 +333,17 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % --- 0B. ctrl_const (offline scalars; shared with the 5/6-state family) ---
         lambda_c        = ctrl_const.lambda_c;
         d_delay         = ctrl_const.d;
+        % Scale on the R2 d-step delay term ONLY. Default 1.0 = the form this
+        % file has always used (flat d*Q44). The repo carries three forms of the
+        % same term: 1.0 here, ctrl_const.r22_delay_sum_factor = 1.105 in
+        % eq17_4state (telescoping correction, build_eq17_6state_constants.m),
+        % and sum_j (d-j+1)^2 = 2.5*d*Q44 at d=2 in the expgain sibling. This
+        % knob exists to run them against each other; it is not tuning.
+        if isfield(ctrl_const, 'r22_delay_scale') && ~isempty(ctrl_const.r22_delay_scale)
+            r22_delay_scale = ctrl_const.r22_delay_scale;
+        else
+            r22_delay_scale = 1.0;
+        end
         C_dpmr          = ctrl_const.C_dpmr;
         C_n             = ctrl_const.C_n;
         K_var           = ctrl_const.K_var;
@@ -967,6 +978,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
 
     K_a_y2_v   = zeros(3, 1);
     K_dx_y1_v  = zeros(3, 1);
+    K_dx_y2_v  = zeros(3, 1);   % L32: y2's correction to the CURRENT tracking error slot
+    K_b_y1_v   = zeros(3, 1);   % L51: b's correction from y1
+    K_b_y2_v   = zeros(3, 1);   % L52: b's correction from y2
     K_a_y1_v   = zeros(3, 1);   % K1(4): y1's GAIN correction (via P(4,1))
     P41_v      = zeros(3, 1);   % the cross-covariance that creates it
     dws_y1_v   = zeros(3, 1);   % logging only: ws update via y1, K1(7)*innov1
@@ -1126,7 +1140,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         R1_i = sigma2_n_nd(ax);
         R2_i = compute_R2_formB(a_bar_i, sigma2_n_nd(ax), IF_abc, C_dpmr, C_n, ...
                                 K_var, amlpf_var_factor, xi_bar(ax), kappa_T, ...
-                                Q_i(4, 4), d_delay, a_cov, y2_whiten);
+                                Q_i(4, 4), d_delay, a_cov, y2_whiten, r22_delay_scale);
         R2_v(ax) = R2_i;
 
         % --- Gates (OR): warm-up / readout NaN guard / near wall ---
@@ -1218,6 +1232,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % it is the standard KF update -- P(4,1) is built by F_e(3,4) = -F_dw
         % (gain error drives tracking error) and by Q(3,4) = -a_bar'*Q33.
         K_a_y1_v(ax) = K1(4);
+        K_b_y1_v(ax)  = K1(5);
         P41_v(ax)    = P_pred(4, 1);
         dws_y1_v(ax)  = K1(7) * innov1;
 
@@ -1275,6 +1290,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             P_upd  = ImKH2 * P_upd * ImKH2' + K2 * R2_i * K2';   % Joseph form
             P_upd  = 0.5 * (P_upd + P_upd');
             K_a_y2_v(ax)   = K2(4);
+            K_dx_y2_v(ax)  = K2(3);
+            K_b_y2_v(ax)   = K2(5);
             innov_y2_v(ax) = innov2;
             dws_y2_v(ax)   = K2(7) * innov2;
         end
@@ -1378,6 +1395,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         diag.innovation_y2  = innov_y2_v;
         diag.innovation_y1  = innov_y1_v;   % [-] normalized; whiteness diagnostic
         diag.K_kf_a_y2      = K_a_y2_v;
+        diag.K_kf_dx_y2     = K_dx_y2_v;   % L32
+        diag.K_kf_b_y1      = K_b_y1_v;      % L51
+        diag.K_kf_b_y2      = K_b_y2_v;      % L52
         diag.K_kf_dx_y1     = K_dx_y1_v;
         diag.K_kf_a_y1      = K_a_y1_v;
         diag.P41            = P41_v;
@@ -1510,7 +1530,7 @@ end
 
 function R2 = compute_R2_formB(a_bar, sigma2_n, IF_abc, C_dpmr, C_n, ...
                                K_var, amlpf_var_factor, xi_bar, kappa_T, Q44, ...
-                               delay_steps, a_cov, whitened)
+                               delay_steps, a_cov, whitened, dscale)
 %COMPUTE_R2_FORMB  R(2,2) for the gain readout channel, fully normalized.
 %   Same chi-squared chain as the expgain sibling with every physical-gain
 %   quantity replaced by its normalized counterpart (a_h -> a_bar,
@@ -1530,10 +1550,11 @@ function R2 = compute_R2_formB(a_bar, sigma2_n, IF_abc, C_dpmr, C_n, ...
     den = (C_dpmr * sxT + C_n * sigma2_n)^2;
     IF  = 1 + 2 * num / den;
     R2_int = amlpf_var_factor * K_var * IF * (a_bar + xi_bar)^2;
+    if nargin < 14 || isempty(dscale); dscale = 1.0; end
     if whitened
-        R2 = a_cov * (2 - a_cov) * R2_int + a_cov^2 * delay_steps * Q44;
+        R2 = a_cov * (2 - a_cov) * R2_int + dscale * a_cov^2 * delay_steps * Q44;
     else
-        R2 = R2_int + delay_steps * Q44;
+        R2 = R2_int + dscale * delay_steps * Q44;
     end
 end
 
@@ -1615,6 +1636,9 @@ function d = empty_diag_formB()
     d.innovation_y2     = zeros(3, 1);
     d.innovation_y1     = zeros(3, 1);
     d.K_kf_a_y2         = zeros(3, 1);
+    d.K_kf_dx_y2        = zeros(3, 1);
+    d.K_kf_b_y1         = zeros(3, 1);
+    d.K_kf_b_y2         = zeros(3, 1);
     d.K_kf_dx_y1        = zeros(3, 1);
     d.K_kf_a_y1         = zeros(3, 1);
     d.P41               = zeros(3, 1);

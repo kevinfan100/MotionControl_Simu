@@ -374,11 +374,18 @@ function out = run_formC_b(opts, test_opts)
             'hold %/s', 'unopp %/s', 'NaN');
 
     plant_cperp = [];   % [] = published plane polynomial
-    if isfinite(opts.plant_law_b)
+    if ~isempty(opts.plant_law_b) && all(isfinite(opts.plant_law_b))
         plant_cperp = @(hb) local_plant_cperp_law(hb, opts.plant_law_b, W0_PLANE);
-        fprintf(['PLANT WALL OVERRIDE: c_perp from the law with b_plant = %.5f ' ...
-                 '(estimator b_init = %.5f, mismatch %+.2f%%)\n'], ...
-                opts.plant_law_b, ov.b_init, 100*(opts.plant_law_b/ov.b_init - 1));
+        if isscalar(opts.plant_law_b)
+            fprintf(['PLANT WALL OVERRIDE: c_perp from the law with b_plant = %.5f ' ...
+                     '(estimator b_init = %.5f, mismatch %+.2f%%)\n'], ...
+                    opts.plant_law_b, ov.b_init, 100*(opts.plant_law_b/ov.b_init - 1));
+        else
+            pl = opts.plant_law_b;
+            fprintf(['PLANT WALL OVERRIDE: c_perp from the law with a b CURVE  ' ...
+                     'b_wall %.5f -> b_far %.5f, w_c %.3f, Delta %.3f ' ...
+                     '(estimator b_init = %.5f)\n'], pl(1), pl(2), pl(3), pl(4), ov.b_init);
+        end
     end
     n_seeds = numel(seeds);
     runs  = cell(n_seeds, 1);
@@ -1036,8 +1043,13 @@ if nargin < 8; plant_cperp = []; end
     dws_y2_out = zeros(N, 3);
     K_a_y2_out   = zeros(N, 3);
     K_a_y1_out   = zeros(N, 3);
+    K_dx_y1_out  = zeros(N, 3);
+    K_dx_y2_out  = zeros(N, 3);
+    K_b_y1_out   = zeros(N, 3);
+    K_b_y2_out   = zeros(N, 3);
     P41_out      = zeros(N, 3);
     R2_out       = zeros(N, 3);
+    Q44_out      = zeros(N, 3);
     dx_r_out     = zeros(N, 3);   % IIR residual the gain readout is built from [um]
     dh_m_out     = zeros(N, 3);   % delayed position error fed to the controller [um]
     a_bar_hat_out = zeros(N, 3);  % internal normalized gain estimate [-]
@@ -1171,8 +1183,13 @@ if nargin < 8; plant_cperp = []; end
         dws_y2_out(k, :) = diag_k.dws_y2(:).';
         K_a_y2_out(k, :)   = diag_k.K_kf_a_y2(:).';
         K_a_y1_out(k, :)   = diag_k.K_kf_a_y1(:).';
+        K_dx_y1_out(k, :)  = diag_k.K_kf_dx_y1(:).';
+        K_dx_y2_out(k, :)  = diag_k.K_kf_dx_y2(:).';
+        K_b_y1_out(k, :)   = diag_k.K_kf_b_y1(:).';
+        K_b_y2_out(k, :)   = diag_k.K_kf_b_y2(:).';
         P41_out(k, :)      = diag_k.P41(:).';
         R2_out(k, :)       = diag_k.R2(:).';
+        Q44_out(k, :)      = diag_k.Q77(:).';   % = Q(4,4), the gain-state process noise
         dx_r_out(k, :)     = diag_k.dx_r(:).';
         dh_m_out(k, :)     = diag_k.delta_x_m(:).';
         a_bar_hat_out(k, :) = diag_k.a_bar_hat(:).';
@@ -1226,8 +1243,13 @@ if nargin < 8; plant_cperp = []; end
     simOut.dws_y2_out = dws_y2_out;
     simOut.K_a_y2_out   = K_a_y2_out;
     simOut.K_a_y1_out   = K_a_y1_out;
+    simOut.K_dx_y1_out  = K_dx_y1_out;
+    simOut.K_dx_y2_out  = K_dx_y2_out;
+    simOut.K_b_y1_out   = K_b_y1_out;
+    simOut.K_b_y2_out   = K_b_y2_out;
     simOut.P41_out      = P41_out;
     simOut.R2_out       = R2_out;
+    simOut.Q44_out      = Q44_out;
     simOut.dx_r_out     = dx_r_out;
     simOut.dh_m_out     = dh_m_out;
     simOut.a_bar_hat_out = a_bar_hat_out;
@@ -1276,11 +1298,34 @@ end
 % --------------------------------------------------------------------------
 function cp = local_plant_cperp_law(h_bar, b_plant, w0)
 %LOCAL_PLANT_CPERP_LAW  TRUE c_perp built from the estimator's own law shape.
-%   a_bar(w) = 1 - 1/(b_plant*(w - w0)),  c_perp = 1/a_bar.
-%   Valid only where b_plant*(w-w0) > 1; the gap is floored so a descent that
-%   overshoots the envelope returns a large-but-finite drag instead of a sign
-%   flip. GAP_FLOOR is 1.05 rather than 1.0 so a_bar stays clear of zero.
+%   The law lives on the SLOPE,  d(a_bar)/dw = b(w)*(1-a_bar)^2, so the level
+%   is set by the antiderivative B(w) = int_0^w b(s) ds:
+%
+%       a_bar(w) = 1 - 1/B(w - w0),   c_perp = 1/a_bar
+%
+%   b_plant SCALAR  -> constant b, B = b*(w-w0)  (the original arm, unchanged).
+%   b_plant 4-VECTOR [b_wall, b_far, w_c, Delta] -> b is a logistic ramp
+%
+%       b(w) = b_wall + (b_far - b_wall) * sigma((w - w_c)/Delta)
+%       B(w) = b_wall*w + (b_far - b_wall)*Delta*[ sp((w-w_c)/Delta) - sp(-w_c/Delta) ]
+%
+%   with sigma the logistic and sp(x) = log(1+e^x) its antiderivative, written
+%   in the overflow-safe form max(x,0) + log1p(exp(-|x|)). b_wall == b_far
+%   reduces to B = b*w exactly, so the scalar arm is a strict special case.
+%
+%   Valid only where B > 1; the gap is floored so a descent that overshoots the
+%   envelope returns a large-but-finite drag instead of a sign flip. GAP_FLOOR
+%   is 1.05 rather than 1.0 so a_bar stays clear of zero.
     GAP_FLOOR = 1.05;
-    gap = max(b_plant * (h_bar - w0), GAP_FLOOR);
+    u = h_bar - w0;
+    if isscalar(b_plant)
+        B = b_plant * u;
+    else
+        b_wall = b_plant(1);  b_far = b_plant(2);
+        w_c    = b_plant(3);  De    = b_plant(4);
+        sp = @(x) max(x, 0) + log1p(exp(-abs(x)));
+        B  = b_wall * u + (b_far - b_wall) * De * ( sp((u - w_c)/De) - sp(-w_c/De) );
+    end
+    gap = max(B, GAP_FLOOR);
     cp  = 1 ./ (1 - 1 ./ gap);
 end
