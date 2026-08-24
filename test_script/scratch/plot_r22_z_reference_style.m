@@ -58,9 +58,9 @@ f = figure('Position',[80 80 1500 850],'Color','w','NumberTitle','off','Visible'
 tiledlayout(2,2,'TileSpacing','compact','Padding','compact');
 
 nexttile(1); hold on;
-h1 = plot(t2, vy_form_t, '-', 'Color',[0 0.55 0.2], 'LineWidth',2.5, 'DisplayName','formula');
 h2 = plot(t2, vy_meas_t, '-', 'Color',[0.2 0.4 0.9], 'LineWidth',0.6, 'DisplayName','measured (cross-seed var, N=100)');
-legend([h1 h2],'Location','northoutside','FontSize',12,'FontWeight','bold','Box','on');
+h1 = plot(t2, vy_form_t, '-', 'Color',[0 0.55 0.2], 'LineWidth',2.5, 'DisplayName','formula');
+legend([h2 h1],'Location','northoutside','FontSize',12,'FontWeight','bold','Box','on');
 xlabel('time [s]','FontSize',15,'FontWeight','bold');
 ylabel('Var(y_2)  [-]','FontSize',15,'FontWeight','bold');
 title('z axis -- time series (raw, unsmoothed)','FontSize',12);
