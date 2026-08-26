@@ -14,11 +14,12 @@ function make_readout_pdf(files, outfile)
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
     od = fullfile(root, 'test_results', 'apd_acov_meng');
     if nargin < 1 || isempty(files)
-        % Page order of record (2026-08-26): chain -> step-5 histogram ->
-        % two-arm chain -> house comparison page (seed 7) -> y2 ledger.
-        % (arms_performance.png was page 6 for one build and dropped again
-        % the same day; pass it in `files` to include it.)
-        files = {'dhm_to_ahm.png', 'hist_step5_t1_4.png', ...
+        % Page order of record (2026-08-26): chain -> zoom on the t ~ 0.97 s
+        % burst of step 4 (the EWMA recursion on data points) -> step-5
+        % histogram -> two-arm chain -> house comparison page (seed 7) ->
+        % y2 ledger. (arms_performance.png was page 6 for one build and
+        % dropped again the same day; pass it in `files` to include it.)
+        files = {'dhm_to_ahm.png', 'ewma_burst_zoom.png', 'hist_step5_t1_4.png', ...
                  'dhm_to_ahm_arms_both.png', 'arms_pair_s007.png', ...
                  'y2_contribution.png'};
     end
