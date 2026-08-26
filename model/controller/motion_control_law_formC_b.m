@@ -296,6 +296,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
 
     persistent initialized
     persistent lambda_c d_delay Ts kappa_T R_radius a_o a_disp r22_delay_scale
+    persistent a_inject_step a_inject_frac a_inject_axis   % diagnostic hook, default off
+    persistent fe43_off q34_off q44_scale                   % diagnostic flags, default off
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_bar amlpf_var_factor
     persistent t_warmup_kf h_bar_safe sigma2_n_nd
     persistent enable_wall w_hat_n pz_wall
@@ -344,6 +346,31 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         else
             r22_delay_scale = 1.0;
         end
+        % DIAGNOSTIC HOOK (2026-08-26): multiply the posterior a_bar of ONE axis
+        % by (1 + a_inject_frac) at step a_inject_step, once. Measures the
+        % closed-loop response of the y1 -> a_bar path to a KNOWN gain error
+        % (injection-response test). a_inject_step = 0 (default) never fires,
+        % so production is bit-identical. Not a tuning knob.
+        a_inject_step = get_field_default(ctrl_const, 'a_inject_step', 0);
+        a_inject_frac = get_field_default(ctrl_const, 'a_inject_frac', 0);
+        a_inject_axis = get_field_default(ctrl_const, 'a_inject_axis', 3);
+        % DIAGNOSTIC FLAG (2026-08-26): zero the law coupling F_e(4,3) = (1-lc)*a_bar'
+        % (tracking-error estimate -> gain, through the law) in the covariance
+        % propagation only. Discriminates the sign-of-P(4,1) hypothesis from the
+        % injection-response test. Default false => bit-identical.
+        fe43_off = get_field_default(ctrl_const, 'fe43_off', false);
+        % DIAGNOSTIC FLAG (2026-08-26): remove the THERMAL position<->gain
+        % cross-covariance from P propagation only: Q(3,4), Q(4,8) and the
+        % memory->gain rows F_aug(4,8:9). Q44, Q33, the state predict and
+        % the measurement models are untouched. Tests whether the sign of
+        % P(4,1) (and hence of K1(4)) near the wall comes from this
+        % physically real coupling. Default false => bit-identical.
+        q34_off = get_field_default(ctrl_const, 'q34_off', false);
+        % DIAGNOSTIC KNOB (2026-08-26): multiply Q(4,4) only (the gain state's
+        % own process noise), leaving Q(3,4) and everything else as built.
+        % Reverse discriminator of the P(4,1) sign competition: does a larger
+        % P44 let F_e(3,4)*P44 overtake Q(3,4)? Default 1 => bit-identical.
+        q44_scale = get_field_default(ctrl_const, 'q44_scale', 1);
         C_dpmr          = ctrl_const.C_dpmr;
         C_n             = ctrl_const.C_n;
         K_var           = ctrl_const.K_var;
@@ -1176,6 +1203,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         if t2_pure_prop; F_dw = 0; Q_i = zeros(n_state); end
         F_e = local_build_F_e_formC(lambda_c, F_dw, a_prime_i, A_a_i, ...
                                     J_b_fac_i * M_tot, M_tot, dap_dd3_i);
+        if fe43_off; F_e(4, 3) = 0; end          % diagnostic, see init
 
         % --- EKF predict (tex S5(b)). Row 4 carries the ADDITIVE disturbance
         %     x_curr(5) outside the a_bar' bracket; row 5 is an integrator of
@@ -1206,6 +1234,14 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             F_aug(4, 9) = a_prime_i * alpha_ma2;
             F_aug(9, 8) = 1;            % row 8 stays all-zero (m1 <- pure noise)
             F_e = F_aug;
+        end
+        if q44_scale ~= 1; Q_i(4, 4) = q44_scale * Q_i(4, 4); end   % diagnostic, see init
+        if q34_off                                   % diagnostic, see init
+            Q_i(3, 4) = 0;  Q_i(4, 3) = 0;
+            if n_state > 7
+                Q_i(4, 8) = 0;  Q_i(8, 4) = 0;
+                F_e(4, 8) = 0;  F_e(4, 9) = 0;
+            end
         end
         P_pred = F_e * P_curr * F_e' + Q_i;
         P_pred = 0.5 * (P_pred + P_pred');
@@ -1294,6 +1330,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             K_b_y2_v(ax)   = K2(5);
             innov_y2_v(ax) = innov2;
             dws_y2_v(ax)   = K2(7) * innov2;
+        end
+
+        % --- Injection-response hook (diagnostic, default off; see init) ---
+        if a_inject_step > 0 && k_step == a_inject_step && ax == a_inject_axis
+            x_upd(4) = x_upd(4) * (1 + a_inject_frac);
         end
 
         % --- Validity clamps (numerical guards, not tuning). Locked slots
