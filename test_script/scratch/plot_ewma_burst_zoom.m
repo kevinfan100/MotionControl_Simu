@@ -3,8 +3,9 @@
 %   sigma2[k] of the recursion
 %       sigma2[k+1] = (1 - a_cov) sigma2[k] + a_cov (dh_mr[k])^2
 %   on the Meng ramp, production arm, seed 7, t 0.955-0.980 s (page 1 of
-%   readout_chain_record, the t ~ 1 s peak). x axis = step k, k = 0 at the
-%   first burst sample. The seven burst steps of the lower row carry the
+%   readout_chain_record, the t ~ 1 s peak). x axis = time. Both y axes are
+%   forced to the 1e-3 um^2 exponent so the labels read against the axis.
+%   The seven burst steps of the lower row carry the
 %   injected amount a_cov (dh_mr[k])^2 -- the jump each step makes.
 function out = plot_ewma_burst_zoom(mat, seed_idx, tzoom)
 
@@ -29,7 +30,7 @@ function out = plot_ewma_burst_zoom(mat, seed_idx, tzoom)
     k0 = m(find(abs(dhmr(m)) > 2*std(dhmr(stat)) & dhmr(m) < 0, 1));   % first burst sample
     kk = m - k0;                                     % step index, 0 at burst start
     burst = (kk >= 0 & kk <= 6);
-    fprintf('seed %d  a_cov %.3g  k=0 at t=%.4f s ; %d steps shown\n', O.seeds(seed_idx), a_cov, t(k0), numel(m));
+    fprintf('seed %d  a_cov %.3g  burst starts t=%.4f s ; window %.3f-%.3f s, %d samples\n', O.seeds(seed_idx), a_cov, t(k0), tzoom, numel(m));
     fprintf('%4s %10s %12s %12s\n', 'k', 'u=dhmr^2', 'a_cov*u', 'sigma2[k+1]');
     for i = find(burst).'
         fprintf('%4d %10.3e %12.3e %12.3e\n', kk(i), u(m(i)), a_cov*u(m(i)), s2(m(i)+1));
@@ -42,20 +43,21 @@ function out = plot_ewma_burst_zoom(mat, seed_idx, tzoom)
     A = gobjects(2, 1);
 
     a = nexttile(tl); A(1) = a; hold(a, 'on');
-    h = plot(a, kk, u(m), 'o', 'Color', C_U, 'MarkerFaceColor', C_U, 'MarkerSize', 7);
+    h = plot(a, t(m), u(m), 'o', 'Color', C_U, 'MarkerFaceColor', C_U, 'MarkerSize', 7);
     legend(a, h, {'(\delta h_{mr}[k])^2'}, 'Location', 'northoutside', ...
            'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
     ylabel(a, '(\delta h_{mr})^2  (\mum^2)', 'FontSize', FS, 'FontWeight', 'bold');
 
     a = nexttile(tl); A(2) = a; hold(a, 'on');
-    h = plot(a, kk, s2(m+1), 'o', 'Color', C_S, 'MarkerFaceColor', C_S, 'MarkerSize', 7);
+    h = plot(a, t(m), s2(m+1), 'o', 'Color', C_S, 'MarkerFaceColor', C_S, 'MarkerSize', 7);
     % label = the injected amount a_cov*(dh_mr[k])^2, in the axis' 1e-3 units
     for i = find(burst).'
         lab = sprintf('+%.2f', 1e3 * a_cov * u(m(i)));
+        Ts = median(diff(t));
         switch kk(i)
-            case 5;     pos = [kk(i)-0.15, s2(m(i)+1)+0.22e-3]; ha = 'right';  va = 'bottom';
-            case 6;     pos = [kk(i)+0.15, s2(m(i)+1)+0.22e-3]; ha = 'left';   va = 'bottom';
-            otherwise;  pos = [kk(i)-0.25, s2(m(i)+1)];         ha = 'right';  va = 'middle';
+            case 5;     pos = [t(m(i))-0.15*Ts, s2(m(i)+1)+0.22e-3]; ha = 'right';  va = 'bottom';
+            case 6;     pos = [t(m(i))+0.15*Ts, s2(m(i)+1)+0.22e-3]; ha = 'left';   va = 'bottom';
+            otherwise;  pos = [t(m(i))-0.25*Ts, s2(m(i)+1)];         ha = 'right';  va = 'middle';
         end
         text(a, pos(1), pos(2), lab, 'FontSize', 13, 'FontWeight', 'bold', ...
              'HorizontalAlignment', ha, 'VerticalAlignment', va, 'Color', C_S);
@@ -64,12 +66,13 @@ function out = plot_ewma_burst_zoom(mat, seed_idx, tzoom)
            '        a_{cov} = %.3g        labels: a_{cov} (\\delta h_{mr}[k])^2  (\\times10^{-3})'], a_cov)}, ...
            'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
     ylabel(a, '\^\sigma^2  (\mum^2)', 'FontSize', FS, 'FontWeight', 'bold');
-    xlabel(a, sprintf('step k   (k = 0 at t = %.4f s, 1600 steps/s)', t(k0)), 'FontSize', FS, 'FontWeight', 'bold');
+    xlabel(a, 'Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');
 
     for q = 1:2
         set(A(q), 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW, 'Box', 'on');
-        grid(A(q), 'off'); xlim(A(q), [kk(1)-0.5, kk(end)+0.5]);
+        grid(A(q), 'off'); xlim(A(q), tzoom);
         yl = ylim(A(q)); ylim(A(q), [0, yl(2)*1.35]);
+        A(q).YAxis.Exponent = -3;                    % both rows in 1e-3 um^2
         if q < 2; set(A(q), 'XTickLabel', []); end
     end
     fn = fullfile(od, 'ewma_burst_zoom.png');
