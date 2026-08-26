@@ -164,7 +164,7 @@ function local_page(o, r, ax, cc, tag)
     h0 = plot(a, t, o.dhm(i),  '-', 'Color', COL_BG, 'LineWidth', LWD);
     h1 = plot(a, t, o.dhmd(i), '-', 'Color', COL_LP, 'LineWidth', 2.4);
     LG(a, [h0 h1], {'\delta h_m', ...
-        sprintf('\\delta h_{md}[k+1] = a_{pd} \\delta h_m[k] + (1-a_{pd}) \\delta h_{md}[k]        (2)        a_{pd} = %.3g', cc.a_pd)});
+        sprintf('\\delta h_{md}[k+1] = (1-a_{pd}) \\delta h_{md}[k] + a_{pd} \\delta h_m[k]        (2)        a_{pd} = %.3g', cc.a_pd)});
     ylabel(a, '\delta h_{md}  (\mum)', 'FontSize', FS, 'FontWeight', 'bold');
     ylim(a, [-0.12 0.12]); set(a, 'YTick', -0.1:0.05:0.1);
 
@@ -189,7 +189,7 @@ function local_page(o, r, ax, cc, tag)
     h1 = plot(a, t, s2, '-', 'Color', COL_S2, 'LineWidth', 1.6);
     h2 = yline(a, o.Cn_s2n, '--', 'Color', COL_CN, 'LineWidth', 2.0);
     LG(a, [h1 h2], { ...
-        sprintf('%s^2_{\\delta h_{mr}}[k+1] = a_{cov} ( \\delta h_{mr}[k] )^2 + (1-a_{cov}) %s^2_{\\delta h_{mr}}[k]        (4)        a_{cov} = %.3g', SH, SH, cc.a_cov), ...
+        sprintf('%s^2_{\\delta h_{mr}}[k+1] = (1-a_{cov}) %s^2_{\\delta h_{mr}}[k] + a_{cov} ( \\delta h_{mr}[k] )^2        (4)        a_{cov} = %.3g', SH, SH, cc.a_cov), ...
         sprintf('C_n \\sigma_n^2 = %.4g \\mum^2', o.Cn_s2n)});
     ylabel(a, [SH '^2_{\delta h_{mr}}  (\mum^2)'], 'FontSize', FS, 'FontWeight', 'bold');
     ylim(a, [0 S2MAX]); set(a, 'YTick', 0:5e-4:2.5e-3);
