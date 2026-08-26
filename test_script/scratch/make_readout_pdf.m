@@ -1,6 +1,14 @@
 % STATUS: ACTIVE (scratch) | PURPOSE: bundle the readout-chain figures of
-%   2026-08-25/26 into one multi-page PDF for the record. Each page is one PNG,
-%   placed on its own axes at its native aspect ratio.
+%   2026-08-25/26 into one multi-page PDF for the record, one PNG per page at
+%   its NATIVE pixel size.
+%
+%   Route 1 (default): python3 + Pillow embeds each PNG losslessly -- no
+%   figure, no imshow, no re-rasterisation. The first version of this script
+%   drew each PNG with imshow inside a figure capped at 1600 px and exported
+%   at 200 dpi, i.e. a 2500 px figure was shrunk to 63 % and blown back up:
+%   two resamplings, visibly blurred (2026-08-26).
+%   Route 2 (fallback, no Pillow): figure at the PNG's own pixel size and
+%   exportgraphics at 2x screen DPI, so the only resampling is a 2x upsample.
 function make_readout_pdf(files, outfile)
 
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
@@ -16,20 +24,39 @@ function make_readout_pdf(files, outfile)
     if nargin < 2 || isempty(outfile)
         outfile = fullfile(od, 'readout_chain_record.pdf');
     end
+    paths = cellfun(@(f) fullfile(od, f), files, 'UniformOutput', false);
+    for k = 1:numel(paths)
+        assert(exist(paths{k}, 'file') == 2, 'missing: %s', paths{k});
+    end
     if exist(outfile, 'file'); delete(outfile); end
 
-    for k = 1:numel(files)
-        fn = fullfile(od, files{k});
-        assert(exist(fn,'file')==2, 'missing: %s', fn);
-        I = imread(fn);
-        [h, w, ~] = size(I);
-        f = figure('Color','w','Visible','off','Units','pixels', ...
-                   'Position', [10 10 min(w,1600) min(w,1600)*h/w]);
-        a = axes(f, 'Position', [0 0 1 1]);
-        imshow(I, 'Parent', a, 'Border', 'tight');
-        exportgraphics(f, outfile, 'Append', k > 1, 'Resolution', 200);
-        close(f);
-        fprintf('  page %d : %-30s %5d x %5d\n', k, files{k}, w, h);
+    % ---- Route 1: lossless embed via Pillow -----------------------------
+    listfile = [tempname '.txt'];
+    fid = fopen(listfile, 'w'); fprintf(fid, '%s\n', paths{:}); fclose(fid);
+    py = ['import sys; from PIL import Image; ' ...
+          'fs=[l.strip() for l in open(sys.argv[1]) if l.strip()]; ' ...
+          'ims=[Image.open(f).convert("RGB") for f in fs]; ' ...
+          'ims[0].save(sys.argv[2], "PDF", resolution=150.0, save_all=True, append_images=ims[1:]); ' ...
+          '[print("  page %d : %-30s %5d x %5d" % (i+1, fs[i].split("/")[-1], im.width, im.height)) for i,im in enumerate(ims)]'];
+    [st, out] = system(sprintf('python3 -c ''%s'' "%s" "%s"', py, listfile, outfile));
+    delete(listfile);
+    if st == 0
+        fprintf('%s', out);
+    else
+        % ---- Route 2: MATLAB rasterisation at native size ---------------
+        warning('make_readout_pdf:noPillow', ...
+                'python3/Pillow route failed (%s); falling back to exportgraphics.', strtrim(out));
+        dpi = get(0, 'ScreenPixelsPerInch');
+        for k = 1:numel(paths)
+            I = imread(paths{k});  [h, w, ~] = size(I);
+            f = figure('Color', 'w', 'Visible', 'off', 'Units', 'pixels', ...
+                       'Position', [10 10 w h]);
+            a = axes(f, 'Position', [0 0 1 1]);
+            image(a, I); axis(a, 'image', 'off');
+            exportgraphics(f, outfile, 'Append', k > 1, 'Resolution', 2*dpi);
+            close(f);
+            fprintf('  page %d : %-30s %5d x %5d\n', k, files{k}, w, h);
+        end
     end
     d = dir(outfile);
     fprintf('\nPDF -> %s   (%d pages, %.1f MB)\n', outfile, numel(files), d.bytes/1e6);
