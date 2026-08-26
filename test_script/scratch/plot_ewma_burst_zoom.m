@@ -1,10 +1,11 @@
 % STATUS: ACTIVE (scratch figure) | PURPOSE: the data points of ONE EWMA burst
 %   and nothing else -- the input samples (dh_mr[k])^2 and the output
 %   sigma2[k] of the recursion
-%       sigma2[k+1] = a_cov (dh_mr[k])^2 + (1 - a_cov) sigma2[k]
+%       sigma2[k+1] = (1 - a_cov) sigma2[k] + a_cov (dh_mr[k])^2
 %   on the Meng ramp, production arm, seed 7, t 0.955-0.980 s (page 1 of
 %   readout_chain_record, the t ~ 1 s peak). x axis = step k, k = 0 at the
-%   first burst sample. The seven burst samples carry their values.
+%   first burst sample. The seven burst steps of the lower row carry the
+%   injected amount a_cov (dh_mr[k])^2 -- the jump each step makes.
 function out = plot_ewma_burst_zoom(mat, seed_idx, tzoom)
 
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
@@ -41,22 +42,26 @@ function out = plot_ewma_burst_zoom(mat, seed_idx, tzoom)
     A = gobjects(2, 1);
 
     a = nexttile(tl); A(1) = a; hold(a, 'on');
-    h = plot(a, kk, u(m), 'o', 'Color', C_U, 'MarkerFaceColor', C_U, 'MarkerSize', 6);
-    for i = find(burst).'
-        text(a, kk(i), u(m(i)), sprintf('  %.1e', u(m(i))), 'FontSize', 12, 'FontWeight', 'bold', ...
-             'Rotation', 90, 'VerticalAlignment', 'middle');
-    end
-    legend(a, h, {'u[k] = (\delta h_{mr}[k])^2'}, 'Location', 'northoutside', ...
+    h = plot(a, kk, u(m), 'o', 'Color', C_U, 'MarkerFaceColor', C_U, 'MarkerSize', 7);
+    legend(a, h, {'(\delta h_{mr}[k])^2'}, 'Location', 'northoutside', ...
            'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
     ylabel(a, '(\delta h_{mr})^2  (\mum^2)', 'FontSize', FS, 'FontWeight', 'bold');
 
     a = nexttile(tl); A(2) = a; hold(a, 'on');
-    h = plot(a, kk, s2(m+1), 'o', 'Color', C_S, 'MarkerFaceColor', C_S, 'MarkerSize', 6);
+    h = plot(a, kk, s2(m+1), 'o', 'Color', C_S, 'MarkerFaceColor', C_S, 'MarkerSize', 7);
+    % label = the injected amount a_cov*(dh_mr[k])^2, in the axis' 1e-3 units
     for i = find(burst).'
-        text(a, kk(i), s2(m(i)+1), sprintf('  %.2e', s2(m(i)+1)), 'FontSize', 12, 'FontWeight', 'bold', ...
-             'Rotation', 90, 'VerticalAlignment', 'middle');
+        lab = sprintf('+%.2f', 1e3 * a_cov * u(m(i)));
+        switch kk(i)
+            case 5;     pos = [kk(i)-0.15, s2(m(i)+1)+0.22e-3]; ha = 'right';  va = 'bottom';
+            case 6;     pos = [kk(i)+0.15, s2(m(i)+1)+0.22e-3]; ha = 'left';   va = 'bottom';
+            otherwise;  pos = [kk(i)-0.25, s2(m(i)+1)];         ha = 'right';  va = 'middle';
+        end
+        text(a, pos(1), pos(2), lab, 'FontSize', 13, 'FontWeight', 'bold', ...
+             'HorizontalAlignment', ha, 'VerticalAlignment', va, 'Color', C_S);
     end
-    legend(a, h, {sprintf('\\^\\sigma^2[k+1] = a_{cov} u[k] + (1 - a_{cov}) \\^\\sigma^2[k]      a_{cov} = %.3g', a_cov)}, ...
+    legend(a, h, {sprintf(['\\^\\sigma^2[k+1] = (1 - a_{cov}) \\^\\sigma^2[k] + a_{cov} (\\delta h_{mr}[k])^2', ...
+           '        a_{cov} = %.3g        labels: a_{cov} (\\delta h_{mr}[k])^2  (\\times10^{-3})'], a_cov)}, ...
            'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold', 'Box', 'on');
     ylabel(a, '\^\sigma^2  (\mum^2)', 'FontSize', FS, 'FontWeight', 'bold');
     xlabel(a, sprintf('step k   (k = 0 at t = %.4f s, 1600 steps/s)', t(k0)), 'FontSize', FS, 'FontWeight', 'bold');
