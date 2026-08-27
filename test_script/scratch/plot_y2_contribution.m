@@ -1,14 +1,25 @@
 % STATUS: ACTIVE (scratch figure) | PURPOSE: how much y2 actually contributes
 %   to a-hat, shown two ways side by side because the two ways disagree.
 %
+%   NOTATION follows Meng/Long/Menq, IEEE TIE 72(1) 2025, eqs (16)-(19):
+%   the estimator feedback matrix is L[k] with entries l_ij[k] (paper: script
+%   ell; MATLAB tex has no \ell, so an italic l is drawn), i = state row,
+%   j = measurement; the two feedback signals are the estimation errors
+%       e_h1[k] = dh_m[k]  - dh_hat_1[k]      (paper e_x1, axis x -> h)
+%       e_ah[k] = a_hm[k]  - a_hat_h[k]       (paper e_ax; here the whitened,
+%                                              echo-scaled y2 innovation)
+%   In this controller a_hat is state row 4, so the gain row is l_41, l_42
+%   (paper: row 6, l_61, l_62). Controller logs: K_a_y1_out = l_41,
+%   K_a_y2_out = l_42, innov_y1_out = e_h1, innov_y2_out = e_ah.
+%
 %   THE LEDGER CLOSES EXACTLY. a-hat moves only by the law (predict) plus the
 %   two measurement corrections:
-%       a_hat[end] - a_hat[1] = sum(predict increments) + sum(K41 e1) + sum(K42 e2)
+%       a_hat[end] - a_hat[1] = sum(predict increments) + sum(l41 e_h1) + sum(l42 e_ah)
 %   so cumsum of each term is that channel's NET contribution, in a_bar units,
 %   with its sign. Nothing is normalised, smoothed or fitted in row 1.
 %
 %   ROW 1  cumulative (the integral)  -- NET push. Signed, no smoothing.
-%   ROW 2  per-step share             -- EFFORT. |K42 e2| / (|K41 e1| + |K42 e2|),
+%   ROW 2  per-step share             -- EFFORT. |l42 e_ah| / (|l41 e_h1| + |l42 e_ah|),
 %          0.25 s moving mean because a per-step ratio is unreadable raw.
 %
 %   The two disagree on purpose: the tuned arm has y2 working HARDER (share
@@ -34,7 +45,7 @@ function out = plot_y2_contribution(ARMS, seed_idx, ax)
         d{c} = s;
     end
 
-    fprintf('\n%-30s %11s %11s %11s %11s\n','arm','total','law','y1','y2');
+    fprintf('\n%-30s %11s %11s %11s %11s\n','arm','total','law','sum l41 e_h1','sum l42 e_ah');
     for c=1:nA
         s=d{c};
         fprintf('%-30s %+11.5f %+11.5f %+11.5f %+11.5f\n', ARMS{c,2}, ...
@@ -59,21 +70,22 @@ function out = plot_y2_contribution(ARMS, seed_idx, ax)
         h2=plot(a,s.t,s.C1,'-','Color',COL_Y1,'LineWidth',2.4);
         h3=plot(a,s.t,s.C2,'-','Color',COL_Y2,'LineWidth',2.4);
         h4=plot(a,s.t,s.tot,'--','Color',[0 0 0],'LineWidth',1.8);
-        legend(a,[h1 h2 h3 h4],{'law (predict)','y_1','y_2','total  a_{hat} - a_{hat}[0]'}, ...
+        legend(a,[h1 h2 h3 h4],{'law (predict)','\Sigma {\itl}_{41} e_{h1}','\Sigma {\itl}_{42} e_{ah}', ...
+            'total  \^a_h[k] - \^a_h[0]'}, ...
             'Location','northoutside','Orientation','horizontal', ...
             'FontSize',LFS,'FontWeight','bold','Box','on');
         ylim(a,YL1);
-        if c==1; ylabel(a,'cumulative \Delta a_{hat}','FontSize',FS,'FontWeight','bold'); end
+        if c==1; ylabel(a,'cumulative \Delta \^a_h','FontSize',FS,'FontWeight','bold'); end
         text(a,0.985,0.10,ARMS{c,2},'Units','normalized','HorizontalAlignment','right', ...
              'FontSize',LFS+1,'FontWeight','bold');
 
         a=nexttile(tl,nA+c); A(2,c)=a; hold(a,'on');
         h=plot(a,s.t,s.sh,'-','Color',COL_Y2,'LineWidth',2.4);
         if c==1
-            legend(a,h,{'|K_{42}e_2| / ( |K_{41}e_1| + |K_{42}e_2| )   0.25 s moving mean'}, ...
+            legend(a,h,{'|{\itl}_{42} e_{ah}| / ( |{\itl}_{41} e_{h1}| + |{\itl}_{42} e_{ah}| )   0.25 s moving mean'}, ...
                 'Location','northoutside','Orientation','horizontal', ...
                 'FontSize',LFS,'FontWeight','bold','Box','on');
-            ylabel(a,'y_2 share','FontSize',FS,'FontWeight','bold');
+            ylabel(a,'e_{ah} share','FontSize',FS,'FontWeight','bold');
         end
         ylim(a,[0 0.5]);
         xlabel(a,'time  [s]','FontSize',FS,'FontWeight','bold');
