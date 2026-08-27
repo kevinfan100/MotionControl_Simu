@@ -109,3 +109,17 @@ P-L2-6 a_cov x2 / /2: bias moves < 1 pp, honesty < 0.1
 P-L2-7 flag off: fixture 0.107505 bit-for-bit; shallow bit-for-bit
 Reading: TOTAL/sP < 0.5 => bound too loose (sign cancellation) => route B;
          bias > 12 % with honesty ~ 1 => container honest, bias is not the law's.
+
+--- Level 2 VERDICT (2026-08-27, compare_law_err_q + inject _lawq) ---
+P-L2-1 PASS  +9.19 % (paired -13.46 +- 3.21, t = -4.2)      P-L2-4 PASS  descend K1 +0.158 (crossings up to +0.8)
+P-L2-6 PASS  a_cov x2 / /2: bias +0.02 / -0.01 pp, honesty +0.07 / -0.04   P-L2-7 PASS (fixture, shallow bit-for-bit)
+P-L2-2 FAIL  TOTAL/sP 1.64 (spread/sP alone 1.42: P44 0.0098 vs spread 0.0133 in the hold)
+P-L2-3 FAIL  sd 15.2 % (from 7.8 %)
+P-L2-5 FAIL  Meng peak 1.95 (from 2.4), y1 ledger +1.08/+1.37, K1 on ramp -0.105: barely moved
+bmid+lawq == best+lawq on every metric (9.10 vs 9.19 %) => the b STATE contributes nothing with the container.
+Neither registered failure reading applies: honesty fails HIGH, not low. What the figure shows: the
+container flips K1(4) hard on every crossing (+0.8 / +0.5 / +0.5) and P44 rides at 0.012-0.020 while
+moving, then in the hold q_law = 0, P44 decays to 0.0098 while the across-seed spread stays 0.0133.
+Compared with the uniform x3 arm (bias 6.9 %, honesty 0.82, sd 12 %): the shaped container wins
+nothing on the target metrics -- the hold, where it injects zero, is where honesty is measured.
+Note: Q44_out is logged BEFORE the q_law injection point, so the dotted sqrtQ44 curves coincide.
