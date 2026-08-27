@@ -299,6 +299,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent a_inject_step a_inject_frac a_inject_axis   % diagnostic hook, default off
     persistent fe43_off q34_off q44_scale                   % diagnostic flags, default off
     persistent consider_b                                    % b as a consider parameter (formC_state_b.tex 2026-08-27)
+    persistent law_err_q law_err_P G_law dwd_sign_prev       % correlated law-error container q_law (formC_state_b.tex 2026-08-27)
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_bar amlpf_var_factor
     persistent t_warmup_kf h_bar_safe sigma2_n_nd
     persistent enable_wall w_hat_n pz_wall
@@ -643,6 +644,17 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             error('motion_control_law_formC_b:consider_b', ...
                   'consider_b needs lock_b = false (slot 5 must stay live in P).');
         end
+        % LAW-ERROR CONTAINER (formC_state_b.tex, noise section, 2026-08-27):
+        %   q_law[k] = P_bb * g * (2 G_{k-1} + g),  g = F_e(4,5),  G = running sum
+        %   of g inside one monotone COMMAND segment (reset at dw_d = 0 or a sign
+        %   change), so that sum q_law = P_bb G^2 -- the one-signed bound on the
+        %   accumulated forcing e_b * g. Added to Q44 only; not in R2's delay term.
+        %   P_bb = law_err_std^2, the envelope sup of |b_true - 8/9| (the driver's
+        %   b_half, same provenance as Pf_b_std). Default off => bit-identical.
+        law_err_q = logical(get_field_default(ctrl_const, 'law_err_q', false));
+        law_err_P = expand3(get_field_default(ctrl_const, 'law_err_std', 0)).^2;
+        G_law = zeros(3, 1);
+        dwd_sign_prev = 0;
 
         % --- 0D. Validity clamps (numerical guards only, not tuning) ---
         a_bar_floor = get_field_default(ctrl_const, 'a_bar_floor', 0.05);
@@ -1245,6 +1257,14 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             F_aug(4, 9) = a_prime_i * alpha_ma2;
             F_aug(9, 8) = 1;            % row 8 stays all-zero (m1 <- pure noise)
             F_e = F_aug;
+        end
+        if law_err_q                                 % correlated law-error container, see init
+            g_law = dap_db_i * M_tot;                % = F_e(4,5) as built for this axis
+            s_now = sign(Delta_wbar_d_km1);
+            if s_now == 0 || s_now ~= dwd_sign_prev; G_law(ax) = 0; end
+            Q_i(4, 4) = Q_i(4, 4) + law_err_P(ax) * g_law * (2 * G_law(ax) + g_law);
+            G_law(ax) = G_law(ax) + g_law;
+            if ax == 3; dwd_sign_prev = s_now; end   % segment bookkeeping once per step
         end
         if q44_scale ~= 1; Q_i(4, 4) = q44_scale * Q_i(4, 4); end   % diagnostic, see init
         if q34_off                                   % diagnostic, see init

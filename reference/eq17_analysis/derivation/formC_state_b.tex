@@ -226,9 +226,30 @@ q_4 &= -\hat{b}\bigl(1-\hat{\ba}_w\bigr)^{2}q_3 \\
 \begin{align*}
 Q_{33} &= \frac{4k_BT\,a_o}{R}\,\ba_w \\
 Q_{34} = Q_{43} &= -\hat{b}\bigl(1-\hat{\ba}_w\bigr)^{2}Q_{33} \\
-Q_{44} &= \hat{b}^{2}\bigl(1-\hat{\ba}_w\bigr)^{4}Q_{33} \\
+Q_{44} &= \hat{b}^{2}\bigl(1-\hat{\ba}_w\bigr)^{4}Q_{33} + q_{\mathrm{law}}[k] \\
 Q_{55} &= 0, \qquad P_{55}[k] \equiv P_{bb}
 \end{align*}
+
+\begin{align*}
+g[k] &:= F_e[k]_{45}
+  = \bigl(1-\hat{\ba}_w[k]\bigr)^{2}
+    \Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr] \\
+G[k] &= G[k-1] + g[k], \qquad
+G[k-1] := 0 \ \text{ if } \ \Delta\bw_d[k] = 0
+  \ \text{ or } \ \operatorname{sgn}\Delta\bw_d[k] \ne \operatorname{sgn}\Delta\bw_d[k-1] \\
+\Bigl|\sum_{j=j_0}^{k} e_b[j]\,g[j]\Bigr|
+  &\le \sqrt{P_{bb}}\,\bigl|G[k]\bigr|
+  \qquad (e_b \text{ one-signed on a monotone command segment } j_0..k) \\
+q_{\mathrm{law}}[k] &= P_{bb}\bigl(G[k]^{2} - G[k-1]^{2}\bigr)
+  = P_{bb}\,g[k]\bigl(2G[k-1] + g[k]\bigr) \ \ge 0, \qquad
+\sum_{j=j_0}^{k} q_{\mathrm{law}}[j] = P_{bb}\,G[k]^{2}
+\end{align*}
+
+\begin{equation*}
+R_2 = K_{\mathrm{var}} IF_{\mathrm{var}}\bigl(\ba_w+\xi\bigr)^{2}
+  + d\,\hat{b}^{2}\bigl(1-\hat{\ba}_w\bigr)^{4}Q_{33}
+\qquad (q_{\mathrm{law}} \text{ not in the delay term})
+\end{equation*}
 
 \begin{align*}
 R &= \mathrm{diag}(R_1, R_2) \\

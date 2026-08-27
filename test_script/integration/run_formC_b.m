@@ -149,6 +149,7 @@ function out = run_formC_b(opts, test_opts)
     if ~isfield(opts, 'par_law');     opts.par_law     = true;  end
     if ~isfield(opts, 'y2_on');       opts.y2_on       = true;  end
     if ~isfield(opts, 'a_cov_scale'); opts.a_cov_scale = 1;     end
+    if ~isfield(opts, 'law_err_q');   opts.law_err_q   = false; end  % correlated law-error container (formC_state_b.tex 2026-08-27)
     if ~isfield(opts, 'ws_inject');   opts.ws_inject = 0;      end   % [R] TRUE wall offset, plant side only (S11 injection)
     if ~isfield(opts, 'seeds');       opts.seeds       = [];    end
     if ~isfield(opts, 'verbose');     opts.verbose     = false; end
@@ -315,6 +316,8 @@ function out = run_formC_b(opts, test_opts)
     end
     ov.Pf_b_std = (~ov.lock_b) * b_half;
     if ~isfield(ov, 'consider_b'); ov.consider_b = false; end
+    ov.law_err_q   = logical(opts.law_err_q);
+    ov.law_err_std = b_half;                   % envelope sup, independent of the lock
 
     floor_a_seed = local_seed_floor(env_hi - ENV_HI_MARGIN, W0_PLANE, ov.b_init);
     if opts.floor_from_envelope
@@ -344,6 +347,7 @@ function out = run_formC_b(opts, test_opts)
     if opts.y2_on; tag = [tag '_y2on']; else; tag = [tag '_y2off']; end
     if ~opts.par_law;         tag = [tag '_nopar']; end
     if opts.a_cov_scale ~= 1; tag = [tag sprintf('_acov%g', cfg.a_cov)]; end
+    if opts.law_err_q; tag = [tag '_lawq']; end
 
     lastwarn('');
 

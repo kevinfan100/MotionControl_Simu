@@ -308,6 +308,62 @@ $\times 3$ arm while the TOTAL honesty $\sqrt{\text{bias}^{2}+\text{spread}^{2}}
 stays within $[0.3, 1.2]$ in the holds; and the result must not move under
 $a_{\mathrm{cov}} \times 2$ and $\div 2$.
 
+\section*{The law error as process noise --- the correlated container (2026-08-27)}
+
+Consider-$b$ was run before this section was written, and it is why this
+section exists. On the canonical band it moved the trough bias from
+$+22.65\,\%$ to $+10.09\,\%$ (paired $t = -5.0$) and the total honesty from
+$2.87$ to $1.73$, but $\sqrt{P_{44}}$ at the trough reached $0.0087$ against the
+first-order $0.040$: the correlation $P_{45}$ that carries $e_b$ into $P_{44}$
+is consumed by the $y_1$ updates, $P_{45}^{+} = P_{45}^{-} - L_{4,\cdot}(HP^-)_{\cdot 5}$,
+and those are the very updates whose sign is the defect. A one-time correlation
+can be learned away by the wrong information; the Meng injection response with
+consider-$b$ on was unchanged (peak $2.1$ against $2.4$). The container has to
+re-enter every step.
+
+What re-enters is the missing forcing $e_b[k]\,g[k]$ with $g = F_{e,45}$. On a
+monotone command segment $e_b$ is one-signed (measured 2026-08-27: the true
+$b_{\mathrm{true}} - 8/9$ changes sign twice over the whole canonical descent,
+and the accumulated forcing has correlation factor $|\sum e|/\sqrt{\sum e^{2}}
+= 12.7$ there, $59.6$ on the Meng ramp), so within the segment it is an unknown
+constant of magnitude at most $\sqrt{P_{bb}}$ and the accumulated forcing is
+bounded by $\sqrt{P_{bb}}\,|G[k]|$ with $G$ the running sum of $g$. A per-step
+injection whose running sum is $P_{bb}G^{2}$ is $q_{\mathrm{law}} =
+P_{bb}\,g\,(2G_{k-1} + g)$: non-negative because $g$ and $G$ share a sign on the
+segment, proportional to the running correlation $2G/g$ rather than to $g^{2}$,
+zero in a hold, and restarted from zero at every command turning point so an
+oscillation cannot accumulate a bound the truth does not have. Everything in it
+is either the filter's own Jacobian or the command increment; $c(\bw)$ is not
+read.
+
+Its size, from the telescoping identity: at the end of a segment
+$\sqrt{\sum q_{\mathrm{law}}} = \sqrt{P_{bb}}\,|\hat{\ba}_w[k] -
+\hat{\ba}_w[j_0]|/\hat{b}$, i.e. $0.038$ over the canonical descent and $0.026$
+per oscillation half-cycle; per step it is $4\times$ the thermal $Q_{44}$ at
+$\ba = 0.5$ and $11\times$ at $\ba = 0.1$, and exactly zero in the holds. The
+uniform $Q_{44} \times 3$ and $\times 10$ arms of 2026-08-26 injected the same
+order per step on the descent and reached bias $+6.9\,\%$ / $+8.1\,\%$ with
+total honesty $0.82$ / $0.80$; they are this container without its shape.
+
+Declared: the one-signed bound is an upper bound (the true integrated law error
+on the canonical descent is $+0.0085$ against the bound $0.038$, because
+$b_{\mathrm{true}} - 8/9$ crosses zero at $\ba \approx 0.23$); $q_{\mathrm{law}}$
+is a bookkeeping increment and is kept out of the $d\,Q_{44}$ delay term of
+$R_2$, which is $10^{-7}$ of $R_2$ either way; and the segment is defined on the
+COMMAND increment, so the small tracking-error share of $g$ inside a hold is
+counted as zero.
+
+Registered before the run (canonical deep, 8 seeds, arm best with the flag):
+trough bias in $[+5, +10]\,\%$; total honesty in the end hold in $[0.8, 1.5]$;
+per-seed sd $\le 12\,\%$; descent $L_{1,4} \ge +0.07$; on the Meng ramp the
+injected error peaks below $1.5$ and decays with a non-positive $y_1$ ledger;
+$a_{\mathrm{cov}} \times 2$ and $\div 2$ move bias by $< 1$ pp and honesty by
+$< 0.1$; flag off reproduces the fixture and the shallow scenario bit for bit.
+If total honesty comes out below $0.5$ the bound is too loose and the
+sign-carrying container (second reflection coefficient) is next; if the bias
+stays above $12\,\%$ with honesty near one, the container is honest and the
+bias is not the law's.
+
 \section*{Results}
 
 Canonical scenario, 8 house seeds, paired, overall relative gain-error RMS. All
