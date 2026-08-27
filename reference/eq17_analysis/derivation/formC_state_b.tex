@@ -1,4 +1,7 @@
-% STATUS: ACTIVE | SSOT for the state-writing gain law with b ESTIMATED.
+% STATUS: ACTIVE | SSOT for the state-writing gain law with b as a CONSIDER
+%   parameter (2026-08-27, branch test/law-error-budget): b is not updated,
+%   its uncertainty P_bb is carried. Before that date b was ESTIMATED; the
+%   estimating form is the same equations with L_5 free and P_55 shrinking.
 %   Implemented by model/controller/motion_control_law_formC_b.m and
 %   test_script/integration/run_formC_b.m, both converted to this
 %   parameterisation on 2026-08-18 (f7a33d0) and checked against it by an
@@ -92,7 +95,7 @@ $\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2\bigr)$
 \ba_w[k+1]       &= \ba_w[k] + \ba'_{\mathrm{true}}[k]\Bigl[
                     \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k]
                     + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] \\
-b[k+1]           &= b[k]
+b_{\mathrm{true}}[k] &= b_{\mathrm{true}}\bigl(\ba_w[k]\bigr)
 \end{align*}
 
 \begin{align*}
@@ -118,7 +121,7 @@ F_{dw}[k] &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
 \hat{\ba}_w[k+1]       &= \hat{\ba}_w[k]
   + \hat{b}[k]\bigl(1-\hat{\ba}_w[k]\bigr)^{2}
     \Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr] \\
-\hat{b}[k+1]           &= \hat{b}[k]
+\hat{b}[k]             &\equiv \hat{b}[0]
 \end{align*}
 
 \section{Error dynamics}
@@ -139,7 +142,8 @@ e_{\ba_w}[k+1] &= \Bigl[\,1
     + \bigl(1-\hat{\ba}_w\bigr)^{2}
       \bigl(\Delta\bw_d + (1-\lambda_c)\delta\hat{\bw}_3\bigr) e_b[k] \\
   &\qquad + \hat{b}\bigl(1-\hat{\ba}_w\bigr)^{2}\varepsilon_w[k] \\
-e_b[k+1] &= e_b[k]
+e_b[k] &= b_{\mathrm{true}}\bigl(\ba_w[k]\bigr) - \hat{b}[0],
+  \qquad \bigl|e_b[k]\bigr| \le \sqrt{P_{bb}}
 \end{align*}
 
 \begin{equation*}
@@ -198,7 +202,8 @@ H[k] =
 \end{equation*}
 
 \begin{equation*}
-L[k] = P^f H^{\top}\bigl(HP^fH^{\top}+R\bigr)^{-1}
+L[k] = P^f H^{\top}\bigl(HP^fH^{\top}+R\bigr)^{-1},
+\qquad L_{5,\cdot}[k] := 0
 \end{equation*}
 
 \begin{align*}
@@ -222,7 +227,7 @@ q_4 &= -\hat{b}\bigl(1-\hat{\ba}_w\bigr)^{2}q_3 \\
 Q_{33} &= \frac{4k_BT\,a_o}{R}\,\ba_w \\
 Q_{34} = Q_{43} &= -\hat{b}\bigl(1-\hat{\ba}_w\bigr)^{2}Q_{33} \\
 Q_{44} &= \hat{b}^{2}\bigl(1-\hat{\ba}_w\bigr)^{4}Q_{33} \\
-Q_{55} &= 0
+Q_{55} &= 0, \qquad P_{55}[k] \equiv P_{bb}
 \end{align*}
 
 \begin{align*}
@@ -262,6 +267,31 @@ e_{\ba}(\bw)\big|_{\bw_s} &= -\,\ba'(\bw)\,e_{\bw_s}
   \ \propto\ \frac{1}{b\,(\bw-\bw_s)^{2}} \\
 e_{\ba}(\bw)\big|_{b}     &= \frac{e_b}{b^{2}(\bw-\bw_s)}
 \end{align*}
+
+\begin{align*}
+e_b[k+1] - e_b[k] &= b_{\mathrm{true}}\bigl(\ba_w[k+1]\bigr)
+  - b_{\mathrm{true}}\bigl(\ba_w[k]\bigr) \\
+F_{e,55} = 1,\quad q_5 = 0 &\qquad \text{(consider model: the drift above is
+  carried inside } |e_b| \le \sqrt{P_{bb}}\text{, not propagated)}
+\end{align*}
+
+\begin{align*}
+\sum_{j=0}^{k-1} F_e[j]_{45}
+  &= \sum_{j=0}^{k-1}\bigl(1-\hat{\ba}^{+}_w[j]\bigr)^{2}
+     \Bigl[\Delta\bw_d[j] + (1-\lambda_c)\,\delta\hat{\bw}_3[j]\Bigr]
+   = \frac{\hat{\ba}_w[k] - \hat{\ba}_w[0]}{\hat{b}[0]}
+   - \frac{1}{\hat{b}[0]}\sum_{j=0}^{k-1} L_{4,\cdot}[j]\,\nu[j] \\
+P_{45}[k] &\approx P_{45}[0]
+  + \frac{\hat{\ba}_w[k] - \hat{\ba}_w[0]}{\hat{b}[0]}\,P_{bb}
+  = \frac{1-\hat{\ba}_w[k]}{\hat{b}[0]}\,P_{bb} \\
+P_{44}[k] &\approx P_{44}[k]\big|_{\bw_s,\,\mathrm{floor}}
+  + \left[\frac{1-\hat{\ba}_w[k]}{\hat{b}[0]}\right]^{2}P_{bb}
+\end{align*}
+
+(first order: $F_{e,44} \ne 1$, the $F_{e,43}P_{35}$ coupling and the
+measurement updates of $P_{45}$, $P_{44}$ are neglected; the second line is
+$e_{\ba}|_{b} = e_b\,(1-\ba)/b$ of the block above, held at every $k$ instead
+of at $k = 0$ only)
 
 
 

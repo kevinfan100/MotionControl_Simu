@@ -219,6 +219,95 @@ never stated); S4 is titled ``Process model'' but contains only the state vector
 the MA(2) augmentation production runs by default has no representation at all,
 so the file is behind production in state dimension as well.
 
+\section*{Consider $b$ --- the law's shape error carried, not estimated (2026-08-27)}
+
+What the main file changed on 2026-08-27, and why. Up to that date $b$ was a
+state: $b[k+1] = b[k]$, $L_5$ free, $P_{55}$ shrinking. Three facts, all
+measured on the deep band, say that construction cannot do the job it was
+given.
+
+First, $b_{\mathrm{true}}$ is not a constant along the path. From the
+two-sphere series, $b_{\mathrm{true}}(\ba) - 8/9$ is $0$ in the far field,
+$-0.022$ at $\ba = 0.51$, $+0.039$ at the trough $\bw = 1.10$ and $+0.111$ at
+contact --- it crosses zero at $\ba \approx 0.23$. The state $b$ can hold ONE
+value; the truth it stands for is a curve. Second, $b$ is barely observable:
+both of its Jacobian columns ($F_{e,45}$ and $H_{25}$) are proportional to the
+displacement, both vanish in a hold, and the CRLB over the whole scenario only
+matches the prior (observability ledger, 2026-08-17). Letting it move is
+letting an unobservable parameter be dragged by whatever innovation arrives:
+widening its prior put $\hat{b}$ $300\sigma$ from the truth while $P_{55}$
+shrank $512\times$ (2026-08-20). Third, and decisive: locking $b$ at $8/9$
+versus estimating it changes the trough answer by $+0.10 \pm 0.14\,\%$
+(8 seeds, paired, 2026-08-26). Estimating $b$ buys nothing, and while it is
+being estimated $P_{55}$ shrinks by a third, so the ONE thing the $b$ slot could
+still contribute --- its uncertainty --- is being thrown away.
+
+That uncertainty is exactly what the filter is missing. The injection-response
+test (2026-08-26, \texttt{run\_inject\_response.m}) put a known $\pm 5\,\%$
+error into $\hat{\ba}_w$ mid-descent and watched it grow to $2.4\times$ before
+$y_2$ pulled it back near the wall. Decomposing the $y_1$ leg showed the growth
+comes through the innovation, and three discriminating arms located its sign in
+the competition between $F_{e,34}P_{44}$ (a gain error moves the particle;
+correcting) and $Q_{34} = -\ba' Q_{33}$ (a thermal kick moves particle and gain
+together; not correcting): with $P_{44}$ built from $Q_{44} = \ba'^{2}Q_{33}$
+alone the second term wins wherever the applied force is small and $\ba'$ is
+large, and a control-induced lag is read as a thermal kick. $P_{44}$ carries
+the thermal wander of the gain and nothing else; the law's own error has no
+container. Inflating $Q_{44}$ uniformly moved the canonical trough bias from
+$+22.65\,\%$ to $+6.89\,\%$ ($t = -5.1$) and proved the lever, but also
+inflated $P_{44}$ in the holds where the law is not integrating at all.
+
+The container that has the right shape is the one the file already owns. The
+missing forcing on row 4 is $e_b[k]\,(1-\hat{\ba}_w)^{2}[\Delta\bw_d +
+(1-\lambda_c)\delta\hat{\bw}_3]$ with $e_b[k] = b_{\mathrm{true}}(\ba_w[k]) -
+\hat{b}[0]$, bounded by $\sqrt{P_{bb}}$, and $F_{e,45}$ is precisely its
+coefficient. Keeping $P_{55} \equiv P_{bb}$ while zeroing $L_5$ --- a
+Schmidt--Kalman consider parameter --- makes the covariance propagation carry
+$e_b$'s effect on $\ba_w$ every step without pretending to learn $e_b$. The
+identity closing the Seed-and-prior section is the estimator's own recursion
+read backwards: $(1-\hat{\ba}_w)^{2}[\cdots] = \Delta\hat{\ba}_w/\hat{b}$ between
+one posterior and the next prior, so the sum of $F_{e,45}$ telescopes to the
+gain integrated so far over $\hat{b}$, minus the measurement corrections
+$\sum L_{4,\cdot}\nu$ that the recursion does not see (exact, both terms
+written). Added to the seed $P_{45}[0] = (1-\hat{\ba}_w[0])P_{bb}/\hat{b}$ that
+the file sets eight lines earlier, the first-order cross term is
+$(1-\hat{\ba}_w[k])P_{bb}/\hat{b}$ and the induced $P_{44}$ term is
+$[(1-\hat{\ba}_w[k])/\hat{b}]^{2}P_{bb}$: the static sensitivity
+$e_{\ba}|_b = e_b(1-\ba)/b$, which the estimating form applied at $k = 0$ and
+then let shrink, held at every $k$. At the canonical trough that is $0.040$
+against a filter $\sqrt{P_{44}}$ of $0.0073$; in the far field $0.0022$. It is
+a function of the current estimate only, so it unwinds on the way back up, is
+identical at the two ends of a closed oscillation cycle, is constant in a hold,
+needs no accumulator state, and reads nothing of $c(\bw)$ at run time. It is an
+upper bound: $b_{\mathrm{true}} - 8/9$ changes sign along the descent and
+partly cancels (the true integrated law error on the canonical descent is
+$+0.0085$, a quarter of the bound), so the honesty ratio it will produce is
+expected below one. A container that carries the sign of $b_{\mathrm{true}} -
+8/9$ would need the second coefficient of the reflection series; that is a
+separate decision and is not made here.
+
+Three things declared. The $\approx$ in that block neglects $F_{e,44} \ne 1$,
+the $F_{e,43}P_{35}$ coupling and the measurement updates of $P_{45}$ and
+$P_{44}$, so the closed form is the first-order shape, not the value the filter
+carries. $P_{55}$ itself is never updated because $L_5 = 0$, which is what
+makes $\equiv P_{bb}$ exact. And row 5 of $F_e$ with $q_5 = 0$ is the CONSIDER
+MODEL, not the truth: the true $e_b[k]$ drifts along the path by
+$b_{\mathrm{true}}(\ba_w[k+1]) - b_{\mathrm{true}}(\ba_w[k])$, and that drift is
+not propagated --- it is covered by the bound $|e_b| \le \sqrt{P_{bb}}$, which
+is why $P_{bb}$ must be the supremum over the envelope and not the width of a
+constant. (Independent review, 2026-08-27: items 1--3, 6, 8 confirmed; the
+seed term and the ``$\supseteq$'' were its two corrections.)
+
+What must be shown before this replaces the estimating form as production:
+with the consider flag on and the hooks off, the seed-7 fixture must still
+reproduce when the flag is off; on the Meng ramp the injected error must decay
+instead of growing and $L_{1,4}$ must turn non-negative on the crossings; on the
+canonical band the trough bias must fall to the neighbourhood of the uniform
+$\times 3$ arm while the TOTAL honesty $\sqrt{\text{bias}^{2}+\text{spread}^{2}}
+/ \sqrt{P_{44}}$ --- not spread alone, since the forcing is deterministic ---
+stays within $[0.3, 1.2]$ in the holds; and the result must not move under
+$a_{\mathrm{cov}} \times 2$ and $\div 2$.
+
 \section*{Results}
 
 Canonical scenario, 8 house seeds, paired, overall relative gain-error RMS. All
