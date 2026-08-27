@@ -123,3 +123,15 @@ moving, then in the hold q_law = 0, P44 decays to 0.0098 while the across-seed s
 Compared with the uniform x3 arm (bias 6.9 %, honesty 0.82, sd 12 %): the shaped container wins
 nothing on the target metrics -- the hold, where it injects zero, is where honesty is measured.
 Note: Q44_out is logged BEFORE the q_law injection point, so the dotted sqrtQ44 curves coincide.
+
+--- (b) hold discriminator, 2026-08-27 (check_hold_y1_gain.m) ---
+K_opt = Cov(e_prior, innov1)/Var(innov1) in the end hold, across seeds:
+  production 100 seeds: -0.5615 +- 0.0096  vs K1(4) used -0.4958  (ratio 1.13, corr -0.18)
+  production   8 seeds: -0.555  vs -0.491 (1.13)      best+lawq 8 seeds: -0.545 vs -0.484 (1.13)
+=> the hold K1(4) is DATA-SUPPORTED (slightly under, not over): not noise injection, not inverted.
+y1 leg vs true gain change (50 ms blocks): slope -0.06 (100 seeds), corr -0.02 => it does NOT track
+the thermal wander of a_true; the correlation it uses is the closed loop's response to kicks.
+Prior P44 honesty in the hold (spread only): production 0.0088/0.0080 = 1.11 ; lawq 0.0140/0.0098 = 1.43
+=> with the container, the hold updates reduce P44 faster than the real error shrinks: variance that
+came from a DETERMINISTIC law error is being "learned away" at the white-noise rate (same lesson as
+consider-b, now inside the hold). Bias in hold: production -0.0173 (a_hat high 19.7 %), lawq -0.0079 (9 %).
