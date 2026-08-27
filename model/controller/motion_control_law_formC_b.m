@@ -298,6 +298,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent lambda_c d_delay Ts kappa_T R_radius a_o a_disp r22_delay_scale
     persistent a_inject_step a_inject_frac a_inject_axis   % diagnostic hook, default off
     persistent fe43_off q34_off q44_scale                   % diagnostic flags, default off
+    persistent consider_b                                    % b as a consider parameter (formC_state_b.tex 2026-08-27)
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_bar amlpf_var_factor
     persistent t_warmup_kf h_bar_safe sigma2_n_nd
     persistent enable_wall w_hat_n pz_wall
@@ -631,6 +632,16 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         lock_state_idx_ax = cell(3, 1);
         for ax = 1:3
             lock_state_idx_ax{ax} = 4 + find(lock_mask_ax(:, ax));   % 5..7
+        end
+        % CONSIDER b (formC_state_b.tex, 2026-08-27): slot 5 is NOT locked --
+        % its columns F_e(4,5), H(2,5) stay live and P55 = P_bb is carried --
+        % but its Kalman-gain rows are zeroed, so b_hat never moves and P55 is
+        % never reduced (Schmidt-Kalman). Requires lock_b = false and a nonzero
+        % Pf_b_std. Default false => bit-identical.
+        consider_b = logical(get_field_default(ctrl_const, 'consider_b', false));
+        if consider_b && lock_da
+            error('motion_control_law_formC_b:consider_b', ...
+                  'consider_b needs lock_b = false (slot 5 must stay live in P).');
         end
 
         % --- 0D. Validity clamps (numerical guards only, not tuning) ---
@@ -1256,6 +1267,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         K1 = (P_pred * H1') / S1;
         if freeze_gain || y1_gain_off; K1(4:7) = 0; end
         K1(lock_state_idx_ax{ax}) = 0;
+        if consider_b; K1(5) = 0; end            % consider: no update of b, P55 kept
         innov1 = delta_w_m(ax) - H1 * x_pred;
         innov_y1_v(ax) = innov1;          % logging only (whiteness diagnostic)
         x_upd  = x_pred + K1 * innov1;
@@ -1320,6 +1332,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             K2  = (P_upd * H2') / S2;
             if freeze_gain; K2(4:7) = 0; end
             K2(lock_state_idx_ax{ax}) = 0;
+            if consider_b; K2(5) = 0; end        % consider: no update of b, P55 kept
             innov2 = y2(ax) - y2_pred;
             x_upd  = x_upd + K2 * innov2;
             ImKH2  = I7 - K2 * H2;

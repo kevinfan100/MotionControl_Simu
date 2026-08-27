@@ -174,9 +174,9 @@ function out = run_formC_b(opts, test_opts)
     HOLD_SETTLE_S   = 0.3;   % skip osc->hold readout transient
                              % (~24 EWMA taus of a_cov = 0.05 at 1600 Hz)
 
-    assert(any(strcmpi(opts.arm, {'b1', 'bmid', 'best', 'b98', 'bfree1'})), ...
+    assert(any(strcmpi(opts.arm, {'b1', 'bmid', 'best', 'b98', 'bfree1', 'bconsider'})), ...
            'run_formC_b:badArm', ...
-           'opts.arm must be b1 | bmid | best | b98 | bfree1.');
+           'opts.arm must be b1 | bmid | best | b98 | bfree1 | bconsider.');
 
     seeds = opts.seeds;
     if isempty(seeds); seeds = SEEDS_DEFAULT; end
@@ -302,10 +302,19 @@ function out = run_formC_b(opts, test_opts)
             % collapse is not what stops it -- b simply receives no usable
             % information over the whole run.
             ov.lock_b = false;  ov.b_init = 1;
+        case 'bconsider'
+            % CONSIDER b (formC_state_b.tex, 2026-08-27): same seed and prior
+            % width as 'best', but b is never updated (K rows zeroed) and P55 is
+            % never reduced. The b uncertainty is carried into P44 through
+            % F_e(4,5) every step instead of being spent on an unobservable
+            % estimate. Compare against 'best' AND 'bmid': the three differ only
+            % in what happens to slot 5.
+            ov.lock_b = false;  ov.b_init = b_mid;  ov.consider_b = true;
         otherwise
-            error('run_formC_b:arm', 'opts.arm must be ''b1'' | ''bmid'' | ''best''.');
+            error('run_formC_b:arm', 'opts.arm must be ''b1'' | ''bmid'' | ''best'' | ''bconsider''.');
     end
     ov.Pf_b_std = (~ov.lock_b) * b_half;
+    if ~isfield(ov, 'consider_b'); ov.consider_b = false; end
 
     floor_a_seed = local_seed_floor(env_hi - ENV_HI_MARGIN, W0_PLANE, ov.b_init);
     if opts.floor_from_envelope
@@ -747,6 +756,8 @@ function s = local_arm_words(arm)
 %LOCAL_ARM_WORDS  One-line description of the arm for the console header.
     if strcmpi(arm, 'base')
         s = 'derivation (a): 4 states, no free parameter';
+    elseif strcmpi(arm, 'bconsider')
+        s = 'consider b: K_5 = 0, P55 = P_bb carried (formC_state_b.tex 2026-08-27)';
     else
         s = 'derivation (b): 5 states, additive da, Q55 = 0';
     end
