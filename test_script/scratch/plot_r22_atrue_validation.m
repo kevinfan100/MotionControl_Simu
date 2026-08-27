@@ -4,7 +4,14 @@
 root = '/Users/kevin/Code/MotionControl_Simu-motion-test/';
 T = load([root 'test_results/am_r22_deep/truea_100.mat']);
 B = load([root 'test_results/formC_cdpmr_var_check/raw_seeds.mat']);
-K = T.K; a_nom = T.a_nom; R = B.S400.K.R; a_cov = K.a_cov; ab = K.IF_abc(:);
+K = T.K; a_nom = T.a_nom; R = B.S400.K.R; a_cov = K.a_cov;
+% IF_abc rebuilt from the CURRENT builder, not the copy saved in the .mat
+% (2026-08-27): abs = s-weighted (EWMA-output IF_eff, the pre-fix model),
+% abw = s = 1 (whitened IF_white, the fix). Both plotted in panel (b).
+Kc = build_eq17_6state_constants(struct('lambda_c', K.lambda_c, 'sigma2_n_s', B.S400.K.sigma2_n_s(:), ...
+        'kBT', B.S400.K.kBT, 'a_cov', a_cov, 'a_pd', K.a_pd, 'd', K.d));
+abs_ = Kc.IF_abc(:); abw = Kc.IF_abc_white(:); ab = abw;
+fprintf('IF_abc (s=1-a_cov) = %s\nIF_abc_white (s=1) = %s\n', mat2str(abs_', 6), mat2str(abw', 6));
 kT = 4*(B.S400.K.kBT/R)*B.S400.K.a_o;
 axl = 'xyz'; COL = [0.85 0.33 0.10; 0.47 0.67 0.19; 0 0.2 0.9];
 
@@ -18,11 +25,14 @@ for ax = 1:3
     AT= squeeze(T.A_tr(:,ax,:))/a_nom;  AT=AT(2:end,:);
     Y = A(2:end,:) - (1-a_cov)*A(1:end-1,:);
     am = mean(AT,2); am2 = am(2:end); n = size(A,2);
-    ife = @(a) 1 + 2*(((kT*a).^2*ab(1) + 2*(kT*a)*s2n*ab(2) + s2n^2*ab(3)) ./ ...
+    ifg = @(a, v) 1 + 2*(((kT*a).^2*v(1) + 2*(kT*a)*s2n*v(2) + s2n^2*v(3)) ./ ...
                       ((K.C_dpmr*kT*a + K.C_n*s2n).^2));
+    ife = @(a) ifg(a, abw);          % model = IF_white (s = 1), the fix
+    ifs = @(a) ifg(a, abs_);         % pre-fix model = IF_eff (s = 1-a_cov)
     ed = linspace(min(am), max(am), 13);
     c1=[]; r1=[]; e1=[];   % (a) per-sample Var(y2)/formula
     c2=[]; r2=[]; e2=[];   % (b) IF: measured/model
+    r2s=[];                % (b) same measurement over the pre-fix model IF_eff(s)
     for b = 1:12
         i2 = am2 >= ed(b) & am2 < ed(b+1);
         if sum(i2) < 30; continue; end
@@ -42,13 +52,18 @@ for ax = 1:3
         cc = mean(am2(in));
         IFm = local_acf_int(Y(in,:), 40);
         IFf = ife(cc);
-        c2(end+1)=cc; r2(end+1)=IFm/IFf; %#ok<AGROW>
+        c2(end+1)=cc; r2(end+1)=IFm/IFf; r2s(end+1)=IFm/ifs(cc); %#ok<AGROW>
+        fprintf('axis %c %-8s a=%.3f  IF meas %.3f  IF_eff(s) %.3f  IF_white %.3f  meas/s %.3f  meas/white %.3f\n', ...
+                axl(ax), Wd{i,2}, cc, IFm, ifs(cc), IFf, IFm/ifs(cc), IFm/IFf);
     end
+    V3(ax) = struct('c', c2, 'r_white', r2, 'r_s', r2s, 'win', {Wd(:,2)'}); %#ok<AGROW,NASGU>
     nexttile(1); hold on;
     h = errorbar(c1, r1, e1, 'o-', 'Color', COL(ax,:), 'MarkerFaceColor', COL(ax,:), ...
         'MarkerSize',6,'LineWidth',1.6,'CapSize',3, 'DisplayName', sprintf('axis %c', axl(ax)));
     H1(end+1) = h; %#ok<AGROW>
     nexttile(2); hold on;
+    plot(c2, r2s, 'o--', 'Color', COL(ax,:), 'MarkerSize',8,'LineWidth',1.2, ...
+        'HandleVisibility','off');                       % pre-fix model IF_eff(s), hollow
     h2 = plot(c2, r2, 'o-', 'Color', COL(ax,:), 'MarkerFaceColor', COL(ax,:), ...
         'MarkerSize',8,'LineWidth',1.8, 'DisplayName', sprintf('axis %c', axl(ax)));
     H2(end+1) = h2; %#ok<AGROW>
@@ -64,10 +79,10 @@ set(gca,'FontSize',15,'FontWeight','bold','LineWidth',1.2,'Box','on'); grid off;
 nexttile(2);
 yline(1,'-','Color',[0.4 0.4 0.4],'LineWidth',1.2,'HandleVisibility','off');
 xlabel('a_{true} (by window: descent/osc/hold)','FontSize',15,'FontWeight','bold');
-ylabel('IF measured / IF_{eff} model','FontSize',15,'FontWeight','bold');
-title('(b) correlation penalty IF_{eff}','FontSize',13);
+ylabel('IF measured / IF model','FontSize',15,'FontWeight','bold');
+title('(b) filled: IF_{white} (s=1, fix);  hollow: IF_{eff} (s=1-a_{cov}, pre-fix)','FontSize',12);
 legend(H2,'Location','northoutside','FontSize',12,'FontWeight','bold','Box','on','NumColumns',3);
-set(gca,'FontSize',15,'FontWeight','bold','LineWidth',1.2,'Box','on'); grid off; ylim([0.95 1.25]);
+set(gca,'FontSize',15,'FontWeight','bold','LineWidth',1.2,'Box','on'); grid off; ylim([0.85 1.25]);
 
 exportgraphics(f, [root 'test_results/am_r22_deep/fig11_r22_atrue_validation.png'], 'Resolution', 150);
 close(f);

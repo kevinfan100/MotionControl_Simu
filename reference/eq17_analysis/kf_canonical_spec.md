@@ -207,6 +207,12 @@ R22 = K_var·IF_eff·(â_x + ξ)² + Σ_{i=1}^d Var(δa_ram[k−i])            (
    IF_eff = 1 + 2·(s_xT²·A + 2·s_xT·s_nx·B + s_nx²·C)/(C_dpmr·s_xT + C_n·s_nx)²
             s_xT = 4kBT·â_x,  s_nx = σ²_n_x,  [A;B;C] = IF_abc (offline)   (R22_derivation S4-S6)
    ξ      = (C_n/C_dpmr)·σ²_n_x/(4kBT)                                (per-axis sensor floor)
+   WHITENED readout (y2_whiten = true; formB/formC/5state family, 2026-08-27):
+   y_2 = a_cov·u[k] is a single sample, so the colour factor is the long-run
+   IF_white = IF_eff|_{s=1}  ([A;B;C] = IF_abc_white), and
+   R22 = 2·a_cov²·IF_white·(â_x + ξ)² + a_cov²·d·Q44   (R22_derivation Remark eq:IF-white).
+   The s = 1−a_cov form above is Var(σ̂²), the EWMA OUTPUT: correct for the raw
+   readout (this 6-state controller), wrong by IF_white/IF_eff = 1.11 for a whitened one.
 
 3-guard (OR → R22 = 1e10, drop y_2):
    G1: t < t_warmup_kf            G2: σ̂²_δxr ≤ C_n·σ²_n_x (NaN)       G3: h̄ < h_bar_safe (wall)
@@ -229,7 +235,8 @@ C_n (full a_pd)     = ...                                                       
    λc=0.7, a_pd=0.05 → 1.109   (simplification = 2/(1+λc) = 1.176; NOT used)
 K_var = 2·a_cov/(2−a_cov)                                                       L117
 var_da_increment_factor = 2/(1+λc)                                             L133
-IF_abc = [A;B;C]  (s-weighted ACF sums, exact per-step IF_eff)                  compute_if_abc L197-229
+IF_abc = [A;B;C]  (s = 1−a_cov ACF sums, EWMA-output IF_eff)                    compute_if_abc (local fn, s argument)
+IF_abc_white      (same sums at s = 1, whitened readout IF_white; 2026-08-27)   compute_if_abc(lc, apd, 1)
 xi_per_axis = (C_n/C_dpmr)·σ²_n_s/(4kBT)                                        L159
 ```
 IIR (N1, separate): a_pd = mean EWMA pole (δx̄_m); a_cov = variance EWMA pole (σ̂²_δxr).

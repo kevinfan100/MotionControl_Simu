@@ -137,7 +137,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
 %   R = diag(R1, R2), R2 at the ESTIMATE a_bar_hat (never the raw readout):
 %       R1 = sigma2_nw  (units of R^2)
 %       R2 = K_var*IF_eff*(a_bar + xi_bar)^2 + d*Q44
-%   with xi_bar = (C_n/C_dpmr)*sigma2_nw/kappa_T.
+%   with xi_bar = (C_n/C_dpmr)*sigma2_nw/kappa_T. Under y2_whiten (default)
+%   IF_eff is built from IF_abc_white (s = 1 sums, 2026-08-27): the whitened
+%   increment is a single sample, so the colour penalty is the long-run
+%   factor, and R2 = 2*a_cov^2*IF_white*(a_bar + xi_bar)^2 + a_cov^2*d*Q44.
 %
 %   MA(2) AUGMENTATION (ctrl_const.ma2_aug, 2026-08-01). The Q33 container
 %   above models eps_w as WHITE with the full MA(2) variance, which
@@ -387,6 +390,15 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
 
         y2_whiten    = logical(get_field_default(ctrl_const, 'y2_whiten', true));
         fe_row4_full = logical(get_field_default(ctrl_const, 'fe_row4_full', true));
+        % Colour factor matches the readout object (2026-08-27): the whitened
+        % increment y2 = a_cov*u[k] is a single sample, so its correlation
+        % penalty is the long-run IF_white (s = 1 sums), not the EWMA-output
+        % IF_eff (s = 1-a_cov). The raw branch keeps IF_abc. Selected by the
+        % existing flag, no new knob; falls back to IF_abc if the builder
+        % predates the field.
+        if y2_whiten && isfield(ctrl_const, 'IF_abc_white')
+            IF_abc = ctrl_const.IF_abc_white(:);
+        end
 
         % Observability capture (model/diag/obs_dump.m). OFF by default and the
         % only cost when off is the persistent logical tested at the call site,

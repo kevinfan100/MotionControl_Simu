@@ -34,7 +34,8 @@ function out = run_inject_response(seeds, opts)
 %
 % NEGATIVE CONTROLS, run first:
 %   N1  hook off on the canonical scenario, seed 7: a_bar_hat_z[end] must equal
-%       the fixture 0.107505 (the value the 2026-08-24 smoke test pinned).
+%       the fixture 0.108275 (2026-08-27, R2 colour factor IF(1); the
+%       2026-08-24 smoke-test value under IF(s) was 0.107505).
 %   N2  hook firing with frac = 0 on the Meng ramp, seed 1: bit-identical to
 %       hook off.
 
@@ -76,8 +77,8 @@ function out = run_inject_response(seeds, opts)
         fprintf('\n[N1] canonical deep, seed 7, hook off\n');
         c7 = run_formC_b(struct('arm', 'best', 'ap_src', 'post', 'seeds', 7, 'verbose', false));
         v = c7.runs{1}.a_bar_hat_out(end, 3);
-        fprintf('[N1] a_bar_hat_z[end] = %.6f  (fixture 0.107505)  %s\n', v, ...
-                local_pf(abs(v - 0.107505) < 5e-7));
+        fprintf('[N1] a_bar_hat_z[end] = %.6f  (fixture 0.108275)  %s\n', v, ...
+                local_pf(abs(v - 0.108275) < 5e-7));
         fprintf('[N2] Meng ramp, seed %d, hook off vs firing with frac 0\n', seeds(1));
         b0 = base; b0.seeds = seeds(1);
         b1 = b0;   b1.ctrl_const_override = mk(k_inj, 0);
