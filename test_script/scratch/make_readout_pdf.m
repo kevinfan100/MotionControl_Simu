@@ -14,14 +14,26 @@ function make_readout_pdf(files, outfile)
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
     od = fullfile(root, 'test_results', 'apd_acov_meng');
     if nargin < 1 || isempty(files)
-        % Page order of record (2026-08-26): chain -> zoom on the t ~ 0.97 s
-        % burst of step 4 (the EWMA recursion on data points) -> step-5
-        % histogram -> two-arm chain -> house comparison page (seed 7) ->
-        % y2 ledger. (arms_performance.png was page 6 for one build and
-        % dropped again the same day; pass it in `files` to include it.)
+        % Page order of record (2026-08-27): chain -> zoom on the t ~ 0.97 s
+        % burst of step 4 -> step-5 histogram -> two-arm chain -> house
+        % comparison page + l*e ledger for seed 7 -> the same two pages for
+        % seed 11 -> Var(a_m) vs formula, both arms, N = 100 (house layout)
+        % -> pages 10-13: the same house + ledger pages for seeds 7 and 11 on
+        % the canonical deep 1 Hz trajectory (4.8 s), pair_both_arm_1hz.mat
+        % -> pages 14-17: Meng 10 s again with the TRUE-b arm (run_formC_b
+        % opts.b_true: the law reads b_true(w_bar), slot 5 locked), seeds 7/11,
+        % pair_both_arm_btrue.mat.
+        % Pages 5-8 were regenerated after the R2 colour-factor fix (1a70599);
+        % pages 1-4 predate it (readout chain only, no R2 in it).
         files = {'dhm_to_ahm.png', 'ewma_burst_zoom.png', 'hist_step5_t1_4.png', ...
-                 'dhm_to_ahm_arms_both.png', 'arms_pair_s007.png', ...
-                 'y2_contribution.png'};
+                 'dhm_to_ahm_arms_both.png', ...
+                 'arms_pair_s007.png', 'y2_contribution.png', ...
+                 'arms_pair_s011.png', 'y2_contribution_s011.png', ...
+                 'var_am_binned_arms.png', ...
+                 'arms_pair_s007_1hz.png', 'y2_contribution_1hz_s007.png', ...
+                 'arms_pair_s011_1hz.png', 'y2_contribution_1hz_s011.png', ...
+                 'arms_pair_s007_btrue.png', 'y2_contribution_btrue_s007.png', ...
+                 'arms_pair_s011_btrue.png', 'y2_contribution_btrue_s011.png'};
     end
     if nargin < 2 || isempty(outfile)
         outfile = fullfile(od, 'readout_chain_record.pdf');

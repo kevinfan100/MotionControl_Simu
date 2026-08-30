@@ -25,10 +25,11 @@
 %   The two disagree on purpose: the tuned arm has y2 working HARDER (share
 %   0.098 -> 0.145) yet pushing a-hat LESS (+0.0313 -> +0.0165), because most
 %   of y2's corrections are noise that cancels. Effort is not effect.
-function out = plot_y2_contribution(ARMS, seed_idx, ax)
+function out = plot_y2_contribution(ARMS, seed_idx, ax, tag)
 
     if nargin < 2 || isempty(seed_idx); seed_idx = 1; end
     if nargin < 3 || isempty(ax);       ax = 3;       end
+    if nargin < 4;                      tag = '';     end   % file-name suffix
     W = 400;                                        % 0.25 s at 1600 Hz
     nA = size(ARMS,1);  d = cell(1,nA);
     for c = 1:nA
@@ -87,7 +88,7 @@ function out = plot_y2_contribution(ARMS, seed_idx, ax)
                 'FontSize',LFS,'FontWeight','bold','Box','on');
             ylabel(a,'e_{ah} share','FontSize',FS,'FontWeight','bold');
         end
-        ylim(a,[0 0.5]);
+        ylim(a,[0 max(0.5, 1.05*max(cellfun(@(q) max(q.sh(q.t>0.5)), d)))]);   % 0.5 unless the share exceeds it (1 Hz descent does)
         xlabel(a,'time  [s]','FontSize',FS,'FontWeight','bold');
     end
     for row=1:2
@@ -100,7 +101,7 @@ function out = plot_y2_contribution(ARMS, seed_idx, ax)
         end
     end
     here=fileparts(mfilename('fullpath')); root=fileparts(fileparts(here));
-    fn=fullfile(root,'test_results','apd_acov_meng','y2_contribution.png');
+    fn=fullfile(root,'test_results','apd_acov_meng',sprintf('y2_contribution%s.png',tag));
     exportgraphics(f,fn,'Resolution',150); close(f);
     fprintf('figure -> %s\n', fn);
     out=d;

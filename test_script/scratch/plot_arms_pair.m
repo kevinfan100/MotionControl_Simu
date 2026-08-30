@@ -24,11 +24,12 @@
 %
 %   a_m is r.a_xm_out(:,ax)/ad with ad = a_hat_out(1,ax)/a_bar_hat_out(1,ax),
 %   byte-identical to the house formula (checked).
-function out = plot_arms_pair(ARMS, seed_idx, ax, tlim)
+function out = plot_arms_pair(ARMS, seed_idx, ax, tlim, tag)
 
     if nargin < 2 || isempty(seed_idx); seed_idx = 1; end
     if nargin < 3 || isempty(ax);       ax = 3;       end
     if nargin < 4;                      tlim = [];    end
+    if nargin < 5;                      tag  = '';    end   % file-name suffix
 
     pc = physical_constants();
     nA = size(ARMS,1);  d = cell(1,nA);
@@ -57,12 +58,12 @@ function out = plot_arms_pair(ARMS, seed_idx, ax, tlim)
     fprintf('  b_hat[end] : ');  for c=1:nA; fprintf('%.5f  ', d{c}.bH(end)); end
     fprintf(' | b_true[end] %.5f\n', d{1}.bT(end));
 
-    local_page(d, ARMS(:,2), ARMS{1,1}.seeds(seed_idx), tlim);
+    local_page(d, ARMS(:,2), ARMS{1,1}.seeds(seed_idx), tlim, tag);
     out = d;
 end
 
 % ---------------------------------------------------------------------
-function local_page(d, NAME, seed, tlim)
+function local_page(d, NAME, seed, tlim, tag)
     COL_TRUE=[0.8 0 0]; COL_HAT=[0 0.2 0.9]; COL_MEAS=[0.45 0.72 0.95];
     BANDC=[0.45 0.55 0.95];
     FS=18; LFS=13; AXLW=2.0; LW=2.0;  nA=numel(d);
@@ -114,7 +115,7 @@ function local_page(d, NAME, seed, tlim)
         end
     end
     here=fileparts(mfilename('fullpath')); root=fileparts(fileparts(here));
-    fn=fullfile(root,'test_results','apd_acov_meng',sprintf('arms_pair_s%03d.png',seed));
+    fn=fullfile(root,'test_results','apd_acov_meng',sprintf('arms_pair_s%03d%s.png',seed,tag));
     exportgraphics(f,fn,'Resolution',150); close(f);
     fprintf('figure -> %s\n', fn);
 end
