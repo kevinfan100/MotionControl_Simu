@@ -55,7 +55,8 @@ end
 function [bx,by,be] = local_arm(S, ax, lc, nbin, row)
     K = S.K; ns = numel(S.seeds); N = numel(S.t);
     kap = 4*(K.kBT/K.R)*K.a_o;  sg = K.sigma2_n_s(ax)/K.R^2;
-    ab = squeeze(S.a_true_out(:,ax,1))/K.a_nom;
+    % ensemble-mean a -- see check_formC_var_identity.m for why not seed 1
+    ab = mean(squeeze(S.a_true_out(:,ax,1:ns)),2)/K.a_nom;
     if row == 1
         X = squeeze(S.p_true_out(:,ax,1:ns));
         C  = 2 + 1/(1-lc^2);         Cn = (1-lc)/(1+lc);
