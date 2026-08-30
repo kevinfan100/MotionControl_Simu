@@ -11,7 +11,7 @@
 %   re-indexing. Mathematically the filter is the 5-state of the tex
 %   (derivation (b)); with lock_da = true it is the 4-state BASELINE
 %   (derivation (a)) exactly -- same file, one flag.
-function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override, ~, ap_known)
+function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override, ~, ap_known, b_true)
 %MOTION_CONTROL_LAW_FORMC_DIST  Per-axis EKF eq17 controller whose gain slope
 %   is a parameter-free function of the gain state, with an ADDITIVE constant
 %   disturbance in the gain state equation (formC_state_dist.tex)
@@ -254,6 +254,22 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                'motion_control_law_formC_b:apKnown', 'ap_known must be a finite 3x1.');
     end
     has_ap_known = ~isempty(ap_known);
+    % b_true (3x1, optional): TRUE-b ARM (2026-08-27). Per axis, a positive
+    % entry replaces the b the LAW and its Jacobians read (b_hat_i) with the
+    % true b(w_bar) of the plant at the particle; zero entries leave that axis
+    % alone. Slot 5 is expected to be locked by the driver (ctrl_const.lock_b)
+    % so the inert state never drifts. Unlike ap_known this swaps b ONLY --
+    % a_bar stays the estimate, so the arm isolates "b known" from "slope
+    % known". diag.b_hat reports the b the law used. Diagnostic only; absent
+    % or empty = production, bit-identical.
+    if nargin < 9 || isempty(b_true)
+        b_true = [];
+    else
+        b_true = b_true(:);
+        assert(numel(b_true) == 3 && all(isfinite(b_true)) && all(b_true >= 0), ...
+               'motion_control_law_formC_b:bTrue', 'b_true must be a finite non-negative 3x1.');
+    end
+    has_b_true = ~isempty(b_true);
     has_da_known = false;   % no additive disturbance in this writing
     if nargin < 6
         a_ctrl_override = [];
@@ -1047,6 +1063,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % estimate move, which is a silent failure: the run completes and the
         % numbers look plausible.
         b_hat_i = min(max(x_curr(5), b_floor), b_ceil);
+        if has_b_true && b_true(ax) > 0
+            b_hat_i = b_true(ax);          % TRUE-b ARM: the law reads the plant's b
+        end
 
         % --- Gain rate and Jacobians from the STATE (tex S1/S2):
         %       a_bar'      = b (1 - a_bar)^2
@@ -1460,6 +1479,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         diag.P_a_nd         = P_a_v;                  % [-] (a_bar^2 units)
         diag.P_dx           = P_dx_v * R_radius^2;    % [um^2]
         diag.x_D_hat        = zeros(3, 1);
+        if has_b_true
+            b_post(b_true > 0) = b_true(b_true > 0);   % report the b the law used
+        end
         diag.b_hat          = b_post;
         diag.p_hat          = p_post;                 % REAL p (not the sibling alias)
         diag.ws_hat         = ws_post;

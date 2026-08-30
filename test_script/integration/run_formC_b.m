@@ -133,6 +133,9 @@ function out = run_formC_b(opts, test_opts)
     % state). Separates "the argument is known badly" from "the argument IS the
     % state". Units: absolute a_bar. Implies the true-slope path.
     if ~isfield(opts, 'ap_law_bias'); opts.ap_law_bias = NaN; end
+    if ~isfield(opts, 'b_true');      opts.b_true      = false; end  % TRUE-b ARM (law reads b_true(w_bar), slot 5 locked)
+    if ~isfield(opts, 'ap_known_at'); opts.ap_known_at = 'true'; end
+    if ~isfield(opts, 'b_true_at');   opts.b_true_at   = 'true'; end  % TRUE-b ARM evaluation point: 'true' | 'cmd' (same meaning as ap_known_at)  % TRUE-SLOPE ARM evaluation point: 'true' = particle's true height (prev step) | 'cmd' = commanded height (prev step, no jitter)
     if ~isfield(opts, 'law_b');       opts.law_b       = 1;   end
     % PLANT-SIDE WALL KNOB (NaN = published plane polynomial, unchanged).
     % Set it and the TRUE c_perp becomes the law's own curve evaluated with
@@ -326,6 +329,10 @@ function out = run_formC_b(opts, test_opts)
         ov.Pf_a_floor_par = par_pkg.floor_a;
     end
 
+    % TRUE-b ARM: slot 5 inert (the arm switch above sets lock_b per arm, so
+    % this has to come AFTER it -- the first placement was silently overridden
+    % by arm 'best', caught by the liveness print lock_b = 0, 2026-08-27).
+    if opts.b_true; ov.lock_b = true; end
     fn = fieldnames(opts.ctrl_const_override);
     for idx = 1:numel(fn)
         ov.(fn{idx}) = opts.ctrl_const_override.(fn{idx});
@@ -394,7 +401,7 @@ function out = run_formC_b(opts, test_opts)
                                  % t_frz | da frac by descent end | hold drift
                                  % %/s | hold delta % | unopposed %/s
     for q = 1:n_seeds
-        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, false, opts.ws_inject, plant_cperp, opts.da_known, opts.ap_known, opts.ap_law_bias, opts.law_b);
+        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, false, opts.ws_inject, plant_cperp, opts.da_known, opts.ap_known, opts.ap_law_bias, opts.law_b, opts.b_true, opts.ap_known_at, opts.b_true_at);
         m = local_run_metrics(s, cfg, AX_Z, OSC_SETTLE_S, HOLD_SETTLE_S);
         runs{q}     = s;
         Mrows(q, :) = [m.desc_peak_pct, m.osc_rms_pct, m.hold_mean_pct, ...
@@ -915,7 +922,20 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
 end
 
 
-function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_ctrl_override, log_P_full, ws_inject, plant_cperp, da_known_on, ap_known_on, ap_law_bias, law_b)
+function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_ctrl_override, log_P_full, ws_inject, plant_cperp, da_known_on, ap_known_on, ap_law_bias, law_b, b_true_on, ap_known_at, b_true_at)
+    if nargin < 13 || isempty(b_true_on);   b_true_on   = false; end
+    if nargin < 14 || isempty(ap_known_at); ap_known_at = 'true'; end
+    if nargin < 15 || isempty(b_true_at);   b_true_at   = 'true'; end
+    assert(any(strcmp(b_true_at, {'true','cmd'})), 'b_true_at must be ''true'' or ''cmd''.');
+    assert(any(strcmp(ap_known_at, {'true','cmd'})), 'ap_known_at must be ''true'' or ''cmd''.');
+    hd_prev = NaN;                                  % commanded height of the previous step [R], for ap_known_at = 'cmd'
+    if b_true_on
+        % TRUE-b ARM: b_true(w_bar) = a'/(1-a)^2 on the exact correction curve,
+        % tabulated once (same construction as plot_arms_pair's red line).
+        wq_b = linspace(1.05, 30, 4000); cpq = zeros(size(wq_b));
+        for iq = 1:numel(wq_b); [~, cpq(iq)] = calc_correction_functions(wq_b(iq)); end
+        aq_b = 1 ./ cpq; bq_b = gradient(aq_b, wq_b) ./ (1 - aq_b).^2;
+    end
     if nargin < 9  || isempty(da_known_on); da_known_on = false; end
     if nargin < 10 || isempty(ap_known_on); ap_known_on = false; end
     if nargin < 11 || isempty(ap_law_bias); ap_law_bias = NaN; end
@@ -1052,6 +1072,7 @@ if nargin < 8; plant_cperp = []; end
     Q44_out      = zeros(N, 3);
     dx_r_out     = zeros(N, 3);   % IIR residual the gain readout is built from [um]
     dh_m_out     = zeros(N, 3);   % delayed position error fed to the controller [um]
+    delta_x_hat_3_out = zeros(N, 3);   % posterior tracking-error estimate x_e(3)*R [um]
     a_bar_hat_out = zeros(N, 3);  % internal normalized gain estimate [-]
     Q33_out       = zeros(N, 3);  % Q33 container actually used [-]
     a_bar_Q_out   = zeros(N, 3);  % a_bar used to build Q33 this step [-]
@@ -1125,7 +1146,16 @@ if nargin < 8; plant_cperp = []; end
                     ab_off = 1 / cperp_prev + ap_law_bias;
                     ap_known_k = [0; 0; (1 - ab_off)^2 / law_b];
                 else
-                    ap_known_k = local_a_prime_true(hb_prev, a_nom_drv, h_bar_floor_drv, ...
+                    % evaluation point: the particle's true height of the previous
+                    % step (jitters with the thermal motion) or the COMMANDED
+                    % height of the previous step (deterministic, 2026-08-27 test
+                    % of the "a' evaluated on a jittering point" hypothesis)
+                    if strcmp(ap_known_at, 'cmd') && isfinite(hd_prev)
+                        h_eval = hd_prev;
+                    else
+                        h_eval = hb_prev;
+                    end
+                    ap_known_k = local_a_prime_true(h_eval, a_nom_drv, h_bar_floor_drv, ...
                                                     plant_cperp) / a_nom_drv;
                 end
             else
@@ -1133,8 +1163,20 @@ if nargin < 8; plant_cperp = []; end
             end
         end
 
+        % --- TRUE-b ARM: b at the PREVIOUS step's true height (z only) ------
+        b_true_k = [];
+        if b_true_on
+            if strcmp(b_true_at, 'cmd') && isfinite(hd_prev); h_eval_b = hd_prev; else; h_eval_b = hb_prev; end
+            if isfinite(h_eval_b) && k > 1
+                b_true_k = [0; 0; interp1(wq_b, bq_b, max(h_eval_b, wq_b(1)), 'linear', 'extrap')];
+            else
+                b_true_k = [0; 0; 8/9];      % anchor until a true height exists
+            end
+        end
+
         [f_d_k, ekf_k, diag_k] = motion_control_law_formC_b(del_pd_k, pd_k, ...
-                                     p_m_delayed, P, ctrl_const, a_ov_k, da_known_k, ap_known_k);
+                                     p_m_delayed, P, ctrl_const, a_ov_k, da_known_k, ap_known_k, b_true_k);
+        hd_prev = max((dot(pd_k, P.wall.w_hat) - pz_plant) / R_drv, h_bar_floor_drv);   % this step's command -> next step's 'cmd' evaluation point
 
         if P.thermal.enable > 0.5
             f_th_k = calc_thermal_force(p_curr, P_plant);
@@ -1192,6 +1234,7 @@ if nargin < 8; plant_cperp = []; end
         Q44_out(k, :)      = diag_k.Q77(:).';   % = Q(4,4), the gain-state process noise
         dx_r_out(k, :)     = diag_k.dx_r(:).';
         dh_m_out(k, :)     = diag_k.delta_x_m(:).';
+        delta_x_hat_3_out(k, :) = diag_k.delta_x_hat_3(:).';
         a_bar_hat_out(k, :) = diag_k.a_bar_hat(:).';
         Q33_out(k, :)       = diag_k.Q33(:).';
         a_bar_Q_out(k, :)   = diag_k.a_bar_Q(:).';
@@ -1252,6 +1295,7 @@ if nargin < 8; plant_cperp = []; end
     simOut.Q44_out      = Q44_out;
     simOut.dx_r_out     = dx_r_out;
     simOut.dh_m_out     = dh_m_out;
+    simOut.delta_x_hat_3_out = delta_x_hat_3_out;
     simOut.a_bar_hat_out = a_bar_hat_out;
     simOut.Q33_out       = Q33_out;
     simOut.a_bar_Q_out   = a_bar_Q_out;
