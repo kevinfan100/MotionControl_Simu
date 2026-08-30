@@ -1,17 +1,17 @@
 % STATUS: ACTIVE | SSOT derivation: reference/eq17_analysis/derivation/formC_state_b.tex
-% FORK OF model/controller/motion_control_law_formC_state.m @ 2f2fef6 | PURPOSE:
-%   the ADDITIVE writing of the same parameter-free state gain law:
-%   a_bar' = (1-a_bar)^2 exactly (no law parameter anywhere), with an
-%   additive constant disturbance da entering the a_bar STATE EQUATION,
-%   da[k+1] = da[k], Q55 = 0, P45[0] = 0 | EXPIRES: when the baseline /
-%   disturbance comparison is adjudicated | production changes do NOT follow.
-%   Slot map: 5 = da (ADDITIVE, units of a_bar per step); slots 6-7 are
+% FORK OF model/controller/motion_control_law_formC_dist.m @ 32baf9c | PURPOSE:
+%   the STATE writing of the parameter-free gain law with ONE shape state:
+%   a_bar' = b (1-a_bar)^2, b a constant per axis, Q55 = 0, seeded at the
+%   far-field anchor 8/9 with P55[0] = (b_half)^2 from the planned envelope.
+%   SLOT MAP (this file, 2026-08-30 hygiene): 5 = b (state, dimensionless);
+%   there is NO additive disturbance da in this writing (has_da_known is
+%   hard false; the da_known argument is rejected). Slots 6-7 are
 %   PERMANENTLY LOCKED and inert (zero P0, zero Jacobian, zero K) so the
-%   9-slot layout and the whole MA(2) block at [8 9] carry over with no
-%   re-indexing. Mathematically the filter is the 5-state of the tex
-%   (derivation (b)); with lock_da = true it is the 4-state BASELINE
-%   (derivation (a)) exactly -- same file, one flag.
-function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override, ~, ap_known, b_true)
+%   9-slot layout and the MA(2) block at [8 9] carry over unchanged.
+%   ctrl_const.lock_b = true pins b at its seed (the parameter-free
+%   baseline); false estimates it. Passages below that still say "da" are
+%   inherited from the dist sibling and describe THAT file, not this one.
+function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override, varargin_da_known_guard, ap_known, b_true)
 %MOTION_CONTROL_LAW_FORMC_DIST  Per-axis EKF eq17 controller whose gain slope
 %   is a parameter-free function of the gain state, with an ADDITIVE constant
 %   disturbance in the gain state equation (formC_state_dist.tex)
@@ -271,6 +271,13 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     end
     has_b_true = ~isempty(b_true);
     has_da_known = false;   % no additive disturbance in this writing
+    % (7th argument) da_known: KNOWN-DISTURBANCE ARM of the dist sibling. This
+    % writing has no da state; a caller supplying one would silently get
+    % nothing (08-25 audit dead knob), so refuse it.
+    if nargin >= 7 && ~isempty(varargin_da_known_guard)
+        error('motion_control_law_formC_b:deadKnob', ...
+              'da_known is not an arm of this writing (slot 5 = b); pass [].');
+    end
     if nargin < 6
         a_ctrl_override = [];
     end
@@ -399,6 +406,16 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         a_cov           = ctrl_const.a_cov;
         a_pd            = ctrl_const.a_pd;
         amlpf_var_factor = get_field_default(ctrl_const, 'amlpf_var_factor', 1);
+        % GUARD (08-19 trap, 08-30 hygiene): this controller has NO a_m LPF
+        % (the LPF lives only in eq17_6state), yet the shared builder still
+        % honours opts.use_am_lpf and would hand us amlpf_var_factor = 0.089:
+        % R2 shrinks 11x while the readout is never filtered. Refuse.
+        % (amlpf_var_factor itself stays overridable: sweep_R2_trust_y2.m uses
+        % it as an explicit R2 multiplier, which is a declared diagnostic.)
+        if logical(get_field_default(ctrl_const, 'use_am_lpf', false))
+            error('motion_control_law_formC_b:noAmLpf', ...
+                  'use_am_lpf is not supported here: formC_b has no a_m LPF (builder would hand R2 a factor of %g).', amlpf_var_factor);
+        end
         % xi_bar per the spec definition xi = (C_n/C_dpmr)*sigma2_nw/kappa_T
         % (computed from kappa_T directly, NOT sibling xi / a_o, to keep a_o
         % out of the filter constants).
@@ -527,6 +544,13 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         %   'ewma'            an EWMA of a_bar_hat, weight ap_ewma_a
         ap_src    = lower(get_field_default(ctrl_const, 'ap_src', 'post'));
         law_b_formC = get_field_default(ctrl_const, 'law_b_formC', 1);
+        % DEAD KNOB (08-25 audit): the law's b comes from slot 5 (b_hat_i);
+        % law_b_formC is read nowhere else. Refuse a non-default value so a
+        % caller cannot believe it is tuning the law.
+        if ~isequal(law_b_formC, 1)
+            error('motion_control_law_formC_b:deadKnob', ...
+                  'ctrl_const.law_b_formC has no effect in this writing (b is slot 5); got %g.', law_b_formC);
+        end
         ap_ewma_a = get_field_default(ctrl_const, 'ap_ewma_a', 0.05);
         assert(any(strcmp(ap_src, {'post','pred','ewma','cmd','act'})), ...
                'motion_control_law_formC_b:apSrc', 'ap_src must be post|pred|ewma|cmd|act.');
@@ -719,8 +743,12 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         %              it enters P(4,4) once, through (d a_bar / d w0) = -a_bar'.
         T_REMOVAL_S = 1;      % [s] order of a manoeuvre; fallback only
         Pf_a_floor_pre = get_field_default(ctrl_const, 'Pf_a_floor', 0.0066);
-        Pf_da_std_unused = expand3(get_field_default(ctrl_const, 'Pf_da_std',  ...
-                                 Pf_a_floor_pre(1) * Ts / T_REMOVAL_S));
+        % DEAD KNOB (08-25 audit): there is no da state here, so a Pf_da_std
+        % would set the prior of nothing. Refuse it rather than ignore it.
+        if isfield(ctrl_const, 'Pf_da_std') && ~isempty(ctrl_const.Pf_da_std)
+            error('motion_control_law_formC_b:deadKnob', ...
+                  'ctrl_const.Pf_da_std has no state to act on in this writing (slot 5 = b).');
+        end
         Pf_w0_std  = expand3(get_field_default(ctrl_const, 'Pf_w0_std',  0.111));
         Pf_a_floor = expand3(get_field_default(ctrl_const, 'Pf_a_floor', 0.0066));
         if par_law
@@ -1723,7 +1751,7 @@ function d = empty_diag_formB()
     d.P_a_nd            = zeros(3, 1);
     d.P_dx              = zeros(3, 1);
     d.x_D_hat           = zeros(3, 1);
-    d.b_hat             = zeros(3, 1);           % slot 5 = da, seed 0
+    d.b_hat             = zeros(3, 1);           % slot 5 = b (placeholder; init fills the seed)
     d.p_hat             = ones(3, 1);
     d.ws_hat            = ones(3, 1);
     d.delta_a_hat       = zeros(3, 1);

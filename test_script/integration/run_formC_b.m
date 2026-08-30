@@ -124,7 +124,13 @@ function out = run_formC_b(opts, test_opts)
 
     if nargin < 1 || isempty(opts); opts = struct(); end
     if ~isfield(opts, 'arm');         opts.arm         = 'best'; end
-    if ~isfield(opts, 'da_known');    opts.da_known    = false; end  % KNOWN-DISTURBANCE ARM
+    if ~isfield(opts, 'da_known');    opts.da_known    = false; end  % KNOWN-DISTURBANCE ARM (dist sibling only)
+    % DEAD KNOB (08-25 audit): formC_b has no da state; the controller hard-
+    % codes has_da_known = false and now rejects the argument. Fail here,
+    % before any run is spent.
+    if opts.da_known
+        error('run_formC_b:deadKnob', 'opts.da_known is not an arm of formC_b (slot 5 = b); use run_formC_dist.');
+    end
     if ~isfield(opts, 'lambda_f');    opts.lambda_f    = 1;     end  % Menq (4.15), 1 = off
     if ~isfield(opts, 'ap_known');    opts.ap_known    = false; end  % TRUE-SLOPE ARM
     if ~isfield(opts, 'ap_src');      opts.ap_src      = 'post'; end
@@ -1130,9 +1136,6 @@ if nargin < 8; plant_cperp = []; end
                 da_known_k = zeros(3, 1);
             end
         end
-        if isfinite(h_bar_true_k)
-            hb_prev = h_bar_true_k;  cperp_prev = c_perp_k;
-        end
         da_known_out(k, :) = local_row3(da_known_k);
 
         % --- TRUE-SLOPE ARM: a_bar' from the PREVIOUS step's true height ----
@@ -1172,6 +1175,14 @@ if nargin < 8; plant_cperp = []; end
             else
                 b_true_k = [0; 0; 8/9];      % anchor until a true height exists
             end
+        end
+
+        % ENDPOINT (08-30 hygiene, the ':1113' defect of the 08-25/26 audits):
+        % hb_prev / cperp_prev used to be advanced HERE-ABOVE, before the
+        % ap_known and b_true blocks, so both "previous-step" arms actually
+        % read the CURRENT step. The update now sits after every consumer.
+        if isfinite(h_bar_true_k)
+            hb_prev = h_bar_true_k;  cperp_prev = c_perp_k;
         end
 
         [f_d_k, ekf_k, diag_k] = motion_control_law_formC_b(del_pd_k, pd_k, ...
