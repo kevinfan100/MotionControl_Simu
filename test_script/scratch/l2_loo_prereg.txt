@@ -1,0 +1,152 @@
+L2 LEAVE-ONE-OUT (LOO) BATTERY -- PRE-REGISTRATION
+Written 2026-08-25 BEFORE any run. Rule file: .claude/rules/stacked-fix-audit.md
+(A2: every member re-verified on the CURRENT base by its OWN signature; D12:
+pre-register the discriminant and the stop rule).
+Ledger: reference/eq17_analysis/formC_b_audit_ledger.md S3 (rows y2_echo_corr,
+ma2_aug, fe_row4_full).
+
+BASE: model/controller/motion_control_law_formC_b.m via
+test_script/integration/run_formC_b.m, arm 'best', canonical deep scenario
+(trough w_bar 1.10), production flags, commit 10e51db (fixture commit).
+GATE: baseline seed 7 a_bar_hat_out must be bit-identical (max|diff| == 0) to
+test_results/l0_fixture/fixture_formC_b.mat. If not: STOP, report, no LOO.
+
+SEEDS: 1:100, identical across all five arms (paired). Seed = the only
+resampling unit; every mean is reported with sd and jackknife SEM
+(l0_jackknife_se.m). Paired differences (OFF - ON) per seed, t = mean/SEM.
+
+ARMS (opts.ctrl_const_override):
+  A0 base      : none
+  A1 echo_off  : y2_echo_corr = false
+  A2 ma2_off   : ma2_aug = false
+  A3 fe4_off   : fe_row4_full = false
+  A4 both_off  : y2_echo_corr = false AND ma2_aug = false
+
+WINDOWS (driver's own): descent [0.5, 1.5] s; oscillation (1.6, 3.5] s;
+final hold [3.8, 4.8] s. Axis z (column 3). Init row dropped by the L0 loader.
+Trough truth a_T = mean normalised a_true over the final hold, per seed.
+Primary a_hat effect = final-hold z bias, per seed:
+  bias_pct = 100 * mean_hold(a_hat - a_true) / a_T           [driver hold_mean_pct
+  up to the mean-of-ratio vs ratio-of-mean distinction; both reported].
+"a_hat movement" thresholds are on |paired diff of bias_pct| in percentage
+points of a_T, and on its t-stat. 1 SEM of the baseline bias_pct across
+seeds is the reference unit for the stop rule.
+
+SIGN RULE: every threshold below is on the ABSOLUTE value of the paired
+difference or of the OFF-arm statistic, so a sign change counts as a change.
+Signed values are reported alongside.
+
+------------------------------------------------------------------------
+(a) y2_echo_corr  (S_T/S_n from the Lyapunov form at init, lambda_c 0.7)
+------------------------------------------------------------------------
+Original conviction (formB shallow, 08-01): w_s honesty 1.42 -> 0.93.
+Not available on formC (no w_s state). Registered formC signature:
+  Q_a1 = mean of innov_y2 (z) over the final hold, gate-open samples only,
+         per seed. Paired diff OFF - ON, t-stat over 100 seeds.
+  Q_a2 = Var(innov_y2 hold) / mean(R2 hold), per seed, both arms (the 08-19
+         result: this ratio ~1 and does NOT need (1-S)^2).
+  Q_a3 = |K_a_y2| mean over the hold, both arms (mechanical check: H2 scales by
+         1/(1-S) ~ 1.47 when OFF, so K_a_y2 must move; if it does not, the flag
+         is not wired -- rule B6).
+Expectations:
+  REPRODUCED : |t(Q_a1 diff)| >= 3  AND  Q_a2 within [0.8, 1.25] on both arms
+               AND |a_hat effect| < 2.0 pp of a_T.
+  EXPIRED    : |t(Q_a1 diff)| < 2  (no systematic innov2 offset appears when
+               the correction is removed), whatever a_hat does.
+  OTHER      : 2 <= |t| < 3, or Q_a2 leaves [0.8, 1.25], or |a_hat effect|
+               >= 2.0 pp (mechanism present but not the registered one).
+Expected a_hat movement: < 2.0 pp of a_T (y2 carries ~1% of the gain update).
+Note (declared before running): in the final hold Grad_wbar_d = 0, so the
+y2 PREDICTION is identical on both arms there; the arms differ in H2 (gain
+scale) only. The registered offset therefore has to arrive through the
+filter's equilibrium (a_hat, P), not through the prediction line. This is
+recorded so a null result cannot later be reinterpreted as "wrong window".
+
+------------------------------------------------------------------------
+(b) ma2_aug  (m1/m2 memory states, slots 8/9; n_state 9 -> 7 when OFF)
+------------------------------------------------------------------------
+Original conviction (formB shallow, 08-01): innov_y1 acf lags 1..2
+[0.30, 0.24] -> [0.003, 0.015].
+  Q_b1 = innov_y1 (z) sample autocorrelation at lags 1 and 2 over the final
+         hold, per seed; also over the oscillation window (secondary).
+  Q_b2 = a_hat effect (bias_pct paired diff), t-stat.
+  Q_b3 = descent peak % and osc RMS % (driver metrics), ON vs OFF, paired.
+Expectations:
+  REPRODUCED : OFF-arm mean |acf| at lag 1 OR lag 2 >= 0.15 (hold window)
+               while ON-arm mean |acf| <= 0.06 at both lags.
+  EXPIRED    : OFF-arm mean |acf| <= 0.06 at both lags (hold window).
+  OTHER      : 0.06 < OFF |acf| < 0.15 at both lags, or ON-arm itself > 0.06.
+Expected a_hat movement: not registered by the original conviction; reported.
+The original numbers were on the shallow band; the 0.15 threshold is half
+the original 0.30 to allow for the different band without admitting noise.
+
+------------------------------------------------------------------------
+(c) fe_row4_full  (row-4 multiplier M_row4 = Delta_wbar_d[k-1] + (1-lc) dw3_hat)
+------------------------------------------------------------------------
+Original conviction (08-01 comment, no stored number): dropping (1-lc)*dw3_hat
+zeroes the parameter columns F_e(4,5) (and (4,3)) at every trajectory turning
+point (command increment = 0). Only the Jacobian is affected: x_pred(4) at
+controller :1186 uses the full bracket on both arms, so the state propagation
+is unchanged and the OFF arm differs only through P.
+Direct quantity M_tot is not logged; the registered PROXY is the b-channel
+Kalman gain, which is fed by P(5,4) that F_e(4,5) builds:
+  Q_c1 = mean |K_b_y1| (z) in a +-10-step window around each turning point of
+         h_bar_d inside [1.5, 3.5] s (local extrema of the commanded height,
+         top and trough, both included; sub-split reported), per seed, both
+         arms. Ratio OFF/ON per seed and paired diff.
+  Q_c2 = same for |K_b_y2|.
+  Q_c3 = same |K_b_y1| over the FULL oscillation window (control: if the
+         whole-window ratio is as small as the turning-point ratio, the effect
+         is not turning-point specific).
+  Q_c4 = a_hat effect (bias_pct paired diff), t-stat; also b_hat(end) diff.
+Expectations:
+  REPRODUCED : median over seeds of ratio Q_c1(OFF)/Q_c1(ON) <= 0.5 at the
+               turning points AND that ratio is smaller (by >= 0.2) than the
+               full-window ratio Q_c3(OFF)/Q_c3(ON). (Turning-point specific
+               attenuation of the b-channel gain.)
+  EXPIRED    : turning-point ratio within [0.8, 1.25] (|K_b| unchanged when
+               the term is dropped).
+  OTHER      : anything else (e.g. |K_b| GROWS when OFF, or attenuation that is
+               not turning-point specific).
+Caveat registered: with ma2_aug still ON on this arm, M_tot keeps the
+alpha*(m1+m2) share, so F_e(4,5) does not go EXACTLY to zero at turning
+points -- an attenuation, not a null, is what the proxy can show. And K_b is
+an accumulated covariance quantity, so the proxy lags the instantaneous
+column by the P dynamics; the +-10-step window (6.25 ms at 1600 Hz) is where
+|Delta_wbar_d| < 4% of its peak.
+Expected a_hat movement: unknown; reported.
+
+------------------------------------------------------------------------
+(d) Second order: echo OFF + ma2 OFF together
+------------------------------------------------------------------------
+  Q_d = D_both - (D_echo + D_ma2) per seed, where D_x = bias_pct(arm x) -
+        bias_pct(base). Also on the signature quantities Q_a1 (innov2 hold
+        mean) and Q_b1 (innov1 acf lag 1).
+  ADDITIVE       : |t(Q_d)| < 2.
+  NON-ADDITIVE   : |t(Q_d)| >= 3 (an interaction is itself a finding).
+  INDETERMINATE  : 2 <= |t| < 3.
+
+------------------------------------------------------------------------
+(e) Clamp / gate census (every arm, every seed, no extra run)
+------------------------------------------------------------------------
+Counts per seed (z axis and also x/y) of samples with
+  a_bar_hat == a_bar_floor (0.05) exactly; a_bar_hat == a_bar_ceil (1 - 1e-4)
+  b_hat == b_floor (0.60) exactly;         b_hat == b_ceil (1.05) exactly
+  gate_out true (per window: descent / osc / hold / whole run).
+a_bar_hat_out and b_hat_out are POST-clamp values, so equality counts are
+LOWER BOUNDS on clamp activity (a clamp that binds and is then released
+inside one step is invisible). Labelled as such in every table.
+The floor/ceil values are read from the run's own ctrl_const when present,
+else the controller defaults quoted above.
+
+------------------------------------------------------------------------
+STOP RULE (report only; nothing is removed by this battery)
+------------------------------------------------------------------------
+A member is a REMOVAL CANDIDATE when its signature is EXPIRED and
+|a_hat effect| < 1 SEM of the baseline bias_pct (i.e. |t of the paired
+diff| < 1 -- equivalent, since SEM(diff) is what t uses; both numbers are
+printed). A member whose signature is REPRODUCED is retained regardless of
+a_hat effect. OTHER verdicts are reported as such and go back to the ledger
+as open.
+
+Deviations from this registration will be listed explicitly in the report.

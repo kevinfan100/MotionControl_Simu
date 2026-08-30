@@ -1,0 +1,112 @@
+L2 PREDICT-REPLAY PRE-REGISTRATION (written 2026-08-25, BEFORE any computation)
+=============================================================================
+Controller: model/controller/motion_control_law_formC_b.m (NOT modified)
+Driver    : test_script/integration/run_formC_b.m (ONE log line added: delta_x_hat_3_out)
+Data      : test_results/am_r22_deep/stageA_bmid_base_100.mat, stageA_bmid_apknown_100.mat
+            (Route A, no rerun) ; l2_bmid_base_100.mat, l2_bmid_apknown_100.mat (Route B, rerun)
+Scripts   : test_script/scratch/l2_replay_routeA.m, l2_replay_routeB.m, l2_replay_bitcheck.m,
+            l2_replay_rerun_pair.m, l2_replay_figs.m
+
+PURPOSE
+-------
+Stage A found: trough-hold z bias +20.56% (sd 8.81) on the bmid base arm and
+-22.11% (sd 0.47) with ap_known = true. A colleague's offline integration of
+the TRUE slope along the TRUE height gave left-endpoint +30.8% vs trapezoid
+-0.01%. The sign of the offline left-endpoint number (+) and the sign of the
+filter fed the true slope (-) disagree. This replay tests, on the filter's OWN
+logged inputs, whether the per-step predict a'[k]*M_tot[k] is a quadrature
+(endpoint) error of the size and sign of the observed biases.
+
+INDEX CONVENTIONS (read from code before writing this; verified numerically in Route A/B)
+-----------------------------------------------------------------------------------------
+Raw log row 1 = controller init-only call (a_xm_out row 1 == 0 exactly; a_bar_hat_out
+row 1 = seed, K/innov/a_prime rows 1 == 0). All identities below run for k >= 2.
+  predict[k]  = a_bar_hat[k] - a_bar_hat[k-1] - K_a_y1[k]*innov_y1[k] - K_a_y2[k]*innov_y2[k]
+                (Kalman identity; controller 1186/1198 + 1224/1291; a_bar_hat[k] = posterior of call k)
+  a'[k]       = a_prime_out[k]/a_nom  (a_nom = Ts/gamma_N = a_o*R, so this is d a_bar/d w_bar)
+     base arm : a'[k] = (8/9)*(1 - clamp(a_bar_hat[k-1]))^2   (ap_src = 'post', x_curr(4) = posterior k-1)
+                => a'[k] is evaluated at the LEFT endpoint of the step M_tot[k] bridges (k-1 -> k)
+     ap_known : a'[k] = a_prime_true_out[k]/a_nom  (driver sets hb_prev := h_true[k] at 1113, BEFORE the
+                ap_known block at 1118; so the exogenous slope is at the TRUE height at time k, i.e. the
+                RIGHT endpoint of the true step k-1 -> k that M_tot[k] represents). This pairing is
+                checked numerically (a_prime_out vs a_prime_true_out same-row, and the alignment check
+                below). If the data contradict it, the check decides and the deviation is reported.
+  M_tot[k]    = Delta_wbar_d[k-1] + (1-lambda_c)*dw3_hat[k-1] + alpha_ma2*(m1+m2)[k-1],
+                Delta_wbar_d[k-1] = h_bar_d_out[k] - h_bar_d_out[k-1]  (controller 903: Delta_wbar_d[k] = w_d[k+1]-w_d[k])
+                dw3_hat[k-1] = delta_x_hat_3_out[k-1]/R, R = 2.25 um (physical_constants), alpha_ma2 = 1-lambda_c = 0.3
+                m1+m2 NOT logged (slots 8/9) -> this is what the Route B closure residual measures.
+  lambda_c = 0.7 read from the saved K struct.
+
+ROUTES
+------
+Route A (stageA files, no rerun): M_tot[k] := predict[k]/a'[k]. This is a division, so the
+  left-endpoint re-integration closes at roundoff BY CONSTRUCTION; the only honest readout of the
+  division is WHERE it is ill-posed. Mask: exclude |a'[k]| < 1e-3 or |predict[k]| < 1e-12; the
+  excluded fraction is reported per window. Holds are EXCLUDED from Route A (M_tot ~ 0 -> 0/0).
+Route B (rerun 2 x 100 seeds with h_bar_d_out, delta_x_hat_3_out, a_bar_Q_out, P_a_out, K_b_y1/y2_out,
+  h_bar_true_out): M_row4[k] reconstructed from logs; closure residual
+  r[k] = a'[k]*M_row4[k] - predict[k] = -a'[k]*alpha_ma2*(m1+m2)[k-1]. Its cumulative size per window,
+  as a fraction of the trough truth, IS the measurement of the unlogged MA(2) term. Negligible := < 1% of
+  the trough bias (i.e. < 0.2 percentage points of a_bar_T).
+Route B-exact (added, one seed per arm): ctrl_const_override.obs_dump = true captures x_pred/x_upd per
+  axis per step through the production obs_dump hook (documented bit-identical when off). Gives exact
+  M_tot (slots 3,8,9 of x_upd[k-1]) and an exact test of the Kalman identity including the x_upd(4) clamp.
+  Bit-identity of obs_dump=on vs off is checked on seed 7 as well.
+
+THREE QUADRATURE RULES ON THE SAME LOGGED INPUTS (per step k, then cumulative over a window)
+  left      : a'[k] * M_tot[k]                               (= the code; must reproduce predict[k])
+  trapezoid : base     0.5*(a'[k] + a'[k+1]) * M_tot[k]      (a'[k+1] = law at a_bar_hat[k], right endpoint)
+              ap_known 0.5*(a'[k-1] + a'[k]) * M_tot[k]      (a'[k-1] = true slope at h_true[k-1], left endpoint)
+              The task's literal pairing 0.5*(a'[k]+a'[k+1])*M_tot[k] is ALSO computed on the ap_known
+              arm and labelled 'trap_shift' -- it is a one-step-shifted trapezoid, itself a biased rule.
+  midpoint  : base     (8/9)*(1 - (a_bar_hat[k-1] + 0.5*a'[k]*M_tot[k]))^2 * M_tot[k]
+              ap_known Route A: true slope linearly interpolated in time to the midpoint = trapezoid
+              (identical by construction, reported as such); Route B: true slope evaluated at the
+              midpoint TRUE height 0.5*(h_true[k-1]+h_true[k]) via calc_correction_functions dv output.
+
+ALIGNMENT CHECK (decides the ap_known trapezoid pairing)
+  Delta_a_true_n[k] = (a_true_out[k] - a_true_out[k-1])/a_nom. Lagged correlation of predict[k] with
+  Delta_a_true_n[k+l], l in -2..2, over descend; and Sum over descend of predict vs Sum Delta_a_true_n.
+  Whichever l maximises the correlation fixes which endpoint a'[k] sits on.
+
+WINDOWS (driver local_metric_windows, canonical deep scenario; t = raw log time)
+  far hold  [0, 0.5)           -- excluded from Route A (0/0), reported in Route B only
+  descend   [0.5, 1.5]
+  oscillate [1.6, 3.5]         (OSC_SETTLE_S = 0.1)
+  trough    [3.8, 4.8]         (HOLD_SETTLE_S = 0.3) -- used ONLY for the truth a_bar_T = mean(a_true_out/a_nom)
+  Windows are applied to the step index k of the predict (the row whose posterior it feeds).
+
+READOUTS (per arm x window x rule; z axis; x/y appended if cheap)
+  S_rule = Sum_k rule[k] over the window, normalised by a_bar_T (per seed), reported as
+  mean +- sd +- SEM over the 100 seeds. Differences D_trap = (S_left - S_trap)/a_bar_T and
+  D_mid = (S_left - S_mid)/a_bar_T likewise. Also: Sum of corrections (K1*i1 + K2*i2), Delta a_bar_hat
+  over the window, Delta a_true_n over the window (budget: Delta a_hat = S_left + S_corr), and the
+  trough-hold bias itself (must reproduce +20.56 / -22.11).
+
+PRE-REGISTERED DECISION CRITERIA
+  * Sign, not shrinkage: the discretisation term D_trap on the ap_known arm (descend + oscillate) must
+    be NEGATIVE to be the -22.11% mechanism; a positive D_trap falsifies quadrature as that arm's
+    mechanism outright. Magnitude band for "same object": |D_trap| within a factor 2 of 22% (11-44%).
+  * Sign on the base arm: D_trap expected POSITIVE (left endpoint on a concave a_bar(w): a'' < 0 =>
+    left - exact = -0.5*Sum a''*dw^2 > 0). A negative D_trap on the base arm falsifies.
+  * Route A vs Route B: S_left, S_trap must agree to < 0.1 percentage points of a_bar_T where both are
+    defined (same inputs); the Route B residual answers whether the MA(2) term matters.
+  * Every mean carries sd and SEM; seed is the only resampling unit (n = 100 per arm; paired by seed
+    across arms where a paired difference is quoted).
+  * Bit-identical check (driver log line): max|a_bar_hat_out(seed 7, rerun) - stageA(:, :, 7)| must be
+    exactly 0. Non-zero => STOP, report, no further Route B numbers.
+
+CAVEAT (verbatim, applies to every base-arm replay number)
+  "On the ap_known arm the slope is exogenous, so re-integrating the same logged inputs under trapezoid
+  is well-posed and its answer is the discretisation error. On the bmid base arm a_prime depends on
+  a_bar_hat which depends on the integration, so the offline re-integration replays an OPEN loop over a
+  path generated by a CLOSED one: it measures how much discretisation error is present along the path
+  the filter actually took, NOT what the filter would have produced with the midpoint rule; only a real
+  run answers that. Do not quote the base-arm replay number as the expected benefit of switching rules."
+
+WHAT WOULD REMAIN UNEXPLAINED
+  If D_trap(ap_known) ~ -22% : the sign flip vs the colleague's +30.8% is the endpoint (left in the
+  offline integration, right in the filter's ap_known wiring); the two numbers are the same object with
+  opposite endpoints. The residual bias after removing D_trap is what the corrections (y1/y2 legs) leave.
+  If D_trap(ap_known) is small or positive: quadrature is not the ap_known mechanism; the -22% sits in
+  the corrections or in A_a = 0 / F_e(4,3) changes of that arm, outside this replay's reach.

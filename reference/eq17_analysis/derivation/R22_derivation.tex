@@ -196,6 +196,20 @@ R(2,2) = \Kvar\cdot\sigma^{4}_{\dpmr}\cdot\IF,
 \end{equation}
 $\IF=1$ for white $\dpmr$ ($\rhodpmr(\tau)=0$, $\tau\ge 1$); the colored case is closed in \S\S\ref{sec:rho}--\ref{sec:IF-closed}.
 
+\paragraph{Remark (whitened readout, 2026-08-27).}
+The weight $s^{\tau}$ in~\eqref{eq:IF-def} is the product of two EWMA kernel taps $\tau$ apart, so the boxed $\IF$ is the colour penalty of the EWMA \emph{output} $\sighatsq$ (the object of~\eqref{eq:R22-integral}). When the controller whitens the readout,
+\begin{equation}
+y_{2}[k] = \hat a[k] - (1-\acov)\,\hat a[k-1] = \acov\,u[k],
+\end{equation}
+the EWMA window is undone and the Kalman filter receives one sample of $u$ per step; the averaging is then the filter's own (a flat kernel for a constant parameter), and the correlation penalty is the long-run (DC-power) factor
+\begin{equation}
+\IF_{\mathrm{white}} := 1 + 2\sum_{\tau\ge 1}\rhodpmr^{2}(\tau) = \IF\big|_{s=1} = \frac{S_{u}(0)}{\mathrm{Var}(u)},
+\qquad
+R(2,2)_{\mathrm{white}} = \acov(2-\acov)\,\Kvar\,\sigma^{4}_{\dpmr}\,\IF_{\mathrm{white}} = 2\acov^{2}\,\sigma^{4}_{\dpmr}\,\IF_{\mathrm{white}}.
+\label{eq:IF-white}
+\end{equation}
+Same $\RfT,\RfN$ sums as~\S\ref{sec:IF-closed} with unit weights; it depends on $(\lambda_c,\apd)$ only, so the whitened $R(2,2)$ carries $\acov$ solely through the explicit $\acov^{2}$. At $\lambda_c=0.7$, $\apd=\acov=0.05$: $\IF_{\mathrm{white}}/\IF = 1.111$--$1.116$ across the thermal-to-sensor mix (z trough $2.780\to3.066$, far field $3.366\to3.752$), matching the measured $\IF$ ratio $1.10$--$1.16$ on the true-gain arm (fig11/fig12, 2026-08-24/26). Code: \texttt{build\_eq17\_6state\_constants.m} exports both \texttt{IF\_abc} ($s=1-\acov$) and \texttt{IF\_abc\_white} ($s=1$); a controller selects by its \texttt{y2\_whiten} flag. Raw-readout controllers (\texttt{eq17\_\{4,5,6\}state}) keep the boxed form.
+
 %=====================================================================
 \section{Closed Form for $\rhodpmr(\tau)$}
 \label{sec:rho}

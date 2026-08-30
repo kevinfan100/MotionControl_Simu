@@ -83,7 +83,15 @@ function out = check_formC_var_identity(S, opts)
     % a_bar is deterministic (same trajectory every seed); take seed 1 and
     % check the spread across seeds is only the tracking error, not a
     % different trajectory.
-    a_bar = squeeze(S.a_true_out(:, ax, 1)) / K.a_nom;
+    % ENSEMBLE-MEAN a, not seed 1's. The measured quantity is the variance
+    % ACROSS seeds at a fixed k, so the a it belongs to is the ensemble's, not
+    % any one member's. During a hold the command is fixed and seed 1's own
+    % a wanders by its Brownian motion (sd 3.8 %) while the ensemble mean
+    % barely moves (0.36 %), so binning on seed 1 selects times when THAT seed
+    % happened to be deep and then evaluates the formula at that low a against
+    % the ensemble's variance -- a ~5 %% inflation of the innermost bins,
+    % purely constructed. Caught 2026-08-21.
+    a_bar = mean(squeeze(S.a_true_out(:, ax, 1:ns)), 2) / K.a_nom;
 
     % --- the only two measured quantities, nothing applied to them ---------
     V_ptrue = var(squeeze(S.p_true_out(:, ax, 1:ns)), 0, 2) / K.R^2;   % [-]

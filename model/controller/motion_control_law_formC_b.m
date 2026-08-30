@@ -1,17 +1,17 @@
 % STATUS: ACTIVE | SSOT derivation: reference/eq17_analysis/derivation/formC_state_b.tex
-% FORK OF model/controller/motion_control_law_formC_state.m @ 2f2fef6 | PURPOSE:
-%   the ADDITIVE writing of the same parameter-free state gain law:
-%   a_bar' = (1-a_bar)^2 exactly (no law parameter anywhere), with an
-%   additive constant disturbance da entering the a_bar STATE EQUATION,
-%   da[k+1] = da[k], Q55 = 0, P45[0] = 0 | EXPIRES: when the baseline /
-%   disturbance comparison is adjudicated | production changes do NOT follow.
-%   Slot map: 5 = da (ADDITIVE, units of a_bar per step); slots 6-7 are
+% FORK OF model/controller/motion_control_law_formC_dist.m @ 32baf9c | PURPOSE:
+%   the STATE writing of the parameter-free gain law with ONE shape state:
+%   a_bar' = b (1-a_bar)^2, b a constant per axis, Q55 = 0, seeded at the
+%   far-field anchor 8/9 with P55[0] = (b_half)^2 from the planned envelope.
+%   SLOT MAP (this file, 2026-08-30 hygiene): 5 = b (state, dimensionless);
+%   there is NO additive disturbance da in this writing (has_da_known is
+%   hard false; the da_known argument is rejected). Slots 6-7 are
 %   PERMANENTLY LOCKED and inert (zero P0, zero Jacobian, zero K) so the
-%   9-slot layout and the whole MA(2) block at [8 9] carry over with no
-%   re-indexing. Mathematically the filter is the 5-state of the tex
-%   (derivation (b)); with lock_da = true it is the 4-state BASELINE
-%   (derivation (a)) exactly -- same file, one flag.
-function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override, ~, ap_known)
+%   9-slot layout and the MA(2) block at [8 9] carry over unchanged.
+%   ctrl_const.lock_b = true pins b at its seed (the parameter-free
+%   baseline); false estimates it. Passages below that still say "da" are
+%   inherited from the dist sibling and describe THAT file, not this one.
+function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override, varargin_da_known_guard, ap_known, b_true)
 %MOTION_CONTROL_LAW_FORMC_DIST  Per-axis EKF eq17 controller whose gain slope
 %   is a parameter-free function of the gain state, with an ADDITIVE constant
 %   disturbance in the gain state equation (formC_state_dist.tex)
@@ -137,7 +137,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
 %   R = diag(R1, R2), R2 at the ESTIMATE a_bar_hat (never the raw readout):
 %       R1 = sigma2_nw  (units of R^2)
 %       R2 = K_var*IF_eff*(a_bar + xi_bar)^2 + d*Q44
-%   with xi_bar = (C_n/C_dpmr)*sigma2_nw/kappa_T.
+%   with xi_bar = (C_n/C_dpmr)*sigma2_nw/kappa_T. Under y2_whiten (default)
+%   IF_eff is built from IF_abc_white (s = 1 sums, 2026-08-27): the whitened
+%   increment is a single sample, so the colour penalty is the long-run
+%   factor, and R2 = 2*a_cov^2*IF_white*(a_bar + xi_bar)^2 + a_cov^2*d*Q44.
 %
 %   MA(2) AUGMENTATION (ctrl_const.ma2_aug, 2026-08-01). The Q33 container
 %   above models eps_w as WHITE with the full MA(2) variance, which
@@ -251,7 +254,30 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                'motion_control_law_formC_b:apKnown', 'ap_known must be a finite 3x1.');
     end
     has_ap_known = ~isempty(ap_known);
+    % b_true (3x1, optional): TRUE-b ARM (2026-08-27). Per axis, a positive
+    % entry replaces the b the LAW and its Jacobians read (b_hat_i) with the
+    % true b(w_bar) of the plant at the particle; zero entries leave that axis
+    % alone. Slot 5 is expected to be locked by the driver (ctrl_const.lock_b)
+    % so the inert state never drifts. Unlike ap_known this swaps b ONLY --
+    % a_bar stays the estimate, so the arm isolates "b known" from "slope
+    % known". diag.b_hat reports the b the law used. Diagnostic only; absent
+    % or empty = production, bit-identical.
+    if nargin < 9 || isempty(b_true)
+        b_true = [];
+    else
+        b_true = b_true(:);
+        assert(numel(b_true) == 3 && all(isfinite(b_true)) && all(b_true >= 0), ...
+               'motion_control_law_formC_b:bTrue', 'b_true must be a finite non-negative 3x1.');
+    end
+    has_b_true = ~isempty(b_true);
     has_da_known = false;   % no additive disturbance in this writing
+    % (7th argument) da_known: KNOWN-DISTURBANCE ARM of the dist sibling. This
+    % writing has no da state; a caller supplying one would silently get
+    % nothing (08-25 audit dead knob), so refuse it.
+    if nargin >= 7 && ~isempty(varargin_da_known_guard)
+        error('motion_control_law_formC_b:deadKnob', ...
+              'da_known is not an arm of this writing (slot 5 = b); pass [].');
+    end
     if nargin < 6
         a_ctrl_override = [];
     end
@@ -382,6 +408,16 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         a_cov           = ctrl_const.a_cov;
         a_pd            = ctrl_const.a_pd;
         amlpf_var_factor = get_field_default(ctrl_const, 'amlpf_var_factor', 1);
+        % GUARD (08-19 trap, 08-30 hygiene): this controller has NO a_m LPF
+        % (the LPF lives only in eq17_6state), yet the shared builder still
+        % honours opts.use_am_lpf and would hand us amlpf_var_factor = 0.089:
+        % R2 shrinks 11x while the readout is never filtered. Refuse.
+        % (amlpf_var_factor itself stays overridable: sweep_R2_trust_y2.m uses
+        % it as an explicit R2 multiplier, which is a declared diagnostic.)
+        if logical(get_field_default(ctrl_const, 'use_am_lpf', false))
+            error('motion_control_law_formC_b:noAmLpf', ...
+                  'use_am_lpf is not supported here: formC_b has no a_m LPF (builder would hand R2 a factor of %g).', amlpf_var_factor);
+        end
         % xi_bar per the spec definition xi = (C_n/C_dpmr)*sigma2_nw/kappa_T
         % (computed from kappa_T directly, NOT sibling xi / a_o, to keep a_o
         % out of the filter constants).
@@ -389,6 +425,15 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
 
         y2_whiten    = logical(get_field_default(ctrl_const, 'y2_whiten', true));
         fe_row4_full = logical(get_field_default(ctrl_const, 'fe_row4_full', true));
+        % Colour factor matches the readout object (2026-08-27): the whitened
+        % increment y2 = a_cov*u[k] is a single sample, so its correlation
+        % penalty is the long-run IF_white (s = 1 sums), not the EWMA-output
+        % IF_eff (s = 1-a_cov). The raw branch keeps IF_abc. Selected by the
+        % existing flag, no new knob; falls back to IF_abc if the builder
+        % predates the field.
+        if y2_whiten && isfield(ctrl_const, 'IF_abc_white')
+            IF_abc = ctrl_const.IF_abc_white(:);
+        end
 
         % Observability capture (model/diag/obs_dump.m). OFF by default and the
         % only cost when off is the persistent logical tested at the call site,
@@ -501,6 +546,13 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         %   'ewma'            an EWMA of a_bar_hat, weight ap_ewma_a
         ap_src    = lower(get_field_default(ctrl_const, 'ap_src', 'post'));
         law_b_formC = get_field_default(ctrl_const, 'law_b_formC', 1);
+        % DEAD KNOB (08-25 audit): the law's b comes from slot 5 (b_hat_i);
+        % law_b_formC is read nowhere else. Refuse a non-default value so a
+        % caller cannot believe it is tuning the law.
+        if ~isequal(law_b_formC, 1)
+            error('motion_control_law_formC_b:deadKnob', ...
+                  'ctrl_const.law_b_formC has no effect in this writing (b is slot 5); got %g.', law_b_formC);
+        end
         ap_ewma_a = get_field_default(ctrl_const, 'ap_ewma_a', 0.05);
         assert(any(strcmp(ap_src, {'post','pred','ewma','cmd','act'})), ...
                'motion_control_law_formC_b:apSrc', 'ap_src must be post|pred|ewma|cmd|act.');
@@ -714,8 +766,12 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         %              it enters P(4,4) once, through (d a_bar / d w0) = -a_bar'.
         T_REMOVAL_S = 1;      % [s] order of a manoeuvre; fallback only
         Pf_a_floor_pre = get_field_default(ctrl_const, 'Pf_a_floor', 0.0066);
-        Pf_da_std_unused = expand3(get_field_default(ctrl_const, 'Pf_da_std',  ...
-                                 Pf_a_floor_pre(1) * Ts / T_REMOVAL_S));
+        % DEAD KNOB (08-25 audit): there is no da state here, so a Pf_da_std
+        % would set the prior of nothing. Refuse it rather than ignore it.
+        if isfield(ctrl_const, 'Pf_da_std') && ~isempty(ctrl_const.Pf_da_std)
+            error('motion_control_law_formC_b:deadKnob', ...
+                  'ctrl_const.Pf_da_std has no state to act on in this writing (slot 5 = b).');
+        end
         Pf_w0_std  = expand3(get_field_default(ctrl_const, 'Pf_w0_std',  0.111));
         Pf_a_floor = expand3(get_field_default(ctrl_const, 'Pf_a_floor', 0.0066));
         if par_law
@@ -1058,6 +1114,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % estimate move, which is a silent failure: the run completes and the
         % numbers look plausible.
         b_hat_i = min(max(x_curr(5), b_floor), b_ceil);
+        if has_b_true && b_true(ax) > 0
+            b_hat_i = b_true(ax);          % TRUE-b ARM: the law reads the plant's b
+        end
 
         % --- Gain rate and Jacobians from the STATE (tex S1/S2):
         %       a_bar'      = b (1 - a_bar)^2
@@ -1481,6 +1540,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         diag.P_a_nd         = P_a_v;                  % [-] (a_bar^2 units)
         diag.P_dx           = P_dx_v * R_radius^2;    % [um^2]
         diag.x_D_hat        = zeros(3, 1);
+        if has_b_true
+            b_post(b_true > 0) = b_true(b_true > 0);   % report the b the law used
+        end
         diag.b_hat          = b_post;
         diag.p_hat          = p_post;                 % REAL p (not the sibling alias)
         diag.ws_hat         = ws_post;
@@ -1722,7 +1784,7 @@ function d = empty_diag_formB()
     d.P_a_nd            = zeros(3, 1);
     d.P_dx              = zeros(3, 1);
     d.x_D_hat           = zeros(3, 1);
-    d.b_hat             = zeros(3, 1);           % slot 5 = da, seed 0
+    d.b_hat             = zeros(3, 1);           % slot 5 = b (placeholder; init fills the seed)
     d.p_hat             = ones(3, 1);
     d.ws_hat            = ones(3, 1);
     d.delta_a_hat       = zeros(3, 1);

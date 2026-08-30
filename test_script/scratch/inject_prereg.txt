@@ -14,7 +14,7 @@ P3  [opponent] the two arms are mirror images and neither crosses 0
 P4  all three arms reach the same end-hold bias within the paired SEM
     (the attractor is set by the model, not by the history). If they differ,
     the bias carries path memory and the diagnosis changes.
-Negative controls: N1 canonical seed 7 hook-off a_bar_hat_z[end] = 0.107505;
+Negative controls: N1 canonical seed 7 hook-off a_bar_hat_z[end] = 0.108275 (2026-08-27 IF(1) colour factor; 0.107505 under IF(s) before);
                    N2 hook firing with frac 0 bit-identical to hook off.
 Reading rule: percentages on this ramp are NOT comparable to canonical deep.
 

@@ -39,6 +39,9 @@ function ctrl_const = build_eq17_6state_constants(opts)
 %       IF_abc = [A;B;C]   - s-weighted autocorr sums for exact per-step IF_eff
 %                            (R22_derivation S4-S6); IF_eff = 1 + 2*(sxT^2 A +
 %                            2 sxT snx B + snx^2 C)/(C_dpmr sxT + C_n snx)^2
+%                            s = 1-a_cov: Var of the EWMA OUTPUT (raw readout)
+%       IF_abc_white = same sums at s = 1 (long-run / DC-power factor) for a
+%                            WHITENED readout y2 = a_cov*u[k] (2026-08-27)
 %       xi_per_axis       - (C_n/C_dpmr)*sigma2_n_s/(4*kBT)     [3x1]
 %       t_warmup_kf, h_bar_safe, iir_warmup_mode
 %
@@ -184,7 +187,8 @@ function ctrl_const = build_eq17_6state_constants(opts)
     % ------------------------------------------------------------
     % IF color-inflation: EXACT closed form (R22_derivation.tex S4-S6).
     %   IF_eff = 1 + 2*sum_{tau>=1} rho_dpmr^2(tau)*s^tau, s=1-a_cov, depends on
-    %   the per-axis ratio r = sigma2_dxT/sigma2_nx (= 4kBT*a/sigma2_nx). Since a
+    %   the per-axis ratio r = sigma2_dxT/sigma2_nx (= 4kBT*a/sigma2_nx). This
+    %   is the variance of the EWMA OUTPUT sigma2_hat (raw readout). Since a
     %   is time-varying, the controller evaluates IF_eff per-step from a_hat. Here
     %   we precompute the three s-weighted autocorrelation sums (depend only on
     %   lambda_c, a_pd, a_cov) so the controller's per-step IF is O(1):
@@ -194,7 +198,21 @@ function ctrl_const = build_eq17_6state_constants(opts)
     %   Numerically exact: this IS the brute force R22_derivation validates to
     %   <8e-15 against its analytic 3-term geometric closed form (S6).
     % ------------------------------------------------------------
-    [IF_abc_A, IF_abc_B, IF_abc_C, RfT0, RfN0] = compute_if_abc(lc, apd, a_cov);
+    [IF_abc_A, IF_abc_B, IF_abc_C, RfT0, RfN0] = compute_if_abc(lc, apd, 1 - a_cov);
+    % WHITENED counterpart (2026-08-27). The s^tau weight above is the overlap
+    % of two EWMA kernel taps tau apart: IF_eff answers "Var(sigma2_hat)", the
+    % variance of the EWMA OUTPUT (R22_derivation.tex, boxed eq:IF-def). A
+    % controller that whitens the readout (y2_whiten = true) feeds the KF the
+    % single increment y2 = a_cov*u[k] instead; the EWMA window is undone and
+    % the averaging is now the KF's own (flat kernel for a constant parameter),
+    % so the colour penalty is the long-run factor
+    %     IF_white = 1 + 2*sum_{tau>=1} rho_u^2(tau)      (s = 1, DC-power ratio)
+    % = same A/B/C with unit weights. It depends on (lambda_c, a_pd) only, so
+    % a whitened R2 carries a_cov solely through its explicit a_cov^2 factor
+    % (rule: H2 ~ a_cov, R2 ~ a_cov^2, K2*innov independent of a_cov).
+    % Consumers select by their own y2_whiten flag; raw-readout controllers
+    % (eq17_{4,5,6}state) keep IF_abc.
+    [IF_abcw_A, IF_abcw_B, IF_abcw_C] = compute_if_abc(lc, apd, 1);
     % Self-check: R_fT(0)=C_dpmr, R_fN(0)=C_n (independent route to the same consts).
     if abs(RfT0 - C_dpmr) > 1e-5 * C_dpmr || abs(RfN0 - C_n) > 1e-5 * C_n
         warning('build_eq17_6state_constants:IFselfcheck', ...
@@ -261,7 +279,8 @@ function ctrl_const = build_eq17_6state_constants(opts)
     ctrl_const.amlpf_var_factor = amlpf_var_factor;
     ctrl_const.var_da_increment_factor = var_da_increment_factor;  % 2/(1+lc) closed form
     ctrl_const.r22_delay_sum_factor    = r22_delay_sum_factor;     % (1-rho2)/(2(1-rho1)) at d=2, 1 at d=1 (telescoped delay-sum)
-    ctrl_const.IF_abc          = [IF_abc_A; IF_abc_B; IF_abc_C];  % s-weighted autocorr sums for exact per-step IF_eff
+    ctrl_const.IF_abc          = [IF_abc_A; IF_abc_B; IF_abc_C];  % s-weighted autocorr sums for exact per-step IF_eff (raw readout)
+    ctrl_const.IF_abc_white    = [IF_abcw_A; IF_abcw_B; IF_abcw_C];  % s = 1 sums for the whitened readout (y2_whiten = true)
     ctrl_const.y2_ar1_phi      = y2_ar1_phi;    % lag-1 rho of a_xm noise (colored-y2 AR(1) fit)
     ctrl_const.y2_mirror_sT    = y2_mirror_sT;  % thermal-dominated sensitivity dE[a_xm]/da at g=1
     ctrl_const.y2_mirror_cN    = y2_mirror_cN;  % sensor-mix correction coefficient
@@ -322,18 +341,21 @@ function phi = compute_y2_ar1_phi(lc, apd, a_cov)
 end
 
 
-function [A, B, C, RfT0, RfN0] = compute_if_abc(lc, apd, a_cov)
+function [A, B, C, RfT0, RfN0] = compute_if_abc(lc, apd, s)
 %COMPUTE_IF_ABC  s-weighted autocorrelation sums for the exact IF_eff
 %   (R22_derivation.tex S4-S6), via F_T/F_N impulse responses (toolbox-free).
+%   s = 1-a_cov reproduces the EWMA-output IF_eff (raw readout); s = 1 gives
+%   the whitened long-run factor IF_white (2026-08-27). Both use the SAME
+%   R_fT/R_fN autocorrelations; only the lag weights differ.
 %
 %   F_T = (1-apd)(1-q)q^3[1+(1-lc)q+(1-lc)q^2] / [(1-(1-apd)q)(1-lc q)],  q=z^-1
 %   F_N = (1-apd)(1-q)^2[1+(1-lc)q+(1-lc)q^2] / [same den]   (z^3 cancels q^3)
 %
 %   Returns  A = sum_{tau>=1} R_fT(tau)^2 s^tau,  B = sum R_fT(tau) R_fN(tau) s^tau,
-%   C = sum R_fN(tau)^2 s^tau  (s = 1-a_cov), plus RfT0=R_fT(0)=C_dpmr and
-%   RfN0=R_fN(0)=C_n for an independent self-check. Poles (1-apd, lc) < 1, so the
-%   impulse responses decay geometrically; N/Tmax are set for machine precision.
-    s = 1 - a_cov;
+%   C = sum R_fN(tau)^2 s^tau, plus RfT0=R_fT(0)=C_dpmr and RfN0=R_fN(0)=C_n
+%   for an independent self-check. Poles (1-apd, lc) < 1, so the impulse
+%   responses decay geometrically (rho^2 ~ (1-apd)^(2 tau) at s = 1); N/Tmax
+%   are set for machine precision.
     q1 = [1, -1]; q3 = [0, 0, 0, 1]; thnum = [1, (1 - lc), (1 - lc)];
     numFT = (1 - apd) * conv(conv(q1, q3), thnum);
     numFN = (1 - apd) * conv(conv(q1, q1), thnum);
