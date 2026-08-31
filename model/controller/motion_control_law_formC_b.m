@@ -326,6 +326,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent fe43_off q34_off q44_scale                   % diagnostic flags, default off
     persistent law_exact_step                               % exact (quadrature-free) law step, default off
     persistent law_M_cmd_only                               % TEMPORARY diagnostic: law predict integrates the COMMAND displacement only
+    persistent mean_corr_hold cws_coeff                     % hold-gated noise-mean correction (S6b line, 2026-08-31), default off
     persistent consider_b                                    % b as a consider parameter (formC_state_b.tex 2026-08-27)
     persistent law_err_q law_err_P G_law dwd_sign_prev       % correlated law-error container q_law (formC_state_b.tex 2026-08-27)
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_bar amlpf_var_factor
@@ -415,6 +416,21 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % F_e / Q / K are untouched (hybrid on purpose: this asks where the
         % MEAN bias enters, not what the right filter is). Do not promote.
         law_M_cmd_only = logical(get_field_default(ctrl_const, 'law_M_cmd_only', false));
+        % HOLD-GATED NOISE-MEAN CORRECTION (2026-08-31, derivation probe series
+        % T2/T12): thermal jitter and the delayed feedback force are correlated,
+        % so the true mean displacement in a hold differs from the model's by
+        %     g3 = (a'/a) * C_ws,  C_ws = b(2q - V),  q = kappa_T*a  (b = 1-lc)
+        % and the a cancels:  g3 = c(lc) * kappa_T * a'(a_hat),
+        %     c(lc) = b*(2 - (1+2b^2+4*lc*b)/(1-lc^2))   (= -0.588 at lc = 0.7).
+        % Measured (8 seeds, b_true+exact): hold-mean forcing -1.8e-5 vs this
+        % form -2.0e-5. The cleaned ledger (T12) shows the row-3 mean forcing
+        % is ~0 outside holds, so the correction is GATED to command-velocity
+        % zero -- injecting the closed form during motion would overcorrect
+        % (T5: a full-profile row-3 injection carries -0.0236, reality -0.0048).
+        % Meas-noise term of V dropped (2 %% of q at the trough). Default off.
+        mean_corr_hold = logical(get_field_default(ctrl_const, 'mean_corr_hold', false));
+        cws_b = 1 - lambda_c;
+        cws_coeff = cws_b * (2 - (1 + 2*cws_b^2 + 4*lambda_c*cws_b) / (1 - lambda_c^2));
         C_dpmr          = ctrl_const.C_dpmr;
         C_n             = ctrl_const.C_n;
         K_var           = ctrl_const.K_var;
@@ -1332,6 +1348,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             F_aug(4, 9) = a_prime_i * alpha_ma2;
             F_aug(9, 8) = 1;            % row 8 stays all-zero (m1 <- pure noise)
             F_e = F_aug;
+        end
+        if mean_corr_hold && abs(Delta_wbar_d_km1) < 1e-12
+            x_pred(3) = x_pred(3) + cws_coeff * kappa_T * a_prime_i;
         end
         if law_M_cmd_only                            % TEMPORARY diagnostic, see init
             x_pred(4) = x_curr(4) + a_prime_i * Delta_wbar_d_km1;
