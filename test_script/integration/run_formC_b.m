@@ -158,6 +158,9 @@ function out = run_formC_b(opts, test_opts)
     if ~isfield(opts, 'par_law');     opts.par_law     = true;  end
     if ~isfield(opts, 'y2_on');       opts.y2_on       = true;  end
     if ~isfield(opts, 'a_cov_scale'); opts.a_cov_scale = 1;     end
+    if ~isfield(opts, 'log_P_full');  opts.log_P_full  = false; end
+    if ~isfield(opts, 'plant_T_scale'); opts.plant_T_scale = 1; end  % DIAGNOSTIC: plant thermal power scale (estimator kappa_T untouched)
+    if ~isfield(opts, 'T_scale');       opts.T_scale       = 1; end  % DIAGNOSTIC: thermal power scale for plant AND estimator (kappa_T, Q33, xi_bar follow)
     if ~isfield(opts, 'law_err_q');   opts.law_err_q   = false; end  % correlated law-error container (formC_state_b.tex 2026-08-27)
     if ~isfield(opts, 'ws_inject');   opts.ws_inject = 0;      end   % [R] TRUE wall offset, plant side only (S11 injection)
     if ~isfield(opts, 'seeds');       opts.seeds       = [];    end
@@ -420,7 +423,7 @@ function out = run_formC_b(opts, test_opts)
                                  % t_frz | da frac by descent end | hold drift
                                  % %/s | hold delta % | unopposed %/s
     for q = 1:n_seeds
-        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, false, opts.ws_inject, plant_cperp, opts.da_known, opts.ap_known, opts.ap_law_bias, opts.law_b, opts.b_true, opts.ap_known_at, opts.b_true_at);
+        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, opts.log_P_full, opts.ws_inject, plant_cperp, opts.da_known, opts.ap_known, opts.ap_law_bias, opts.law_b, opts.b_true, opts.ap_known_at, opts.b_true_at, opts.plant_T_scale, opts.T_scale);
         m = local_run_metrics(s, cfg, AX_Z, OSC_SETTLE_S, HOLD_SETTLE_S);
         runs{q}     = s;
         Mrows(q, :) = [m.desc_peak_pct, m.osc_rms_pct, m.hold_mean_pct, ...
@@ -943,7 +946,9 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
 end
 
 
-function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_ctrl_override, log_P_full, ws_inject, plant_cperp, da_known_on, ap_known_on, ap_law_bias, law_b, b_true_on, ap_known_at, b_true_at)
+function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_ctrl_override, log_P_full, ws_inject, plant_cperp, da_known_on, ap_known_on, ap_law_bias, law_b, b_true_on, ap_known_at, b_true_at, plant_T_scale, T_scale)
+    if nargin < 16 || isempty(plant_T_scale); plant_T_scale = 1; end
+    if nargin < 17 || isempty(T_scale);       T_scale = 1;       end
     if nargin < 13 || isempty(b_true_on);   b_true_on   = false; end
     if nargin < 14 || isempty(ap_known_at); ap_known_at = 'true'; end
     if nargin < 15 || isempty(b_true_at);   b_true_at   = 'true'; end
@@ -979,6 +984,9 @@ if nargin < 8; plant_cperp = []; end
 
     params = calc_simulation_params(config);
     P = params.Value;
+    if T_scale ~= 1                  % DIAGNOSTIC: the world is colder/hotter and the estimator KNOWS it
+        P.ctrl.T = P.ctrl.T * T_scale;  P.thermal.T = P.thermal.T * T_scale;
+    end
 
     % --- Offline constants (dimension-agnostic; reuse the 6-state builder) ---
     eq17_opts = struct();
@@ -1025,6 +1033,9 @@ if nargin < 8; plant_cperp = []; end
     % sits at w_bar_s = 1 + ws_inject in the estimator's coordinates.
     pz_plant = 0;
     P_plant  = P;                    % plant-side params (shifted wall)
+    if plant_T_scale ~= 1            % DIAGNOSTIC: scale the PLANT's thermal power only; the estimator's kappa_T (P.ctrl.T) is untouched
+        P_plant.thermal.T = P_plant.thermal.T * plant_T_scale;
+    end
     if wall_on_drv
         pz_plant = P.wall.pz + ws_inject * R_drv;
         P_plant.wall.pz = pz_plant;  % step_dynamics / calc_thermal_force see

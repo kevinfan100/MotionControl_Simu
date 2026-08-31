@@ -324,6 +324,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent lambda_c d_delay Ts kappa_T R_radius a_o a_disp r22_delay_scale
     persistent a_inject_step a_inject_frac a_inject_axis   % diagnostic hook, default off
     persistent fe43_off q34_off q44_scale                   % diagnostic flags, default off
+    persistent law_exact_step                               % exact (quadrature-free) law step, default off
     persistent consider_b                                    % b as a consider parameter (formC_state_b.tex 2026-08-27)
     persistent law_err_q law_err_P G_law dwd_sign_prev       % correlated law-error container q_law (formC_state_b.tex 2026-08-27)
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_bar amlpf_var_factor
@@ -399,6 +400,14 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % Reverse discriminator of the P(4,1) sign competition: does a larger
         % P44 let F_e(3,4)*P44 overtake Q(3,4)? Default 1 => bit-identical.
         q44_scale = get_field_default(ctrl_const, 'q44_scale', 1);
+        % DIAGNOSTIC FLAG (2026-08-30): integrate the law dA/dw = b (1-A)^2 EXACTLY
+        % over the step instead of by forward Euler. 1/(1-A) is affine in w, so
+        %     1/(1 - A[k+1]) = 1/(1 - A[k]) + b M,   M = the same bracket Euler uses.
+        % Removes the left-endpoint quadrature error -sum a'' dw^2 > 0 (the
+        % ratchet measured in ledger_hold_ahat_legs: +0.0093 a_o over the canonical
+        % oscillation, 46 %% of the trough bias). F_e is left linearised (first
+        % order identical). Zero parameters. Default false => bit-identical.
+        law_exact_step = logical(get_field_default(ctrl_const, 'law_exact_step', false));
         C_dpmr          = ctrl_const.C_dpmr;
         C_n             = ctrl_const.C_n;
         K_var           = ctrl_const.K_var;
@@ -1316,6 +1325,14 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             F_aug(4, 9) = a_prime_i * alpha_ma2;
             F_aug(9, 8) = 1;            % row 8 stays all-zero (m1 <- pure noise)
             F_e = F_aug;
+        end
+        if law_exact_step && ~has_ap_known           % exact law step, see init
+            M_pred = Delta_wbar_d_km1 + one_minus_lc * x_curr(3);
+            if ma2_aug; M_pred = M_pred + alpha_ma2 * (x_curr(8) + x_curr(9)); end
+            u_inv = 1 / (1 - x_curr(4)) + b_hat_i * M_pred;
+            if u_inv > 0
+                x_pred(4) = 1 - 1 / u_inv;
+            end                                      % else: keep the Euler step (A -> 1 edge only)
         end
         if law_err_q                                 % correlated law-error container, see init
             g_law = dap_db_i * M_tot;                % = F_e(4,5) as built for this axis
