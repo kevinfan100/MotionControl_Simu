@@ -325,6 +325,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent a_inject_step a_inject_frac a_inject_axis   % diagnostic hook, default off
     persistent fe43_off q34_off q44_scale                   % diagnostic flags, default off
     persistent law_exact_step                               % exact (quadrature-free) law step, default off
+    persistent law_M_cmd_only                               % TEMPORARY diagnostic: law predict integrates the COMMAND displacement only
     persistent consider_b                                    % b as a consider parameter (formC_state_b.tex 2026-08-27)
     persistent law_err_q law_err_P G_law dwd_sign_prev       % correlated law-error container q_law (formC_state_b.tex 2026-08-27)
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_bar amlpf_var_factor
@@ -408,6 +409,12 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % oscillation, 46 %% of the trough bias). F_e is left linearised (first
         % order identical). Zero parameters. Default false => bit-identical.
         law_exact_step = logical(get_field_default(ctrl_const, 'law_exact_step', false));
+        % TEMPORARY DIAGNOSTIC (2026-08-31, entry-A/B discriminator): the law
+        % predict (row 4 mean only) integrates Delta_wbar_d alone -- the noisy
+        % 0.3*dw3 pull and the MA feedthrough are dropped from the MEAN step.
+        % F_e / Q / K are untouched (hybrid on purpose: this asks where the
+        % MEAN bias enters, not what the right filter is). Do not promote.
+        law_M_cmd_only = logical(get_field_default(ctrl_const, 'law_M_cmd_only', false));
         C_dpmr          = ctrl_const.C_dpmr;
         C_n             = ctrl_const.C_n;
         K_var           = ctrl_const.K_var;
@@ -1326,9 +1333,16 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             F_aug(9, 8) = 1;            % row 8 stays all-zero (m1 <- pure noise)
             F_e = F_aug;
         end
+        if law_M_cmd_only                            % TEMPORARY diagnostic, see init
+            x_pred(4) = x_curr(4) + a_prime_i * Delta_wbar_d_km1;
+        end
         if law_exact_step && ~has_ap_known           % exact law step, see init
-            M_pred = Delta_wbar_d_km1 + one_minus_lc * x_curr(3);
-            if ma2_aug; M_pred = M_pred + alpha_ma2 * (x_curr(8) + x_curr(9)); end
+            if law_M_cmd_only
+                M_pred = Delta_wbar_d_km1;
+            else
+                M_pred = Delta_wbar_d_km1 + one_minus_lc * x_curr(3);
+                if ma2_aug; M_pred = M_pred + alpha_ma2 * (x_curr(8) + x_curr(9)); end
+            end
             u_inv = 1 / (1 - x_curr(4)) + b_hat_i * M_pred;
             if u_inv > 0
                 x_pred(4) = 1 - 1 / u_inv;
