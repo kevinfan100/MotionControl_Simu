@@ -17,7 +17,13 @@ function out = compare_mean_corr_hold(seeds)
 %         variance device; a spread change flags overcorrection).
 %   P-M3  oscillation-segment bias change < 1.5 pp (correction is hold-gated).
 %   P-M4  first-hold bias change < 0.5 pp (far field: a' tiny, correction ~0).
-% STATUS: ACTIVE | closed-loop mean-bias line, first correction increment
+% STATUS: FALSIFIED-as-implemented (2026-08-31, user caught it on the figure) --
+%   the corrected arm does NOT settle near 0: the hold is a +13 -> -14 %% LINEAR
+%   RAMP (~-12 %%/s); the quoted -3.00 %% was the segment MEAN of that ramp.
+%   A constant row-3 injection into a hold (no restoring force on a_hat)
+%   integrates into drift; the real frozen bias sits in a row3/row4 balance the
+%   one-sided injection breaks. Do not quote the -3 %%. Acceptance must use the
+%   HOLD SLOPE (rule 9), not the segment mean. Flag stays default-off.
 
     if nargin < 1 || isempty(seeds); seeds = 1:8; end
     here = fileparts(mfilename('fullpath'));
