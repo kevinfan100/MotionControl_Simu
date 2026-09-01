@@ -68,6 +68,15 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
 %
 %       kappa_T = 4*kB*T*a_o/R                                   [-]
 %
+%   a_o = Ts/(gamma_N*R) is the R-NORMALIZED far-field gain [1/pN]; the physical
+%   one is a_nom = Ts/gamma_N = a_o*R [um/pN] (driver name). The force scale is
+%   f_R = 1/a_o = gamma_N*R/Ts (~153 pN): f_bar = f/f_R. Because a_o already
+%   holds one 1/R, kappa_T carries /R and not /R^2. Changing the definition of
+%   a_o means changing the power of R in kappa_T AND the division at [U3] in
+%   the same edit; changing the a_o line alone runs to completion with every
+%   number wrong by R (verified V1-V4, 2026-08-30, ledger L42-L45; rule
+%   .claude/rules/normalization-boundary.md).
+%
 %   a_o crosses the boundary ONLY at: the kappa_T / a_disp definitions ([U0]),
 %   the force output conversion f_d = f_bar_d/a_o ([U3]), and the display
 %   layer ([U4]). It appears NOWHERE inside the filter loop.
@@ -324,6 +333,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent lambda_c d_delay Ts kappa_T R_radius a_o a_disp r22_delay_scale
     persistent a_inject_step a_inject_frac a_inject_axis   % diagnostic hook, default off
     persistent fe43_off q34_off q44_scale                   % diagnostic flags, default off
+    persistent law_exact_step                               % exact (quadrature-free) law step, default off (port of 2a5dc29)
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_bar amlpf_var_factor
     persistent t_warmup_kf h_bar_safe sigma2_n_nd
     persistent enable_wall w_hat_n pz_wall
@@ -335,6 +345,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent q33_dc_match q33_dc_fac
     persistent y2_echo_corr S_echo_T S_echo_n
     persistent ma2_aug alpha_ma2 n_state    % MA(2) noise-memory augmentation
+    persistent predict_quad                 % Stage B diagnostic: row-4 predict quadrature rule
     persistent lock_mask_g lock_mask_ax lock_state_idx_ax
     persistent par_law w0_par w0_nominal
 
@@ -505,6 +516,35 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         else
             n_state = 7;
         end
+        % STAGE B DIAGNOSTIC (2026-08-30, test_script/scratch/l3_stageB_prereg.txt):
+        % quadrature rule of the ROW-4 PREDICT INTEGRAND only.
+        %   'left' (default)  a_pred = a + a'(a) M                    production, arithmetic unchanged
+        %   'mid'             a_pred = a + a'(a + a'(a) M / 2) M
+        %   'trap'            a_pred = a + [a'(a) + a'(a + a'(a) M)] M / 2
+        % with a'(.) = b_hat (1 - .)^2 under the production a_bar clamps.
+        % REGISTERED SECOND-ORDER INCONSISTENCY: F_e(4,4) = 1 + a' F_dw + A_a M,
+        % F_e(4,3)/(4,5), Q(3:4,3:4), H2 and y2_pred still use a'(a) at the LEFT
+        % endpoint, so under 'mid'/'trap' the covariance propagation and the
+        % predict differ by |a'(a_half) - a'(a)| / a' ~ (1-a) a' |M| = O(1e-2)
+        % per step near the wall. Single factor by design (the flag changes
+        % nothing else). On the ap_known arm the slope is exogenous (driver
+        % value at the previous true/commanded height; no half/end-point value
+        % is plumbed), so that arm keeps 'left' regardless of the flag.
+        predict_quad = lower(get_field_default(ctrl_const, 'predict_quad', 'left'));
+        assert(any(strcmp(predict_quad, {'left', 'mid', 'trap'})), ...
+               'motion_control_law_formC_b:predictQuad', ...
+               'ctrl_const.predict_quad must be ''left'' | ''mid'' | ''trap''.');
+        % EXACT LAW STEP (port of 2a5dc29 on test/law-error-budget, 2026-09-01):
+        % integrate dA/dw = b (1-A)^2 EXACTLY over the step instead of by forward
+        % Euler. 1/(1-A) is affine in w, so
+        %     1/(1 - A[k+1]) = 1/(1 - A[k]) + b M,   M = the same bracket Euler uses.
+        % Removes the left-endpoint quadrature ratchet -1/2 sum a'' dw^2 > 0
+        % (09-01, seed-at-truth a'_true arm: open-loop sum +0.00666 on the canonical
+        % band vs measured +0.00680). F_e is left linearised (first order identical).
+        % EXTENSION over 2a5dc29: the ap_known (exogenous slope) arm is INCLUDED,
+        % via b_eff = a'_ext/(1-A)^2 -- see the predict block. Default false =>
+        % bit-identical.
+        law_exact_step = logical(get_field_default(ctrl_const, 'law_exact_step', false));
         y1_gain_off  = logical(get_field_default(ctrl_const, 'y1_gain_off', false));
         % T2 hook (TEST ONLY, default false): zero the loop-coupling column
         % F_dw and the process noise Q, so P(4,4) propagates by the row-4
@@ -906,7 +946,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             diag = empty_diag_formB();
             diag.f_d       = f_d;
             diag.a_hat     = a_hat_phys;
-            diag.a_hat_nd  = a_bar_seed_v * a_o;                  % [U4] legacy 1/pN
+            diag.a_hat_nd  = a_bar_seed_v * a_o;                  % [U4] legacy 1/pN (do NOT mix with a_disp)
             diag.a_bar_hat = a_bar_seed_v;
             % report the ACTUAL seeded slots (x/y hold the parallel constants
             % under par_law, the requested seeds otherwise)
@@ -944,6 +984,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 diag.a_ctrl_used = a_ctrl_override;
             else
                 diag.a_ctrl_used = a_hat_phys;
+            end
+            diag.predict_quad_used = predict_quad;      % Stage B: logged once
+            if has_ap_known && ~strcmp(predict_quad, 'left')
+                diag.predict_quad_used = [predict_quad ' (ap_known arm: left fallback)'];
             end
         end
         return;
@@ -1267,11 +1311,35 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % --- EKF predict (tex S5(b)). Row 4 carries the ADDITIVE disturbance
         %     x_curr(5) outside the a_bar' bracket; row 5 is an integrator of
         %     nothing, da[k+1] = da[k].
+        % Row-4 increment under ctrl_const.predict_quad (Stage B, see init).
+        % 'left' keeps the production expression VERBATIM -- the M_row4 product
+        % here and the MA(2) share added below are two separate products, so
+        % the default stays bit-identical. 'mid'/'trap' form the bracket the
+        % predict actually multiplies (M_pred; fe_row4_full does not enter the
+        % predict, only F_e) and re-read the law at the half/end point with the
+        % same a_bar clamps as the production slope call. The MA(2) share is
+        % then already inside the increment and is NOT added again below.
+        quad_left = strcmp(predict_quad, 'left') || has_ap_known;
+        if quad_left
+            x4_pred = x_curr(4) + a_prime_i * (Delta_wbar_d_km1 + one_minus_lc * x_curr(3));
+        else
+            M_pred = Delta_wbar_d_km1 + one_minus_lc * x_curr(3);
+            if ma2_aug; M_pred = M_pred + alpha_ma2 * (x_curr(8) + x_curr(9)); end
+            switch predict_quad
+                case 'mid'
+                    a_half = min(max(a_bar_sl + 0.5 * a_prime_i * M_pred, a_bar_floor), a_bar_ceil);
+                    ap_q   = local_gain_law_formC(a_half, enable_wall, b_hat_i);
+                case 'trap'
+                    a_end  = min(max(a_bar_sl + a_prime_i * M_pred, a_bar_floor), a_bar_ceil);
+                    ap_end = local_gain_law_formC(a_end, enable_wall, b_hat_i);
+                    ap_q   = 0.5 * (a_prime_i + ap_end);
+            end
+            x4_pred = x_curr(4) + ap_q * M_pred;
+        end
         x_pred = [x_curr(2); ...
                   x_curr(3); ...
                   lambda_c * x_curr(3); ...
-                  x_curr(4) + a_prime_i * (Delta_wbar_d_km1 + one_minus_lc * x_curr(3)) ...
-                            ; ...
+                  x4_pred; ...
                   x_curr(5); ...
                   x_curr(6); ...
                   x_curr(7)];
@@ -1282,7 +1350,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             % zero mean; m2 <- m1).
             m_sum = x_curr(8) + x_curr(9);
             x_pred(3) = x_pred(3) - alpha_ma2 * m_sum;
-            x_pred(4) = x_pred(4) + a_prime_i * alpha_ma2 * m_sum;
+            if quad_left; x_pred(4) = x_pred(4) + a_prime_i * alpha_ma2 * m_sum; end
             x_pred = [x_pred; 0; x_curr(8)];
 
             F_aug = zeros(n_state);
@@ -1293,6 +1361,29 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             F_aug(4, 9) = a_prime_i * alpha_ma2;
             F_aug(9, 8) = 1;            % row 8 stays all-zero (m1 <- pure noise)
             F_e = F_aug;
+        end
+        if law_exact_step                            % exact law step, see init
+            M_pred = Delta_wbar_d_km1 + one_minus_lc * x_curr(3);
+            if ma2_aug; M_pred = M_pred + alpha_ma2 * (x_curr(8) + x_curr(9)); end
+            if has_ap_known
+                % Exogenous slope: the SAME exact step, with the local law
+                % constant recovered from the fed slope,
+                %     b_eff = a'_ext/(1-A)^2
+                %     => A[k+1] = A + a'_ext M / (1 + a'_ext M/(1-A)).
+                % No new information enters (b_eff is a reparameterisation of
+                % the slope already supplied); reduces identically to the
+                % production branch when a'_ext = b_hat (1-A)^2. Closes the
+                % 2a5dc29 exclusion that left the oracle arm on forward Euler.
+                den = 1 + a_prime_i * M_pred / (1 - x_curr(4));
+                if den > 0
+                    x_pred(4) = x_curr(4) + a_prime_i * M_pred / den;
+                end                                  % else: keep the Euler step (edge only)
+            else
+                u_inv = 1 / (1 - x_curr(4)) + b_hat_i * M_pred;
+                if u_inv > 0
+                    x_pred(4) = 1 - 1 / u_inv;
+                end                                  % else: keep the Euler step (A -> 1 edge only)
+            end
         end
         if q44_scale ~= 1; Q_i(4, 4) = q44_scale * Q_i(4, 4); end   % diagnostic, see init
         if q34_off                                   % diagnostic, see init
@@ -1488,7 +1579,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         diag = empty_diag_formB();
         diag.sigma2_dxr_hat = sigma2_dwr_hat_new;
         diag.a_xm           = a_bar_wm * a_disp;      % [um/pN]
-        diag.a_hm_nd        = a_bar_wm * a_o;         % legacy 1/pN convention
+        diag.a_hm_nd        = a_bar_wm * a_o;         % legacy 1/pN convention (do NOT mix with a_disp)
         diag.a_wm_bar       = a_bar_wm;
         diag.y2             = y2;                     % normalized gain units
         diag.delta_x_m      = delta_w_m * R_radius;   % [um]
@@ -1527,7 +1618,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         diag.F_dh           = F_dw_vec / a_o;         % [pN]
         diag.dx_r           = dw_r * R_radius;        % [um], same convention as delta_x_m
         diag.a_hat          = a_hat_phys;
-        diag.a_hat_nd       = a_bar_post * a_o;       % legacy 1/pN convention
+        diag.a_hat_nd       = a_bar_post * a_o;       % legacy 1/pN convention (do NOT mix with a_disp)
         diag.a_bar_hat      = a_bar_post;
         diag.a_ctrl_used    = a_ctrl * a_disp;        % [um/pN]
         diag.P_b            = P_b_v;

@@ -33,7 +33,9 @@ function ctrl = calc_ctrl_params(config, constants)
     ctrl.a_cov = config.a_cov;
     ctrl.epsilon = config.epsilon;
     ctrl.k_B = constants.k_B;
-    ctrl.T = constants.T;
+    T_scale = 1;                      % keep the filter's kBT consistent with the plant (T_scale diagnostic)
+    if isfield(config, 'T_scale') && ~isempty(config.T_scale); T_scale = config.T_scale; end
+    ctrl.T = constants.T * T_scale;
 
     % Derived EKF parameters
     % sigma2_deltaXT: thermal position increment variance per axis [um^2]

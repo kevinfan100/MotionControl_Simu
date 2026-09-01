@@ -140,6 +140,7 @@ function out = run_formC_b(opts, test_opts)
     % state". Units: absolute a_bar. Implies the true-slope path.
     if ~isfield(opts, 'ap_law_bias'); opts.ap_law_bias = NaN; end
     if ~isfield(opts, 'b_true');      opts.b_true      = false; end  % TRUE-b ARM (law reads b_true(w_bar), slot 5 locked)
+    if ~isfield(opts, 'log_P_full'); opts.log_P_full = false; end  % full P capture (was silently ignored on this path before 2026-08-31)
     if ~isfield(opts, 'ap_known_at'); opts.ap_known_at = 'true'; end
     if ~isfield(opts, 'b_true_at');   opts.b_true_at   = 'true'; end  % TRUE-b ARM evaluation point: 'true' | 'cmd' (same meaning as ap_known_at)  % TRUE-SLOPE ARM evaluation point: 'true' = particle's true height (prev step) | 'cmd' = commanded height (prev step, no jitter)
     if ~isfield(opts, 'law_b');       opts.law_b       = 1;   end
@@ -407,7 +408,7 @@ function out = run_formC_b(opts, test_opts)
                                  % t_frz | da frac by descent end | hold drift
                                  % %/s | hold delta % | unopposed %/s
     for q = 1:n_seeds
-        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, false, opts.ws_inject, plant_cperp, opts.da_known, opts.ap_known, opts.ap_law_bias, opts.law_b, opts.b_true, opts.ap_known_at, opts.b_true_at);
+        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, opts.log_P_full, opts.ws_inject, plant_cperp, opts.da_known, opts.ap_known, opts.ap_law_bias, opts.law_b, opts.b_true, opts.ap_known_at, opts.b_true_at);
         m = local_run_metrics(s, cfg, AX_Z, OSC_SETTLE_S, HOLD_SETTLE_S);
         runs{q}     = s;
         Mrows(q, :) = [m.desc_peak_pct, m.osc_rms_pct, m.hold_mean_pct, ...
