@@ -1,0 +1,55 @@
+STAGE B PRE-REGISTRATION -- predict quadrature rule flag on formC_b (written 2026-08-25 BEFORE any code change or run)
+
+PURPOSE
+  Test whether the +9.1% of a_T discretisation term measured by the predict replay (L29, base arm, left-endpoint rule,
+  100 seeds paired) is recoverable by changing the integration rule of the gain-state predict, single-factor.
+
+CHANGE (production file, diagnostic flag, default = current behaviour)
+  ctrl_const.predict_quad in {'left' (default), 'mid', 'trap'}; read in the init block; applied ONLY in the row-4 predict:
+    left: a_pred = a + a'(a) * M_tot                                     (current code, unchanged numerics)
+    mid : a_half = a + 0.5 * a'(a) * M_tot;  a_pred = a + a'(a_half) * M_tot
+    trap: a_end  = a + a'(a) * M_tot;        a_pred = a + 0.5*(a'(a) + a'(a_end)) * M_tot
+  a'(.) = b_hat * (1 - a)^2 with the same clamps as the production slope call. Jacobians F_e, H2, y2_pred, Q are NOT
+  changed in this version (single factor = the predict integrand only). Applies to all three axes.
+
+WIRING / INSTRUMENT CHECKS (must pass before any bias is read)
+  W1 default 'left': l0_regression_fixture.m MODE='check' bit-identical (max diff exactly 0) on seeds 7 and 11.
+  W2 liveness: 'mid' and 'trap' change a_bar_hat_out (max|diff| > 0) on seed 7.
+  W3 replay closure on the 'mid' arm: rebuild predict from the Kalman identity and from a'(a_half)*M_tot; agreement 1e-15.
+  W4 replay D on the 'mid' arm: Sum(left rule on the mid arm's own path) - Sum(mid rule) reproduces the +9% class;
+     and Sum(mid) - Sum(trap-on-same-path) within 0.3 pp of a_T (mid and trap agreed to 0.2 pp in L29).
+
+RUNS
+  arm 'best', canonical deep, seeds 1:100 PAIRED with the L2 baseline (test_results/l2_loo/l2_base_100.mat):
+  B0 = baseline (left, already on disk, fixture-checked) ; B1 = mid ; B2 = trap.
+  Optional: bmid pair (b locked) to compare with Stage A numbers.
+
+PRE-REGISTERED EXPECTATIONS (z, trough-hold bias in % of a_T, paired diff vs B0, 100 seeds)
+  H1 (quadrature is load-bearing as measured): B1 - B0 = -9 pp +- 3 pp; B2 within 0.5 pp of B1.
+  H2 (open-loop caveat realised): the closed-loop response differs from the replay; |B1 - B0| < 4 pp or > 15 pp.
+     Either branch is reported as-is; H2 does NOT falsify L29 (the replay measures the term along the realised path,
+     not the benefit of switching).
+  H3 (sign): B1 - B0 must be NEGATIVE. A positive move means the rule change interacts with the y1 correction path
+     (Smis/corr anticorrelation, L29 residual budget) and the single-factor assumption fails -- stop and report.
+  Secondary readouts (report all, none is a pass/fail): descent peak, osc RMS, seed sd of the hold bias
+     (base 9.06), innov1 whiteness (must stay within +-0.06 -- the rule change must not re-colour y1),
+     y2 innov2 mean per window, b_hat end, K_a_y1/K_a_y2 hold, P44 honesty (spread/sqrt P in hold).
+  Thresholds cover a sign change (four branches: -9+-3 / small / large / positive).
+
+STOP-LOSS
+  If W1 fails: no run, fix the flag. If W3/W4 fail: the flag is not implementing the registered rule -- fix before B1/B2.
+  If H3 positive: report, do not iterate on the rule; hand to the residual-1c investigation.
+  No production default change is proposed by this stage regardless of outcome; a default change is a separate decision
+  requiring the full LOO convergence pass on the new base.
+
+CONTAMINATION LIST (what the 'mid' arm changes at once)
+  (i) predict integrand (intended); (ii) nothing else by construction -- F_e row 4 still uses a'(a) at the left endpoint,
+  so the covariance propagation and the predict are now slightly inconsistent (F_e(4,4) = 1 + a'*F_dw + A_a*M evaluated at
+  the left endpoint). Register this as the known second-order inconsistency; magnitude bound: |a'(a_half) - a'(a)| / a'(a)
+  ~ |A_a * 0.5 * a' * M| / a' <= 0.5 * 2(1-a) * a' * |M| ~ O(1e-2) per step near the wall.
+
+FIGURES (figure-style rule): per arm pair B0|B1 and B0|B2, shared y: row 1 a_bar_hat vs a_true (z, seed 7 + 100-seed
+  mean +- sd band); row 2 paired per-seed hold bias scatter B0 vs B1 with the diagonal; row 3 innov1 acf bars hold.
+  Output test_results/l3_stageB/.
+
+SEEDS: calibration = none (no constant is fitted); adjudication = 1:100. Band = deep only. No cross-band %.

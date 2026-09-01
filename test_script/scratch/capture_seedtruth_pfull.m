@@ -1,0 +1,33 @@
+% STATUS: ACTIVE (scratch) | PURPOSE: true full-P capture (opts.log_P_full,
+%   wired through the main path 2026-08-31) for the seed-at-truth oracle pair,
+%   seeds [7 23]. Overwrites the mis-captured arms30_seedtruth_Pfull.mat
+%   (pre-fix runs silently lacked P_full_out).
+function capture_seedtruth_pfull()
+    here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
+    addpath(genpath(fullfile(root, 'model'))); addpath(fullfile(root, 'test_script', 'integration'));
+    od = fullfile(root, 'test_results', 'apd_acov_meng');
+    w0bar = 15/2.25; [~, cp] = calc_correction_functions(w0bar);
+    ws0 = 1 + w0bar - 1/((8/9)*(1 - 1/cp));
+    OV = struct('trajectory_type','osc','h_init',15,'h_bottom',2.5,'amplitude',0, ...
+                'frequency',1,'n_cycles',1,'t_hold',0.5,'t_descend_override',10, ...
+                'T_sim',12.5,'h_min',2.475);
+    AA = { ...
+      struct('arm','best','ap_known',true,'ap_known_at','cmd', ...
+             'ctrl_const_override',struct('lock_b',true,'ws0_perp',ws0), ...
+             'config_override',OV,'scenario','deep','verbose',false, ...
+             'seeds',[7 23],'log_P_full',true), ...
+      struct('arm','best','b_true',true,'b_true_at','true', ...
+             'ctrl_const_override',struct('ws0_perp',ws0), ...
+             'config_override',OV,'scenario','deep','verbose',false, ...
+             'seeds',[7 23],'log_P_full',true)};
+    TG = {'aptrue','btrue'}; PF = struct();
+    for a = 1:2
+        clear run_formC_b motion_control_law_formC_b;
+        evalc('R = run_formC_b(AA{a});');
+        PF.(TG{a}) = R;
+        assert(isfield(R.runs{1}, 'P_full_out'), 'P_full_out missing -- wiring broken');
+        fprintf('%s: P_full_out %s\n', TG{a}, mat2str(size(R.runs{1}.P_full_out)));
+    end
+    save(fullfile(od,'arms30_seedtruth_Pfull.mat'), '-struct', 'PF', '-v7.3');
+    fprintf('saved arms30_seedtruth_Pfull.mat\n');
+end
