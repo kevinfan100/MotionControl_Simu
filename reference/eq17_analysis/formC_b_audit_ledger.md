@@ -8,8 +8,11 @@
 > 08-25 二次增補：replay 閉合／Route A／配對指紋 L25–L28、liveness 普查 §1.10（含 `da_known` 死臂）、a_nom 檔案值、閘普查、§6 #12–13。
 > 08-25 三次增補：replay 終報 L29–L32——號差 CLOSED（端點配對，driver `:1113`）、§4 1c 求積後殘差 OPEN、1d driver 衛生項、§5 viii Stage B 登記 stub、§6 #11/#12 結案。
 > 08-25 四次增補：Layer-2 LOO 電池 L33–L38（ma2 重現保留／echo pending／fe4 代理過期但承重／二階非可加／x/y 釘頂）、§3 三列更新、§4 #16–17、§5 i–v 狀態。
+> 08-30 增補：正規化邊界審計 L42–L45（V1 換單位制／V2 κ_T 對 plant／V3 ε_w 對容器／V4 ξ 識別式，全 PASS）；L18′「Q33 對物理式」由 L44 結案。同日 tex 更新：`formC_state_b.tex` 補 MA(2) 州／rank-2 Q／S8 在 ā̂／notation 行（a_o vs a_nom、f_R）；規則 `.claude/rules/normalization-boundary.md`。
 > 08-25 五次增補：echo descent/osc 窗重判 L39–L40 → echo **重現保留**；首輪 LOO 收官（ma2 ✓、echo ✓、fe4 代理過期但承重待直接簽名、echo×ma2 非可加）。
 > 08-25 六次增補：形狀判準循環 C-1（L41–L41‴、§4 #18、§6 #14–15）——production Pf_b_std 窄 2.9×，A-1 重跑立案。
+> 08-30 增補：Stage A 端點修正後重跑 L42——偏差存活 +21.65 vs +21.05，斜率家族對均值排除、只管散布；§4 1c 改寫（+9 求積 ＋ +12 非斜率 OPEN）、
+> 1d 已修、#2 降級、#19 LOO 基底過期（1a70599）；§6 #16。
 > 對應 memory：`project_formC_b_layered_audit_2026-08-25.md`。
 > 所有 `controller:NNN`／`driver:NNN` 行號皆對 motion-test 那份 @10e51db。
 
@@ -236,6 +239,12 @@ deep = 谷底 w̄ 1.10；shallow = 2.00。「部署臂」= arm best／ap_src pos
 | L41′ | 真值無關分母兩種：(A) 兩錨差 Brenner 近壁 c=1/ε vs Faxén 倒數遠場 c=1/(1−9/8u+½u³)；(B) 次階複合 Cox–Brenner (1/ε+⅕ln(1/ε)+0.971) 於交叉點 w̄ 1.9409 以下／Faxén 以上 | (A)：formC b \|1−8/9\| = **0.1111**；formB b, p, ws 皆 **0.125**；expgain **0**（退化，兩極限皆 b=1）。(B)：formC 0.338、formB p 0.295、expgain 0.267 | — | — | — | 08-25 | 同上 | — |
 | L41″ | 判準結果（⊥ 真值；PASS <0.9／TIGHT ≤1.1／FAIL >1.1；* = 循環） | **formC deep** sup 0.03889 @ w̄ 1.100 → driver 1.000*／A **0.350 PASS**／B 0.115；shallow 0.02191 @ 2.193 → 1.000*／0.197／0.065。**formB deep** b 0.07977 @ 1.100 → 1.000*／0.638／0.567；p 0.03728 @ 1.100 → 1.000*／0.298／0.126；ws 0.10677 @ 23.222 → 0.962（driver 0.111 非循環但 caller 給）／0.854／0.794；shallow b 0.01568 → A 0.125、p 0.02447 → 0.196、ws 同 0.854。**expgain deep** 0.09417 @ 1.424 → driver 0.942 TIGHT／A 退化／B 0.352；shallow 0.08469 → 0.847／退化／0.317。帶號輪廓：formC deep +0.039 @1.10（b_true→1 接觸）、內部極小 −0.022 @2.193；formB ws 單調 −0.008 → +0.107（錨定法則遠場 ws 結構上 9/8，「校正」0.111 即該漸近） | 三形式 | — | deep／shallow | 08-25 | 同上 | 同上 |
 | L41‴ | ledger 重現檢查 | expgain ⊥ [1.1,10] sup 0.0942 @ 1.424 **對上 tex**（0.094 @ 1.424）；∥ [1.1,10] **0.568 vs tex 0.778 MISMATCH**（tex 定義域下限低於 1.1，未明寫） | expgain | — | [1.1,10] | 08-25 | 同上 | — |
+| L42 | **正規化邊界 V1：換單位制不變性**（um→nm：R、k_B ×1e3、γ_N ÷1e3、h_init／amplitude／meas_noise_std ×1e3；`physical_constants` 影子函數） | 27 欄位全 PASS：無因次 log（ā̂、Q33、Q44、R2、innov₁₂、h̄、f̄、b̂、K_*）最大相對差 **1.7e-12**；長度／增益 log 恰 ×1e3、力 log ×1 ⇒ U0–U4 無一處漏 R 或 a_o；a_o = Ts/(γ_N R) 的 1/R 與 κ_T 的 /R 是一組 | best | seed 7 | deep | 08-30 | `test_script/scratch/l4_norm_v1_unit_invariance.m` | console |
+| L43 | **正規化邊界 V2：κ_T 對 plant** | 遠場／3.32／1.10 三高度 × 三軸九個比值 Var(Δw̄_T)/(κ_T ā) = **0.994–1.007**（N=1e5，1σ 0.45%，最大偏 1.6σ）；κ_T = 4.976e-5 = Einstein 4DTs/R² 逐位；錯誤定義 a_o = Ts/γ_N 會給 0.444 ⇒ 排除。預登記門檻 ±0.5% 比抽樣 σ 還緊，改 ±2σ 照記 | plant only | 1e5 | — | 08-30 | `l4_norm_v2_kappaT_plant.m` | console |
+| L44 | **正規化邊界 V3：實現 ε_w 對容器（L18′ 的「Q33 對物理式」）** | 由真值鏈重建 ε_w = −(e⁺ − λc e) − [f̄ e_ā]_k − α Σ[f̄ e_ā]_{k−i}；四窗 Var(ε_w)/Q_full = **0.987／0.930／1.007／0.984**（hold1／desc／osc／hold2，判準 ±10%）；對 tex S8 截斷式 κ_T ā 比 **1.17–1.21**，S3 預測 1.18–1.23 ⇒ ref tex「低估 1.18×」實測坐實；確定項在 osc 只值 0.1%。⚠ 樣本對齊：遠場變異數分不出 shift 0/1（0.987 vs 0.986），descent 偏差分得出（\|mean/sd\| 0.02 vs 0.56）⇒ shift 0 為物理對齊 | best | seed 7 | deep | 08-30 | `l4_norm_v3v4_epsw_container.m` | console |
+| L45 | **正規化邊界 V4：ξ 讀數鏈識別式** | hold 段 Var(δw̄_r)/[C_dpmr κ_T (ā+ξ)]：hold1（遠場，ā 0.949）**0.975**；hold2（帶頂，ā 0.087）**1.095**（判準 ±10% 內但貼邊；與 08-26「λ_eff≠λc、R₂ 近壁未建模 ~30%」同向）；ξ(z) = 1.5265e-2 對定案 1.53e-2 | best | seed 7 | deep | 08-30 | 同上 | console |
+| L46 | **地毯式三路對帳（08-31）**：主迴圈 vs tex／init-seed vs tex／tex 獨立重推（sympy） | **執行路徑零錯誤**：F_e 49 格、Q 每格外積、H、predict、R₂、取值點（clamped posterior）、buffer index 全對；tex 數學零錯誤（限值有理數精確、a_o²γ_N/Δt ≡ a_o/R 恆等）。實質項：(i) `b_init` 預設 9/8 撞 `b_ceil` 1.05（:757/:760，08-24 舊案仍在，production 傳 8/9 不活）；(ii) ŵ_s 語意缺口——code `w0_nominal = ws0_perp − 1`（:748，pole 名義 0），tex 未寫 nominal；(iii) 過期註解群（:132/:1305/:1397 的 da 敘事、:858 段、`local_seed_level` 檔頭）＝ §1.7 家族殘留；(iv) 休眠診斷不一致：`q44_scale≠1` 時 R₂ 延遲項吃縮放前 Q44（:1260 vs :1353，已驗）；warmup 凍結漏 K(8:9)（t_warmup=0 不活）；(v) slot 7 帶 w0_law inert reporter，tex 說 6–7 空；tex 側 4 個 IMPRECISE：f̄_dw 無定義、Var(w_T)=κ_T ā 的條件化（Itô ~0.15%，同 08-26 a′ 取值點族）未宣告、DARE 種子塊丟 −F_dw e_ā 的獨立性未宣告、R 塊符號未指 SSOT | best | — | — | 08-31 | 三個 fork agent＋本體覆核 | console |
+| L42 | **Stage A 重跑（端點修正後）**：bmid vs bmid＋ap_known，谷底 hold z 偏差 | base **+21.046 ± 8.846**（sd）vs ap_known **+21.653 ± 0.537**；配對差 **+0.61%，t = +0.69**，n=100 ⇒ **P2：偏差存活**。斜率家族 {斜率, F_e(4,3) 開口, A_a·M} **對均值排除**，只解釋逐 seed **散布**（sd 8.8 → 0.54，16×）。P4：F_e(4,3) trough 比 apknown/base 1.087。P5 y₁ leg trough：base +0.01493（系統 +0.01471／cov +0.00022，1.4%）、apknown +0.01503（系統 +0.01716／cov −0.00213，14.2%）——總量不變、拆分移動；y₂ 佔 â 行程 base 4.29%／apknown 0.34%。接線：b 精確 8/9 兩臂；a_prime_out／a_prime_true[k−1] 中位 **1.000000**（左端點）；a_true 兩臂差 1.3e−4（plant 依控制而異，預登記「必為 0」不可達、作廢）；init 列非全零 | bmid（端點修正：driver hb_prev 覆寫移至 `:1185`，ap_known 區塊之後） | 100 配對 (1:100) | deep | **08-30**（tree `2047696` ＋ 未 commit 的 predict_quad 編輯，fixture 0） | `judge_stageA_apknown.m` 逐字重跑 | `stageA_bmid_{base,apknown}_100.mat`（**08-30 覆寫**，08-24 版不存） |
 | L28 | Stage A 接線檢查 W1/W2（`stageA_prereg.txt`） | W1 max\|b̂ − 8/9\| = **0 精確**（兩臂）；W2 median a_prime_out／a_prime_true[k−1] = 1.00067 = a_nom 檔案值 0.01470588／手打 0.014696 ⇒ 接線 **1.0000**；W3（a_true 跨臂相同）與 W4（ā_hat 第 1 列為零）**登記寫錯、作廢**（W4 見儀器陷阱 1） | 同 L22 | 100 | deep | 08-24/25 | `judge_stageA_apknown.m` | `stageA_bmid_*.mat` |
 
 儀器陷阱（讀這些 .mat 前必看，memory nearwall 08-24 儀器交接）：
@@ -252,6 +261,8 @@ deep = 谷底 w̄ 1.10；shallow = 2.00。「部署臂」= arm best／ap_src pos
 「定罪基底」= 該成員當初被證明有效時的 law／帶／λc／controller。「formC deep 重驗」= 在 formC_b ×b 寫法、deep 帶、
 現行全旗標疊加態下，用**它自己的簽名**（非總分）LOO 重驗。✓ 已量到簽名重現；半 = 只有間接證據或非 LOO；
 ✗ 未量 = 從未在終基底拔過。
+⚠ **08-30 註記**：下表所有 08-25 LOO 的 ✓（ma2、echo、fe4 代理）量在 `l2_base_100.mat`，該基底早於 production `1a70599`
+（seed 7 對現行臂 max|diff| 8.06e−3，§4 #19）⇒ 依規則 A-2，這些 ✓ 是「前一基底」的簽名，新基底重跑前不算收斂。
 
 | 成員 | 登陸日期 / commit | 定罪基底（law, band, λc） | 定罪量與數字 | formC deep 基底重驗 | 交互嫌疑 |
 |---|---|---|---|---|---|
@@ -276,11 +287,11 @@ deep = 谷底 w̄ 1.10；shallow = 2.00。「部署臂」= arm best／ap_src pos
 1. **â 近壁高估 +18–20%，87% 未解釋，鎖定 P(4,1)/F_e(4,3) 交叉協方差路徑**（L10–L12、L15）。
    已排除：R/Q/P 調校（P44 誠實 1.07）、y₁/y₂ 雜訊模型、fdet（僅 13%）。降落段 Cov(K1,i1) 整流 86%、
    谷底 hold E[K1]=−0.496 系統項 99%——**兩個機制共用一個通道名**。
-   **Stage A 已跑（L22，[量到]）**：餵真值斜率（同時刪 A_a·M、重建 F_e(4,3)）後偏差 +20.56% → **−22.11%**，
-   換號且散布塌 19×。預登記的兩支（H-law「≥67% 消失」／H-cov「≤33% 消失」）**都沒涵蓋換號**，判準失格；
-   {斜率, F_e(4,3) 開口, A_a·M} 家族**沒有被排除也沒有被定罪**——它把偏差從 +20 推到 −22，
-   而非歸零。A_a·M 刪除確認有作用（L23：√P44 降到 0.42–0.63，但 |K1| 反升 1.62×），過度自信是候選之一，未定罪。
-   來源：memory nearwall 08-24、var_identity 08-21、`stageA_prereg.txt`。
+   **Stage A 首跑（L22，08-24）**：餵真值斜率後 +20.56% → −22.11% 換號——後證為 driver 右端點接線（L30、1d）。
+   **Stage A 重跑（L42，08-30，端點修正後）**：base +21.05 ± 8.85 vs ap_known **+21.65 ± 0.54**，配對差 +0.61%（t 0.69）
+   ⇒ **P2 偏差存活：{斜率, F_e(4,3) 開口, A_a·M} 家族對 +21% 均值排除**；它只解釋逐 seed 散布（16×）。
+   剩餘分帳（[量到]）：≈ **+9**（左端點求積，L29 base D）＋ ≈ **+12**（非斜率路徑，未解）。
+   A_a·M 刪除有作用（L23）但只動散布不動均值。來源：`stageA_prereg.txt`、`judge_stageA_apknown.m`。
 1b. **求積棘輪在 formC 重現，OPEN**（L24）：真值斜率沿真值高度用 left-endpoint 積分谷底 +30.8%，trapezoid −0.01%；
    估測器 predict 每步加 a′·Δw̄、a′ 取左端點（driver `:1128` 用 hb_prev；controller :1183–1187），而 a′ 沿軌跡跨 370×。
    這是 formB 線 2026-08-06「求積棘輪」（中點法則已推導、從未實作，memory `project_formB_7a_falsified_quadrature_ratchet`）
@@ -293,14 +304,15 @@ deep = 谷底 w̄ 1.10；shallow = 2.00。「部署臂」= arm best／ap_src pos
    base 改用 â[k] → −9.115（負控制）。對手「斜率本身的差」被排除（同一斜率只換端點即翻號）。
    L24 的 +30.8% 與 D 的 ±9.4 是**同一物件不同窗**（L31：真值路徑 trapezoid −987.317 vs Δa_true −987.305，left/right 各偏 ±19.9；
    濾波器只看到 ±9.4 因 M_row4 不含 Brownian 二次變差 Σa″·dh²）。
-1c. **求積之後的殘差，OPEN（08-25，[量到]）**：扣掉 D 後 base **+11.3 ± 8.9**（SEM 0.9）vs ap_known **−12.9 ± 0.4**（SEM 0.04，近確定性）
-   ——**號相反** ⇒ 「兩臂各一個求積誤差疊在共同殘差上」**已否證**。ap_known 的 −12.9 落在 osc −6.9／trough −4.6，
-   組成 = step-mismatch ＋ Kalman 修正，兩者逐 seed **反相關**（各自 sd ~100，和的 sd 3–9）——這是下一個分帳標的；
-   base 的 +11.3 帶 8.9 的散布，是 y₁ 整流那條線（§4 #1）的殘餘。
-1d. **driver 層缺陷（衛生項）**：`ap_known` 臂用右端點（driver `:1113` 覆寫順序），與 production 的左法則**不一致**；
-   任何用 ap_known 做的「真值斜率」比較都隱含這個端點差（Stage A L22 的 −22.11% 內含 −9.4 pp 的求積翻號）。
-   修法一行（ap_known 區塊改用覆寫前的 hb_prev，或把 `:1112–1114` 移到 `:1134` 之後）；修後 Stage A 需重跑。
-2. **b 形式假說**：b_true 沿帶 0.867（w̄ 2.193 內部極小）→0.888（遠場）→1（接觸）（driver `:222–225`、memory slope_source）；
+1c. **求積之後的殘差——08-25 版本作廢、08-30 改寫**：08-25 記的「base +11.3 vs ap_known −12.9 號相反、共同殘差否證」
+   是在**右端點臂**上算的——那個 −22.1 是右端點臂整個鏡像迴路的結果，不是 D ＋ 共同殘差；lead 08-25 預測
+   「ap_known ≈ −13 = 殘差」**錯**。端點一致後（L42）兩臂皆 ≈ +21 ⇒ 偏差 ≈ **+9（左端點求積，L29）＋ ≈ +12（非斜率路徑）**。
+   **+12 為 OPEN**：不在斜率、不在 F_e(4,3) 開口、不在 A_a·M（三者已由 L42 排除）；候選回到 y₁ 整流／P(3,2)→P(4,1) 上游（§4 #1），
+   y₁ leg trough 拆分在 ap_known 臂移動（cov 份額 1.4% → 14.2%）但總量不變（L42 P5）。
+1d. ~~driver 層缺陷~~ **已修（C5，08-30）**：hb_prev 覆寫移至 ap_known 區塊之後（driver `:1185`），ap_known 現為左端點
+   （a_prime_out／a_prime_true[k−1] 中位 1.000000）；Stage A 已重跑（L42）。08-24 的 L22 −22.11% 保留為歷史記錄，**不得再引用為斜率臂結果**。
+2. **b 形式假說——對「+21% 偏差」已降級（08-30，L42）**：真值斜率（= 完美 b 曲線）不移除偏差 ⇒ b 形式只關乎**散布**與 **b 可辨識性**，
+   不是均值偏差的成因。以下保留原案內容供散布線使用：b_true 沿帶 0.867（w̄ 2.193 內部極小）→0.888（遠場）→1（接觸）（driver `:222–225`、memory slope_source）；
    常數 b 配曲線真值 ⇒ 斜率誤差換號（L10″）；「b 差 0.28% → 谷底答案錯 52%」病態敏感（memory nearwall §F_e(4,3)）；
    b̂ 只追 26%（[未核：memory 未存此數，來自 lead 摘要]）；deep 上 b̂ 行程 0.213 vs 需要 2.14（08-20）。
    ⚠ 「b_true 0.888→0.928→1」（lead）與 driver 註解 [0.866978, 0.888225] 不一致，見 §6 #7。
@@ -341,6 +353,9 @@ deep = 谷底 w̄ 1.10；shallow = 2.00。「部署臂」= arm best／ap_src pos
    對照臂 b 固定 8/9 同 seed）。formB (b,p) 在 (A) 下 0.638/0.298 仍 PASS 但 ws 0.854 綁在錨定法則遠場 9/8 的結構；expgain (A) 退化為 0，
    只剩 (B) 0.352。**假設待標**：遠場取 Faxén 倒數 vs 加法 Lorentz 1+9/8u 會改 formB ws 列（錨差 1/8 vs 1）。
    也回收 §4 #11（b prior 寬度單一構造）。
+19. **LOO 電池基底過期（規則 A-2，08-30）**：`l2_base_100.mat`（L33）早於 production commit `1a70599`（IF(1) 顏色因子）；
+   Stage B agent 量到 seed 7 對現行左端點臂 max|diff| **8.06e−3**（非 bit-identical）⇒ L34–L40 的四件判決全在 **pre-1a70599 基底**，
+   須待 Stage B judge 報出 production 變動量後在新基底重跑 LOO；在此之前 §3 的 ✓ 標記帶「基底過期」註記。
 
 ---
 
@@ -443,8 +458,11 @@ seeds       ：校準 seeds ______ ≠ 裁決 seeds ______（同 seed 配對；�
 - 停損：A0 bmid 基準與 best 基準末端 hold 偏差差 >2×SEM ⇒ 先處理「b 鎖定本身改變偏差」再談 A1。
 - seeds：裁決 1:100 配對；校準（b_mid、floor）由包絡推導不用 seed。帶 deep。
 - 出圖：â−a_true 三臂並列（best／bmid／bmid+ap_known）共用 y 軸；F_e(4,3) 時序兩臂；y₁ leg Cov 佔比表（console）。
-- 跑後補記：W1–W4 接線檢查結果 [未核，judge 腳本會印，memory/lead 未轉述]；bmid 基準 +20.56% 與 best 基準 +18–20% 差 <3 pp，
-  預登記「b 自由跑可忽略」成立。
+- 跑後補記（08-24 首跑）：W1/W2 通過、W3/W4 登記寫錯（L28）；bmid 基準 +20.56% 與 best 基準 +18–20% 差 <3 pp，
+  預登記「b 自由跑可忽略」成立。**但首跑的 ap_known 臂是右端點（1d），其 −22.11% 不可讀為斜率臂結果。**
+- **重跑（08-30，端點修正後，L42）**：base +21.05 ± 8.85 vs ap_known +21.65 ± 0.54，配對差 +0.61%（t 0.69）⇒ **P2 偏差存活**，
+  斜率家族對均值排除、對散布負責（16×）。W3「a_true 兩臂必相同」在 plant 依控制而異的模擬下**不可達**（差 1.3e−4），作廢；
+  P4 F_e(4,3) trough 比 1.087；P5 y₁ leg 總量不變、拆分移動。**Stage B（求積旗標，§5 viii）的預期「−9 pp」現在有了乾淨的基底**。
 
 ### 5.vii predict replay（純後處理，離線重建濾波器自己的 predict 增量）— **閉合與 Route A 已跑（08-25），結果 L25–L27**
 
@@ -522,6 +540,9 @@ seeds       ：校準 seeds ______ ≠ 裁決 seeds ______（同 seed 配對；�
 13. **a_nom**：檔案 0.01470588 vs 手打 0.014696（Stage A W2 的 1.00067 全由此 typo 造成）；引用時一律讀 `.mat` 的 `a_nom` 欄。
 14. **expgain ∥ 真值 sup**：`verify_shape_exponent_bound` 於 [1.1, 10] 給 **0.568**，`5state_expgain_hd.tex` 記 **0.778**（L41‴）；
    ⊥ 兩邊對上（0.0942 @ 1.424）⇒ 差異在 tex 的定義域下限低於 1.1 且未明寫。兩數字各附定義域後才可引用。
+14b. **ap_known 臂兩個結果**：−22.11 ± 0.47（08-24，L22，**右端點** driver `:1113`）vs **+21.65 ± 0.54**（08-30，L42，左端點修正後）。
+   同名臂、同 seeds、同檔名（08-30 覆寫）；差 ≈ 44 pp 全由端點接線造成（L30 判別已證）。引用 ap_known 一律附日期與端點。
+   連帶：§4 1c 08-25 版的「殘差 −12.9」與 lead 08-25 預測「ap_known ≈ −13」皆作廢。
 15. **shape_ledger.md「prior margin TIGHT 1.02–1.06×」vs L41 比值恆 1.0000**：前者是同一循環判準的不同 run 讀數，數值差只是 θ₀≠錨時的殘餘；
    兩者都不是形狀驗收證據，`shape_ledger.md` 該行待更正。
 

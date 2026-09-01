@@ -172,26 +172,37 @@ the trough, landing as a one-signed bias on the $y_2$ innovation rather than
 integrating into the state. Independent of item 3; fixing one does not fix the
 other.
 
-\item S8's $q_3 = -\ba_w\bar{f}_T$ drops the MA(2) memory and the
+\item S8's $q_3 = -\ba_w\bar{f}_T$ dropped the MA(2) memory and the
 $(1-\lambda_c)n_w$ share of $\varepsilon_w$ that S3 itself defines.
-$\mathrm{Var}(\varepsilon_w)$ is understated $1.18\times$ and its DC power
-$2.17\times$ --- the same factor the formB MA(2) work landed on. HERE THE CODE IS
-RIGHT AND THIS DOCUMENT IS WRONG: the controller carries the full variance.
+$\mathrm{Var}(\varepsilon_w)$ was understated $1.18\times$ and its DC power
+$2.17\times$ --- the same factor the formB MA(2) work landed on. The code was
+right and the document wrong. REPAIRED 2026-08-30: S3, S4, S5, S6 and S8 now
+carry the two memory states $m_1, m_2$ and the rank-2 $Q$ that production runs
+(\texttt{ma2\_aug = true}); the white-container arm's full variance is written
+out beside it. Measured on the truth chain (V3, ledger L44): realised
+$\mathrm{Var}(\varepsilon_w)$ over the truncated $\kappa_T\ba$ is $1.17$--$1.21$
+against the $1.18$--$1.23$ this item predicted, and $0.93$--$1.01$ against the
+full container.
 
 \item $P_{44}[0]$ adds the $\bw_s$ and $b$ contributions as if the two priors
 were independent, while $P_{45}[0]$ on the next line asserts a nonzero
 correlation between $b$ and $\ba$. The independence is undeclared.
 
-\item S8 mixes $\ba_w$ and $\hat{\ba}_w$: $Q_{33}$, $R_2$ and
-$\sigma^{2}_{\delta\bw_r}$ are written at the TRUE gain while $Q_{34}$ and
-$Q_{44}$ use the estimate and the code uses the estimate throughout. For a
+\item S8 mixed $\ba_w$ and $\hat{\ba}_w$: $Q_{33}$, $R_2$ and
+$\sigma^{2}_{\delta\bw_r}$ were written at the TRUE gain while $Q_{34}$ and
+$Q_{44}$ used the estimate and the code uses the estimate throughout. For a
 document whose charter constraint is run-time $c$-free evaluation at the
-estimate, that is not a leavable typo.
+estimate, that was not a leavable typo. REPAIRED 2026-08-30: S8 is at
+$\hat{\ba}_w$ throughout; the one true-gain line left is the definition
+$\sigma^{2}_{w_T} = \kappa_T\ba_w$, followed by the arrow to its estimate.
 \end{enumerate}
 
 \section*{An assumption violation the truncations hide}
 
-$\varepsilon_w$ contains $(1-\lambda_c)n_w[k]$ and $y_1$'s noise IS $n_w[k]$, so
+$\varepsilon_w$ contains $-(1-\lambda_c)n_w[k]$ (sign corrected 2026-08-30 from
+the control law: the delayed measurement enters the tracking error through
+$-(1-\lambda_c)(\bw - \hat{w})$ and $\bw - \hat{w}$ carries $-n_w$; the code
+header had the minus already) and $y_1$'s noise IS $n_w[k]$, so
 $E[\mathbf{q}\mathbf{v}^{\top}] \neq 0$, which the standard Kalman filter this
 document invokes forbids, and $R = \mathrm{diag}(R_1,R_2)$ carries no cross
 term. Coefficient $0.0157$. Small, but structural rather than approximate --- and
@@ -214,10 +225,50 @@ $\hat{y}_2 = \hat{\ba}_w - \hat{b}(1-\hat{\ba}_w)^{2}\nabla_d\bw_d$, not
 $H\hat{\mathbf{x}}$, and production carries an explicit warning that using $H$
 there is wrong. As the file stands the only available reading is the linear one.
 
-Also absent: $Q$ is never assembled ($Q_{11} = Q_{22} = 0$, $Q_{35}$, $Q_{45}$
-never stated); S4 is titled ``Process model'' but contains only the state vector;
-the MA(2) augmentation production runs by default has no representation at all,
-so the file is behind production in state dimension as well.
+Previously also absent, repaired 2026-08-30: $Q$ is now assembled as the
+rank-2 outer-product form with every nonzero entry listed; the MA(2)
+augmentation is represented ($m_1, m_2$; production slots 8 and 9, slots 6--7
+inert). S4 is still titled ``Process model'' and still contains only the state
+vector.
+
+\section*{Normalization scales (2026-08-30)}
+
+Three scales, not two. Lengths by $R$ and the gain by
+$a_{\mathrm{nom}} = \Delta t/\gamma_N$ $[\mu\mathrm{m}/\mathrm{pN}]$ leave
+$\Delta\bw = (a_{\mathrm{nom}}/R)\,\ba\,f$ with a dimensional coefficient
+$a_{\mathrm{nom}}/R =: a_o$ $[1/\mathrm{pN}]$ still in the state equation: the
+unit of the gain contains $1/\mathrm{pN}$, which belongs to the force, and only
+the force can absorb it. The third scale is therefore a force,
+$f_R = 1/a_o = \gamma_N R/\Delta t$ (the force that moves the probe one radius
+in one step at far field; $153$ pN on the house constants), and
+$\bar{f} = f/f_R = a_o f$ makes $\Delta\bw = \ba\bar{f}$ with coefficient one.
+
+This is why $Q_{33} = 4k_BT\,a_o\ba/R$ carries $R$ and not $R^{2}$: $a_o$ is
+the $R$-normalized far-field gain, already holding one $1/R$. Written with the
+physical gain the same quantity is $4k_BT\,a_{\mathrm{nom}}\ba/R^{2}$. The two
+forms are numerically identical; the question ``$R$ or $R^{2}$?'' (asked in the
+lab, 2026-08-30) is a question about which $a_o$ is meant, and the notation line
+of the main file now says which. $\xi = C_n\sigma^{2}_{n_w}/(C_{dpmr}\kappa_T)$
+is in units of $\ba$ ($C_{dpmr}$, $C_n$ are pure functions of
+$\lambda_c$, $a_{pd}$; $\sigma^{2}_{n_w}$ and $\kappa_T$ are both in $R^{2}$),
+which is why it can be added to $\ba$.
+
+The controller crosses the unit boundary at five places and nowhere else:
+U0 init (\texttt{:355--360}: $\sigma^{2}_n/R^{2}$, $a_o$, $\kappa_T$,
+$a_{\mathrm{disp}} = a_oR = a_{\mathrm{nom}}$); U1 every step
+(\texttt{:996, :1013--1016, :1050}: lengths $/R$); U1$'$
+(\texttt{:981}: an override gain in $\mu$m/pN, $/a_{\mathrm{disp}}$); U3
+(\texttt{:1075}: $f_d = \bar{f}_d/a_o$, the only de-normalization that reaches
+the plant); U4 display (\texttt{:922--937, :1517--1591}: $\times a_{\mathrm{disp}}$,
+$\times R$; a legacy $\times a_o$ family gives $1/$pN and must not be mixed
+with $a_{\mathrm{disp}}$). The plant knows only $\gamma_N$, $c(\bw)$ and
+$\Delta t$. Changing the definition of $a_o$ therefore means changing the power
+of $R$ in $\kappa_T$ and the division at U3 in the same edit; changing
+\texttt{:357} alone runs to completion with every number wrong by $R = 2.25$.
+
+Figure axes follow the physical-gain convention: a normalized gain axis is
+labelled $a_z/a_{\mathrm{nom}}$ (or $\ba_z$), never $a_z/a_o$, which is a
+length. Hats sit on normalized quantities only.
 
 \section*{Results}
 
@@ -260,11 +311,33 @@ $b_{\mathrm{new}} = 1$, and $9/8$ must reproduce $8/9$. Measured: $\hat{\ba}_w$
 identical to $0$ and to $6.1\times10^{-16}$ respectively. Only all eight
 conversion sites being right produces that.
 
+\section*{Verification 2026-08-30 (normalization boundary, ledger L42--L45)}
+
+V1, unit-system invariance: every length re-expressed in nm ($R$, $k_B$,
+$h_{\mathrm{init}}$, amplitude, measurement noise $\times 10^{3}$;
+$\gamma_N/10^{3}$) through a shadowed \texttt{physical\_constants}, same seed.
+Twenty-seven logged fields: every dimensionless one agrees to $1.7\times10^{-12}$,
+lengths and gains scale by exactly $10^{3}$, forces by $1$. No boundary leaks
+$R$ or $a_o$. V2, $\kappa_T$ against the plant: nine ratios
+$\mathrm{Var}(\Delta\bw_T)/(\kappa_T\ba)$ at $\bw = 50, 3.32, 1.10$ on three axes
+are $0.994$--$1.007$ ($N = 10^{5}$, $1\sigma$ $0.45\,\%$); the wrong $a_o$ would
+give $0.444$. V3, the realised $\varepsilon_w$ rebuilt from the truth chain
+against the container: $0.987/0.930/1.007/0.984$ on hold, descent, oscillation,
+final hold. V4, the readout identity
+$\mathrm{Var}(\delta\bw_r) = C_{dpmr}\kappa_T(\ba+\xi)$: $0.975$ far field,
+$1.095$ at the band top (same direction as the unmodelled
+$\lambda_{\mathrm{eff}} \ne \lambda_c$ of 2026-08-26); $\xi(z) = 1.5265\times10^{-2}$.
+Scripts, all under \texttt{test\_script/scratch/}:
+\texttt{l4\_norm\_v1\_unit\_invariance.m};
+\texttt{l4\_norm\_v2\_kappaT\_plant.m};
+\texttt{l4\_norm\_v3v4\_epsw\_container.m}.
+
 \section*{Open items}
 
 \begin{enumerate}
-\item The seven truncations above are now declared but not repaired. Items 3 and
-5 are the two where the document is wrong rather than merely silent.
+\item Of the seven truncations above, items 5 and 7 were repaired 2026-08-30;
+the other five are declared but not repaired. Item 3 is the one where the
+document is wrong rather than merely silent.
 \item $P^{f}$ and the four missing filter lines. The nonlinear
 $\hat{y}_2$ is the one that changes what a reader would build.
 \item \texttt{verify\_shape\_exponent\_bound.m} does not exist, so the shape

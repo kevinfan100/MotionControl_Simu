@@ -101,7 +101,7 @@ function local_page(d, pr, out)
                            'Orientation', 'horizontal', 'FontSize', LFS, ...
                            'FontWeight', 'bold', 'Box', 'on');
                     if c == 1
-                        ylabel(a, 'a_z / a_o', 'FontSize', FS, 'FontWeight', 'bold');
+                        ylabel(a, 'a_z / a_{nom}', 'FontSize', FS, 'FontWeight', 'bold');
                     end
                 case 2
                     yline(a, 0, '-', 'Color', [0.4 0.4 0.4], 'LineWidth', 1.0, ...
