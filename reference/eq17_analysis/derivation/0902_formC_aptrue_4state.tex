@@ -1,0 +1,306 @@
+% STATUS: ACTIVE | 4-STATE DERIVATION OF THE a'_true ORACLE ARM: SECOND-ORDER
+%   PREDICT + SECOND-ORDER MEAN TERM (2026-09-02, 'est' reading)
+%
+%   ARM (motion_control_law_formC_b.m via run_formC_b.m): ap_known = true with
+%   ap_known_at = 'est' (slope a_bar'_true read at the filter's own height
+%   w_bar_d[k] - dw3_hat[k]), app_known = true (a_bar''_true, same height), lock_b,
+%   law_exact_step, pred_mean2, seed at truth (ws0_perp solved per trajectory).
+%   Code: run_formC_b.m 'est' -> h_eval = hd_prev - dx3_prev, local_a_prime2_true;
+%   ctrl :1211 a_prime_i = ap_known, A_a_i = 0; :1377 exact step; pred_mean2 block
+%   after it (memory-aware: P(3,8) P(3,9) P(8,8) P(9,9) P(8,9) P(4,8) P(4,9), white
+%   part kappa_T a_hat + alpha^2 sigma_n^2); :1256 Q34/Q44; :1467 y2 first-order
+%   back-off. b does not appear (A_a = 0, lock_b). This copy is the 4-state
+%   white-container form (Q33 = full Var(eps_w), no m1 m2), like 0831_formC_state_b_5state.
+%
+%   NOT IN CODE: F_e(4,3) keeps the tangent (1-lc) a' (the -a'' step term and the
+%   exact-map corrections, ~1e-2, are omitted); the exact y2 back-off. The S5
+%   second-order term is not differentiated (standard second-order EKF).
+%
+%   ASSUMPTIONS OF THE REDUCTION: A1 E[e] = 0; A2 E[dw3_hat e_j] = 0; A3 eps_w white.
+%   MEASURED (probe, canon deep, 8 seeds, hold, 1e-6 a_bar/step, True - Est;
+%   U := (1-lc) e3 + F_dw e4 + eps_w): E[dw3_hat U] = 4.9e-7, E[e3 U] = 0.2e-7.
+%   A2 fails in three places of the error expansion: line 1 -a'' E[dw3_hat U] = +0.80,
+%   line 2 -a'' E[e3 U] = +0.03 (A2 said +0.87), line 3 a''(1-lc) E[dw3_hat U] = -0.24;
+%   lines 1+2 = -a'' E[dw3 U] = +0.83 is what pred_mean2's cov(e3,U) = 5.3e-7 matches;
+%   net -0.28/step = the +0.0005 of ladder arm 4. A3 fails through the MA(2) memory:
+%   this file's start-point line +4.98 vs memory-aware +0.87, Jensen line -4.81 vs
+%   measured -3.59; they cancel to T = +0.06 vs the -3.1/step actually injected, so
+%   the 4-state closed form must not be wired; the memory-aware form is what ran.
+%   Second-order fluctuations are O(P^2), five orders below Q44, not carried.
+%
+%   LADDER (run_aptrue_cheat_ladder.m, canon deep, same 8 seeds, hold, est - true):
+%     1 Euler +0.00532 | 2 exact -0.00221 | 3 exact + 'est' +0.01155 (pred +0.01131)
+%     4 exact + 'est' + pred_mean2 +0.00050, SEM 0.00034 (pred +0.00038); spread unchanged.
+%   The 'cmd' reading (slope at w_bar_d) adds the deterministic group
+%   -a''_true(w_bar_d) dw3_hat [Delta w_d + (1-lc) dw3_hat] to the mean (= jump 2 -> 3).
+%   Verification 2026-09-02 (sympy): 'cmd' 11 items PASS; 'est' E1-E6 PASS.
+%   A2 RESIDUAL, CAUSE FOUND (probe, hold): the filter's known increment
+%   Delta_w_d + (1-lc) dw3_hat + (1-lc)(m1+m2) differs from the commanded displacement
+%   a_ctrl fbar_d by sd 3e-4 (13% of the step), and that difference is correlated with
+%   dw3_hat (E = -4.5e-7 = the A2 violation); with a_ctrl fbar_d as the increment the
+%   unknown part is exactly w_T + fbar_d e_a and orthogonal (E[dw3_hat U] = 0.04e-6).
+%   Using it in the predict (ctrl_const.pred_force_step) was nevertheless FALSIFIED:
+%   gain-estimate noise enters the increment through fbar_d = intended/a_ctrl and walks
+%   the gain along the law (spread x2.4, meng -0.031; a_ctrl variant +0.003). The proxy
+%   stays; +0.0005 (canon) / +0.002 (meng) is its floor in this file.
+% ======================================================
+% Compile: xelatex 0902_formC_aptrue_4state.tex
+% Path:    reference/eq17_analysis/derivation/0902_formC_aptrue_4state.tex
+% ======================================================
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{graphicx}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\E}{\mathbb{E}}
+
+\begin{document}
+
+\section{Gain law}
+
+(bars: lengths by $R$; $a_o := \Delta t/(\gamma_N R)$, $a_{\mathrm{nom}} := a_o R$,
+$\ba := a/a_{\mathrm{nom}}$, $\bar{f} := a_o f$, $\ba\,\bar{f} = \Delta\bw$;
+$e_{\theta} = \theta - \hat{\theta}$; $\E[\cdot]$ over the noise;
+$P_{ij}[k] = \E[e_i[k]\,e_j[k]]$ posterior at $k$, $P^f$ forecast; $\bw_d[k]$ known)
+
+\begin{equation*}
+\ba_{\mathrm{true}}(\bw) = 1 - \frac{9}{8\bw} + \frac{1}{2\bw^{3}}
+  - \frac{57}{100\,\bw^{4}} + \frac{1}{5\bw^{5}}
+  + \frac{7}{200\,\bw^{11}} - \frac{1}{25\bw^{12}}
+\end{equation*}
+
+\begin{align*}
+\ba'_{\mathrm{true}}(\bw)  &= \frac{9}{8\bw^{2}} - \frac{3}{2\bw^{4}}
+  + \frac{57}{25\,\bw^{5}} - \frac{1}{\bw^{6}}
+  - \frac{77}{200\,\bw^{12}} + \frac{12}{25\,\bw^{13}} \\
+\ba''_{\mathrm{true}}(\bw) &= -\frac{9}{4\bw^{3}} + \frac{6}{\bw^{5}}
+  - \frac{57}{5\,\bw^{6}} + \frac{6}{\bw^{7}}
+  + \frac{231}{50\,\bw^{13}} - \frac{156}{25\,\bw^{14}}
+\end{align*}
+
+\begin{align*}
+\ba'[k]  &:= \ba'_{\mathrm{true}}\bigl(\bw_d[k] - \delta\hat{\bw}_3[k]\bigr) , \qquad
+\ba''[k] := \ba''_{\mathrm{true}}\bigl(\bw_d[k] - \delta\hat{\bw}_3[k]\bigr) \\
+\frac{\partial \ba'[k]}{\partial \ba_w} &= 0 , \qquad
+\frac{\partial \ba'[k]}{\partial \delta\bw_3} = -\ba''[k] , \qquad
+a_w = a_o\,\ba_w
+\end{align*}
+
+\section{Jacobians}
+
+(row 4 of $F_e$, first order in the step; the exact-map corrections, relative size
+$\ba'[\Delta\bw_d + (1-\lambda_c)\delta\hat{\bw}_3]/(1-\hat{\ba}_w) \approx 10^{-2}$, are not carried)
+
+\begin{align*}
+F_e(4,3) &= (1-\lambda_c)\,\ba'[k] - \ba''[k]\bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr] \\
+F_e(4,4) &= 1 + F_{dw}[k]\,\ba'[k]
+\end{align*}
+
+\section{True dynamics}
+
+$\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2\bigr)$
+
+\begin{align*}
+\bw[k]           &= \bw_d[k] - \delta\bw_3[k] \\
+\bw_d[k+1]       &= \bw_d[k] + \Delta\bw_d[k] \\
+\delta\bw_1[k+1] &= \delta\bw_2[k] \\
+\delta\bw_2[k+1] &= \delta\bw_3[k] \\
+\delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k] - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
+\bw[k+1] - \bw[k] &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k] \\
+\ba_w[k+1]       &= \ba_{\mathrm{true}}\bigl(\bw[k+1]\bigr)
+\end{align*}
+
+\begin{align*}
+F_{dw}[k] &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
+\varepsilon_w[k] &= \ba_w[k]\,\bar{f}_T[k]
+  + (1-\lambda_c)\sum_{i=1}^{d}\ba_w[k-i]\,\bar{f}_T[k-i]
+  - (1-\lambda_c)\,n_w[k]
+\end{align*}
+
+\section{Process model}
+
+\begin{equation*}
+\mathbf{x} = \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w\,\bigr]^{\top}
+\qquad (d = 2)
+\end{equation*}
+
+\section{Estimator}
+
+\begin{align*}
+\delta\hat{\bw}_1[k+1] &= \delta\hat{\bw}_2[k] \\
+\delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k] \\
+\delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k] \\
+\hat{\ba}_w[k+1]       &= \hat{\ba}_w[k]
+  + \ba'[k]\bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr] \\
+  &\qquad + \tfrac{1}{2}\,\ba''[k]\bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr]^{2} \\
+  &\qquad + \tfrac{1}{2}\,\ba''[k]\Bigl[(1-\lambda_c)^{2}P_{33}[k]
+    + 2(1-\lambda_c)\,F_{dw}[k]\,P_{34}[k] + F_{dw}[k]^{2}P_{44}[k] + Q_{33}[k]\Bigr] \\
+  &\qquad - \ba''[k]\Bigl[(1-\lambda_c)\,P_{33}[k] + F_{dw}[k]\,P_{34}[k]\Bigr]
+\end{align*}
+
+code: the first two terms of the $\hat{\ba}_w$ row are carried by the exact step,
+\begin{align*}
+&\frac{\ba'[k]\bigl(1-\hat{\ba}_w[k]\bigr)\bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr]}
+     {\bigl(1-\hat{\ba}_w[k]\bigr) + \ba'[k]\bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr]} \\
+&\qquad = \ba'[k]\bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr]
+   - \frac{\ba'[k]^{2}}{1-\hat{\ba}_w[k]}\bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr]^{2} + \mathcal{O}(3)
+\end{align*}
+whose second-order coefficient is $-\ba'^{2}/(1-\hat{\ba}_w)$ instead of $\tfrac{1}{2}\ba''$;
+the difference $\tfrac{1}{2}\bigl(\ba''[k] + 2\ba'[k]^{2}/(1-\hat{\ba}_w[k])\bigr)
+[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]]^{2}$ is added together with the
+two mean lines (pred\_mean2).
+
+\section{Error dynamics}
+
+(True $-$ Estimator)
+
+\begin{align*}
+e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k] \\
+e_{\delta\bw_2}[k+1] &= e_{\delta\bw_3}[k] \\
+e_{\delta\bw_3}[k+1] &= \lambda_c\,e_{\delta\bw_3}[k] - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
+e_{\ba_w}[k+1] &= \bigl[1 + F_{dw}[k]\,\ba'[k]\bigr]\,e_{\ba_w}[k]
+  + \Bigl[(1-\lambda_c)\,\ba'[k] - \ba''[k]\bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr]\Bigr]\,e_{\delta\bw_3}[k] \\
+  &\qquad + \ba'[k]\,\varepsilon_w[k] + \text{(second order, below)}
+\end{align*}
+
+\begin{equation*}
+F_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 \\
+0 & 0 & 1 & 0 \\
+0 & 0 & \lambda_c & -F_{dw} \\
+0 & 0 & (1-\lambda_c)\,\ba' - \ba''\bigl[\Delta\bw_d + (1-\lambda_c)\,\delta\hat{\bw}_3\bigr] & 1 + F_{dw}\,\ba'
+\end{bmatrix} ,
+\qquad
+\mathbf{q}[k] = \Bigl[\,0,\ 0,\ -\varepsilon_w,\ \ba'[k]\,\varepsilon_w\,\Bigr]^{\top}
+\end{equation*}
+
+known and unknown parts of the true step, and the two starting points
+\begin{align*}
+\bw[k+1] - \bw[k] &= \Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr]
+  + \Bigl[(1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] \\
+\bw[k] &= \bigl(\bw_d[k] - \delta\hat{\bw}_3[k]\bigr) - e_{\delta\bw_3}[k]
+\end{align*}
+
+truth, second order about $\bw_d[k] - \delta\hat{\bw}_3[k]$
+\begingroup\small
+\begin{align*}
+\ba'_{\mathrm{true}}\bigl(\bw[k]\bigr) &= \ba'[k] - \ba''[k]\,e_{\delta\bw_3}[k] + \mathcal{O}(e^{2}) , \qquad
+\ba''_{\mathrm{true}}\bigl(\bw[k]\bigr) = \ba''[k] + \mathcal{O}(e) \\
+\ba_w[k+1] - \ba_w[k]
+  &= \ba'_{\mathrm{true}}\bigl(\bw[k]\bigr)\bigl[\bw[k+1] - \bw[k]\bigr]
+   + \tfrac{1}{2}\,\ba''_{\mathrm{true}}\bigl(\bw[k]\bigr)\bigl[\bw[k+1] - \bw[k]\bigr]^{2} + \mathcal{O}(3) \\
+  &= \ba'[k]\Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr]
+   + \ba'[k]\Bigl[(1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] \\
+  &\quad - \ba''[k]\,e_{\delta\bw_3}[k]\Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k] \\
+  &\qquad\qquad\qquad\quad
+      + (1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] \\
+  &\quad + \tfrac{1}{2}\,\ba''[k]\Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr]^{2} \\
+  &\quad + \ba''[k]\Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr]
+     \Bigl[(1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] \\
+  &\quad + \tfrac{1}{2}\,\ba''[k]\Bigl[(1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr]^{2}
+\end{align*}
+\endgroup
+
+estimator, second order (first two terms of the $\hat{\ba}_w$ row)
+\begin{equation*}
+\hat{\ba}_w[k+1] - \hat{\ba}_w[k]
+  = \ba'[k]\Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr]
+  + \tfrac{1}{2}\,\ba''[k]\Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr]^{2}
+\end{equation*}
+
+truth $-$ estimator
+\begin{align*}
+e_{\ba_w}[k+1] - e_{\ba_w}[k]
+  &= \ba'[k]\Bigl[(1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] \\
+  &\quad - \ba''[k]\,e_{\delta\bw_3}[k]\Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k] \\
+  &\qquad\qquad\qquad\quad
+      + (1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] \\
+  &\quad + \ba''[k]\Bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\Bigr]
+     \Bigl[(1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr] \\
+  &\quad + \tfrac{1}{2}\,\ba''[k]\Bigl[(1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]\Bigr]^{2}
+  + \mathcal{O}(3)
+\end{align*}
+
+mean, with A1 $\E[e_{\delta\bw_3}] = \E[e_{\ba_w}] = 0$,
+A2 $\E[\delta\hat{\bw}_3\,e_{\delta\bw_3}] = \E[\delta\hat{\bw}_3\,e_{\ba_w}] = \E[\delta\hat{\bw}_3\,\varepsilon_w] = 0$,
+A3 $\E[\varepsilon_w\,e] = 0$, $\E[\varepsilon_w^{2}] = Q_{33}$
+\begin{align*}
+\E\bigl[e_{\ba_w}[k+1]\bigr] - \E\bigl[e_{\ba_w}[k]\bigr]
+  &= - \ba''[k]\Bigl[(1-\lambda_c)\,P_{33}[k] + F_{dw}[k]\,P_{34}[k]\Bigr] \\
+  &\quad + \tfrac{1}{2}\,\ba''[k]\Bigl[(1-\lambda_c)^{2}P_{33}[k]
+      + 2(1-\lambda_c)\,F_{dw}[k]\,P_{34}[k] \\
+  &\qquad\qquad\qquad + F_{dw}[k]^{2}P_{44}[k] + Q_{33}[k]\Bigr]
+\end{align*}
+
+compensation: the two lines added to $\hat{\ba}_w[k+1]$ (Estimator section)
+\begin{equation*}
+\E\bigl[e_{\ba_w}[k+1]\bigr] - \E\bigl[e_{\ba_w}[k]\bigr] = 0
+\end{equation*}
+
+code: with the exact step in place of $\ba'[\cdot] + \tfrac{1}{2}\ba''[\cdot]^{2}$ the
+mean gains $\tfrac{1}{2}\bigl(\ba''[k] + 2\ba'[k]^{2}/(1-\hat{\ba}_w[k])\bigr)
+[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]]^{2}$, which pred\_mean2 adds back.
+
+\section{Measurement and innovation}
+
+\begin{align*}
+\nabla_d\bw_d[k] &= \bw_d[k] - \bw_d[k-d] \\
+y_1[k] &= \delta\bw_1[k] + n_w[k] \\
+y_2[k] &= \ba_w[k-d] + n_a[k] , \qquad \mathrm{Var}(n_a) = R_2 \\
+\ba_w[k-d] &= \ba_w[k] - \ba'[k]\,\nabla_d\bw_d[k] \qquad \text{(first order, as in the code)}
+\end{align*}
+
+\begin{equation*}
+H[k] =
+\begin{bmatrix}
+1 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1
+\end{bmatrix} ,
+\qquad
+L[k] = P^f H^{\top}\bigl(HP^fH^{\top}+R\bigr)^{-1}
+\end{equation*}
+
+\begin{equation*}
+e_{y_1}[k] = e_{\delta\bw_1}[k] + n_w[k] , \qquad
+e_{y_2}[k] = e_{\ba_w}[k] + n_a[k]
+\end{equation*}
+
+\section{Process and measurement noise}
+
+\begin{align*}
+\kappa_T &:= \frac{4k_BT\,a_o}{R} , \qquad
+\mathrm{Var}\bigl(\ba_w[k]\,\bar{f}_T[k]\bigr) = \kappa_T\,\ba_w[k] \to \kappa_T\,\hat{\ba}_w[k] , \qquad
+\sigma^{2}_{n_w} = \frac{\sigma^{2}_{n}}{R^{2}} \\
+Q_{33} &= \kappa_T\Bigl(\hat{\ba}_w[k]
+  + (1-\lambda_c)^{2}\bigl(\hat{\ba}_w[k-1] + \hat{\ba}_w[k-2]\bigr)\Bigr)
+  + (1-\lambda_c)^{2}\sigma^{2}_{n_w} \\
+Q_{34} = Q_{43} &= -\ba'[k]\,Q_{33} , \qquad
+Q_{44} = \ba'[k]^{2}\,Q_{33}
+\end{align*}
+
+\begin{align*}
+R   &= \mathrm{diag}(R_1, R_2) , \qquad R_1 = \sigma^{2}_{n_w} , \qquad
+R_2 = 2a_{\mathrm{cov}}^{2}\;IF_{\mathrm{var}}\bigl(\hat{\ba}_w\bigr)\,\bigl(\hat{\ba}_w + \xi\bigr)^{2} \\
+IF_{\mathrm{var}}\bigl(\hat{\ba}_w\bigr)
+    &= 1 + 2\Bigl[c_1 u^{2} + 2c_2\,u(1-u) + c_3(1-u)^{2}\Bigr] ,
+       \qquad u = \frac{\hat{\ba}_w}{\hat{\ba}_w + \xi} , \qquad
+\xi = \rho_n\,\frac{\sigma^{2}_{n_w}}{\kappa_T}
+\end{align*}
+
+($c_1 = 1.42044$, $c_2 = 0.0098975$, $c_3 = 0.098910$, $\rho_n = 0.350941$,
+$a_{\mathrm{cov}} = 0.05$)
+
+\end{document}
