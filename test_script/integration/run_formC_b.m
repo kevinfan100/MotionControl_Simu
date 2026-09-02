@@ -142,6 +142,7 @@ function out = run_formC_b(opts, test_opts)
     if ~isfield(opts, 'b_true');      opts.b_true      = false; end  % TRUE-b ARM (law reads b_true(w_bar), slot 5 locked)
     if ~isfield(opts, 'log_P_full'); opts.log_P_full = false; end  % full P capture (was silently ignored on this path before 2026-08-31)
     if ~isfield(opts, 'ap_known_at'); opts.ap_known_at = 'true'; end
+    if ~isfield(opts, 'app_known');   opts.app_known   = false; end  % feed the true law CURVATURE at the same height as ap_known (pred_mean2 arm, 2026-09-02)
     if ~isfield(opts, 'b_true_at');   opts.b_true_at   = 'true'; end  % TRUE-b ARM evaluation point: 'true' | 'cmd' (same meaning as ap_known_at)  % TRUE-SLOPE ARM evaluation point: 'true' = particle's true height (prev step) | 'cmd' = commanded height (prev step, no jitter)
     if ~isfield(opts, 'law_b');       opts.law_b       = 1;   end
     % PLANT-SIDE WALL KNOB (NaN = published plane polynomial, unchanged).
@@ -408,7 +409,7 @@ function out = run_formC_b(opts, test_opts)
                                  % t_frz | da frac by descent end | hold drift
                                  % %/s | hold delta % | unopposed %/s
     for q = 1:n_seeds
-        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, opts.log_P_full, opts.ws_inject, plant_cperp, opts.da_known, opts.ap_known, opts.ap_law_bias, opts.law_b, opts.b_true, opts.ap_known_at, opts.b_true_at);
+        s = local_run_once(cfg, seeds(q), ov, opts.verbose, opts.a_ctrl_override, opts.log_P_full, opts.ws_inject, plant_cperp, opts.da_known, opts.ap_known, opts.ap_law_bias, opts.law_b, opts.b_true, opts.ap_known_at, opts.b_true_at, opts.app_known);
         m = local_run_metrics(s, cfg, AX_Z, OSC_SETTLE_S, HOLD_SETTLE_S);
         runs{q}     = s;
         Mrows(q, :) = [m.desc_peak_pct, m.osc_rms_pct, m.hold_mean_pct, ...
@@ -929,13 +930,15 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
 end
 
 
-function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_ctrl_override, log_P_full, ws_inject, plant_cperp, da_known_on, ap_known_on, ap_law_bias, law_b, b_true_on, ap_known_at, b_true_at)
+function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_ctrl_override, log_P_full, ws_inject, plant_cperp, da_known_on, ap_known_on, ap_law_bias, law_b, b_true_on, ap_known_at, b_true_at, app_known_on)
     if nargin < 13 || isempty(b_true_on);   b_true_on   = false; end
     if nargin < 14 || isempty(ap_known_at); ap_known_at = 'true'; end
+    if nargin < 16 || isempty(app_known_on); app_known_on = false; end
     if nargin < 15 || isempty(b_true_at);   b_true_at   = 'true'; end
     assert(any(strcmp(b_true_at, {'true','cmd'})), 'b_true_at must be ''true'' or ''cmd''.');
-    assert(any(strcmp(ap_known_at, {'true','cmd'})), 'ap_known_at must be ''true'' or ''cmd''.');
+    assert(any(strcmp(ap_known_at, {'true','cmd','est'})), 'ap_known_at must be ''true'', ''cmd'' or ''est''.');
     hd_prev = NaN;                                  % commanded height of the previous step [R], for ap_known_at = 'cmd'
+    dx3_prev = NaN;                                 % the filter's posterior dw3_hat of the previous step [R] (z), for ap_known_at = 'est'
     if b_true_on
         % TRUE-b ARM: b_true(w_bar) = a'/(1-a)^2 on the exact correction curve,
         % tabulated once (same construction as plot_arms_pair's red line).
@@ -1060,6 +1063,7 @@ if nargin < 8; plant_cperp = []; end
     gate_out  = false(N, 3);
     a_xm_out  = zeros(N, 3);
     a_prime_out = zeros(N, 3);
+    pred_mean2_out = zeros(N, 3);   % second-order mean term added in predict [a_bar], 0 when off
     P_a_out     = zeros(N, 3);
     P_b_out     = zeros(N, 3);
     P_p_out     = zeros(N, 3);
@@ -1140,7 +1144,7 @@ if nargin < 8; plant_cperp = []; end
         da_known_out(k, :) = local_row3(da_known_k);
 
         % --- TRUE-SLOPE ARM: a_bar' from the PREVIOUS step's true height ----
-        ap_known_k = [];
+        ap_known_k = [];  app_known_k = [];
         if ap_known_on
             if isfinite(hb_prev) && k > 1
                 if ap_law_on
@@ -1156,11 +1160,20 @@ if nargin < 8; plant_cperp = []; end
                     % of the "a' evaluated on a jittering point" hypothesis)
                     if strcmp(ap_known_at, 'cmd') && isfinite(hd_prev)
                         h_eval = hd_prev;
+                    elseif strcmp(ap_known_at, 'est') && isfinite(hd_prev) && isfinite(dx3_prev)
+                        % the filter's OWN height at the step's left end: commanded
+                        % minus its posterior tracking-error estimate, the same
+                        % x_curr(3) the predict multiplies (0902 tex S5, group 1)
+                        h_eval = max(hd_prev - dx3_prev, h_bar_floor_drv);
                     else
                         h_eval = hb_prev;
                     end
                     ap_known_k = local_a_prime_true(h_eval, a_nom_drv, h_bar_floor_drv, ...
                                                     plant_cperp) / a_nom_drv;
+                    if app_known_on
+                        app_known_k = local_a_prime2_true(h_eval, a_nom_drv, h_bar_floor_drv, ...
+                                                          plant_cperp) / a_nom_drv;
+                    end
                 end
             else
                 ap_known_k = zeros(3, 1);
@@ -1187,7 +1200,8 @@ if nargin < 8; plant_cperp = []; end
         end
 
         [f_d_k, ekf_k, diag_k] = motion_control_law_formC_b(del_pd_k, pd_k, ...
-                                     p_m_delayed, P, ctrl_const, a_ov_k, da_known_k, ap_known_k, b_true_k);
+                                     p_m_delayed, P, ctrl_const, a_ov_k, da_known_k, ap_known_k, b_true_k, app_known_k);
+        dx3_prev = diag_k.delta_x_hat_3(3) / R_drv;   % this step's posterior -> next step's 'est' evaluation point
         hd_prev = max((dot(pd_k, P.wall.w_hat) - pz_plant) / R_drv, h_bar_floor_drv);   % this step's command -> next step's 'cmd' evaluation point
 
         if P.thermal.enable > 0.5
@@ -1227,6 +1241,7 @@ if nargin < 8; plant_cperp = []; end
         gate_out(k, :)  = diag_k.gate_active_per_axis(:).';
         a_xm_out(k, :)  = diag_k.a_xm(:).';
         a_prime_out(k, :) = diag_k.a_prime_hat(:).' * R_drv;   % 1/pN -> um/pN
+        pred_mean2_out(k, :) = diag_k.pred_mean2(:).';
         P_a_out(k, :)     = sqrt(max(diag_k.P_a(:).', 0));
         P_b_out(k, :)     = sqrt(max(diag_k.P_b(:).', 0));
         P_p_out(k, :)     = sqrt(max(diag_k.P_p(:).', 0));
@@ -1288,6 +1303,7 @@ if nargin < 8; plant_cperp = []; end
     simOut.gate_out   = gate_out;
     simOut.a_xm_out   = a_xm_out;
     simOut.a_prime_out = a_prime_out;
+    simOut.pred_mean2_out = pred_mean2_out;
     simOut.P_a_out     = P_a_out;
     simOut.P_b_out     = P_b_out;
     simOut.P_p_out     = P_p_out;
@@ -1342,6 +1358,18 @@ function ap = local_a_prime_true(h_bar, a_nom, h_floor, plant_cperp)
     ap_para = a_nom * (1/cp_p - 1/cp_m) / den;
     ap_perp = a_nom * (1/ce_p - 1/ce_m) / den;
     ap = [ap_para; ap_para; ap_perp];
+end
+
+
+function app = local_a_prime2_true(h_bar, a_nom, h_floor, plant_cperp)
+%LOCAL_A_PRIME2_TRUE  d^2 a_h / d h_bar^2 on the EXACT correction curve [um/pN]:
+%   central difference of local_a_prime_true. Reference/oracle only (pred_mean2 arm).
+    if nargin < 4; plant_cperp = []; end
+    dh = 1e-3 * max(h_bar, 1);
+    hp = h_bar + dh;
+    hm = max(h_bar - dh, h_floor);
+    app = (local_a_prime_true(hp, a_nom, h_floor, plant_cperp) ...
+         - local_a_prime_true(hm, a_nom, h_floor, plant_cperp)) / (hp - hm);
 end
 
 

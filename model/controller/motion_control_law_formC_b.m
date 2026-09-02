@@ -11,7 +11,7 @@
 %   ctrl_const.lock_b = true pins b at its seed (the parameter-free
 %   baseline); false estimates it. Passages below that still say "da" are
 %   inherited from the dist sibling and describe THAT file, not this one.
-function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override, varargin_da_known_guard, ap_known, b_true)
+function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override, varargin_da_known_guard, ap_known, b_true, app_known)
 %MOTION_CONTROL_LAW_FORMC_DIST  Per-axis EKF eq17 controller whose gain slope
 %   is a parameter-free function of the gain state, with an ADDITIVE constant
 %   disturbance in the gain state equation (formC_state_dist.tex)
@@ -278,6 +278,20 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         assert(numel(b_true) == 3 && all(isfinite(b_true)) && all(b_true >= 0), ...
                'motion_control_law_formC_b:bTrue', 'b_true must be a finite non-negative 3x1.');
     end
+    % app_known (3x1, optional, 2026-09-02): exogenous law CURVATURE d^2 a_bar/d w_bar^2
+    % for the pred_mean2 second-order mean term (0902_formC_aptrue_4state.tex S5,
+    % second and third lines). Read at the same height as ap_known. Absent =>
+    % pred_mean2 falls back to the constant-b law curvature -2 a'^2/(1-a_bar_hat),
+    % which is 20% smaller in magnitude at w_bar = 1.10 (c-free price). Only
+    % consulted when ctrl_const.pred_mean2 is true; otherwise ignored.
+    if nargin < 10 || isempty(app_known)
+        app_known = [];
+    else
+        app_known = app_known(:);
+        assert(numel(app_known) == 3 && all(isfinite(app_known)), ...
+               'motion_control_law_formC_b:appKnown', 'app_known must be a finite 3x1.');
+    end
+    has_app_known = ~isempty(app_known);
     has_b_true = ~isempty(b_true);
     has_da_known = false;   % no additive disturbance in this writing
     % (7th argument) da_known: KNOWN-DISTURBANCE ARM of the dist sibling. This
@@ -334,6 +348,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent a_inject_step a_inject_frac a_inject_axis   % diagnostic hook, default off
     persistent fe43_off q34_off q44_scale                   % diagnostic flags, default off
     persistent law_exact_step                               % exact (quadrature-free) law step, default off (port of 2a5dc29)
+    persistent pred_mean2                                   % second-order mean term in predict (0902 tex S5), default off
+    persistent pred_force_step                              % row-4 known increment = a_hat * fbar_d[k-1] (commanded displacement), default off
+    persistent pred_mean2_kr1 K31_km1                       % A2 closed-form term a'' (1-lc)^2 K31 R1 (measurement-noise feedthrough), default off
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_bar amlpf_var_factor
     persistent t_warmup_kf h_bar_safe sigma2_n_nd
     persistent enable_wall w_hat_n pz_wall
@@ -545,6 +562,62 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % via b_eff = a'_ext/(1-A)^2 -- see the predict block. Default false =>
         % bit-identical.
         law_exact_step = logical(get_field_default(ctrl_const, 'law_exact_step', false));
+        % pred_mean2 (2026-09-02, default false => bit-identical): add to the row-4
+        % predict the second-order MEAN term of 0902_formC_aptrue_4state.tex S5,
+        % i.e. the expected drift of e_a that a first-order predict leaves out:
+        %     - a'' E[e3 (B - B_hat)]            (stochastic part of the slope-evaluation term)
+        %     + 1/2 a'' Var(B - B_hat)            (Jensen: noisy step through the concave law)
+        %     + 1/2 (a'' - a''_law) B_hat^2        (true curvature vs the constant-b curvature of the exact step)
+        % with B - B_hat = (1-lc) e3 [+ alpha (e8+e9)] + F_dw e4 + w_T [- alpha n_w], all
+        % moments from P_curr / the Q containers; a'' = app_known if fed, else a''_law.
+        % The DETERMINISTIC slope-evaluation group -a'' dw3_hat B_hat is NOT added here:
+        % it is removed by reading the exogenous slope at the estimated height
+        % (driver ap_known_at = 'est'), never by the controller. Derived on the exact
+        % step, so it requires law_exact_step. Diagnostic arm only.
+        pred_mean2 = logical(get_field_default(ctrl_const, 'pred_mean2', false));
+        if pred_mean2 && ~law_exact_step
+            error('motion_control_law_formC_b:predMean2', ...
+                  'ctrl_const.pred_mean2 is derived on the exact law step; set law_exact_step = true as well.');
+        end
+        % pred_force_step (2026-09-02, default false => bit-identical): the row-4
+        % predict's KNOWN increment becomes the commanded displacement
+        %     a_ctrl[k-1] * fbar_d[k-1]      (a_ctrl = the gain the control law used)
+        % instead of the closed-loop proxy Delta_w_d + (1-lc) dw3_hat [+ alpha(m1+m2)].
+        % Probe (canon deep, 8 seeds, hold): the proxy differs from the commanded
+        % displacement by sd 3e-4 (13% of the step) and that difference is
+        % correlated with dw3_hat, E = -4.5e-7 -- exactly the A2 violation that
+        % left +0.0005 (canon) / +0.002 (meng) in the compensated a'_true arm.
+        % With the commanded displacement the unknown increment is exactly
+        % w_T + fbar_d e_a (var 4.319e-6 vs 4.321e-6 expected) and orthogonal to
+        % the estimate (E[dw3_hat u] = 0.04e-6). pred_mean2 then uses
+        %     cov(e3,u) = fbar_d P34 ,  Var(u) = fbar_d^2 P44 + kappa_T a_hat
+        % (no P33, no memory covariances). F_e is left as is (~1% effect on P).
+        % Requires law_exact_step (the increment feeds the exact step).
+        % STATUS: FALSIFIED as a fix (2026-09-02, a'_true@est + exact + pred_mean2,
+        % same 10 seeds as the proxy arm). Variant x_curr(4)*fbar_d[k-1] (posterior of
+        % k-1 x force): canon hold -0.0007 with the seed spread x2.4 (0.0026 -> 0.0061),
+        % meng hold -0.031. Variant a_ctrl[k-1]*fbar_d[k-1] (this line): canon hold
+        % +0.0011/+0.0038/+0.0037 on seeds 1-3 vs proxy +0.0013/-0.0003/+0.0012, i.e.
+        % worse than the proxy it was meant to replace. Mechanism: the commanded
+        % displacement carries the gain ESTIMATE as a factor (fbar_d = intended/a_ctrl),
+        % so gain-estimate noise becomes height-increment noise and walks the gain
+        % along the law; the closed-loop proxy is anchored to command + tracking error
+        % (y1) and is immune. Kept as a recorded negative result; do not enable.
+        % pred_mean2_kr1 (2026-09-02, default false => bit-identical): the fourth mean
+        % term, the A2 residual in closed form. The controller reacts to the y1 noise
+        % n_w (a real displacement, -(1-lc) n_w inside eps_w) and the posterior dw3_hat
+        % moved with the SAME n_w through K31, so E[dw3_hat (B - B_hat)] = (1-lc) K31 R1
+        % (probe: 4.25e-7 closed form vs 4.93e-7 measured at hold, 5.61 vs 5.46 in the
+        % oscillation). The cross term a'' B_hat (B - B_hat) of the expansion then has
+        % mean a'' (1-lc)^2 K31 R1, which is added here; K31 is the y1 gain of the
+        % previous call (buffer), R1 the y1 noise variance. No new state, c-free.
+        pred_mean2_kr1 = logical(get_field_default(ctrl_const, 'pred_mean2_kr1', false));
+        K31_km1 = zeros(3, 1);
+        pred_force_step = logical(get_field_default(ctrl_const, 'pred_force_step', false));
+        if pred_force_step && ~law_exact_step
+            error('motion_control_law_formC_b:predForceStep', ...
+                  'ctrl_const.pred_force_step feeds the exact law step; set law_exact_step = true as well.');
+        end
         y1_gain_off  = logical(get_field_default(ctrl_const, 'y1_gain_off', false));
         % T2 hook (TEST ONLY, default false): zero the loop-coupling column
         % F_dw and the process noise Q, so P(4,4) propagates by the row-4
@@ -1117,6 +1190,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     gate_off   = false(3, 1);
     G_flags    = false(3, 3);
     a_prime_v  = zeros(3, 1);
+    pred_mean2_v = zeros(3, 1);
     lam_b_v    = ones(3, 1);    % adaptive slot-5 forgetting, per axis (diag)
     Q44_v      = zeros(3, 1);
     Q33_v      = zeros(3, 1);
@@ -1365,6 +1439,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         if law_exact_step                            % exact law step, see init
             M_pred = Delta_wbar_d_km1 + one_minus_lc * x_curr(3);
             if ma2_aug; M_pred = M_pred + alpha_ma2 * (x_curr(8) + x_curr(9)); end
+            if pred_force_step; M_pred = a_ctrl_km1(ax) * fbar_d_km1(ax); end   % commanded displacement = gain the control law USED x its force (a_ctrl at k-1 = posterior of k-2; x_curr(4) would carry the k-1 innovation, endogenous)
             if has_ap_known
                 % Exogenous slope: the SAME exact step, with the local law
                 % constant recovered from the fed slope,
@@ -1385,6 +1460,33 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 end                                  % else: keep the Euler step (A -> 1 edge only)
             end
         end
+        if pred_mean2                                % second-order mean term, see init
+            app_law = -2 * a_prime_i^2 / (1 - x_curr(4));
+            if has_app_known; app_i = app_known(ax); else; app_i = app_law; end
+            Pc = P_curr;
+            if ma2_aug
+                cov_e3u = one_minus_lc * Pc(3, 3) + alpha_ma2 * (Pc(3, 8) + Pc(3, 9)) + F_dw * Pc(3, 4);
+                var_u   = one_minus_lc^2 * Pc(3, 3) ...
+                        + alpha_ma2^2 * (Pc(8, 8) + Pc(9, 9) + 2 * Pc(8, 9)) ...
+                        + 2 * one_minus_lc * alpha_ma2 * (Pc(3, 8) + Pc(3, 9)) ...
+                        + F_dw^2 * Pc(4, 4) ...
+                        + 2 * F_dw * (one_minus_lc * Pc(3, 4) + alpha_ma2 * (Pc(4, 8) + Pc(4, 9))) ...
+                        + s2T_i + alpha_ma2^2 * s2n_i;
+            else
+                cov_e3u = one_minus_lc * Pc(3, 3) + F_dw * Pc(3, 4);
+                var_u   = one_minus_lc^2 * Pc(3, 3) + F_dw^2 * Pc(4, 4) + 2 * one_minus_lc * F_dw * Pc(3, 4) + Q33;
+            end
+            if pred_force_step                       % unknown increment = w_T + fbar_d e_a, see init
+                cov_e3u = fbar_d_km1(ax) * Pc(3, 4);
+                var_u   = fbar_d_km1(ax)^2 * Pc(4, 4) + kappa_T * a_bar_i;
+            end
+            mean2_i = -app_i * cov_e3u + 0.5 * app_i * var_u + 0.5 * (app_i - app_law) * M_pred^2;
+            if pred_mean2_kr1                       % A2 closed form, see init
+                mean2_i = mean2_i + app_i * one_minus_lc^2 * K31_km1(ax) * sigma2_n_nd(ax);
+            end
+            x_pred(4) = x_pred(4) + mean2_i;
+            pred_mean2_v(ax) = mean2_i;
+        end
         if q44_scale ~= 1; Q_i(4, 4) = q44_scale * Q_i(4, 4); end   % diagnostic, see init
         if q34_off                                   % diagnostic, see init
             Q_i(3, 4) = 0;  Q_i(4, 3) = 0;
@@ -1404,6 +1506,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         H1 = [1, zeros(1, n_state - 1)];
         S1 = H1 * P_pred * H1' + R1_i;
         K1 = (P_pred * H1') / S1;
+        K31_km1(ax) = K1(3);                         % kept for the next call's pred_mean2_kr1 term
         if freeze_gain || y1_gain_off; K1(4:7) = 0; end
         K1(lock_state_idx_ax{ax}) = 0;
         innov1 = delta_w_m(ax) - H1 * x_pred;
@@ -1607,6 +1710,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         diag.delta_a_hat    = b_post;                 % driver-log alias
         diag.a_prime_hat    = a_prime_v * a_o;        % legacy d a_nd/d h_bar [1/pN]
         diag.a_prime_bar    = a_prime_v;              % d a_bar / d w_bar [-]
+        diag.pred_mean2     = pred_mean2_v;           % second-order mean term added in predict [a_bar], 0 when off
         diag.gate_active_per_axis = gate_off;
         diag.guards_individual    = G_flags;
         diag.h_bar          = h_bar;
@@ -1848,6 +1952,7 @@ function d = empty_diag_formB()
     d.delta_a_hat       = zeros(3, 1);
     d.a_prime_hat       = zeros(3, 1);
     d.a_prime_bar       = zeros(3, 1);
+    d.pred_mean2        = zeros(3, 1);
     d.gate_active_per_axis = false(3, 1);
     d.guards_individual    = false(3, 3);
     d.h_bar             = 0;
