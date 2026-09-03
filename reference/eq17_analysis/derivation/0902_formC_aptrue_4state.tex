@@ -50,14 +50,18 @@
 %   (only its square had been used before).
 %   CLOSED LOOP (run_aptrue_kr1_full, 10 seeds, hold, est - true): canon +0.00015 ->
 %   -0.00081 (SEM 0.00027), meng +0.00112 -> -0.00081 (SEM 0.00071); the pre-fix canon
-%   zero was a cancellation. The hold bias is NOT made in the predict: the hold mean
-%   budget (probe, canon, 1e-6/step) is a' M +4.16, mean lines -3.71, exact -0.42,
-%   predict total +0.03, while the update adds +0.35 against a truth drifting -0.30.
-%   y2's innovation mean is the same in both arms (+0.00015 canon, ~0 meng) although
-%   est - true moved by 0.001-0.002: in near-wall hold the readout follows the
-%   estimate 0.96-0.97 per unit (the code's echo S blends to ~0.3 there).
-%   [hypothesis] near-wall echo S ~ 1 | opponent: readout lag or offset that tracks
-%   the arm | separate: a_inject hook in hold, read innov_y2 response (minutes).
+%   zero was a cancellation. The remaining bias is not the second-order predict
+%   remainder (r ~ -0.1e-6/step would push the estimate UP). The per-step first-order
+%   mean budget (a' M, a' u, update) cannot be resolved at 8-10 seeds: per-step sd
+%   ~1e-3 gives SEM ~6e-6/step, 20x the drift in question -- do not read those columns.
+%   PAIRED, DETERMINISTIC (same seeds, kr1 vs kr1_full, hold): moving the estimate by
+%   +0.00096 (canon) / +0.00193 (meng) moved the y2 innovation by -0.00003 / -0.00007
+%   (SEM < 1e-5), i.e. the readout followed the applied gain 1.03 / 1.04 per unit.
+%   In near-wall hold y2 does not see the truth-relative gain error (the code's echo
+%   correction assumes S ~ 0.32, the far-field value); the gain row is open-loop there
+%   and whatever the predict injects accumulates. [hypothesis] near-wall echo S ~ 1 |
+%   opponent: readout offset that tracks a_ctrl for another reason | separate:
+%   a_inject hook in hold, read innov_y2 and a_m responses (minutes).
 % ======================================================
 % Compile: xelatex 0902_formC_aptrue_4state.tex
 % Path:    reference/eq17_analysis/derivation/0902_formC_aptrue_4state.tex

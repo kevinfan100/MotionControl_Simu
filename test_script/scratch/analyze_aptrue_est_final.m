@@ -38,8 +38,8 @@ function out = analyze_aptrue_est_final(traj, recipe)
     ap_num  = @(w) (abar(w+hh) - abar(w-hh)) / (2*hh);
     app_num = @(w) (abar(w+hh) - 2*abar(w) + abar(w-hh)) / hh^2;
     switch traj
-        case 'meng';  SEG = {'hold0', @(t) t<=0.5; 'far', @(t) t>0.5 & t<=6; 'near', @(t) t>6 & t<=10.5; 'hold', @(t) t>10.5; 'ALL', @(t) true(size(t))};
-        case 'canon'; SEG = {'hold0', @(t) t<=0.5; 'desc', @(t) t>0.5 & t<=1.5; 'osc', @(t) t>1.5 & t<=3.5; 'hold', @(t) t>3.5; 'ALL', @(t) true(size(t))};
+        case 'meng';  SEG = {'hold0', @(t) t<=0.5; 'far', @(t) t>0.5 & t<=6; 'near', @(t) t>6 & t<=10.5; 'hold', @(t) t>10.5; 'holdA', @(t) t>10.5 & t<=11.5; 'holdB', @(t) t>11.5; 'ALL', @(t) true(size(t))};
+        case 'canon'; SEG = {'hold0', @(t) t<=0.5; 'desc', @(t) t>0.5 & t<=1.5; 'osc', @(t) t>1.5 & t<=3.5; 'hold', @(t) t>3.5; 'holdA', @(t) t>3.5 & t<=4.15; 'holdB', @(t) t>4.15; 'ALL', @(t) true(size(t))};
     end
     names = {'r','miss','A2','A2m','Du_','Dvar','Dcov','A1d','A1x','kr1','R3','Du','Eex'};
     aux   = {'e3','u','x3u','K31','app','Dwd','M','dT','dEp','dEu','a1M','a1u','m2','ex2','y1push'};   % mean budget of the gain row
