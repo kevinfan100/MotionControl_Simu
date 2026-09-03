@@ -358,6 +358,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent Q_theta_floor a_bar_floor a_bar_ceil ws_margin gap_floor
     persistent b_floor b_ceil
     persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off y1_gain_off_from t2_pure_prop lambda_f obs_dump_on
+    persistent mean_knob_from pred_slope_scale y1_gain_leg_scale   % mean-only diagnostic knobs (2026-09-03), default off
     persistent lambda_f_b lfb_alpha lfb_floor lam_b_spend
     persistent ap_src ap_ewma_a a_bar_slope_v law_b_formC
     persistent q33_dc_match q33_dc_fac
@@ -643,6 +644,16 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % segments (paired against the untouched run it measures the mean y1
         % innovation offset through the gain row: d(a_hat) = -l41 * iota * N).
         y1_gain_off_from = get_field_default(ctrl_const, 'y1_gain_off_from', 0);
+        % mean-only diagnostic knobs (2026-09-03, default off => bit-identical). From
+        % k_step >= mean_knob_from: (i) the slope used in the row-4 KNOWN-STEP increment
+        % (exact law step, ap_known branch) is multiplied by pred_slope_scale -- P, F_e
+        % and the y2 back-off untouched; (ii) the y1 -> gain STATE correction
+        % K1(4)*innov1 is multiplied by y1_gain_leg_scale -- P (Joseph, unscaled K1)
+        % untouched. Paired against the unscaled run they give d(hold drift)/d(flow)
+        % for the two first-order mean flows the level-mode equations leave open.
+        mean_knob_from    = get_field_default(ctrl_const, 'mean_knob_from', 0);
+        pred_slope_scale  = get_field_default(ctrl_const, 'pred_slope_scale', 1);
+        y1_gain_leg_scale = get_field_default(ctrl_const, 'y1_gain_leg_scale', 1);
         % T2 hook (TEST ONLY, default false): zero the loop-coupling column
         % F_dw and the process noise Q, so P(4,4) propagates by the row-4
         % diagonal alone. Then the tex S6 flow identity is EXACT
@@ -1473,9 +1484,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 % the slope already supplied); reduces identically to the
                 % production branch when a'_ext = b_hat (1-A)^2. Closes the
                 % 2a5dc29 exclusion that left the oracle arm on forward Euler.
-                den = 1 + a_prime_i * M_pred / (1 - x_curr(4));
+                ap_state = a_prime_i;                % mean-only knob, see init
+                if mean_knob_from > 0 && k_step >= mean_knob_from; ap_state = a_prime_i * pred_slope_scale; end
+                den = 1 + ap_state * M_pred / (1 - x_curr(4));
                 if den > 0
-                    x_pred(4) = x_curr(4) + a_prime_i * M_pred / den;
+                    x_pred(4) = x_curr(4) + ap_state * M_pred / den;
                 end                                  % else: keep the Euler step (edge only)
             else
                 u_inv = 1 / (1 - x_curr(4)) + b_hat_i * M_pred;
@@ -1538,6 +1551,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         innov1 = delta_w_m(ax) - H1 * x_pred;
         innov_y1_v(ax) = innov1;          % logging only (whiteness diagnostic)
         x_upd  = x_pred + K1 * innov1;
+        if mean_knob_from > 0 && k_step >= mean_knob_from && y1_gain_leg_scale ~= 1
+            x_upd(4) = x_upd(4) + (y1_gain_leg_scale - 1) * K1(4) * innov1;   % state only; P below uses the unscaled K1
+        end
         ImKH1  = I7 - K1 * H1;
         P_upd  = ImKH1 * P_pred * ImKH1' + K1 * R1_i * K1';   % Joseph form
         P_upd  = 0.5 * (P_upd + P_upd');

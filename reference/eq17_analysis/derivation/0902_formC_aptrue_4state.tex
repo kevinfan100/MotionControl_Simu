@@ -74,9 +74,19 @@
 %   below the estimate): the +0.25e-6/step upward hold drift of the pred_mean2 recipe is
 %   internal to the estimator, independent of the loop, opposed by y2, and not the
 %   second-order predict (r ~ 0). Its source (first-order predict means or the y1 leg) is
-%   below the resolution of term-by-term instruments at 10 seeds; stop-line, no further
-%   arms with these instruments. NEXT: a deterministic single-term manipulation designed
-%   from the level-mode equations (scale one mean flow, paired), not more probing.
+%   below the resolution of term-by-term instruments at 10 seeds.
+%   MEAN-KNOB TEST (09-03, ctrl_const.pred_slope_scale 1.10 / y1_gain_leg_scale 1.05 from
+%   the hold start, P untouched, paired 10 seeds, hold + 4 s): the knobs are not mean-only
+%   in effect -- hold sd 0.0026 -> 0.0062 / 0.0039 (canon), 0.0034 -> 0.0070 / 0.0060
+%   (meng): the predict a' M flow and the y1 gain leg ARE the fluctuation-mode machinery
+%   (the rank-1 cancellation l41 ~ -a' l31), so a 5-10% imbalance lets the gain jitter grow
+%   and the paired slope SEM is 0.35-0.74 instead of the pre-registered 0.01. Identification
+%   failed. What survives (paired end-of-hold level, 2-3 sigma, same sign on both
+%   trajectories): a' M x 1.10 -> -0.0043 +- 0.0022 / -0.0054 +- 0.0030, y1 leg x 1.05 ->
+%   +0.0033 +- 0.0012 / +0.0043 +- 0.0017: each flow is ~5-8e-6/step, opposite, and the
+%   +0.25e-6/step drift is a ~3-5% residual of their cancellation, i.e. of E = l41 + a' l31.
+%   Stop-line. Any fix lives in the (3,4) covariance model that sets that balance (Q34,
+%   F_e(3,4), the MA(2) memory rows), not in an additive mean line.
 %   Y1 GAIN-LEG ABLATION (09-03, ctrl_const.y1_gain_off_from, paired 10 seeds): the leg
 %   also carries the fluctuation-mode control of the gain row (hold sd 0.0026 -> 0.024,
 %   P44 honest), so its paired shift (+0.0106 +- 0.003 canon) is not a level reading.
