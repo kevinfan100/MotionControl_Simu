@@ -32,6 +32,25 @@
 - 推導 `derivation/formB_ws.tex` + `formB_ws_ref.tex`（含 P[0] 包絡修訂、D3 Q 容器、末三頁 = c2/c3 進度圖）
 - Tier-1：anchor-lock desc 1.20%；注意「鎖錨勝」在 sim 為對答案（真值≈錨族），正確讀法 = 錨對時估測器仍被慢偏差拖壞 → c2/c3（估 w̄_s）為當前工作線
 
+## a′_true 作弊臂（2026-09-02/03，formC_b，z 軸）
+
+目的：斜率是真的（ā′_true 由 c(h̄) 算、讀在估測器自己的高度 w̄_d − δŵ̄₃）時，估測器還會不會自己偏。
+答案：不會，到 10 seeds 的解析度（牆邊 ā 的 0.3%）為止。
+
+- **配方**（全 default-off 旗標）：`law_exact_step`（已知步長精確積分）＋ `ap_known_at='est'`
+  ＋ `pred_mean2`（predict 二階均值：Jensen／起點差／曲率差，P 為主）＋ **`nw_mcorr`**
+  （相關 process／量測雜訊 KF：控制器對同一份 y₁ 雜訊反應 ⇒ M = R₁g_n ≠ 0；predict 加輸入
+  g_n(y₁ − x̂₁)、F_e(:,1) − g_n、Q − R₁g_ng_nᵀ）。`pred_mean2_kr1`／`_full` 是撤回的過度補償，勿開。
+- **驗收**（同 10 seeds、canon deep 與 Meng ramp、hold 拉長 4 s）：hold 偏差 −0.00035 ± 0.00026／
+  +0.00017 ± 0.00068；長 hold 斜率 −0.014 ± 0.041／−0.023 ± 0.075（e-6/步，修前 +0.239／+0.126）；
+  散布 = √P 不變；追蹤誤差不變。收官 100-seed（<0.1%）未跑。
+- **文件**：`derivation/0903_aptrue_4state_from_true.tex`（母本，斜率寫在命令高度＋補償項，等價於
+  code 的 @est；最後一頁 = 最終圖）、`0903_aptrue_4state_from_true_mcorr.tex`（同順序含 nw_mcorr，
+  待併回母本）、`0902_formC_aptrue_4state.tex`（header = 整段歷史）、`0903_formC_aptrue_update_half.tex`
+  （update 半步、引理 ℓ₄₁ = −ā′ℓ₃₁、相關雜訊 KF；獨立驗算：4-state 線性內 M 只解釋量到 Cov 的 1/20，
+  「M → 漂移」因果鏈待 9-state 版）。
+- **延伸 b_true**：搬同四塊，多一行 −(∂ā′/∂â)e₄·步長（均值 +2b(1−â)[(1−λc)P₃₄ + F_dwP₄₄]），先推導再接線。
+
 ## 現況（2026-08-03）
 
 - 缺陷 1 已由 7a 代數式修復（descent 11.03% → 5.05%）
