@@ -34,15 +34,30 @@
 %   The 'cmd' reading (slope at w_bar_d) adds the deterministic group
 %   -a''_true(w_bar_d) dw3_hat [Delta w_d + (1-lc) dw3_hat] to the mean (= jump 2 -> 3).
 %   Verification 2026-09-02 (sympy): 'cmd' 11 items PASS; 'est' E1-E6 PASS.
-%   A2 RESIDUAL, CAUSE FOUND (probe, hold): the filter's known increment
+%   A2 RESIDUAL, CAUSE FOUND (probe, hold, 09-02): the filter's known increment
 %   Delta_w_d + (1-lc) dw3_hat + (1-lc)(m1+m2) differs from the commanded displacement
-%   a_ctrl fbar_d by sd 3e-4 (13% of the step), and that difference is correlated with
-%   dw3_hat (E = -4.5e-7 = the A2 violation); with a_ctrl fbar_d as the increment the
-%   unknown part is exactly w_T + fbar_d e_a and orthogonal (E[dw3_hat U] = 0.04e-6).
-%   Using it in the predict (ctrl_const.pred_force_step) was nevertheless FALSIFIED:
-%   gain-estimate noise enters the increment through fbar_d = intended/a_ctrl and walks
-%   the gain along the law (spread x2.4, meng -0.031; a_ctrl variant +0.003). The proxy
-%   stays; +0.0005 (canon) / +0.002 (meng) is its floor in this file.
+%   a_ctrl fbar_d by sd 3e-4 (13% of the step); using a_ctrl fbar_d in the predict
+%   (ctrl_const.pred_force_step) was FALSIFIED (spread x2.4, meng -0.031). The proxy stays.
+%   FEEDTHROUGH TERM, CLOSED (09-03, probe_aptrue_est_final / analyze_aptrue_est_final,
+%   8 seeds, both trajectories, 1e-6 a_bar/step, True - Est). The controller reacts to
+%   the SAME y1[k] the update used, so n_w[k] sits in eps_w (+(1-lc)), in dw3_hat (+l31)
+%   and in e3 (-l31). Three shares of the mean line: dw3_hat u -> +a''(1-lc)^2 l31 R1
+%   (kr1, 09-02); e3 u -> +a''(1-lc) l31 R1; u^2 -> -a''(1-lc)^2 l31 R1; net
+%   a''(1-lc) l31 R1 (ctrl_const.pred_mean2_kr1_full). Remainder after kr1: meng near
+%   -0.229 / hold -0.472, canon hold -0.513; the missing share a''(1-lc) lc l31 R1 =
+%   -0.200 / -0.473 / -0.486; after kr1_full: -0.062 / -0.106 / -0.091 (SEM 0.03-0.1).
+%   The predict stage is unbiased to ~0.1e-6/step. Sign of n_w in eps_w corrected to +
+%   (only its square had been used before).
+%   CLOSED LOOP (run_aptrue_kr1_full, 10 seeds, hold, est - true): canon +0.00015 ->
+%   -0.00081 (SEM 0.00027), meng +0.00112 -> -0.00081 (SEM 0.00071); the pre-fix canon
+%   zero was a cancellation. The hold bias is NOT made in the predict: the hold mean
+%   budget (probe, canon, 1e-6/step) is a' M +4.16, mean lines -3.71, exact -0.42,
+%   predict total +0.03, while the update adds +0.35 against a truth drifting -0.30.
+%   y2's innovation mean is the same in both arms (+0.00015 canon, ~0 meng) although
+%   est - true moved by 0.001-0.002: in near-wall hold the readout follows the
+%   estimate 0.96-0.97 per unit (the code's echo S blends to ~0.3 there).
+%   [hypothesis] near-wall echo S ~ 1 | opponent: readout lag or offset that tracks
+%   the arm | separate: a_inject hook in hold, read innov_y2 response (minutes).
 % ======================================================
 % Compile: xelatex 0902_formC_aptrue_4state.tex
 % Path:    reference/eq17_analysis/derivation/0902_formC_aptrue_4state.tex
@@ -126,7 +141,7 @@ $\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2\bigr)$
 F_{dw}[k] &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
 \varepsilon_w[k] &= \ba_w[k]\,\bar{f}_T[k]
   + (1-\lambda_c)\sum_{i=1}^{d}\ba_w[k-i]\,\bar{f}_T[k-i]
-  - (1-\lambda_c)\,n_w[k]
+  + (1-\lambda_c)\,n_w[k]
 \end{align*}
 
 \section{Process model}
@@ -147,8 +162,10 @@ F_{dw}[k] &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
   &\qquad + \tfrac{1}{2}\,\ba''[k]\bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr]^{2} \\
   &\qquad + \tfrac{1}{2}\,\ba''[k]\Bigl[(1-\lambda_c)^{2}P_{33}[k]
     + 2(1-\lambda_c)\,F_{dw}[k]\,P_{34}[k] + F_{dw}[k]^{2}P_{44}[k] + Q_{33}[k]\Bigr] \\
-  &\qquad - \ba''[k]\Bigl[(1-\lambda_c)\,P_{33}[k] + F_{dw}[k]\,P_{34}[k]\Bigr]
+  &\qquad - \ba''[k]\Bigl[(1-\lambda_c)\,P_{33}[k] + F_{dw}[k]\,P_{34}[k]\Bigr] \\
+  &\qquad + \ba''[k]\,(1-\lambda_c)\,\ell_{31}[k]\,R_1
 \end{align*}
+($\ell_{31}[k]$: entry $(3,1)$ of $L[k]$, the $y_1$ gain of the update at $k$; Measurement section)
 
 code: the first two terms of the $\hat{\ba}_w$ row are carried by the exact step,
 \begin{align*}
@@ -235,17 +252,34 @@ e_{\ba_w}[k+1] - e_{\ba_w}[k]
 \end{align*}
 
 mean, with A1 $\E[e_{\delta\bw_3}] = \E[e_{\ba_w}] = 0$,
-A2 $\E[\delta\hat{\bw}_3\,e_{\delta\bw_3}] = \E[\delta\hat{\bw}_3\,e_{\ba_w}] = \E[\delta\hat{\bw}_3\,\varepsilon_w] = 0$,
-A3 $\E[\varepsilon_w\,e] = 0$, $\E[\varepsilon_w^{2}] = Q_{33}$
+A2 $\E[\delta\hat{\bw}_3\,e_{\delta\bw_3}] = \E[\delta\hat{\bw}_3\,e_{\ba_w}] = 0$,
+A3 $\E[\varepsilon_w\,e_{\ba_w}] = 0$, $\E[\varepsilon_w^{2}] = Q_{33}$,
+and (the update at $k$ and the controller read the same $y_1[k]$:
+$\delta\hat{\bw}_3[k] \ni \ell_{31}[k]\,n_w[k]$, $e_{\delta\bw_3}[k] \ni -\ell_{31}[k]\,n_w[k]$,
+$\varepsilon_w[k] \ni (1-\lambda_c)\,n_w[k]$)
+\begin{equation*}
+\E\bigl[\delta\hat{\bw}_3[k]\,\varepsilon_w[k]\bigr] = (1-\lambda_c)\,\ell_{31}[k]\,R_1 , \qquad
+\E\bigl[e_{\delta\bw_3}[k]\,\varepsilon_w[k]\bigr] = -(1-\lambda_c)\,\ell_{31}[k]\,R_1
+\end{equation*}
+\begingroup\small
 \begin{align*}
 \E\bigl[e_{\ba_w}[k+1]\bigr] - \E\bigl[e_{\ba_w}[k]\bigr]
+  &= - \ba''[k]\Bigl[(1-\lambda_c)\,P_{33}[k] + F_{dw}[k]\,P_{34}[k]\Bigr]
+     + \ba''[k]\,(1-\lambda_c)\,\ell_{31}[k]\,R_1 \\
+  &\quad + \ba''[k]\,(1-\lambda_c)^{2}\,\ell_{31}[k]\,R_1 \\
+  &\quad + \tfrac{1}{2}\,\ba''[k]\Bigl[(1-\lambda_c)^{2}P_{33}[k]
+      + 2(1-\lambda_c)\,F_{dw}[k]\,P_{34}[k]
+      + F_{dw}[k]^{2}P_{44}[k] + Q_{33}[k]\Bigr] \\
+  &\quad - \ba''[k]\,(1-\lambda_c)^{2}\,\ell_{31}[k]\,R_1 \\
   &= - \ba''[k]\Bigl[(1-\lambda_c)\,P_{33}[k] + F_{dw}[k]\,P_{34}[k]\Bigr] \\
   &\quad + \tfrac{1}{2}\,\ba''[k]\Bigl[(1-\lambda_c)^{2}P_{33}[k]
-      + 2(1-\lambda_c)\,F_{dw}[k]\,P_{34}[k] \\
-  &\qquad\qquad\qquad + F_{dw}[k]^{2}P_{44}[k] + Q_{33}[k]\Bigr]
+      + 2(1-\lambda_c)\,F_{dw}[k]\,P_{34}[k]
+      + F_{dw}[k]^{2}P_{44}[k] + Q_{33}[k]\Bigr] \\
+  &\quad + \ba''[k]\,(1-\lambda_c)\,\ell_{31}[k]\,R_1
 \end{align*}
+\endgroup
 
-compensation: the two lines added to $\hat{\ba}_w[k+1]$ (Estimator section)
+compensation: the three lines added to $\hat{\ba}_w[k+1]$ (Estimator section)
 \begin{equation*}
 \E\bigl[e_{\ba_w}[k+1]\bigr] - \E\bigl[e_{\ba_w}[k]\bigr] = 0
 \end{equation*}
