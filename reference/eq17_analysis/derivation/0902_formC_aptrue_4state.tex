@@ -93,7 +93,12 @@
 %   +0.25e-6/step drift, i.e. the drift is outside the linear mean model: the UPDATE
 %   stage's second-order mean (state-dependent gain l41 = -a'(w_hat) l31 times the
 %   innovation, the nonlinear y2 prediction) has never been derived -- it is the
-%   update-half analogue of pred_mean2 and the next derivation.
+%   update-half analogue of pred_mean2 and the next derivation. First term measured
+%   (probe_aptrue_update_half_term): Cov(dw3_hat[k-1], innov1[k]) = +1.5e-7 (canon, 4 sigma),
+%   so a'' l31 Cov = -0.16 +- 0.04 e-6/step on the estimate -- real, but DOWNWARD, i.e. the
+%   opposite sign to the drift; the full update-half mean (y2 leg, slot-3 update feeding
+%   the x3_hat mean, delay chain) has to be derived as a whole. The linear part
+%   l41 E[innov1] stays unresolved (+-6e-6/step at 8 seeds).
 %   Y1 GAIN-LEG ABLATION (09-03, ctrl_const.y1_gain_off_from, paired 10 seeds): the leg
 %   also carries the fluctuation-mode control of the gain row (hold sd 0.0026 -> 0.024,
 %   P44 honest), so its paired shift (+0.0106 +- 0.003 canon) is not a level reading.
