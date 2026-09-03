@@ -351,6 +351,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent pred_mean2                                   % second-order mean term in predict (0902 tex S5), default off
     persistent pred_force_step                              % row-4 known increment = a_hat * fbar_d[k-1] (commanded displacement), default off
     persistent pred_mean2_kr1 K31_km1                       % A2 closed-form term a'' (1-lc)^2 K31 R1 (measurement-noise feedthrough), default off
+    persistent pred_mean2_kr1_full                          % complete feedthrough term a'' (1-lc) K31 R1 (all three shares), default off
     persistent a_pd a_cov C_dpmr C_n K_var IF_abc xi_bar amlpf_var_factor
     persistent t_warmup_kf h_bar_safe sigma2_n_nd
     persistent enable_wall w_hat_n pz_wall
@@ -612,6 +613,17 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % mean a'' (1-lc)^2 K31 R1, which is added here; K31 is the y1 gain of the
         % previous call (buffer), R1 the y1 noise variance. No new state, c-free.
         pred_mean2_kr1 = logical(get_field_default(ctrl_const, 'pred_mean2_kr1', false));
+        % pred_mean2_kr1_full (2026-09-03, default false => bit-identical): the SAME
+        % n_w also sits in the posterior error e3 = dw3 - dw3_hat (coefficient -K31),
+        % so the two P-based pieces of pred_mean2 miss it as well:
+        %     E[dw3_hat u] = +(1-lc) K31 R1        share  +a'' (1-lc)^2 K31 R1   (kr1)
+        %     E[e3 u]      = cov_code - (1-lc) K31 R1   share  +a'' (1-lc)   K31 R1
+        %     E[u^2]       = var_code - 2 (1-lc)^2 K31 R1   share  -a'' (1-lc)^2 K31 R1
+        % The first and third cancel; the net is a'' (1-lc) K31 R1, i.e. kr1 / (1-lc).
+        % Probe (analyze_aptrue_est_final.m, 8 seeds, 1e-6/step): remainder after kr1
+        % meng near -0.229 / hold -0.472, canon hold -0.513; the missing share
+        % a'' (1-lc) lc K31 R1 = -0.200 / -0.473 / -0.486. Supersedes kr1 when on.
+        pred_mean2_kr1_full = logical(get_field_default(ctrl_const, 'pred_mean2_kr1_full', false));
         K31_km1 = zeros(3, 1);
         pred_force_step = logical(get_field_default(ctrl_const, 'pred_force_step', false));
         if pred_force_step && ~law_exact_step
@@ -1481,7 +1493,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 var_u   = fbar_d_km1(ax)^2 * Pc(4, 4) + kappa_T * a_bar_i;
             end
             mean2_i = -app_i * cov_e3u + 0.5 * app_i * var_u + 0.5 * (app_i - app_law) * M_pred^2;
-            if pred_mean2_kr1                       % A2 closed form, see init
+            if pred_mean2_kr1_full                  % complete feedthrough term, see init
+                mean2_i = mean2_i + app_i * one_minus_lc * K31_km1(ax) * sigma2_n_nd(ax);
+            elseif pred_mean2_kr1                   % A2 closed form (dw3_hat share only), see init
                 mean2_i = mean2_i + app_i * one_minus_lc^2 * K31_km1(ax) * sigma2_n_nd(ax);
             end
             x_pred(4) = x_pred(4) + mean2_i;
