@@ -9,9 +9,10 @@
 %   second-order mean. Measured 2026-09-03 (probe_aptrue_update_half_term, canon hold):
 %   Cov(dw3_hat[k-1], e_y1[k]) = +1.5e-7 (4 sigma), a'' l31 Cov = -0.16 +- 0.04 e-6/step.
 %   In the filter's own model every such product term is zero (the innovation is
-%   orthogonal to the past); they are non-zero only through model mismatch, and the one
-%   mismatch left standing is M: the controller reacts to the same y1[k] the update
-%   uses, so the process noise w[k] and the measurement noise n_w[k] are correlated.
+%   orthogonal to the past); they are non-zero only through model mismatch. One mismatch
+%   is certain: M -- the controller reacts to the same y1[k] the update uses, so the
+%   process noise w[k] and the measurement noise n_w[k] are correlated (see VERIFICATION
+%   for what M does and does not explain).
 %   S6 gives the standard correlated-noise predict, which removes the mismatch at its
 %   root (and with it the n_w feedthrough family of 0902: Cov(dw3_hat,u), Cov(a',u)).
 %
@@ -22,8 +23,26 @@
 %   NOTATION (in addition to 0902): three stages inside one call, x_hat^- (after predict),
 %   x_hat^(1) (after the y1 update), x_hat (after the y2 update), same for e and P;
 %   M = E[w n_w] the process/measurement noise cross-covariance; l_ij entries of L.
-%   Verification: independent agent (sympy + numerical Riccati/Lyapunov) dispatched 2026-09-03,
-%   verdict to be appended here.
+%   VERIFICATION (independent agent, sympy + Riccati + 1.9e7-sample Monte Carlo, 2026-09-03):
+%   S2 lemma algebra correct; z = e4 + a' e3 is invariant under the predict even with F_dw != 0
+%   (motion breaks Cov(z,e3), not the invariant); y2 sources Cov(z,.) at ~1e-5 (added to S2).
+%   S5 y1/y2 update rows and the identification with C32 correct; the predict rows missed a
+%   factor (I - l2 H2) (corrected above, numerically 1 - 5e-5). S6 is the standard
+%   correlated-noise KF, all lines correct; the posterior residual after BOTH updates is
+%   (R1/S1) e_y1 - l12 e_y2 (corrected above; l12 ~ -7e-5); the lemma survives F~.
+%   TWO CAVEATS THAT MATTER. (a) The 4-state model with the stated numbers gives l31 = 0.36,
+%   while production logs l31 = 0.66: a 4-state filter cannot exceed l31 < lc^2 = 0.49
+%   because y1 sees e3[k-2]; the production value needs an extra e1<->e3 coupling
+%   ([hypothesis] the MA(2) memory rows | opponent: other F_e entries | separate: ma2 off,
+%   one run). Ratios transfer, levels do not. (b) Within the linear 4-state model the M
+%   mismatch gives C32 = -7e-9 (MC -9e-9 +- 1e-9): opposite in sign and 20x smaller than the
+%   measured +1.5e-7. So the header's "the one mismatch left standing is M" is NOT
+%   established for the measured Cov(dw3_hat, e_y1) -- its source is outside the linear
+%   4-state treatment (state-dependent gains, MA(2) rows, y2 echo). The drift removal by
+%   nw_mcorr (RESULT below) is a measured, pre-registered fact and S6 is the correct model
+%   for M, but the causal chain M -> drift has not been shown in this document; the 9-state
+%   (MA(2)) version of S5 is what would show it. Observed after nw_mcorr: Cov(dw3_hat, e_y1)
+%   canon +1.5e-7 -> +0.9e-7, meng +0.6e-7 -> -0.1e-7 (more than the 4-state ~1e-8, not zero).
 %
 %   RESULT (run_aptrue_nw_mcorr, same 10 seeds, hold extended by 4 s, base = exact + @est +
 %   pred_mean2; PRE-REGISTERED slope 0 +- 0.05 / 0.08, spread unchanged, short-hold 0):
@@ -114,6 +133,9 @@ P^{-}_{41} = -\ba'\,P^{-}_{31} \;\Rightarrow\; \ell_{41} = -\ba'\,\ell_{31}
 (the combination $e_4 + \ba' e_3$ is untouched by the predict and, once its covariance with $e_1$ has
 decayed as $\lambda_c^{k}$, by the $y_1$ update; $F_{dw} \neq 0$ sources it with
 $-F_{dw}\mathrm{Var}(e_4 + \ba' e_3)$, which is where $\ell_{41} + \ba'\ell_{31} \neq 0$ in motion comes from;
+the $y_2$ update sources $\mathrm{Cov}(e_4 + \ba' e_3,\ e_j)$ by $-(H_{24}^{2}P^{(1)}_{j4}/S_2)\,\mathrm{Cov}(e_4 + \ba' e_3,\ e_4)$,
+a factor $\sim 10^{-5}$, so the relation holds to that order; the decay of $\mathrm{Cov}(e_4 + \ba' e_3,\ e_1)$ is set by the
+predict-plus-$y_1$ closed loop, eigenvalue $\approx 0.41$, faster than $\lambda_c$;
 log 2026-09-03: $|\ell_{41} + \ba'\ell_{31}| < 10^{-4}$ in every hold, both trajectories)
 
 \section{State dependence of the gains}
@@ -161,9 +183,9 @@ the two covariances through the estimate/error cross-moment $C := \E[\hat{x}\,e^
 \end{align*}
 recursion of $C$ under the filter's gains, true noise statistics ($M \neq 0$)
 \begin{align*}
-\E\bigl[\hat{x}[k]\,n_w[k]\bigr] &= \ell_{\cdot 1}[k]\,R_1 , \qquad
-\E\bigl[\hat{x}[k]\,w[k]^{\top}\bigr] = \ell_{\cdot 1}[k]\,M^{\top} \\
-C^{-}[k+1] &= F\,C[k]\,F^{\top} + F\,\ell_{\cdot 1}[k]\,M^{\top} \\
+\E\bigl[\hat{x}[k]\,n_w[k]\bigr] &= \bigl(I - \ell_{\cdot 2}H_2\bigr)\ell_{\cdot 1}[k]\,R_1 , \qquad
+\E\bigl[\hat{x}[k]\,w[k]^{\top}\bigr] = \bigl(I - \ell_{\cdot 2}H_2\bigr)\ell_{\cdot 1}[k]\,M^{\top} \\
+C^{-}[k+1] &= F\,C[k]\,F^{\top} + F\bigl(I - \ell_{\cdot 2}H_2\bigr)\ell_{\cdot 1}[k]\,M^{\top} \\
 C^{(1)}[k] &= C^{-}[k]\bigl(I - \ell_{\cdot 1}e_1^{\top}\bigr)^{\top}
    + \ell_{\cdot 1}\,e_1^{\top}P^{-}_{\mathrm{true}}[k]\bigl(I - \ell_{\cdot 1}e_1^{\top}\bigr)^{\top}
    - \ell_{\cdot 1}R_1\ell_{\cdot 1}^{\top} \\
@@ -171,7 +193,8 @@ C[k] &= C^{(1)}[k]\bigl(I - \ell_{\cdot 2}H_2\bigr)^{\top}
    + \ell_{\cdot 2}\,H_2P^{(1)}_{\mathrm{true}}[k]\bigl(I - \ell_{\cdot 2}H_2\bigr)^{\top}
    - \ell_{\cdot 2}R_2\ell_{\cdot 2}^{\top} \\
 P^{-}_{\mathrm{true}}[k+1] &= F\,P_{\mathrm{true}}[k]\,F^{\top} + Q
-   - F\,\ell_{\cdot 1}[k]\,M^{\top} - M\,\ell_{\cdot 1}[k]^{\top}F^{\top}
+   - F\bigl(I - \ell_{\cdot 2}H_2\bigr)\ell_{\cdot 1}[k]\,M^{\top}
+   - M\,\ell_{\cdot 1}[k]^{\top}\bigl(I - \ell_{\cdot 2}H_2\bigr)^{\top}F^{\top}
 \end{align*}
 \begin{equation*}
 M = 0 \;\Rightarrow\; P_{\mathrm{true}} = P ,\quad C \equiv 0 ,\quad
@@ -192,7 +215,8 @@ e^{-}[k+1] &= \Bigl(F - \frac{M}{R_1}H_1\Bigr)e[k] + \tilde{w}[k] , \qquad \E\bi
 \end{align*}
 
 \begin{align*}
-y_1[k] - \hat{x}_1[k] &= (1 - \ell_{11}[k])\,e_{y_1}[k] = \frac{R_1}{S_1[k]}\,e_{y_1}[k] = \E\bigl[n_w[k]\,\big|\,y_1[1..k]\bigr] \\
+y_1[k] - \hat{x}_1[k] &= \frac{R_1}{S_1[k]}\,e_{y_1}[k] - \ell_{12}[k]\,e_{y_2}[k]
+   = \E\bigl[n_w[k]\,\big|\,y_1[1..k],\,y_2[1..k]\bigr] , \qquad \ell_{12} = \frac{H_{24}P^{(1)}_{14}}{S_2} \\
 \frac{M}{R_1} &= g_n = (1-\lambda_c)\,[\,0,\ 0,\ -1,\ \ba'\,]^{\top}
 \end{align*}
 
