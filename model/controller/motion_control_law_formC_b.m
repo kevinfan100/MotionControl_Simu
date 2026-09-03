@@ -359,6 +359,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent b_floor b_ceil
     persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off y1_gain_off_from t2_pure_prop lambda_f obs_dump_on
     persistent mean_knob_from pred_slope_scale y1_gain_leg_scale   % mean-only diagnostic knobs (2026-09-03), default off
+    persistent nw_mcorr res1_km1                                  % correlated process/measurement noise correction (2026-09-03), default off
     persistent lambda_f_b lfb_alpha lfb_floor lam_b_spend
     persistent ap_src ap_ewma_a a_bar_slope_v law_b_formC
     persistent q33_dc_match q33_dc_fac
@@ -651,6 +652,19 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % K1(4)*innov1 is multiplied by y1_gain_leg_scale -- P (Joseph, unscaled K1)
         % untouched. Paired against the unscaled run they give d(hold drift)/d(flow)
         % for the two first-order mean flows the level-mode equations leave open.
+        % nw_mcorr (2026-09-03, default false => bit-identical): the controller reacts to
+        % the same y1[k] the update uses, so the process noise w[k] = gn n_w[k] + w_T-part
+        % is correlated with the measurement noise: M = E[w n_w] = R1 gn, gn = (1-lc)[0 0 -1 a' ...].
+        % The KF assumed M = 0; that assumption is the root of the whole n_w feedthrough
+        % family measured on 2026-09-03 (Cov(dw3_hat,u), Cov(a',u), Cov(dw3_hat,innov1)).
+        % Standard correlated-noise form (derivation 0903_formC_aptrue_update_half.tex S6):
+        %   w = (M/R1) n_w + w~,  n_w = y1 - H1 x  =>  x+ = (F - gn H1) x + B u + gn y1 + w~
+        %   predict: x_pred = F x_upd + B u + gn (y1 - x_upd(1))   [posterior residual of the previous call]
+        %            F_e <- F_e - gn e1',  Q <- Q - R1 gn gn'  (the n_w share leaves Q)
+        %   pred_mean2: u = (1-lc)(e3 - e1) + ..., so cov/var use P13, P11, P18, P19, P14.
+        % c-free: needs y1, x_upd(1), R1, lc, a' only.
+        nw_mcorr = logical(get_field_default(ctrl_const, 'nw_mcorr', false));
+        res1_km1 = zeros(3, 1);
         mean_knob_from    = get_field_default(ctrl_const, 'mean_knob_from', 0);
         pred_slope_scale  = get_field_default(ctrl_const, 'pred_slope_scale', 1);
         y1_gain_leg_scale = get_field_default(ctrl_const, 'y1_gain_leg_scale', 1);
@@ -1471,9 +1485,14 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             F_aug(9, 8) = 1;            % row 8 stays all-zero (m1 <- pure noise)
             F_e = F_aug;
         end
+        if nw_mcorr                                  % correlated-noise input gn (y1 - x_upd(1)) of the previous call, see init
+            x_pred(3) = x_pred(3) - one_minus_lc * res1_km1(ax);
+            if quad_left; x_pred(4) = x_pred(4) + a_prime_i * one_minus_lc * res1_km1(ax); end
+        end
         if law_exact_step                            % exact law step, see init
             M_pred = Delta_wbar_d_km1 + one_minus_lc * x_curr(3);
             if ma2_aug; M_pred = M_pred + alpha_ma2 * (x_curr(8) + x_curr(9)); end
+            if nw_mcorr; M_pred = M_pred + one_minus_lc * res1_km1(ax); end   % the estimated noise reaction is a known part of the step
             if pred_force_step; M_pred = a_ctrl_km1(ax) * fbar_d_km1(ax); end   % commanded displacement = gain the control law USED x its force (a_ctrl at k-1 = posterior of k-2; x_curr(4) would carry the k-1 innovation, endogenous)
             if has_ap_known
                 % Exogenous slope: the SAME exact step, with the local law
@@ -1517,6 +1536,18 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 cov_e3u = fbar_d_km1(ax) * Pc(3, 4);
                 var_u   = fbar_d_km1(ax)^2 * Pc(4, 4) + kappa_T * a_bar_i;
             end
+            if nw_mcorr                              % u = (1-lc)(e3 + m-errors - e1) + F_dw e4 + w_T: the n_w share is replaced by -(1-lc) e1
+                if ma2_aug
+                    cov_e3u = cov_e3u - one_minus_lc * Pc(3, 1);
+                    var_u   = var_u - alpha_ma2^2 * s2n_i ...
+                            + one_minus_lc^2 * Pc(1, 1) - 2 * one_minus_lc^2 * (Pc(1, 3) + Pc(1, 8) + Pc(1, 9)) ...
+                            - 2 * F_dw * one_minus_lc * Pc(1, 4);
+                else
+                    cov_e3u = cov_e3u - one_minus_lc * Pc(3, 1);
+                    var_u   = var_u - one_minus_lc^2 * sigma2_n_nd(ax) ...
+                            + one_minus_lc^2 * Pc(1, 1) - 2 * one_minus_lc^2 * Pc(1, 3) - 2 * F_dw * one_minus_lc * Pc(1, 4);
+                end
+            end
             mean2_i = -app_i * cov_e3u + 0.5 * app_i * var_u + 0.5 * (app_i - app_law) * M_pred^2;
             if pred_mean2_kr1_full                  % complete feedthrough term, see init
                 mean2_i = mean2_i + app_i * one_minus_lc * K31_km1(ax) * sigma2_n_nd(ax);
@@ -1533,6 +1564,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 Q_i(4, 8) = 0;  Q_i(8, 4) = 0;
                 F_e(4, 8) = 0;  F_e(4, 9) = 0;
             end
+        end
+        if nw_mcorr                                  % F - (M/R1) H1 and Q - M M'/R1, see init
+            gn_c = zeros(n_state, 1);  gn_c(3) = -one_minus_lc;  gn_c(4) = a_prime_i * one_minus_lc;
+            F_e(:, 1) = F_e(:, 1) - gn_c;
+            Q_i = Q_i - sigma2_n_nd(ax) * (gn_c * gn_c.');
         end
         P_pred = F_e * P_curr * F_e' + Q_i;
         P_pred = 0.5 * (P_pred + P_pred');
@@ -1681,6 +1717,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 'P_upd', P_upd, 'gate', gate_off(ax)));
         end
 
+        res1_km1(ax) = delta_w_m(ax) - x_upd(1);    % posterior y1 residual = E[n_w[k] | data], used by nw_mcorr in the next call
         x_e_per_axis(:, ax) = x_upd;
         P_per_axis{ax} = P_upd;
     end

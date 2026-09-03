@@ -93,7 +93,11 @@
 %   +0.25e-6/step drift, i.e. the drift is outside the linear mean model: the UPDATE
 %   stage's second-order mean (state-dependent gain l41 = -a'(w_hat) l31 times the
 %   innovation, the nonlinear y2 prediction) has never been derived -- it is the
-%   update-half analogue of pred_mean2 and the next derivation. First term measured
+%   update-half analogue of pred_mean2 and the next derivation -- DONE 2026-09-03 in
+%   0903_formC_aptrue_update_half.tex: the mismatch is the process/measurement noise
+%   cross-covariance M (controller reacts to the same y1[k]); ctrl_const.nw_mcorr (the
+%   correlated-noise predict) removes the hold drift on both trajectories (slope +0.239 ->
+%   -0.014, +0.126 -> -0.023 e-6/step; spread unchanged). First term measured
 %   (probe_aptrue_update_half_term): Cov(dw3_hat[k-1], innov1[k]) = +1.5e-7 (canon, 4 sigma),
 %   so a'' l31 Cov = -0.16 +- 0.04 e-6/step on the estimate -- real, but DOWNWARD, i.e. the
 %   opposite sign to the drift; the full update-half mean (y2 leg, slot-3 update feeding

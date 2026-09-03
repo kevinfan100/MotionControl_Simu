@@ -4,14 +4,15 @@
 %   feedthrough shares. Reads aptrue_est_final_<traj>_full.mat (probe_aptrue_est_final, kr1_full)
 %   and prints per segment: Cov(a1,u), -a''Cov(x3,u), the kr1_full share, E[a1]E[u], E[a1 u].
 %   2026-09-03: canon hold +0.736 / +0.736 / -0.694, meng hold +0.746 / +0.747 / -0.674.
-function probe_aptrue_cov_a1u()
+function probe_aptrue_cov_a1u(sfx)
+    if nargin < 1; sfx = '_full'; end   % '_full' (kr1_full probe) | '_mcorr' (nw_mcorr probe)
 here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
 addpath(genpath(fullfile(root, 'model')));  od = fullfile(root, 'test_results', 'apd_acov_meng');
 lc = 0.7; al = 1 - lc; HFLOOR = 1.001;
 abar = @(w) 1 ./ arrayfun(@(x) local_cp(x), w); hh = 1e-3;
 app_num = @(w) (abar(w+hh) - 2*abar(w) + abar(w-hh)) / hh^2;
 for tr = {'canon','meng'}
-    D = load(fullfile(od, sprintf('aptrue_est_final_%s_full.mat', tr{1}))); S = D.S; nS = numel(S);
+    D = load(fullfile(od, sprintf('aptrue_est_final_%s%s.mat', tr{1}, sfx))); S = D.S; nS = numel(S);
     switch tr{1}
         case 'canon'; SEG = {'osc', @(t) t>1.5 & t<=3.5; 'hold', @(t) t>3.5};
         case 'meng';  SEG = {'near', @(t) t>6 & t<=10.5; 'hold', @(t) t>10.5};

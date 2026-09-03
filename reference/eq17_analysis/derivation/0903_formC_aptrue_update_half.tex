@@ -1,0 +1,225 @@
+% STATUS: ACTIVE | 4-STATE DERIVATION OF THE a'_true ORACLE ARM: THE UPDATE HALF-STEP
+%   (2026-09-03). Companion of 0902_formC_aptrue_4state.tex (predict half-step).
+%
+%   WHY. 0902 derives the second-order mean of the PREDICT half and compensates it
+%   (pred_mean2). The UPDATE half was left linear: e <- e - L (H e + n) with L a fixed
+%   matrix, whose mean is zero when E[e] = 0. In the filter L is state-dependent
+%   (l41 = -a'[k] l31 exactly, a' read at w_bar_d - dw3_hat; l42 through R2(a_hat), S(a_hat)),
+%   so the update increment is a product of two fluctuating quantities and has a
+%   second-order mean. Measured 2026-09-03 (probe_aptrue_update_half_term, canon hold):
+%   Cov(dw3_hat[k-1], e_y1[k]) = +1.5e-7 (4 sigma), a'' l31 Cov = -0.16 +- 0.04 e-6/step.
+%   In the filter's own model every such product term is zero (the innovation is
+%   orthogonal to the past); they are non-zero only through model mismatch, and the one
+%   mismatch left standing is M: the controller reacts to the same y1[k] the update
+%   uses, so the process noise w[k] and the measurement noise n_w[k] are correlated.
+%   S6 gives the standard correlated-noise predict, which removes the mismatch at its
+%   root (and with it the n_w feedthrough family of 0902: Cov(dw3_hat,u), Cov(a',u)).
+%
+%   CODE: ctrl_const.nw_mcorr (motion_control_law_formC_b.m, 2026-09-03, default off):
+%   predict input gn (y1 - x_upd(1)) of the previous call into slot 3 and the row-4 known
+%   step, F_e(:,1) <- F_e(:,1) - gn, Q <- Q - R1 gn gn', pred_mean2 cov/var with e3 - e1.
+%
+%   NOTATION (in addition to 0902): three stages inside one call, x_hat^- (after predict),
+%   x_hat^(1) (after the y1 update), x_hat (after the y2 update), same for e and P;
+%   M = E[w n_w] the process/measurement noise cross-covariance; l_ij entries of L.
+%   Verification: independent agent (sympy + numerical Riccati/Lyapunov) dispatched 2026-09-03,
+%   verdict to be appended here.
+%
+%   RESULT (run_aptrue_nw_mcorr, same 10 seeds, hold extended by 4 s, base = exact + @est +
+%   pred_mean2; PRE-REGISTERED slope 0 +- 0.05 / 0.08, spread unchanged, short-hold 0):
+%     canon  last-3-s slope +0.239 -> -0.014 +- 0.041 (paired -0.252 +- 0.005) | hold sd 0.00256 -> 0.00254
+%            short-hold est-true +0.00056 -> -0.00035 +- 0.00026 | whole-hold +0.00153 -> -0.00031
+%     meng   slope +0.126 -> -0.023 +- 0.075 (paired -0.150 +- 0.007) | hold sd 0.00335 -> 0.00327
+%            short-hold +0.00206 -> +0.00023 +- 0.00068 | whole-hold +0.00285 -> +0.00051
+%     unit 16/16; base bit-identical to aptrue_long_hold_<traj>_mean2 (max |dE| = 0).
+%   All pre-registered criteria met on both trajectories: the correlated-noise predict
+%   removes the near-wall hold drift without touching the spread.
+%   MECHANISM (probe on the corrected filter, 8 seeds, hold): Cov(dw3_hat[k-1], e_y1[k])
+%   canon +1.5e-7 -> +0.9e-7 +- 0.4e-7 (2 sigma from 0), meng +0.6e-7 -> -0.1e-7 +- 0.8e-7.
+%   Reduced, not zero on canon: a residual estimate/innovation correlation remains (MA(2)
+%   memory rows and the y2 leg are not in this 4-state treatment). The probe's u/r
+%   decomposition (analyze_aptrue_est_final) is written for the uncorrected known step and
+%   does not apply to nw_mcorr (its exact-step check fails by 5.6e-4 there by construction).
+% ======================================================
+% Compile: xelatex 0903_formC_aptrue_update_half.tex
+% Path:    reference/eq17_analysis/derivation/0903_formC_aptrue_update_half.tex
+% ======================================================
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{graphicx}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\E}{\mathbb{E}}
+
+\begin{document}
+
+\section*{a$'_{\mathrm{true}}$ arm, 4-state: the update half-step}
+
+(Companion of 0902; $\mathbf{x} = [\delta\bw_1, \delta\bw_2, \delta\bw_3, \ba_w]^{\top}$, $e = x - \hat{x}$;
+stages inside call $k$: $\hat{x}^{-}$ after predict, $\hat{x}^{(1)}$ after the $y_1$ update, $\hat{x}$ after the $y_2$ update;
+$\ell_{ij}$ = entry $(i,j)$ of $L[k]$; hold: $\Delta\bw_d = 0$, $\nabla_d\bw_d = 0$, $F_{dw} = 0$)
+
+\section{Update half-step}
+
+\begin{align*}
+S_1[k] &= P^{-}_{11}[k] + R_1 , \qquad \ell_{i1}[k] = \frac{P^{-}_{i1}[k]}{S_1[k]} \\
+e_{y_1}[k] &= y_1[k] - \hat{x}_1^{-}[k] = e_1^{-}[k] + n_w[k] \\
+\hat{x}^{(1)}[k] &= \hat{x}^{-}[k] + \ell_{\cdot 1}[k]\,e_{y_1}[k] \\
+e^{(1)}[k] &= e^{-}[k] - \ell_{\cdot 1}[k]\bigl(e_1^{-}[k] + n_w[k]\bigr) \\
+P^{(1)}[k] &= \bigl(I - \ell_{\cdot 1}e_1^{\top}\bigr)P^{-}\bigl(I - \ell_{\cdot 1}e_1^{\top}\bigr)^{\top} + \ell_{\cdot 1}R_1\ell_{\cdot 1}^{\top}
+\end{align*}
+
+\begin{align*}
+H_2[k] &= a_{\mathrm{cov}}(1-S)\,[\,0,\ 0,\ 0,\ 1\,] \qquad \text{(hold)} \\
+S_2[k] &= H_2P^{(1)}H_2^{\top} + R_2 , \qquad \ell_{\cdot 2}[k] = \frac{P^{(1)}H_2^{\top}}{S_2} \\
+e_{y_2}[k] &= y_2[k] - H_2\hat{x}^{(1)}[k] \\
+\hat{x}[k] &= \hat{x}^{(1)}[k] + \ell_{\cdot 2}[k]\,e_{y_2}[k] \\
+e[k] &= e^{(1)}[k] - \ell_{\cdot 2}[k]\,e_{y_2}[k]
+\end{align*}
+
+gain row
+\begin{equation*}
+\hat{\ba}_w[k] - \hat{\ba}_w^{-}[k] = \ell_{41}[k]\,e_{y_1}[k] + \ell_{42}[k]\,e_{y_2}[k]
+\end{equation*}
+
+\section{Lemma: $\ell_{41} = -\ba'\,\ell_{31}$ in the hold}
+
+error dynamics of 0902 (hold, first order), and the law-consistent combination
+\begin{align*}
+e_3^{-}[k+1] &= \lambda_c\,e_3[k] - F_{dw}[k]\,e_4[k] - \varepsilon_w[k] \\
+e_4^{-}[k+1] &= e_4[k] + \ba'[k]\bigl[(1-\lambda_c)\,e_3[k] + F_{dw}[k]\,e_4[k] + \varepsilon_w[k]\bigr] \\
+e_4^{-}[k+1] + \ba'[k]\,e_3^{-}[k+1] &= e_4[k] + \ba'[k]\,e_3[k]
+\end{align*}
+\begin{align*}
+\mathrm{Cov}\bigl(e_4 + \ba' e_3,\ e_3\bigr)^{-}[k+1] &= \lambda_c\,\mathrm{Cov}\bigl(e_4 + \ba' e_3,\ e_3\bigr)[k]
+   - F_{dw}[k]\,\mathrm{Cov}\bigl(e_4 + \ba' e_3,\ e_4\bigr)[k] \\
+\mathrm{Cov}\bigl(e_4 + \ba' e_3,\ e_1\bigr)^{-}[k+1] &= \mathrm{Cov}\bigl(e_4 + \ba' e_3,\ e_2\bigr)[k] \\
+\mathrm{Cov}\bigl(e_4 + \ba' e_3,\ e_2\bigr)^{-}[k+1] &= \mathrm{Cov}\bigl(e_4 + \ba' e_3,\ e_3\bigr)[k]
+\end{align*}
+\begin{equation*}
+F_{dw} = 0 \;\Rightarrow\; \mathrm{Cov}\bigl(e_4 + \ba' e_3,\ e_1\bigr)^{-} \to 0 \;\Rightarrow\;
+P^{-}_{41} = -\ba'\,P^{-}_{31} \;\Rightarrow\; \ell_{41} = -\ba'\,\ell_{31}
+\end{equation*}
+(the combination $e_4 + \ba' e_3$ is untouched by the predict and, once its covariance with $e_1$ has
+decayed as $\lambda_c^{k}$, by the $y_1$ update; $F_{dw} \neq 0$ sources it with
+$-F_{dw}\mathrm{Var}(e_4 + \ba' e_3)$, which is where $\ell_{41} + \ba'\ell_{31} \neq 0$ in motion comes from;
+log 2026-09-03: $|\ell_{41} + \ba'\ell_{31}| < 10^{-4}$ in every hold, both trajectories)
+
+\section{State dependence of the gains}
+
+\begin{align*}
+\ba'[k] &= \ba'_{\mathrm{true}}\bigl(\bw_d[k-1] - \delta\hat{\bw}_3[k-1]\bigr)
+        = \ba'_0 - \ba''\bigl(\delta\hat{\bw}_3[k-1] - \E[\delta\hat{\bw}_3]\bigr) + \mathcal{O}(e^{2}) \\
+\ell_{41}[k] &= -\ba'[k]\,\ell_{31}[k]
+        = \ell_{41,0} + \ba''\,\ell_{31}\bigl(\delta\hat{\bw}_3[k-1] - \E[\delta\hat{\bw}_3]\bigr) \\
+\ell_{42}[k] &= \frac{P^{(1)}_{44}\,H_{24}}{H_{24}^{2}P^{(1)}_{44} + R_2(\hat{\ba}_w)} , \qquad
+   H_{24} = a_{\mathrm{cov}}\bigl(1 - S(\hat{\ba}_w)\bigr) , \qquad
+   R_2 = 2a_{\mathrm{cov}}^{2}\,IF_{\mathrm{var}}(\hat{\ba}_w)\,(\hat{\ba}_w + \xi)^{2} \\
+\ell_{42}[k] &= \ell_{42,0} + \frac{\partial\ell_{42}}{\partial\hat{\ba}_w}\bigl(\hat{\ba}^{(1)}_w[k] - \E[\hat{\ba}_w]\bigr) \\
+\frac{\partial\ell_{42}}{\partial\hat{\ba}_w}
+  &= \frac{\ell_{42}}{H_{24}}\Bigl(1 - \frac{2H_{24}^{2}P^{(1)}_{44}}{S_2}\Bigr)\frac{\partial H_{24}}{\partial\hat{\ba}_w}
+  - \frac{\ell_{42}}{S_2}\,\frac{\partial R_2}{\partial\hat{\ba}_w}
+\end{align*}
+
+\section{Process/measurement noise cross-covariance $M$}
+
+\begin{align*}
+w[k] &:= x[k+1] - F[k]\,x[k] - B[k]\,u[k] = \varepsilon_w[k]\,[\,0,\ 0,\ -1,\ \ba'[k]\,]^{\top} \\
+\varepsilon_w[k] &= \ba_w[k]\bar{f}_T[k] + (1-\lambda_c)\sum_{i=1}^{d}\ba_w[k-i]\bar{f}_T[k-i] + (1-\lambda_c)\,n_w[k] \\
+y_1[k] &= \delta\bw_1[k] + n_w[k] \\
+Q[k] &= \E\bigl[w w^{\top}\bigr] = Q_{33}[k]\,[\,0,\ 0,\ -1,\ \ba'\,]^{\top}[\,0,\ 0,\ -1,\ \ba'\,] \\
+Q_{33} &= \kappa_T\Bigl(\hat{\ba}_w + (1-\lambda_c)^{2}\sum_{i=1}^{d}\hat{\ba}_w[k-i]\Bigr) + (1-\lambda_c)^{2}R_1 \\
+M[k] &:= \E\bigl[w[k]\,n_w[k]\bigr] = R_1\,g_n[k] , \qquad g_n[k] := (1-\lambda_c)\,[\,0,\ 0,\ -1,\ \ba'[k]\,]^{\top} \\
+\frac{M M^{\top}}{R_1} &= (1-\lambda_c)^{2}R_1\,[\,0,\ 0,\ -1,\ \ba'\,]^{\top}[\,0,\ 0,\ -1,\ \ba'\,] \qquad \text{(the $n_w$ share of $Q$)}
+\end{align*}
+
+\section{Mean of the update half-step}
+
+\begin{align*}
+\E\bigl[\hat{\ba}_w[k] - \hat{\ba}_w^{-}[k]\bigr]
+  &= \ell_{41,0}\,\E\bigl[e_{y_1}[k]\bigr] + \ell_{42,0}\,\E\bigl[e_{y_2}[k]\bigr] \\
+  &\quad + \ba''\,\ell_{31}\,\E\Bigl[\bigl(\delta\hat{\bw}_3[k-1] - \E[\delta\hat{\bw}_3]\bigr)\,e_{y_1}[k]\Bigr] \\
+  &\quad + \frac{\partial\ell_{42}}{\partial\hat{\ba}_w}\,\E\Bigl[\bigl(\hat{\ba}^{(1)}_w[k] - \E[\hat{\ba}_w]\bigr)\,e_{y_2}[k]\Bigr]
+\end{align*}
+
+the two covariances through the estimate/error cross-moment $C := \E[\hat{x}\,e^{\top}]$ (posterior)
+\begin{align*}
+\E\Bigl[\delta\hat{\bw}_3[k-1]\,e_{y_1}[k]\Bigr] &= \E\Bigl[\hat{x}_3[k-1]\bigl(e_1^{-}[k] + n_w[k]\bigr)\Bigr]
+   = \E\Bigl[\hat{x}_3[k-1]\,e_2[k-1]\Bigr] = C_{32}[k-1] \\
+\E\Bigl[\hat{\ba}^{(1)}_w[k]\,e_{y_2}[k]\Bigr] &= \bigl(C^{(1)}[k]\,H_2^{\top}\bigr)_4
+\end{align*}
+recursion of $C$ under the filter's gains, true noise statistics ($M \neq 0$)
+\begin{align*}
+\E\bigl[\hat{x}[k]\,n_w[k]\bigr] &= \ell_{\cdot 1}[k]\,R_1 , \qquad
+\E\bigl[\hat{x}[k]\,w[k]^{\top}\bigr] = \ell_{\cdot 1}[k]\,M^{\top} \\
+C^{-}[k+1] &= F\,C[k]\,F^{\top} + F\,\ell_{\cdot 1}[k]\,M^{\top} \\
+C^{(1)}[k] &= C^{-}[k]\bigl(I - \ell_{\cdot 1}e_1^{\top}\bigr)^{\top}
+   + \ell_{\cdot 1}\,e_1^{\top}P^{-}_{\mathrm{true}}[k]\bigl(I - \ell_{\cdot 1}e_1^{\top}\bigr)^{\top}
+   - \ell_{\cdot 1}R_1\ell_{\cdot 1}^{\top} \\
+C[k] &= C^{(1)}[k]\bigl(I - \ell_{\cdot 2}H_2\bigr)^{\top}
+   + \ell_{\cdot 2}\,H_2P^{(1)}_{\mathrm{true}}[k]\bigl(I - \ell_{\cdot 2}H_2\bigr)^{\top}
+   - \ell_{\cdot 2}R_2\ell_{\cdot 2}^{\top} \\
+P^{-}_{\mathrm{true}}[k+1] &= F\,P_{\mathrm{true}}[k]\,F^{\top} + Q
+   - F\,\ell_{\cdot 1}[k]\,M^{\top} - M\,\ell_{\cdot 1}[k]^{\top}F^{\top}
+\end{align*}
+\begin{equation*}
+M = 0 \;\Rightarrow\; P_{\mathrm{true}} = P ,\quad C \equiv 0 ,\quad
+\text{both product terms} = 0 \qquad (\text{innovation} \perp \text{past})
+\end{equation*}
+
+\section{Correlated-noise predict}
+
+\begin{align*}
+w[k] &= \frac{M}{R_1}\,n_w[k] + \tilde{w}[k] , \qquad
+\E\bigl[\tilde{w}\,n_w\bigr] = 0 , \qquad
+\tilde{Q} := \E\bigl[\tilde{w}\tilde{w}^{\top}\bigr] = Q - \frac{MM^{\top}}{R_1} \\
+x[k+1] &= \Bigl(F - \frac{M}{R_1}H_1\Bigr)x[k] + B[k]\,u[k] + \frac{M}{R_1}\,y_1[k] + \tilde{w}[k] \\
+\hat{x}^{-}[k+1] &= F\,\hat{x}[k] + B[k]\,u[k] + \frac{M}{R_1}\bigl(y_1[k] - \hat{x}_1[k]\bigr) \\
+P^{-}[k+1] &= \Bigl(F - \frac{M}{R_1}H_1\Bigr)P[k]\Bigl(F - \frac{M}{R_1}H_1\Bigr)^{\top} + \tilde{Q} \\
+e^{-}[k+1] &= \Bigl(F - \frac{M}{R_1}H_1\Bigr)e[k] + \tilde{w}[k] , \qquad \E\bigl[\tilde{w}\,n_w\bigr] = 0
+   \;\Rightarrow\; C \equiv 0
+\end{align*}
+
+\begin{align*}
+y_1[k] - \hat{x}_1[k] &= (1 - \ell_{11}[k])\,e_{y_1}[k] = \frac{R_1}{S_1[k]}\,e_{y_1}[k] = \E\bigl[n_w[k]\,\big|\,y_1[1..k]\bigr] \\
+\frac{M}{R_1} &= g_n = (1-\lambda_c)\,[\,0,\ 0,\ -1,\ \ba'\,]^{\top}
+\end{align*}
+
+with the entries written out (hold; the general case adds $\Delta\bw_d$ inside the bracket)
+\begin{align*}
+\delta\hat{\bw}_3^{-}[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k] - (1-\lambda_c)\bigl(y_1[k] - \delta\hat{\bw}_1[k]\bigr) \\
+\hat{\ba}_w^{-}[k+1] &= \hat{\ba}_w[k]
+  + \ba'[k]\,(1-\lambda_c)\bigl[\delta\hat{\bw}_3[k] + y_1[k] - \delta\hat{\bw}_1[k]\bigr] \\
+  &\quad + \tfrac{1}{2}\,\ba''[k]\,(1-\lambda_c)^{2}\bigl[\delta\hat{\bw}_3[k] + y_1[k] - \delta\hat{\bw}_1[k]\bigr]^{2}
+  + \text{(mean lines)} \\
+F_e(3,1) &\to F_e(3,1) + (1-\lambda_c) , \qquad F_e(4,1) \to F_e(4,1) - \ba'\,(1-\lambda_c) \\
+\tilde{Q}_{33} &= Q_{33} - (1-\lambda_c)^{2}R_1 , \qquad
+\tilde{Q}_{34} = -\ba'\,\tilde{Q}_{33} , \qquad \tilde{Q}_{44} = \ba'^{2}\,\tilde{Q}_{33}
+\end{align*}
+
+mean lines of 0902 under this predict ($u := $ unknown increment)
+\begin{align*}
+u[k] &= (1-\lambda_c)\bigl(e_3[k] - e_1[k]\bigr) + F_{dw}[k]\,e_4[k] + \tilde{w}\text{-part} \\
+\E\bigl[e_3\,u\bigr] &= (1-\lambda_c)\bigl(P_{33} - P_{31}\bigr) + F_{dw}\,P_{34} \\
+\E\bigl[u^{2}\bigr] &= (1-\lambda_c)^{2}\bigl(P_{33} + P_{11} - 2P_{13}\bigr)
+   + 2(1-\lambda_c)F_{dw}\bigl(P_{34} - P_{14}\bigr) \\
+   &\quad + F_{dw}^{2}P_{44} + \tilde{Q}_{33}
+\end{align*}
+\begin{equation*}
+\E\bigl[\delta\hat{\bw}_3\,u\bigr] = 0 , \qquad \E\bigl[\ba'[k]\,u\bigr] = 0 , \qquad
+\E\bigl[\delta\hat{\bw}_3[k-1]\,e_{y_1}[k]\bigr] = 0
+\end{equation*}
+(the $n_w$ feedthrough family of 0902 vanishes)
+
+\end{document}

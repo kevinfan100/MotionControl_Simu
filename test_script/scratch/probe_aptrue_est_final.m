@@ -10,8 +10,8 @@ function probe_aptrue_est_final(traj, seeds, recipe)
     if nargin < 1 || isempty(traj); traj = 'meng'; end
     if nargin < 2 || isempty(seeds); seeds = 1:8; end
     if nargin < 3 || isempty(recipe); recipe = 'kr1'; end   % 'kr1' (a'' (1-lc)^2 K31 R1) | 'kr1_full' (a'' (1-lc) K31 R1)
-    assert(any(strcmp(recipe, {'kr1','kr1_full'})), 'recipe must be kr1 or kr1_full');
-    sfx = '';  if strcmp(recipe, 'kr1_full'); sfx = '_full'; end
+    assert(any(strcmp(recipe, {'kr1','kr1_full','mcorr'})), 'recipe must be kr1, kr1_full or mcorr');
+    sfx = '';  if strcmp(recipe, 'kr1_full'); sfx = '_full'; elseif strcmp(recipe, 'mcorr'); sfx = '_mcorr'; end   % mcorr = pred_mean2 + nw_mcorr, no kr1
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
     addpath(genpath(fullfile(root, 'model'))); addpath(fullfile(root, 'test_script', 'integration'));
     od = fullfile(root, 'test_results', 'apd_acov_meng');
@@ -34,7 +34,7 @@ function probe_aptrue_est_final(traj, seeds, recipe)
         clear run_formC_b motion_control_law_formC_b;
         o = struct('arm','best','ap_known',true,'ap_known_at','est','app_known',true, ...
                    'ctrl_const_override',struct('lock_b',true,'ws0_perp',ws0,'law_exact_step',true, ...
-                                                'pred_mean2',true,'pred_mean2_kr1',true,'pred_mean2_kr1_full',strcmp(recipe,'kr1_full'),'obs_dump',true), ...
+                                                'pred_mean2',true,'pred_mean2_kr1',~strcmp(recipe,'mcorr'),'pred_mean2_kr1_full',strcmp(recipe,'kr1_full'),'nw_mcorr',strcmp(recipe,'mcorr'),'obs_dump',true), ...
                    'config_override',OV,'scenario','deep','verbose',false,'seeds',seeds(q),'log_P_full',false);
         evalc('R = run_formC_b(o);');
         L = obs_dump('get');  Lz = L([L.ax] == 3);  n = numel(Lz);  r = R.runs{1};

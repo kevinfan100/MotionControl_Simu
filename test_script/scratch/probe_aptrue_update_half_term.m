@@ -8,13 +8,14 @@
 %   but pushes DOWN, opposite to the observed +0.25e-6/step upward hold drift. The linear part
 %   l41_0 E[innov1] is unresolved (+-6e-6). The update-half mean needs the full derivation, not this
 %   single term.
-function probe_aptrue_update_half_term()
+function probe_aptrue_update_half_term(sfx)
+    if nargin < 1; sfx = '_full'; end   % '_full' (kr1_full probe) | '_mcorr' (nw_mcorr probe)
 here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
 addpath(genpath(fullfile(root, 'model')));  od = fullfile(root, 'test_results', 'apd_acov_meng');
 lc = 0.7; HFLOOR = 1.001; abar = @(w) 1 ./ arrayfun(@(x) local_cp(x), w); hh = 1e-3;
 app_num = @(w) (abar(w+hh) - 2*abar(w) + abar(w-hh)) / hh^2;
 for tr = {'canon','meng'}
-    D = load(fullfile(od, sprintf('aptrue_est_final_%s_full.mat', tr{1}))); S = D.S; nS = numel(S);
+    D = load(fullfile(od, sprintf('aptrue_est_final_%s%s.mat', tr{1}, sfx))); S = D.S; nS = numel(S);
     switch tr{1}; case 'canon'; hold_t = @(t) t > 3.5; case 'meng'; hold_t = @(t) t > 10.5; end
     acc = zeros(nS, 6);
     for q = 1:nS

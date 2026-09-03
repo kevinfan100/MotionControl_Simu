@@ -21,10 +21,14 @@
 %   miss = a'' (1-lc) K31 R1 - (what the recipe injected): the closed-form prediction of r
 %   (kr1 recipe: a'' (1-lc) lc K31 R1; kr1_full: 0). Read r against miss per segment.
 %   Units 1e-6 abar/step; cumulative sums in abar.
+%   NOTE (2026-09-03): recipe 'mcorr' (nw_mcorr) changes the code's known step by + (1-lc) res1_km1; this
+%   script's M / u / r and the exact-step reproduction check are written for the uncorrected step and do
+%   NOT apply there (the check fails by ~5.6e-4 by construction). Only the closed-loop Eex and the aux
+%   columns are meaningful for 'mcorr'.
 function out = analyze_aptrue_est_final(traj, recipe)
     if nargin < 1 || isempty(traj); traj = 'meng'; end
     if nargin < 2 || isempty(recipe); recipe = 'kr1'; end
-    sfx = '';  if strcmp(recipe, 'kr1_full'); sfx = '_full'; end
+    sfx = '';  if strcmp(recipe, 'kr1_full'); sfx = '_full'; elseif strcmp(recipe, 'mcorr'); sfx = '_mcorr'; end
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
     addpath(genpath(fullfile(root, 'model')));
     od = fullfile(root, 'test_results', 'apd_acov_meng');
@@ -72,7 +76,7 @@ function out = analyze_aptrue_est_final(traj, recipe)
         var_code = al^2*P33 + al^2*(P88 + P99 + 2*P89) + 2*al*al*(P38 + P39) + Fdw.^2.*P44 ...
                  + 2*Fdw.*(al*P34 + al*(P48 + P49)) + kappa_T*x4p + al^2*R1;
         app_law  = -2 * a1.^2 ./ (1 - x4p);
-        if strcmp(recipe, 'kr1_full'); kr1 = app .* al .* s.K31(kk-1) .* R1; else; kr1 = app .* al^2 .* s.K31(kk-1) .* R1; end
+        if strcmp(recipe, 'kr1_full'); kr1 = app .* al .* s.K31(kk-1) .* R1; elseif strcmp(recipe, 'mcorr'); kr1 = zeros(size(app)); else; kr1 = app .* al^2 .* s.K31(kk-1) .* R1; end
         miss     = app .* al .* R1 .* s.K31(kk-1) - kr1;              % the feedthrough share the recipe does NOT inject (0 for kr1_full)
         gap      = 0.5 * (app - app_law) .* M.^2;
         mean2_rec = -app.*cov_code + 0.5*app.*var_code + gap + kr1;
