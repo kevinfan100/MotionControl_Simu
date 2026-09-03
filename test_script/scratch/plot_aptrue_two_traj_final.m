@@ -4,12 +4,13 @@
 %   (exact + slope@est + pred_mean2 + nw_mcorr, the nwmcorr arm of run_aptrue_nw_mcorr_full.m).
 %   No arm or trajectory label in the figure (user request 2026-09-03). y shared per row.
 %   | EXPIRES: with the parent | 產線改動不會自動跟上
-function plot_aptrue_two_traj_final(three_rows)
-    if nargin < 1; three_rows = false; end   % true: drop row 2 (10-seed mean absolute) -> 3x2, for the derivation's last page
+function plot_aptrue_two_traj_final(three_rows, arm)
+    if nargin < 1; three_rows = false; end
+    if nargin < 2 || isempty(arm); arm = 'nwmcorr'; end   % 'nwmcorr' (final recipe) | 'base' (exact + @est + pred_mean2, the from_true document's recipe)   % true: drop row 2 (10-seed mean absolute) -> 3x2, for the derivation's last page
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
     od = fullfile(root, 'test_results', 'apd_acov_meng');
     A = load(fullfile(od, 'aptrue_nw_mcorr_full_meng.mat')); B = load(fullfile(od, 'aptrue_nw_mcorr_full_canon.mat'));
-    D = {A.nwmcorr, B.nwmcorr}; NM = {'Meng', 'canon'}; TH = [A.t_hold B.t_hold]; R_um = 2.25;
+    D = {A.(arm), B.(arm)}; NM = {'Meng', 'canon'}; TH = [A.t_hold B.t_hold]; R_um = 2.25;
     SEED = 7; COL_TRUE = [0.8 0 0]; COL_HAT = [0 0.2 0.9]; BANDC = [0.45 0.55 0.95]; COL_SEED = [0.55 0.74 0.96];
     FS = 15; LFS = 11; AXLW = 1.8;
     NR = 4; if three_rows; NR = 3; end
@@ -62,6 +63,7 @@ function plot_aptrue_two_traj_final(three_rows)
             NM{a}, mean(E(mh,:),'all'), std(mean(E(mh,:),1))/sqrt(nS), mean(sE(mh)), SEED, rms(E(mh,SEED)), mean(TR(mh&ok,:),'all'), mean(std(TR(mh&ok,:),0,1)), mean(sT(mh&ok)));
     end
     linkaxes(ax(1,:),'y'); if ~three_rows; linkaxes(ax(2,:),'y'); end; linkaxes(ax(3,:),'y'); linkaxes(ax(4,:),'y');
-    if three_rows; png = fullfile(od, 'aptrue_two_traj_final_3row.png'); else; png = fullfile(od, 'aptrue_two_traj_final.png'); end
+    tag = ''; if strcmp(arm, 'base'); tag = '_base'; end
+    if three_rows; png = fullfile(od, sprintf('aptrue_two_traj%s_3row.png', tag)); else; png = fullfile(od, sprintf('aptrue_two_traj_final%s.png', tag)); end
     exportgraphics(f, png, 'Resolution', 150); close(f); fprintf('saved %s\n', png);
 end
