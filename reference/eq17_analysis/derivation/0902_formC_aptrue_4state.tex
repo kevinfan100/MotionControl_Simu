@@ -56,12 +56,25 @@
 %   ~1e-3 gives SEM ~6e-6/step, 20x the drift in question -- do not read those columns.
 %   PAIRED, DETERMINISTIC (same seeds, kr1 vs kr1_full, hold): moving the estimate by
 %   +0.00096 (canon) / +0.00193 (meng) moved the y2 innovation by -0.00003 / -0.00007
-%   (SEM < 1e-5), i.e. the readout followed the applied gain 1.03 / 1.04 per unit.
-%   In near-wall hold y2 does not see the truth-relative gain error (the code's echo
-%   correction assumes S ~ 0.32, the far-field value); the gain row is open-loop there
-%   and whatever the predict injects accumulates. [hypothesis] near-wall echo S ~ 1 |
-%   opponent: readout offset that tracks a_ctrl for another reason | separate:
-%   a_inject hook in hold, read innov_y2 and a_m responses (minutes).
+%   (SEM < 1e-5). y2 is the WHITENED increment, H2_scale = a_cov = 0.05, so the
+%   innovation shift is a_cov (S-1) da_hat: S = 0.38 (canon) / 0.28 (meng), i.e. the
+%   code's echo S ~ 0.32 is CONFIRMED near the wall (a first 09-03 reading of S ~ 1
+%   forgot the a_cov scale and is retracted). y2 sees (1-S) = 0.68 of the gain error but
+%   with per-step gain l42 a_cov (1-S) ~ 5e-5 (time constant ~12 s), so over a 1-2 s
+%   near-wall hold the gain row integrates any first-order mean drift almost unpulled.
+%   The predict second-order remainder is bounded at |r| < 0.1e-6/step and points the
+%   wrong way; the down-drift (~0.2-0.5e-6/step) must be first order: the y1 leg
+%   (l41 = -0.51 needs a 1e-5 R mean innovation, the measured -1.3e-5 +- 1.4e-5) or
+%   E[a' u]. TESTED AND STOPPED (09-03, ctrl_const.y1_gain_off_from = first hold step,
+%   paired 10 seeds): the y1 gain leg also carries the FLUCTUATION-mode control of the
+%   gain row (the thermal height jitter maps to gain jitter through the law and y1 is
+%   what tracks it): with the leg off, hold sd(E) 0.0026 -> 0.024 and sqrt(P44) 0.0025
+%   -> 0.023 (9x, filter still honest), the paired hold shift +0.0106 +- 0.003 (canon) /
+%   +0.0054 +- 0.005 (meng) is not -l41 iota N and cannot be read as iota. Two modes:
+%   fluctuation (pulled within steps by y1) and LEVEL (pulled slowly, ~1e-4/step, by
+%   y2 and by the noise-driven F_dw e_a coupling of y1); the -0.0008 is a level-mode
+%   mean, unattributed. Stop-line hit; next step is the level-mode mean equation on
+%   paper, not another run.
 % ======================================================
 % Compile: xelatex 0902_formC_aptrue_4state.tex
 % Path:    reference/eq17_analysis/derivation/0902_formC_aptrue_4state.tex

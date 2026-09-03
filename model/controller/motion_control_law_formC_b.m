@@ -357,7 +357,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent enable_wall w_hat_n pz_wall
     persistent Q_theta_floor a_bar_floor a_bar_ceil ws_margin gap_floor
     persistent b_floor b_ceil
-    persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off t2_pure_prop lambda_f obs_dump_on
+    persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off y1_gain_off_from t2_pure_prop lambda_f obs_dump_on
     persistent lambda_f_b lfb_alpha lfb_floor lam_b_spend
     persistent ap_src ap_ewma_a a_bar_slope_v law_b_formC
     persistent q33_dc_match q33_dc_fac
@@ -631,6 +631,12 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                   'ctrl_const.pred_force_step feeds the exact law step; set law_exact_step = true as well.');
         end
         y1_gain_off  = logical(get_field_default(ctrl_const, 'y1_gain_off', false));
+        % y1_gain_off_from (2026-09-03, diagnostic, default 0 = never): same cut as
+        % y1_gain_off but only from controller step k_step >= this value, so the
+        % y1 -> gain leg can be removed in a hold WITHOUT touching the motion
+        % segments (paired against the untouched run it measures the mean y1
+        % innovation offset through the gain row: d(a_hat) = -l41 * iota * N).
+        y1_gain_off_from = get_field_default(ctrl_const, 'y1_gain_off_from', 0);
         % T2 hook (TEST ONLY, default false): zero the loop-coupling column
         % F_dw and the process noise Q, so P(4,4) propagates by the row-4
         % diagonal alone. Then the tex S6 flow identity is EXACT
@@ -1521,7 +1527,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         S1 = H1 * P_pred * H1' + R1_i;
         K1 = (P_pred * H1') / S1;
         K31_km1(ax) = K1(3);                         % kept for the next call's pred_mean2_kr1 term
-        if freeze_gain || y1_gain_off; K1(4:7) = 0; end
+        if freeze_gain || y1_gain_off || (y1_gain_off_from > 0 && k_step >= y1_gain_off_from); K1(4:7) = 0; end
         K1(lock_state_idx_ax{ax}) = 0;
         innov1 = delta_w_m(ax) - H1 * x_pred;
         innov_y1_v(ax) = innov1;          % logging only (whiteness diagnostic)
