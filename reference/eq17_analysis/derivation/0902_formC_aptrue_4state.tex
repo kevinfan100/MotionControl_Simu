@@ -85,8 +85,15 @@
 %   trajectories): a' M x 1.10 -> -0.0043 +- 0.0022 / -0.0054 +- 0.0030, y1 leg x 1.05 ->
 %   +0.0033 +- 0.0012 / +0.0043 +- 0.0017: each flow is ~5-8e-6/step, opposite, and the
 %   +0.25e-6/step drift is a ~3-5% residual of their cancellation, i.e. of E = l41 + a' l31.
-%   Stop-line. Any fix lives in the (3,4) covariance model that sets that balance (Q34,
-%   F_e(3,4), the MA(2) memory rows), not in an additive mean line.
+%   E FROM THE LOG (probe_aptrue_E_from_log, 10 seeds): l41 = -a' l31 EXACTLY (E = 0 to
+%   1e-4 in every segment, both trajectories; e.g. canon hold l31 0.6576, l41 -0.5082,
+%   a' 0.7728). The filter's P41 = -a' P31, so the x3_hat-driven flows cancel exactly in
+%   its linear mean dynamics: the (3,4)-imbalance reading of the knob test is FALSIFIED.
+%   With beta2 ~ 0 and E = 0 the level-mode equation has no source left for the
+%   +0.25e-6/step drift, i.e. the drift is outside the linear mean model: the UPDATE
+%   stage's second-order mean (state-dependent gain l41 = -a'(w_hat) l31 times the
+%   innovation, the nonlinear y2 prediction) has never been derived -- it is the
+%   update-half analogue of pred_mean2 and the next derivation.
 %   Y1 GAIN-LEG ABLATION (09-03, ctrl_const.y1_gain_off_from, paired 10 seeds): the leg
 %   also carries the fluctuation-mode control of the gain row (hold sd 0.0026 -> 0.024,
 %   P44 honest), so its paired shift (+0.0106 +- 0.003 canon) is not a level reading.
