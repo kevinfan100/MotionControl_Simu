@@ -613,6 +613,12 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % mean a'' (1-lc)^2 K31 R1, which is added here; K31 is the y1 gain of the
         % previous call (buffer), R1 the y1 noise variance. No new state, c-free.
         pred_mean2_kr1 = logical(get_field_default(ctrl_const, 'pred_mean2_kr1', false));
+        % STATUS (2026-09-03 evening): kr1 AND kr1_full are RETRACTED as compensation.
+        % The first-order slope covariance E[a' u] = -a'' (1-lc) K31 R1 (a' is read at
+        % the filter's height, which shares n_w with u) cancels the three shares below
+        % exactly (probe: Cov(a',u) +0.736 vs shares -0.694, 1e-6/step, canon hold);
+        % the truth's net feedthrough is ~0 and either flag drifts the hold estimate
+        % down (long hold: -0.22e-6/step with kr1_full, +0.24 without). Keep off.
         % pred_mean2_kr1_full (2026-09-03, default false => bit-identical): the SAME
         % n_w also sits in the posterior error e3 = dw3 - dw3_hat (coefficient -K31),
         % so the two P-based pieces of pred_mean2 miss it as well:

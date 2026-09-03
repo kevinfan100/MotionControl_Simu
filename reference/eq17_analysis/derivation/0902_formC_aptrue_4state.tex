@@ -38,43 +38,40 @@
 %   Delta_w_d + (1-lc) dw3_hat + (1-lc)(m1+m2) differs from the commanded displacement
 %   a_ctrl fbar_d by sd 3e-4 (13% of the step); using a_ctrl fbar_d in the predict
 %   (ctrl_const.pred_force_step) was FALSIFIED (spread x2.4, meng -0.031). The proxy stays.
-%   FEEDTHROUGH TERM, CLOSED (09-03, probe_aptrue_est_final / analyze_aptrue_est_final,
-%   8 seeds, both trajectories, 1e-6 a_bar/step, True - Est). The controller reacts to
-%   the SAME y1[k] the update used, so n_w[k] sits in eps_w (+(1-lc)), in dw3_hat (+l31)
-%   and in e3 (-l31). Three shares of the mean line: dw3_hat u -> +a''(1-lc)^2 l31 R1
-%   (kr1, 09-02); e3 u -> +a''(1-lc) l31 R1; u^2 -> -a''(1-lc)^2 l31 R1; net
-%   a''(1-lc) l31 R1 (ctrl_const.pred_mean2_kr1_full). Remainder after kr1: meng near
-%   -0.229 / hold -0.472, canon hold -0.513; the missing share a''(1-lc) lc l31 R1 =
-%   -0.200 / -0.473 / -0.486; after kr1_full: -0.062 / -0.106 / -0.091 (SEM 0.03-0.1).
-%   The predict stage is unbiased to ~0.1e-6/step. Sign of n_w in eps_w corrected to +
-%   (only its square had been used before).
-%   CLOSED LOOP (run_aptrue_kr1_full, 10 seeds, hold, est - true): canon +0.00015 ->
-%   -0.00081 (SEM 0.00027), meng +0.00112 -> -0.00081 (SEM 0.00071); the pre-fix canon
-%   zero was a cancellation. The remaining bias is not the second-order predict
-%   remainder (r ~ -0.1e-6/step would push the estimate UP). The per-step first-order
-%   mean budget (a' M, a' u, update) cannot be resolved at 8-10 seeds: per-step sd
-%   ~1e-3 gives SEM ~6e-6/step, 20x the drift in question -- do not read those columns.
-%   PAIRED, DETERMINISTIC (same seeds, kr1 vs kr1_full, hold): moving the estimate by
-%   +0.00096 (canon) / +0.00193 (meng) moved the y2 innovation by -0.00003 / -0.00007
-%   (SEM < 1e-5). y2 is the WHITENED increment, H2_scale = a_cov = 0.05, so the
-%   innovation shift is a_cov (S-1) da_hat: S = 0.38 (canon) / 0.28 (meng), i.e. the
-%   code's echo S ~ 0.32 is CONFIRMED near the wall (a first 09-03 reading of S ~ 1
-%   forgot the a_cov scale and is retracted). y2 sees (1-S) = 0.68 of the gain error but
-%   with per-step gain l42 a_cov (1-S) ~ 5e-5 (time constant ~12 s), so over a 1-2 s
-%   near-wall hold the gain row integrates any first-order mean drift almost unpulled.
-%   The predict second-order remainder is bounded at |r| < 0.1e-6/step and points the
-%   wrong way; the down-drift (~0.2-0.5e-6/step) must be first order: the y1 leg
-%   (l41 = -0.51 needs a 1e-5 R mean innovation, the measured -1.3e-5 +- 1.4e-5) or
-%   E[a' u]. TESTED AND STOPPED (09-03, ctrl_const.y1_gain_off_from = first hold step,
-%   paired 10 seeds): the y1 gain leg also carries the FLUCTUATION-mode control of the
-%   gain row (the thermal height jitter maps to gain jitter through the law and y1 is
-%   what tracks it): with the leg off, hold sd(E) 0.0026 -> 0.024 and sqrt(P44) 0.0025
-%   -> 0.023 (9x, filter still honest), the paired hold shift +0.0106 +- 0.003 (canon) /
-%   +0.0054 +- 0.005 (meng) is not -l41 iota N and cannot be read as iota. Two modes:
-%   fluctuation (pulled within steps by y1) and LEVEL (pulled slowly, ~1e-4/step, by
-%   y2 and by the noise-driven F_dw e_a coupling of y1); the -0.0008 is a level-mode
-%   mean, unattributed. Stop-line hit; next step is the level-mode mean equation on
-%   paper, not another run.
+%   FEEDTHROUGH TERM, RETRACTED (09-03). Morning: the probe remainder after kr1 was
+%   meng near -0.229 / hold -0.472, canon hold -0.513 (1e-6/step), matched by the share
+%   a''(1-lc) lc l31 R1 (-0.200 / -0.473 / -0.486), so a''(1-lc) l31 R1 was wired as
+%   pred_mean2_kr1_full and the remainder went to -0.06 / -0.11 / -0.09. Closed loop
+%   (10 seeds, hold, est - true) then landed at -0.00081 on BOTH trajectories (canon from
+%   +0.00015, meng from +0.00112), and a hold extended by 4 s showed a straight line:
+%   last-3-s slope -0.224 +- 0.044 (canon) / -0.146 +- 0.082 (meng) 1e-6/step.
+%   Evening: the probe statistic r = De - a' u had subtracted a' u as zero-mean, but a'
+%   is read at w_bar_d - dw3_hat and dw3_hat shares n_w with u, so
+%   E[a' u] = -a'' Cov(dw3_hat, u) = -a''(1-lc) l31 R1. Measured Cov(a',u) = +0.736
+%   (canon hold) / +0.746 (meng) = -a'' Cov(dw3_hat,u) to 0.1% = minus the three
+%   second-order shares (-0.694 / -0.674). The truth's net feedthrough is +0.04 +- 0.05:
+%   the four l31 R1 shares cancel (Error dynamics section), kr1 and kr1_full were
+%   over-compensations (rule 7: the instrument consumed the cancelling term). Without
+%   them the long-hold slope flips to +0.239 +- 0.044 / +0.126 +- 0.079 (pre-registered
+%   +0.1..+0.2 / 0..+0.1). Recipe = exact step + slope@est + pred_mean2; both kr1 flags
+%   stay default-off as a record. Sign of n_w in eps_w corrected to + (only its square
+%   had been used before).
+%   ECHO (paired, kr1 vs kr1_full, hold): moving the estimate by +0.00096 / +0.00193
+%   moved the y2 innovation by -0.00003 / -0.00007 (SEM < 1e-5); y2 is the whitened
+%   increment with H2_scale = a_cov, so S = 0.38 (canon) / 0.28 (meng): the code's echo
+%   S ~ 0.32 is confirmed near the wall (a first reading of S ~ 1 forgot a_cov).
+%   HOLD LEVEL MODE (section below, independently verified 09-03): the level pulls back
+%   at kappa = l42 a_cov (1-S) ~ 5.1e-5/step (tau ~ 12 s); y1 does not set the level
+%   (E = l41 + a' l31 ~ 0.04, a rank-1 Q cancellation); with a clean predict the level
+%   converges to mu4 = -beta2/(1-S). Measured y2 innovation mean +0.00015 (canon, a_cov
+%   units) gives beta2 ~ +0.003 (3.4% of a_bar at the wall), asymptote est - true ~ +0.005,
+%   initial slope kappa x 0.005 = +0.26e-6/step = the measured +0.24. NEXT: the y2 readout
+%   level near the wall (measurement chain), not the predict.
+%   Y1 GAIN-LEG ABLATION (09-03, ctrl_const.y1_gain_off_from, paired 10 seeds): the leg
+%   also carries the fluctuation-mode control of the gain row (hold sd 0.0026 -> 0.024,
+%   P44 honest), so its paired shift (+0.0106 +- 0.003 canon) is not a level reading.
+%   Recorded, not used. The per-step first-order mean budget (a' M, a' u, update) cannot
+%   be resolved at 8-10 seeds (SEM ~6e-6/step); do not read those columns.
 % ======================================================
 % Compile: xelatex 0902_formC_aptrue_4state.tex
 % Path:    reference/eq17_analysis/derivation/0902_formC_aptrue_4state.tex
@@ -179,10 +176,10 @@ F_{dw}[k] &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
   &\qquad + \tfrac{1}{2}\,\ba''[k]\bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr]^{2} \\
   &\qquad + \tfrac{1}{2}\,\ba''[k]\Bigl[(1-\lambda_c)^{2}P_{33}[k]
     + 2(1-\lambda_c)\,F_{dw}[k]\,P_{34}[k] + F_{dw}[k]^{2}P_{44}[k] + Q_{33}[k]\Bigr] \\
-  &\qquad - \ba''[k]\Bigl[(1-\lambda_c)\,P_{33}[k] + F_{dw}[k]\,P_{34}[k]\Bigr] \\
-  &\qquad + \ba''[k]\,(1-\lambda_c)\,\ell_{31}[k]\,R_1
+  &\qquad - \ba''[k]\Bigl[(1-\lambda_c)\,P_{33}[k] + F_{dw}[k]\,P_{34}[k]\Bigr]
 \end{align*}
-($\ell_{31}[k]$: entry $(3,1)$ of $L[k]$, the $y_1$ gain of the update at $k$; Measurement section)
+($\ell_{31}[k]$: entry $(3,1)$ of $L[k]$, the $y_1$ gain of the update at $k$; Measurement section.
+The $n_w$ feedthrough adds no line: its four shares cancel, Error dynamics section.)
 
 code: the first two terms of the $\hat{\ba}_w$ row are carried by the exact step,
 \begin{align*}
@@ -273,15 +270,18 @@ A2 $\E[\delta\hat{\bw}_3\,e_{\delta\bw_3}] = \E[\delta\hat{\bw}_3\,e_{\ba_w}] = 
 A3 $\E[\varepsilon_w\,e_{\ba_w}] = 0$, $\E[\varepsilon_w^{2}] = Q_{33}$,
 and (the update at $k$ and the controller read the same $y_1[k]$:
 $\delta\hat{\bw}_3[k] \ni \ell_{31}[k]\,n_w[k]$, $e_{\delta\bw_3}[k] \ni -\ell_{31}[k]\,n_w[k]$,
-$\varepsilon_w[k] \ni (1-\lambda_c)\,n_w[k]$)
-\begin{equation*}
-\E\bigl[\delta\hat{\bw}_3[k]\,\varepsilon_w[k]\bigr] = (1-\lambda_c)\,\ell_{31}[k]\,R_1 , \qquad
-\E\bigl[e_{\delta\bw_3}[k]\,\varepsilon_w[k]\bigr] = -(1-\lambda_c)\,\ell_{31}[k]\,R_1
-\end{equation*}
+$\varepsilon_w[k] \ni (1-\lambda_c)\,n_w[k]$,
+$\ba'[k] = \ba'_{\mathrm{true}}(\bw_d[k] - \delta\hat{\bw}_3[k]) \ni -\ba''[k]\,\ell_{31}[k]\,n_w[k]$)
+\begin{align*}
+\E\bigl[\delta\hat{\bw}_3[k]\,\varepsilon_w[k]\bigr] &= (1-\lambda_c)\,\ell_{31}[k]\,R_1 \\
+\E\bigl[e_{\delta\bw_3}[k]\,\varepsilon_w[k]\bigr] &= -(1-\lambda_c)\,\ell_{31}[k]\,R_1 \\
+\E\bigl[\ba'[k]\,\varepsilon_w[k]\bigr] &= -\ba''[k]\,(1-\lambda_c)\,\ell_{31}[k]\,R_1
+\end{align*}
 \begingroup\small
 \begin{align*}
 \E\bigl[e_{\ba_w}[k+1]\bigr] - \E\bigl[e_{\ba_w}[k]\bigr]
-  &= - \ba''[k]\Bigl[(1-\lambda_c)\,P_{33}[k] + F_{dw}[k]\,P_{34}[k]\Bigr]
+  &= - \ba''[k]\,(1-\lambda_c)\,\ell_{31}[k]\,R_1 \\
+  &\quad - \ba''[k]\Bigl[(1-\lambda_c)\,P_{33}[k] + F_{dw}[k]\,P_{34}[k]\Bigr]
      + \ba''[k]\,(1-\lambda_c)\,\ell_{31}[k]\,R_1 \\
   &\quad + \ba''[k]\,(1-\lambda_c)^{2}\,\ell_{31}[k]\,R_1 \\
   &\quad + \tfrac{1}{2}\,\ba''[k]\Bigl[(1-\lambda_c)^{2}P_{33}[k]
@@ -291,12 +291,12 @@ $\varepsilon_w[k] \ni (1-\lambda_c)\,n_w[k]$)
   &= - \ba''[k]\Bigl[(1-\lambda_c)\,P_{33}[k] + F_{dw}[k]\,P_{34}[k]\Bigr] \\
   &\quad + \tfrac{1}{2}\,\ba''[k]\Bigl[(1-\lambda_c)^{2}P_{33}[k]
       + 2(1-\lambda_c)\,F_{dw}[k]\,P_{34}[k]
-      + F_{dw}[k]^{2}P_{44}[k] + Q_{33}[k]\Bigr] \\
-  &\quad + \ba''[k]\,(1-\lambda_c)\,\ell_{31}[k]\,R_1
+      + F_{dw}[k]^{2}P_{44}[k] + Q_{33}[k]\Bigr]
 \end{align*}
 \endgroup
+(lines 1--4 in the order of the truth $-$ estimator expansion; the four $\ell_{31}R_1$ shares sum to zero)
 
-compensation: the three lines added to $\hat{\ba}_w[k+1]$ (Estimator section)
+compensation: the two lines added to $\hat{\ba}_w[k+1]$ (Estimator section)
 \begin{equation*}
 \E\bigl[e_{\ba_w}[k+1]\bigr] - \E\bigl[e_{\ba_w}[k]\bigr] = 0
 \end{equation*}
@@ -353,5 +353,36 @@ IF_{\mathrm{var}}\bigl(\hat{\ba}_w\bigr)
 
 ($c_1 = 1.42044$, $c_2 = 0.0098975$, $c_3 = 0.098910$, $\rho_n = 0.350941$,
 $a_{\mathrm{cov}} = 0.05$)
+
+
+\section*{Hold level mode}
+
+($\Delta\bw_d = 0$, $\nabla_d\bw_d = 0$; $\mu_3 := \E[e_{\delta\bw_3}]$, $\mu_4 := \E[e_{\ba_w}]$,
+$\iota_1 := \E[e_{y_1}]$, $\iota_2 := \E[e_{y_2}]$, $\bar{F} := \E[F_{dw}]$,
+$g := \mathrm{Cov}(F_{dw}, e_{\ba_w}) + \E[\varepsilon_w]$, $\beta_2$ := readout level offset,
+$r$ := predict mean residual per step, $\gamma := a_{\mathrm{cov}}(1-S)$; superscript $-$ = before the update)
+
+\begin{align*}
+\mu_3^{-}[k+1] &= \lambda_c\,\mu_3[k] - \bar{F}\,\mu_4[k] - g \\
+\mu_4^{-}[k+1] &= \mu_4[k] + \ba'(1-\lambda_c)\,\mu_3[k] + \ba'\bar{F}\,\mu_4[k] + \ba' g + r \\
+\iota_1[k+1] &= \mu_3^{-}[k+1] \\
+\iota_2[k+1] &= a_{\mathrm{cov}}\bigl[(1-S)\,\mu_4^{-}[k+1] + \beta_2\bigr] \\
+\mu_3[k+1] &= \mu_3^{-}[k+1] - \ell_{31}\,\iota_1[k+1] - \ell_{32}\,\iota_2[k+1] \\
+\mu_4[k+1] &= \mu_4^{-}[k+1] - \ell_{41}\,\iota_1[k+1] - \ell_{42}\,\iota_2[k+1]
+\end{align*}
+
+steady state ($\ell_{32} = 0$)
+\begin{align*}
+D &= 1 - (1-\ell_{31})\,\lambda_c , \qquad
+E = \ell_{41} + \ba'\,\ell_{31}\,(1 - \ell_{42}\gamma) \\
+\mu_3^{-} &= -\frac{\bar{F}\mu_4 + g}{D} , \qquad \mu_3 = (1-\ell_{31})\,\mu_3^{-} \\
+\kappa\,\mu_4 &= s , \qquad
+\kappa = \ell_{42}\gamma - \frac{E\,\bar{F}}{D} , \qquad
+s = \frac{E\,g}{D} + (1-\ell_{42}\gamma)\,r - \ell_{42}\,a_{\mathrm{cov}}\,\beta_2
+\end{align*}
+
+\begin{equation*}
+g = r = \bar{F} = 0 \;\Rightarrow\; \mu_4 = -\frac{\beta_2}{1-S}
+\end{equation*}
 
 \end{document}
