@@ -360,6 +360,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off y1_gain_off_from t2_pure_prop lambda_f obs_dump_on
     persistent mean_knob_from pred_slope_scale y1_gain_leg_scale   % mean-only diagnostic knobs (2026-09-03), default off
     persistent nw_mcorr res1_km1                                  % correlated process/measurement noise correction (2026-09-03), default off
+    persistent pred_mean2_e4                                      % gain-reading start-point term of the second-order mean (2026-09-04), default off
     persistent lambda_f_b lfb_alpha lfb_floor lam_b_spend
     persistent ap_src ap_ewma_a a_bar_slope_v law_b_formC
     persistent q33_dc_match q33_dc_fac
@@ -665,6 +666,20 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % c-free: needs y1, x_upd(1), R1, lc, a' only.
         nw_mcorr = logical(get_field_default(ctrl_const, 'nw_mcorr', false));
         res1_km1 = zeros(3, 1);
+        % pred_mean2_e4 (2026-09-04, default false => bit-identical): when the slope reads the
+        % GAIN STATE (a_bar' = b (1 - a_hat)^2: production and the b_true arm; NOT the ap_known
+        % arm, whose slope reads a height), the start-point term of the second-order mean is
+        %     (d a_bar'/d a_hat) Cov(e4, u) = A_a [ (1-lc) P34 + alpha (P48 + P49) + F_dw P44 ]   [nw_mcorr: - (1-lc) P14]
+        % in place of pred_mean2's height-reading -a'' Cov(e3, u). The two differ by
+        %     A_a Cov(e4 + a' e3, u)
+        % which is ~0 in a hold (P34 = -a' P33 there) and -1.2e-6 (canon) / -0.2e-6 (Meng) per step
+        % in the near-wall descent (probe_btrue_e4_line.m, 10 seeds). Derivation:
+        % 0903_aptrue_4state_from_true.tex S10. Requires pred_mean2.
+        pred_mean2_e4 = logical(get_field_default(ctrl_const, 'pred_mean2_e4', false));
+        if pred_mean2_e4 && ~pred_mean2
+            error('motion_control_law_formC_b:predMean2E4', ...
+                  'ctrl_const.pred_mean2_e4 replaces a term of pred_mean2; set pred_mean2 = true as well.');
+        end
         mean_knob_from    = get_field_default(ctrl_const, 'mean_knob_from', 0);
         pred_slope_scale  = get_field_default(ctrl_const, 'pred_slope_scale', 1);
         y1_gain_leg_scale = get_field_default(ctrl_const, 'y1_gain_leg_scale', 1);
@@ -1532,8 +1547,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 cov_e3u = one_minus_lc * Pc(3, 3) + F_dw * Pc(3, 4);
                 var_u   = one_minus_lc^2 * Pc(3, 3) + F_dw^2 * Pc(4, 4) + 2 * one_minus_lc * F_dw * Pc(3, 4) + Q33;
             end
+            cov_e4u = one_minus_lc * Pc(3, 4) + F_dw * Pc(4, 4);            % Cov(e4, u), pred_mean2_e4 only
+            if ma2_aug; cov_e4u = cov_e4u + alpha_ma2 * (Pc(4, 8) + Pc(4, 9)); end
             if pred_force_step                       % unknown increment = w_T + fbar_d e_a, see init
                 cov_e3u = fbar_d_km1(ax) * Pc(3, 4);
+                cov_e4u = fbar_d_km1(ax) * Pc(4, 4);
                 var_u   = fbar_d_km1(ax)^2 * Pc(4, 4) + kappa_T * a_bar_i;
             end
             if nw_mcorr                              % u = (1-lc)(e3 + m-errors - e1) + F_dw e4 + w_T: the n_w share is replaced by -(1-lc) e1
@@ -1547,8 +1565,13 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                     var_u   = var_u - one_minus_lc^2 * sigma2_n_nd(ax) ...
                             + one_minus_lc^2 * Pc(1, 1) - 2 * one_minus_lc^2 * Pc(1, 3) - 2 * F_dw * one_minus_lc * Pc(1, 4);
                 end
+                cov_e4u = cov_e4u - one_minus_lc * Pc(1, 4);
             end
-            mean2_i = -app_i * cov_e3u + 0.5 * app_i * var_u + 0.5 * (app_i - app_law) * M_pred^2;
+            if pred_mean2_e4 && ~has_ap_known            % gain-reading start-point term A_a Cov(e4,u), see init
+                mean2_i = A_a_i * cov_e4u + 0.5 * app_i * var_u + 0.5 * (app_i - app_law) * M_pred^2;
+            else
+                mean2_i = -app_i * cov_e3u + 0.5 * app_i * var_u + 0.5 * (app_i - app_law) * M_pred^2;
+            end
             if pred_mean2_kr1_full                  % complete feedthrough term, see init
                 mean2_i = mean2_i + app_i * one_minus_lc * K31_km1(ax) * sigma2_n_nd(ax);
             elseif pred_mean2_kr1                   % A2 closed form (dw3_hat share only), see init
