@@ -44,12 +44,20 @@
 - **驗收**（同 10 seeds、canon deep 與 Meng ramp、hold 拉長 4 s）：hold 偏差 −0.00035 ± 0.00026／
   +0.00017 ± 0.00068；長 hold 斜率 −0.014 ± 0.041／−0.023 ± 0.075（e-6/步，修前 +0.239／+0.126）；
   散布 = √P 不變；追蹤誤差不變。收官 100-seed（<0.1%）未跑。
-- **文件**：`derivation/0903_aptrue_4state_from_true.tex`（母本，斜率寫在命令高度＋補償項，等價於
-  code 的 @est；最後一頁 = 最終圖）、`0903_aptrue_4state_from_true_mcorr.tex`（同順序含 nw_mcorr，
-  待併回母本）、`0902_formC_aptrue_4state.tex`（header = 整段歷史）、`0903_formC_aptrue_update_half.tex`
-  （update 半步、引理 ℓ₄₁ = −ā′ℓ₃₁、相關雜訊 KF；獨立驗算：4-state 線性內 M 只解釋量到 Cov 的 1/20，
-  「M → 漂移」因果鏈待 9-state 版）。
-- **延伸 b_true**：搬同四塊，多一行 −(∂ā′/∂â)e₄·步長（均值 +2b(1−â)[(1−λc)P₃₄ + F_dwP₄₄]），先推導再接線。
+- **文件（09-04 統一）**：SSOT = `derivation/0903_aptrue_4state_from_true.tex`（寫法 A：斜率讀估測高度
+  w̄_d − δŵ̄₃；九節含 nw_mcorr；§10 = b_true 臂；末兩頁 = b_true 三臂圖、a′_true 最終圖；獨立驗算 09-04
+  全 PASS，三處記法修正已套）。`_mcorr` 版已併入並搬 `derivation/archive/`；`0902_formC_aptrue_4state.tex`
+  （階梯／撤回／hold 位準模態／code 行）與 `0903_formC_aptrue_update_half.tex`（update 半步、引理、相關雜訊 KF）
+  標 STATUS: HISTORY。但書不變：4-state 線性內「M → 漂移」未證，待 9-state。
+- **b_true 臂（09-04，第三塊接完）**：斜率讀估測增益 ā′ = b_true(1−â)² ⇒ 起點差項應為 (∂ā′/∂â)Cov(e₄,u)，
+  pred_mean2 用的是讀高度的 −ā″Cov(e₃,u)；兩者差 = (∂ā′/∂â)Cov(e₄+ā′e₃, u)，hold 內 ≈ 0（P₃₄ = −ā′P₃₃），
+  近壁下坡 −3.5／−0.5 e-6/步（canon／Meng），累積 −0.0026／−0.0040。旗標 **`pred_mean2_e4`**（default off、
+  需 pred_mean2；unit 16/16、關閉逐位相同）。第三臂（`run_btrue_e4.m`，同 10 seeds、hold +4 s）：配對響應
+  下坡末端 +0.0010／+0.0004，運動中迴路 ~0.2–1 s 就吸掉，hold 位準、斜率（−0.013／−0.008 e-6/步）、散布皆不變。
+  **b_true 臂 10 seeds 解析度不足**：hold sd 0.0047／0.0062（a′_true 的 1.8×，法則沿下坡放大增益誤差
+  F_e(4,4) = 1 + (∂ā′/∂â)Δw̄），位準 SEM 0.0016／0.0022、斜率 SEM 0.27／0.24 e-6/步；base hold +0.0012／+0.0002
+  與 0 相容。nw_mcorr 在此臂配對效果 −0.095／−0.113（a′_true 臂 −0.252／−0.150），base 斜率本身未解析。
+  儀器：`run_btrue_nw_mcorr.m`、`probe_btrue_e4_line.m`（F_dw 近似，精確注入量用 pm2 差）、`plot_btrue_e4.m`。
 
 ## 現況（2026-08-03）
 

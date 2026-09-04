@@ -1,16 +1,70 @@
-% STATUS: ACTIVE | 4-STATE a'_true ARM, DERIVATION ORDERED FROM THE TRUE DYNAMICS (2026-09-03)
-%   Same estimator as 0902_formC_aptrue_4state.tex (slope and curvature exogenous at the
-%   commanded height, lock_b, second-order mean term); the step is written as the
-%   second-order Taylor line and every Jacobian is taken from that line. Re-ordered so that
-%   every line follows from the one before it: true dynamics -> the estimator's one line
-%   -> their difference -> its mean -> the mean added back -> Jacobians -> F_e -> H -> Q, R.
-%   Equations only. Three increments are named (all by the existing hat / e conventions):
+% STATUS: ACTIVE | SSOT | 4-STATE a'_true ARM, DERIVATION ORDERED FROM THE TRUE DYNAMICS, WITH THE
+%   CORRELATED-NOISE PREDICT (2026-09-03, unified 2026-09-04).
+%   Order: true dynamics -> the estimator's one line -> their difference -> its mean -> the mean added
+%   back -> Jacobians -> F_e -> H -> Q, R. Equations only. Section 10 = the b_true arm (slope read at the
+%   estimated gain). Last two pages: the b_true three-arm figure (Section 10) and the a'_true recipe figure on
+%   both trajectories (seed 7 / gain error / tracking error), no text.
+%
+%   RECIPE = CODE (motion_control_law_formC_b.m, z axis, all flags default off, lock_b):
+%     law_exact_step + ap_known_at = 'est' + app_known + pred_mean2 + nw_mcorr.
+%   The slope and the curvature are exogenous (a'_true, a''_true from c(h_bar)) and READ AT THE ESTIMATED
+%   HEIGHT w_d - dw3_hat (writing A = the code's 'est'). The 09-03 version of this file read them at the
+%   commanded height and carried the extra mean line -a'' dw3_hat Delta w_hat; the two writings agree to
+%   second order and that version was retired on 2026-09-04 (git history). The estimator's step is
+%   written as the second-order Taylor line; the code takes the exact law step (fraction form, equal to
+%   the line to O(step^3)) plus the curvature difference 1/2 (a''_true - a''_law) Delta w_hat^2.
+%   The MA(2) memory rows of the production filter (slots 8/9) are not in this 4-state writing; in the
+%   code they add the shares alpha (P38 + P39), alpha (P48 + P49), alpha^2 (P88 + P99 + 2 P89) to the
+%   cov / var moments of the mean term and the deterministic feedthrough -alpha (m1 + m2) to the step.
+%   Increments (existing hat / e conventions):
 %     Delta w_bar        true height increment          w[k+1] - w[k]
-%     Delta w_bar_hat    estimator's height increment   Delta w_d + (1-lc) dw3_hat
+%     Delta w_bar_hat    estimator's height increment   Delta w_d + (1-lc)(dw3_hat + y1 - dw1_hat)
 %     e_{Delta w_bar}    increment error                Delta w_bar - Delta w_bar_hat
-%   The estimator's step is written as the second-order Taylor line; the fraction form the
-%   code takes (exact law step + curvature difference, equal to it to O(step^3)), the code
-%   lines and the acceptance numbers stay in 0902_formC_aptrue_4state.tex. No numbers here.
+%   nw_mcorr (Estimator, Error dynamics, Noise): the controller reacts to the same y1[k] the update uses,
+%   so E[eps_w n_w] = (1-lc) R1 != 0; the standard correlated-noise form moves the n_w share of Q into the
+%   predict input g_n (y1 - dw1_hat), F_e <- F_e - g_n e1', Q <- Q - R1 g_n g_n'.
+%
+%   ACCEPTANCE (run_aptrue_nw_mcorr.m, same 10 seeds, both trajectories, hold extended by 4 s; est - true;
+%   base = the recipe without nw_mcorr; pre-registered: slope 0 +- 0.05 / 0.08, spread unchanged, short-hold 0):
+%     canon  last-3-s hold slope +0.239 -> -0.014 +- 0.041 e-6/step (paired -0.252 +- 0.005) | hold sd 0.00256 -> 0.00254
+%            short-hold (first 1.3 s) +0.00056 -> -0.00035 +- 0.00026 | motion-segment mean ~ 0
+%     meng   slope +0.126 -> -0.023 +- 0.075 (paired -0.150 +- 0.007) | hold sd 0.00335 -> 0.00327
+%            short-hold (first 1 s) +0.00206 -> +0.00023 +- 0.00068
+%     unit 16/16; base bit-identical to aptrue_long_hold_<traj>_mean2. Figure: figures/aptrue_two_traj_final_3row.png
+%   (plot_aptrue_two_traj_final(true,'nwmcorr') on aptrue_nw_mcorr_full_<traj>.mat).
+%
+%   VERIFICATION: the correlated-noise form, the lemma l41 = -a' l31 and the posterior residual were
+%   verified independently on 2026-09-03 (sympy + Riccati + 1.9e7-sample MC, recorded in
+%   0903_formC_aptrue_update_half.tex); the corrections are in this file (residual after both updates
+%   = (R1/S1) e_y1 - l12 e_y2). VERIFICATION 09-04 (independent agent, sympy, 31 symbolic checks, script
+%   verify_0903.py in the session tmp): Sections 1-9 all PASS; three notation fixes applied -- the posterior
+%   residual is written with the y2 innovation AFTER the y1 update (e_y2 - l41 e_y1), the gain-row diagonal
+%   Jacobian is labelled as the TRUE transition's entry, the Section 4 parenthetical on the retired writing
+%   no longer claims the four shares are equal; the zero means hold as conditional expectations given the
+%   data (E[e | data] = 0), exact for the linear-Gaussian KF, approximate for the EKF. Section 10 verified the same
+%   way (21 checks, verify_0903_sec10.py): items 11-15 all PASS; two notes applied (the slaving condition needs
+%   P44 = a'^2 P33 as well; b read at the previous step's true height drops a few-percent second-order mean).
+%   CAVEAT carried over: within the linear 4-state model the M mismatch explains only ~1/20 of the
+%   measured Cov(dw3_hat, e_y1) with the opposite sign; the drift removal by nw_mcorr is a measured
+%   fact and S6 of the update-half document is the correct model for M, but the causal chain M -> drift
+%   needs the 9-state (MA(2)) treatment.
+%
+%   SECTION 10 (2026-09-04, b_true arm, code flag ctrl_const.pred_mean2_e4, default off, unit 16/16): the slope reads
+%   the estimated gain, so the start-point term of the mean is (d a'/d a_hat) Cov(e4,u) instead of pred_mean2's
+%   height-reading -a'' Cov(e3,u); the difference is (d a'/d a_hat) Cov(e4 + a' e3, u), ~0 in every hold and
+%   -3.5e-6 (canon) / -0.5e-6 (Meng) per step in the near-wall half of the descent (running sums -0.0026 / -0.0040).
+%   Third arm run_btrue_e4.m (b_true@true + exact + pred_mean2 + nw_mcorr +- pred_mean2_e4, same 10 seeds, hold +4 s):
+%   flag off bit-identical; paired response at the end of the descent +0.00103 +- 0.00004 (canon; the input's running
+%   sum there is +0.0028) and +0.00039 +- 0.00003 (Meng; +0.0040), relaxing to +0.0003 / +0.0002 at the hold start and
+%   ~0 by the end (the y2 leg is fast in motion); paired hold slope change -0.013 +- 0.002 / -0.008 +- 0.001 e-6/step;
+%   hold sd unchanged (0.00467 / 0.00616). The b_true arm's hold level is unresolved at 10 seeds (SEM 0.0016 / 0.0022,
+%   1.8x the a'_true arm's spread: the law amplifies a gain error along the descent, F_e(4,4) = 1 + (da'/da) Delta w).
+%   nw_mcorr's paired effect in this arm: slope -0.095 +- 0.013 (canon) / -0.113 +- 0.006 (Meng) e-6/step, smaller
+%   than in the a'_true arm (-0.252 / -0.150); the base slopes themselves are unresolved (SEM 0.27 / 0.24).
+%   HISTORY (kept, STATUS: HISTORY): 0902_formC_aptrue_4state.tex (the ladder Euler -> exact -> @est ->
+%   pred_mean2, the kr1 retraction, the hold level mode, the code lines and numbers);
+%   0903_formC_aptrue_update_half.tex (update half-step, lemma, C recursion, S6 correlated-noise KF).
+%   MERGED AND RETIRED 2026-09-04: 0903_aptrue_4state_from_true_mcorr.tex (this content).
 % ======================================================
 % Compile: xelatex 0903_aptrue_4state_from_true.tex
 % Path:    reference/eq17_analysis/derivation/0903_aptrue_4state_from_true.tex
@@ -38,16 +92,17 @@
 \newcommand{\eD}{e_{\Delta\bw}}
 \newcommand{\ap}{\ba'}
 \newcommand{\app}{\ba''}
+\newcommand{\et}{\tilde{\varepsilon}_w}
 
 \begin{document}
 
 (bars: lengths by $R$, gain by $a_{\mathrm{nom}}$; hats on estimates;
-$e_{\theta} = \theta - \hat{\theta}$;
+$e_{\theta} = \theta - \hat{\theta}$; posterior quantities unless marked $^{-}$;
 $\bw_d[k]$ commanded height, $\Delta\bw_d[k] = \bw_d[k+1] - \bw_d[k]$;
-$\ap := \ap_{\mathrm{true}}(\bw_d[k])$, $\app := \app_{\mathrm{true}}(\bw_d[k])$, both exogenous;
-$\dW[k] := \bw[k+1] - \bw[k]$; $\dWh[k] := \Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]$;
+$\ap := \ap_{\mathrm{true}}(\bw_d[k] - \delta\hat{\bw}_3[k])$, $\app := \app_{\mathrm{true}}(\bw_d[k] - \delta\hat{\bw}_3[k])$, both exogenous;
+$\dW[k] := \bw[k+1] - \bw[k]$; $\dWh[k] := \Delta\bw_d[k] + (1-\lambda_c)\bigl[\delta\hat{\bw}_3[k] + y_1[k] - \delta\hat{\bw}_1[k]\bigr]$;
 $\eD := \dW - \dWh$;
-$\E[\cdot]$ mean over noise realizations; $P_{ij} = \E[e_i e_j]$; $d = 2$)
+$\E[\cdot]$ mean over noise realizations conditional on the data up to $k$; $P_{ij} = \E[e_i e_j]$; $d = 2$)
 
 \section{True dynamics}
 
@@ -57,28 +112,34 @@ $\E[\cdot]$ mean over noise realizations; $P_{ij} = \E[e_i e_j]$; $d = 2$)
 \dW[k]            &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k] \\
 \ba_w[k+1] - \ba_w[k] &= \ap_{\mathrm{true}}\bigl(\bw[k]\bigr)\,\dW[k]
                        + \tfrac{1}{2}\,\app_{\mathrm{true}}\bigl(\bw[k]\bigr)\,\dW[k]^{2} + \mathcal{O}\bigl(\dW^{3}\bigr) \\
-\ap_{\mathrm{true}}\bigl(\bw[k]\bigr)  &= \ap_{\mathrm{true}}\bigl(\bw_d[k] - \delta\bw_3[k]\bigr)
-                                        = \ap - \app\,\delta\bw_3[k] + \mathcal{O}\bigl(\delta\bw_3^{2}\bigr) \\
-\app_{\mathrm{true}}\bigl(\bw[k]\bigr) &= \app + \mathcal{O}\bigl(\delta\bw_3\bigr)
+\ap_{\mathrm{true}}\bigl(\bw[k]\bigr)  &= \ap_{\mathrm{true}}\bigl(\bw_d[k] - \delta\hat{\bw}_3[k] - e_{\delta\bw_3}[k]\bigr)
+                                        = \ap - \app\,e_{\delta\bw_3}[k] + \mathcal{O}\bigl(e^{2}\bigr) \\
+\app_{\mathrm{true}}\bigl(\bw[k]\bigr) &= \app + \mathcal{O}\bigl(e\bigr)
 \end{align*}
 
-(first line: $\ba_{\mathrm{true}}$ expanded about $\bw[k]$ in $\dW$;
-second line: $\ap_{\mathrm{true}}$ expanded about $\bw_d[k]$ in $-\delta\bw_3$)
-
 \begin{align*}
-\ba_w[k+1] - \ba_w[k] &= \bigl(\ap - \app\,\delta\bw_3[k]\bigr)\,\dW[k] + \tfrac{1}{2}\,\app\,\dW[k]^{2}
+\ba_w[k+1] - \ba_w[k] &= \bigl(\ap - \app\,e_{\delta\bw_3}[k]\bigr)\,\dW[k] + \tfrac{1}{2}\,\app\,\dW[k]^{2}
 \end{align*}
 
 \begin{align*}
 F_{dw}[k]        &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-i] \\
-\varepsilon_w[k] &= \ba_w[k]\,\bar{f}_T[k] + (1-\lambda_c)\sum_{i=1}^{d}\ba_w[k-i]\,\bar{f}_T[k-i] - (1-\lambda_c)\,n_w[k]
+\varepsilon_w[k] &= \ba_w[k]\,\bar{f}_T[k] + (1-\lambda_c)\sum_{i=1}^{d}\ba_w[k-i]\,\bar{f}_T[k-i] + (1-\lambda_c)\,n_w[k] \\
+y_1[k]           &= \delta\bw_1[k] + n_w[k]
+\end{align*}
+
+\begin{align*}
+\E\bigl[\varepsilon_w[k]\,n_w[k]\bigr] &= (1-\lambda_c)\,R_1 \\
+\et[k] &:= \varepsilon_w[k] - (1-\lambda_c)\,n_w[k] , \qquad
+\E\bigl[\et\,n_w\bigr] = 0 , \qquad
+\E\bigl[\et^{2}\bigr] = Q_{33} - (1-\lambda_c)^{2}R_1 =: \tilde{Q}_{33} \\
+\dW[k] &= \Delta\bw_d[k] + (1-\lambda_c)\bigl[\delta\bw_3[k] + n_w[k]\bigr] + F_{dw}[k]\,e_{\ba_w}[k] + \et[k]
 \end{align*}
 
 \section{Estimator}
 
 \begin{align*}
-\delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k] \\
-\dWh[k]                &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k] \\
+\delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k] - (1-\lambda_c)\bigl[y_1[k] - \delta\hat{\bw}_1[k]\bigr] \\
+\dWh[k]                &= \Delta\bw_d[k] + (1-\lambda_c)\bigl[\delta\hat{\bw}_3[k] + y_1[k] - \delta\hat{\bw}_1[k]\bigr] \\
 \hat{\ba}_w[k+1] - \hat{\ba}_w[k] &= \ap\,\dWh[k] + \tfrac{1}{2}\,\app\,\dWh[k]^{2}
 \end{align*}
 
@@ -86,18 +147,19 @@ F_{dw}[k]        &= \bar{f}_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar{f}_{dw}[k-
 \section{Error increment}
 
 \begin{align*}
-\eD[k]        &= \dW[k] - \dWh[k] = (1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k] \\
-\delta\bw_3[k] &= \delta\hat{\bw}_3[k] + e_{\delta\bw_3}[k]
+y_1[k] - \delta\hat{\bw}_1[k] &= e_{\delta\bw_1}[k] + n_w[k] \\
+\eD[k] &= \dW[k] - \dWh[k]
+        = (1-\lambda_c)\bigl[e_{\delta\bw_3}[k] - e_{\delta\bw_1}[k]\bigr] + F_{dw}[k]\,e_{\ba_w}[k] + \et[k]
 \end{align*}
 
 \begin{align*}
 e_{\ba_w}[k+1] - e_{\ba_w}[k]
   &= \bigl(\ba_w[k+1] - \ba_w[k]\bigr) - \bigl(\hat{\ba}_w[k+1] - \hat{\ba}_w[k]\bigr) \\
-  &= \bigl(\ap - \app\,\delta\bw_3\bigr)\bigl(\dWh + \eD\bigr) + \tfrac{1}{2}\,\app\bigl(\dWh + \eD\bigr)^{2}
+  &= \bigl(\ap - \app\,e_{\delta\bw_3}\bigr)\bigl(\dWh + \eD\bigr) + \tfrac{1}{2}\,\app\bigl(\dWh + \eD\bigr)^{2}
      - \ap\,\dWh - \tfrac{1}{2}\,\app\,\dWh^{2} \\
   &= \ap\,\eD
-     - \app\,\delta\bw_3\,\dWh
-     - \app\,\delta\bw_3\,\eD
+     - \app\,e_{\delta\bw_3}\,\dWh
+     - \app\,e_{\delta\bw_3}\,\eD
      + \app\,\dWh\,\eD
      + \tfrac{1}{2}\,\app\,\eD^{2}
      + \mathcal{O}(3)
@@ -106,39 +168,44 @@ e_{\ba_w}[k+1] - e_{\ba_w}[k]
 \section{Mean}
 
 \begin{align*}
-\E[e_{\delta\bw_3}] = \E[e_{\ba_w}] = \E[\varepsilon_w] &= 0 \\
-\E[e_{\delta\bw_3}^{2}] = P_{33},\quad \E[e_{\delta\bw_3}\,e_{\ba_w}] = P_{34},\quad
-\E[e_{\ba_w}^{2}] = P_{44},\quad \E[\varepsilon_w^{2}] &= Q_{33} \\
-\E[\varepsilon_w\,e_{\delta\bw_3}] = \E[\varepsilon_w\,e_{\ba_w}] &= 0
+\E[e_{\delta\bw_1}] = \E[e_{\delta\bw_3}] = \E[e_{\ba_w}] = \E[\et] &= 0 \\
+\E[e_{\delta\bw_3}^{2}] = P_{33},\quad \E[e_{\delta\bw_1}^{2}] = P_{11},\quad \E[e_{\delta\bw_1}e_{\delta\bw_3}] &= P_{13} \\
+\E[e_{\delta\bw_3}\,e_{\ba_w}] = P_{34},\quad \E[e_{\delta\bw_1}\,e_{\ba_w}] = P_{14},\quad \E[e_{\ba_w}^{2}] &= P_{44} \\
+\E[\et\,e_{\delta\bw_1}] = \E[\et\,e_{\delta\bw_3}] = \E[\et\,e_{\ba_w}] = \E[\et\,n_w] &= 0 \\
+\E\bigl[e_j\,\delta\hat{\bw}_i\bigr] = \E\bigl[e_j\,y_1\bigr] &= 0 \qquad (\text{posterior error} \perp \text{data})
 \end{align*}
 
 \begin{align*}
 \E\bigl[\ap\,\eD\bigr]                     &= 0 \\
-\E\bigl[-\app\,\delta\bw_3\,\dWh\bigr]      &= -\app\,\delta\hat{\bw}_3\,\dWh \\
-\E\bigl[-\app\,\delta\bw_3\,\eD\bigr]       &= -\app\,\bigl[(1-\lambda_c)P_{33} + F_{dw}P_{34}\bigr] \\
+\E\bigl[-\app\,e_{\delta\bw_3}\,\dWh\bigr]  &= 0 \\
+\E\bigl[-\app\,e_{\delta\bw_3}\,\eD\bigr]   &= -\app\,\bigl[(1-\lambda_c)\bigl(P_{33} - P_{13}\bigr) + F_{dw}P_{34}\bigr] \\
 \E\bigl[\app\,\dWh\,\eD\bigr]               &= 0 \\
-\E\bigl[\tfrac{1}{2}\,\app\,\eD^{2}\bigr]   &= \tfrac{1}{2}\,\app\,\bigl[(1-\lambda_c)^{2}P_{33} + 2(1-\lambda_c)F_{dw}P_{34} + F_{dw}^{2}P_{44} + Q_{33}\bigr]
+\E\bigl[\tfrac{1}{2}\,\app\,\eD^{2}\bigr]   &= \tfrac{1}{2}\,\app\,\bigl[(1-\lambda_c)^{2}\bigl(P_{33} + P_{11} - 2P_{13}\bigr)
+   + 2(1-\lambda_c)F_{dw}\bigl(P_{34} - P_{14}\bigr) \\
+  &\qquad\quad + F_{dw}^{2}P_{44} + \tilde{Q}_{33}\bigr]
 \end{align*}
 
 \begin{align*}
 \E\bigl[e_{\ba_w}[k+1]\bigr] - \E\bigl[e_{\ba_w}[k]\bigr]
-  &= \app\Bigl\{-\delta\hat{\bw}_3\,\dWh
-     - \tfrac{1}{2}\bigl(1-\lambda_c^{2}\bigr)P_{33}
-     - \lambda_c\,F_{dw}\,P_{34}
-     + \tfrac{1}{2}F_{dw}^{2}P_{44}
-     + \tfrac{1}{2}Q_{33}\Bigr\}
+  &= \app\Bigl\{-(1-\lambda_c)\bigl(P_{33} - P_{13}\bigr) - F_{dw}P_{34} \\
+  &\qquad\quad + \tfrac{1}{2}(1-\lambda_c)^{2}\bigl(P_{33} + P_{11} - 2P_{13}\bigr)
+     + (1-\lambda_c)F_{dw}\bigl(P_{34} - P_{14}\bigr) \\
+  &\qquad\quad + \tfrac{1}{2}F_{dw}^{2}P_{44} + \tfrac{1}{2}\tilde{Q}_{33}\Bigr\}
 \end{align*}
+
+(first, second and fourth lines: $\ap$ and $\dWh$ are functions of the data, $\eD$ and $e_{\delta\bw_3}$ are posterior errors,
+$\E[\,e\,|\,\text{data}\,] = 0$; without the $y_1 - \delta\hat{\bw}_1$ input $\eD$ contains $(1-\lambda_c)n_w$, which is correlated
+with the data, and these means become the $n_w$ feedthrough shares of 0902\_formC\_aptrue\_4state.tex, Error dynamics,
+each $\propto \app(1-\lambda_c)\ell_{31}R_1$, whose sum was measured to vanish)
 
 \section{Estimator with the mean term}
 
 \begin{align*}
 \hat{\ba}_w[k+1] &= \hat{\ba}_w[k] + \ap\,\dWh[k] + \tfrac{1}{2}\,\app\,\dWh[k]^{2} \\
-  &\qquad + \app\Bigl\{-\delta\hat{\bw}_3[k]\,\dWh[k]
-     - \tfrac{1}{2}\bigl(1-\lambda_c^{2}\bigr)P_{33}[k]
-     - \lambda_c\,F_{dw}[k]\,P_{34}[k] \\
-  &\qquad\qquad\quad
-     + \tfrac{1}{2}F_{dw}[k]^{2}P_{44}[k]
-     + \tfrac{1}{2}Q_{33}[k]\Bigr\} \\
+  &\qquad + \app\Bigl\{-(1-\lambda_c)\bigl(P_{33}[k] - P_{13}[k]\bigr) - F_{dw}[k]\,P_{34}[k] \\
+  &\qquad\qquad\quad + \tfrac{1}{2}(1-\lambda_c)^{2}\bigl(P_{33}[k] + P_{11}[k] - 2P_{13}[k]\bigr) \\
+  &\qquad\qquad\quad + (1-\lambda_c)F_{dw}[k]\bigl(P_{34}[k] - P_{14}[k]\bigr)
+     + \tfrac{1}{2}F_{dw}[k]^{2}P_{44}[k] + \tfrac{1}{2}\tilde{Q}_{33}[k]\Bigr\} \\
 \E\bigl[e_{\ba_w}[k+1]\bigr] - \E\bigl[e_{\ba_w}[k]\bigr] &= 0
 \end{align*}
 
@@ -147,48 +214,70 @@ e_{\ba_w}[k+1] - e_{\ba_w}[k]
 \section{Jacobians}
 
 \begin{align*}
+\frac{\partial\,\delta\hat{\bw}_3[k+1]}{\partial\,\delta\hat{\bw}_3[k]} &= \lambda_c , \qquad
+\frac{\partial\,\delta\hat{\bw}_3[k+1]}{\partial\,\delta\hat{\bw}_1[k]} = (1-\lambda_c) \\
 \frac{\partial \hat{\ba}_w[k+1]}{\partial \delta\hat{\bw}_3[k]}
-  &= (1-\lambda_c)\bigl(\ap + \app\,\dWh[k]\bigr)
+  &= (1-\lambda_c)\bigl(\ap + \app\,\dWh[k]\bigr) - \app\,\dWh[k]
   \ \to\ (1-\lambda_c)\,\ap \\
-\frac{\partial \hat{\ba}_w[k+1]}{\partial \hat{\ba}_w[k]}
+\frac{\partial \hat{\ba}_w[k+1]}{\partial \delta\hat{\bw}_1[k]}
+  &= -(1-\lambda_c)\bigl(\ap + \app\,\dWh[k]\bigr)
+  \ \to\ -(1-\lambda_c)\,\ap \\
+\frac{\partial \ba_w[k+1]}{\partial \ba_w[k]}
   &= 1 + F_{dw}[k]\bigl(\ap + \app\,\dWh[k]\bigr)
   \ \to\ 1 + F_{dw}[k]\,\ap
 \end{align*}
 
-(limits at $\dWh \to 0$; the $F_{dw}$ term is the truth's $F_{dw}\,e_{\ba_w}$ inside $\dW$, written as $F_{dw}(\ba_w - \hat{\ba}_w)$)
+(limits at $\dWh \to 0$, the tangent the code keeps; the $-\app\dWh$ in the first gain-row entry is $\partial\ap/\partial\delta\hat{\bw}_3 = -\app$ of the 'est' reading;
+the last entry and $\partial\,\delta\bw_3[k+1]/\partial\ba_w[k] = -F_{dw}$ are entries of the TRUE transition, not of the estimator's lines
+(which do not contain $\hat{\ba}_w$): the truth's $F_{dw}\,e_{\ba_w}$ inside $\dW$, written as $F_{dw}(\ba_w - \hat{\ba}_w)$)
 
 \section{Error dynamics}
 
 \begin{align*}
 e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k] \\
 e_{\delta\bw_2}[k+1] &= e_{\delta\bw_3}[k] \\
-e_{\delta\bw_3}[k+1] &= \lambda_c\,e_{\delta\bw_3}[k] - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
-e_{\ba_w}[k+1]       &= (1-\lambda_c)\bigl(\ap + \app\,\dWh\bigr)\,e_{\delta\bw_3}[k]
-                      + \Bigl[1 + F_{dw}\bigl(\ap + \app\,\dWh\bigr)\Bigr]\,e_{\ba_w}[k] \\
-                     &\qquad + \bigl(\ap + \app\,\dWh\bigr)\,\varepsilon_w[k] \\
-                     &\qquad - \app\,\delta\hat{\bw}_3\,\dWh
-                      \;-\; \app\,\dWh\,e_{\delta\bw_3} - \app\,\delta\hat{\bw}_3\,\eD
-                      \;-\; \app\,e_{\delta\bw_3}\,\eD + \tfrac{1}{2}\,\app\,\eD^{2}
+e_{\delta\bw_3}[k+1] &= \lambda_c\,e_{\delta\bw_3}[k] + (1-\lambda_c)\,e_{\delta\bw_1}[k] - F_{dw}[k]\,e_{\ba_w}[k] - \et[k] \\
+e_{\ba_w}[k+1]       &= -(1-\lambda_c)\,\ap\,e_{\delta\bw_1}[k]
+                      + (1-\lambda_c)\,\ap\,e_{\delta\bw_3}[k]
+                      + \bigl(1 + F_{dw}\,\ap\bigr)\,e_{\ba_w}[k]
+                      + \ap\,\et[k] \\
+                     &\qquad - \app\,e_{\delta\bw_3}\,\dWh - \app\,e_{\delta\bw_3}\,\eD + \app\,\dWh\,\eD + \tfrac{1}{2}\,\app\,\eD^{2}
+                      - \E[\,\cdot\,]
 \end{align*}
 
+(third line: $\delta\bw_3[k+1] - \delta\hat{\bw}_3[k+1]$ with $y_1 - \delta\hat{\bw}_1 = e_{\delta\bw_1} + n_w$, the $n_w$ of $\varepsilon_w$ cancels;
+fourth line: the second-order group minus its mean of the previous section)
+
 \begin{equation*}
-\mathbf{e}[k+1] = F_e[k]\,\mathbf{e}[k] + \mathbf{q}[k], \qquad
+\mathbf{e}[k+1] = \tilde{F}_e[k]\,\mathbf{e}[k] + \tilde{\mathbf{q}}[k], \qquad
+\tilde{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 \\
+0 & 0 & 1 & 0 \\
+(1-\lambda_c) & 0 & \lambda_c & -F_{dw} \\
+-(1-\lambda_c)\,\ap & 0 & (1-\lambda_c)\,\ap & 1 + F_{dw}\,\ap
+\end{bmatrix}
+\end{equation*}
+
+\begin{equation*}
+\tilde{F}_e[k] = F_e[k] - g_n[k]\,\mathbf{e}_1^{\top}, \qquad
 F_e[k] =
 \begin{bmatrix}
 0 & 1 & 0 & 0 \\
 0 & 0 & 1 & 0 \\
 0 & 0 & \lambda_c & -F_{dw} \\
-0 & 0 & (1-\lambda_c)\bigl(\ap + \app\,\dWh\bigr) & 1 + F_{dw}\bigl(\ap + \app\,\dWh\bigr)
+0 & 0 & (1-\lambda_c)\,\ap & 1 + F_{dw}\,\ap
 \end{bmatrix}
 \end{equation*}
 
 \begin{equation*}
-\mathbf{q}[k] =
-\begin{bmatrix} 0 \\ 0 \\ -\varepsilon_w \\ \bigl(\ap + \app\,\dWh\bigr)\varepsilon_w \end{bmatrix}
+g_n[k] = (1-\lambda_c)\begin{bmatrix} 0 \\ 0 \\ -1 \\ \ap \end{bmatrix} , \qquad
+\tilde{\mathbf{q}}[k] = \et[k]\begin{bmatrix} 0 \\ 0 \\ -1 \\ \ap \end{bmatrix} , \qquad
+\E\bigl[\tilde{\mathbf{q}}[k]\,n_w[k]\bigr] = 0
 \end{equation*}
 
 \begin{equation*}
-P^{f}[k+1] = F_e[k]\,P[k]\,F_e[k]^{\top} + Q[k]
+P^{f}[k+1] = \tilde{F}_e[k]\,P[k]\,\tilde{F}_e[k]^{\top} + \tilde{Q}[k]
 \end{equation*}
 
 \section{Measurement and update}
@@ -198,27 +287,120 @@ P^{f}[k+1] = F_e[k]\,P[k]\,F_e[k]^{\top} + Q[k]
 y_1[k] &= \delta\bw_1[k] + n_w[k] \\
 y_2[k] &= \ba_w[k-d] + n_a[k], \qquad \ba_w[k-d] = \ba_w[k] - \ap\,\nabla_d\bw_d[k] \\
 H &= \begin{bmatrix} 1 & 0 & 0 & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix} \\
-e_{y_1}[k] &= e_{\delta\bw_1}[k] + n_w[k], \qquad e_{y_2}[k] = e_{\ba_w}[k] + n_a[k]
+e_{y_1}[k] &= e^{-}_{\delta\bw_1}[k] + n_w[k], \qquad e_{y_2}[k] = e^{-}_{\ba_w}[k] + n_a[k]
 \end{align*}
 
 \begin{align*}
 L[k]         &= P^{f}H^{\top}\bigl(HP^{f}H^{\top} + R\bigr)^{-1} \\
-\hat{\mathbf{x}}^{+}[k] &= \hat{\mathbf{x}}^{-}[k] + L[k]\,\mathbf{e}_y[k] \\
-P[k]         &= \bigl(I - L[k]H\bigr)P^{f}[k]
+\hat{\mathbf{x}}[k] &= \hat{\mathbf{x}}^{-}[k] + L[k]\,\mathbf{e}_y[k] \\
+P[k]         &= \bigl(I - L[k]H\bigr)P^{f}[k] \\
+y_1[k] - \delta\hat{\bw}_1[k] &= \frac{R_1}{P^{f}_{11}[k] + R_1}\,e_{y_1}[k] - \ell_{12}[k]\,\bigl(e_{y_2}[k] - \ell_{41}[k]\,e_{y_1}[k]\bigr)
+   = \E\bigl[n_w[k]\,\big|\,y[1..k]\bigr]
 \end{align*}
+
+(last line: the posterior residual the Estimator section feeds into the next step, written for the sequential update
+$y_1$ then $y_2$ as in the code; $e_{y_2} - \ell_{41}e_{y_1}$ is the $y_2$ innovation after the $y_1$ update,
+$\ell_{12} = H_{24}P^{(1)}_{14}/S_2$ equals the joint $L_{12}$; exact in the linear-Gaussian model, approximate for the EKF)
 
 \section{Noise}
 
 \begin{align*}
 \kappa_T &= \frac{4k_BT\,a_o}{R}, \qquad \sigma^{2}_{n_w} = \frac{\sigma^{2}_{n}}{R^{2}} \\
-Q_{33}   &= \kappa_T\Bigl(\hat{\ba}_w[k] + (1-\lambda_c)^{2}\bigl(\hat{\ba}_w[k-1] + \hat{\ba}_w[k-2]\bigr)\Bigr) + (1-\lambda_c)^{2}\sigma^{2}_{n_w} \\
-Q_{34} = Q_{43} &= -\bigl(\ap + \app\,\dWh\bigr)\,Q_{33} \\
-Q_{44}   &= \bigl(\ap + \app\,\dWh\bigr)^{2}\,Q_{33} \\
+\tilde{Q}_{33} &= \kappa_T\Bigl(\hat{\ba}_w[k] + (1-\lambda_c)^{2}\bigl(\hat{\ba}_w[k-1] + \hat{\ba}_w[k-2]\bigr)\Bigr)
+   \qquad \bigl(= Q_{33} - (1-\lambda_c)^{2}\sigma^{2}_{n_w}\bigr) \\
+\tilde{Q}_{34} = \tilde{Q}_{43} &= -\ap\,\tilde{Q}_{33} \\
+\tilde{Q}_{44}   &= \ap^{2}\,\tilde{Q}_{33} \\
 R        &= \mathrm{diag}(R_1, R_2), \qquad R_1 = \sigma^{2}_{n_w}, \qquad
 R_2 = 2a_{\mathrm{cov}}^{2}\,IF_{\mathrm{var}}\bigl(\hat{\ba}_w\bigr)\bigl(\hat{\ba}_w + \xi\bigr)^{2}
 \end{align*}
 
-($IF_{\mathrm{var}}$, $\xi$ as in 0902\_formC\_aptrue\_4state.tex)
+($IF_{\mathrm{var}}$, $\xi$ as in 0902\_formC\_aptrue\_4state.tex; the $n_w$ share $(1-\lambda_c)^{2}\sigma^{2}_{n_w}$ has left $Q$ and entered the Estimator section as the input $g_n\,(y_1 - \delta\hat{\bw}_1)$)
+
+\clearpage
+\section{$b_{\mathrm{true}}$ arm: the law read at the estimated gain}
+
+(this arm: $b := b_{\mathrm{true}}(\bw[k-1])$ read at the previous step's TRUE height (code, b\_true\_at = 'true'), treated as exogenous; slot 5 locked;
+$\ap := b\,\bigl(1 - \hat{\ba}_w[k]\bigr)^{2}$ and $\app := -2b\bigl(1 - \hat{\ba}_w[k]\bigr)\,\ap$ read at the ESTIMATED GAIN, not at a height;
+$\dfrac{\partial\ap}{\partial\hat{\ba}_w} = -2b\bigl(1 - \hat{\ba}_w\bigr) = \dfrac{\app}{\ap}$;
+everything not listed is as in Sections 1--9)
+
+True dynamics, the slope line
+\begin{align*}
+\ap_{\mathrm{true}}\bigl(\bw[k]\bigr) &= b\,\bigl(1 - \ba_w[k]\bigr)^{2}
+  = b\,\bigl(1 - \hat{\ba}_w[k] - e_{\ba_w}[k]\bigr)^{2}
+  = \ap + \frac{\partial\ap}{\partial\hat{\ba}_w}\,e_{\ba_w}[k] + \mathcal{O}\bigl(e^{2}\bigr) \\
+\ba_w[k+1] - \ba_w[k] &= \Bigl(\ap + \frac{\partial\ap}{\partial\hat{\ba}_w}\,e_{\ba_w}[k]\Bigr)\,\dW[k] + \tfrac{1}{2}\,\app\,\dW[k]^{2}
+\end{align*}
+
+Error increment (the $-\app\,e_{\delta\bw_3}$ lines of Section 3 are replaced)
+\begin{align*}
+e_{\ba_w}[k+1] - e_{\ba_w}[k]
+  &= \ap\,\eD
+     + \frac{\partial\ap}{\partial\hat{\ba}_w}\,e_{\ba_w}\,\dWh
+     + \frac{\partial\ap}{\partial\hat{\ba}_w}\,e_{\ba_w}\,\eD
+     + \app\,\dWh\,\eD
+     + \tfrac{1}{2}\,\app\,\eD^{2}
+     + \mathcal{O}(3)
+\end{align*}
+
+Mean
+\begin{align*}
+\E\Bigl[\frac{\partial\ap}{\partial\hat{\ba}_w}\,e_{\ba_w}\,\dWh\Bigr] &= 0 \\
+\E\Bigl[\frac{\partial\ap}{\partial\hat{\ba}_w}\,e_{\ba_w}\,\eD\Bigr]
+  &= \frac{\partial\ap}{\partial\hat{\ba}_w}\,\bigl[(1-\lambda_c)\bigl(P_{34} - P_{14}\bigr) + F_{dw}P_{44}\bigr] \\
+\E\bigl[e_{\ba_w}[k+1]\bigr] - \E\bigl[e_{\ba_w}[k]\bigr]
+  &= \frac{\partial\ap}{\partial\hat{\ba}_w}\,\bigl[(1-\lambda_c)\bigl(P_{34} - P_{14}\bigr) + F_{dw}P_{44}\bigr] \\
+  &\qquad + \tfrac{1}{2}\,\app\,\bigl[(1-\lambda_c)^{2}\bigl(P_{33} + P_{11} - 2P_{13}\bigr)
+     + 2(1-\lambda_c)F_{dw}\bigl(P_{34} - P_{14}\bigr) \\
+  &\qquad\qquad\quad + F_{dw}^{2}P_{44} + \tilde{Q}_{33}\bigr]
+\end{align*}
+
+Estimator with the mean term
+\begin{align*}
+\hat{\ba}_w[k+1] &= \hat{\ba}_w[k] + \ap\,\dWh[k] + \tfrac{1}{2}\,\app\,\dWh[k]^{2} \\
+  &\qquad + \frac{\partial\ap}{\partial\hat{\ba}_w}\,\bigl[(1-\lambda_c)\bigl(P_{34}[k] - P_{14}[k]\bigr) + F_{dw}[k]\,P_{44}[k]\bigr] \\
+  &\qquad + \tfrac{1}{2}\,\app\,\bigl[(1-\lambda_c)^{2}\bigl(P_{33}[k] + P_{11}[k] - 2P_{13}[k]\bigr)
+     + 2(1-\lambda_c)F_{dw}[k]\bigl(P_{34}[k] - P_{14}[k]\bigr) \\
+  &\qquad\qquad\quad + F_{dw}[k]^{2}P_{44}[k] + \tilde{Q}_{33}[k]\bigr] \\
+\E\bigl[e_{\ba_w}[k+1]\bigr] - \E\bigl[e_{\ba_w}[k]\bigr] &= 0
+\end{align*}
+
+Difference to the Section 5 term (gain-read minus height-read start point)
+\begin{align*}
+&\frac{\partial\ap}{\partial\hat{\ba}_w}\,\bigl[(1-\lambda_c)\bigl(P_{34} - P_{14}\bigr) + F_{dw}P_{44}\bigr]
+  + \app\,\bigl[(1-\lambda_c)\bigl(P_{33} - P_{13}\bigr) + F_{dw}P_{34}\bigr] \\
+&\qquad = \frac{\partial\ap}{\partial\hat{\ba}_w}\,\Bigl[(1-\lambda_c)\bigl(P_{34} + \ap P_{33} - P_{14} - \ap P_{13}\bigr) + F_{dw}\bigl(P_{44} + \ap P_{34}\bigr)\Bigr] \\
+&\qquad = \frac{\partial\ap}{\partial\hat{\ba}_w}\,\E\Bigl[\bigl(e_{\ba_w} + \ap\,e_{\delta\bw_3}\bigr)\,\eD\Bigr]
+\end{align*}
+
+($= 0$ when the gain error is slaved to the position error through the law, $e_{\ba_w} = -\ap\,e_{\delta\bw_3}$, i.e.
+$P_{34} = -\ap P_{33}$, $P_{14} = -\ap P_{13}$ and $P_{44} = \ap^{2}P_{33}$ (the first two alone leave $F_{dw}(P_{44} - \ap^{2}P_{33})$);
+hold, both trajectories: $P_{34} + \ap P_{33} \approx 3\times10^{-9}$, the difference is $< 0.005\times10^{-6}$ per step;
+near-wall half of the descent: $-3.5\times10^{-6}$ (canon) and $-0.5\times10^{-6}$ (Meng) per step in $\E[\hat{\ba}_w - \ba_w]$,
+running sums $-0.0026$ and $-0.0040$ at the start of the hold (code: ctrl\_const.pred\_mean2\_e4, the difference of the two
+pred\_mean2 logs, 10 seeds, run\_btrue\_e4.m); the closed-loop response to this input is smaller than its running sum,
+$+0.0010$ (canon) and $+0.0004$ (Meng) at the end of the descent, relaxing to $< 0.0003$ within the following second)
+
+(treating $b$ as exogenous drops the mean $-(1-\hat{\ba}_w)^{2}\,b'_{\mathrm{true}}\,\E\bigl[e_{\delta\bw_3}[k-1]\,\eD\bigr]$ of $\ap\,\eD$,
+$b$ being read at the true height $\bw_d[k-1] - \delta\bw_3[k-1]$; relative to the kept $\app$ term it is $\sim b'_{\mathrm{true}}/\bigl(2b^{2}(1-\hat{\ba}_w)\bigr)$,
+a few percent, $b_{\mathrm{true}}$ spanning $8/9$ to $1$ over the band)
+
+Jacobians and error dynamics (the entries that change)
+\begin{align*}
+\frac{\partial \hat{\ba}_w[k+1]}{\partial \delta\hat{\bw}_3[k]} &= (1-\lambda_c)\bigl(\ap + \app\,\dWh[k]\bigr) \ \to\ (1-\lambda_c)\,\ap \\
+\frac{\partial \hat{\ba}_w[k+1]}{\partial \hat{\ba}_w[k]}
+  &= 1 + \frac{\partial\ap}{\partial\hat{\ba}_w}\,\dWh[k] + F_{dw}[k]\bigl(\ap + \app\,\dWh[k]\bigr)
+  \ \to\ 1 + \frac{\partial\ap}{\partial\hat{\ba}_w}\,\dWh[k] + F_{dw}[k]\,\ap \\
+\tilde{F}_e(4,4) &= 1 + F_{dw}\,\ap + \frac{\partial\ap}{\partial\hat{\ba}_w}\,\dWh
+\end{align*}
+
+(no $-\app\dWh$ in the $\delta\hat{\bw}_3$ entry: the slope does not read a height;
+the $\partial\ap/\partial\hat{\ba}_w\,\dWh$ entry is the law's own amplification of a gain error along the step,
+$> 1$ when moving toward the wall; $\tilde{Q}_{34} = -\ap\tilde{Q}_{33}$, $\tilde{Q}_{44} = \ap^{2}\tilde{Q}_{33}$ unchanged)
+
+\clearpage
+\thispagestyle{empty}
+\noindent\includegraphics[width=\textwidth]{figures/btrue_three_arms_band.png}
 
 \clearpage
 \thispagestyle{empty}
