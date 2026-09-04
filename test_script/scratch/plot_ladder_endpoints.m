@@ -1,12 +1,12 @@
 % FORK OF test_script/scratch/plot_aptrue_two_traj_final.m (three_rows branch, 2026-09-04) | PURPOSE: one figure per
-%   end point of the September oracle ladder (apcmd / btcmd / apest / btest, see run_ladder_endpoints.m), each 3 x 2:
+%   end point of the September oracle ladder (apcmd / btcmd / apest / btest / bhat, see run_ladder_endpoints.m), each 3 x 2:
 %   left Meng, right canon; rows = seed 7 absolute gain vs true / gain error (10-seed mean +- sigma, seed 7) /
 %   same-instant tracking error R dw3 [um] (mean +- sigma, seed 7). The y range of every row is SHARED ACROSS THE FOUR
 %   FIGURES (max over arms), so the early arms' large errors and the current recipes are directly comparable.
 %   No arm or trajectory label inside the figure (09-03 convention); the arm is in the file name ladder_<arm>_3row.png.
 %   Colours and notation verbatim from the parent. | EXPIRES: with the ladder | 產線改動不會自動跟上
 function plot_ladder_endpoints(arms)
-    if nargin < 1 || isempty(arms); arms = {'apcmd','btcmd','apest','btest'}; end
+    if nargin < 1 || isempty(arms); arms = {'apcmd','btcmd','apest','btest','bhat'}; end
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
     od = fullfile(root, 'test_results', 'apd_acov_meng');
     A = load(fullfile(od, 'ladder_endpoints_meng.mat')); B = load(fullfile(od, 'ladder_endpoints_canon.mat'));

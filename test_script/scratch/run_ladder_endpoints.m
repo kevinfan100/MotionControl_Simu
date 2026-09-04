@@ -9,6 +9,8 @@
 %             = the nwmcorr arm of run_aptrue_nw_mcorr_full.m)
 %     btest   b_true read at the previous step's TRUE height, slope at a_hat, exact + pred_mean2 + nw_mcorr + pred_mean2_e4
 %             (the current b_true arm, = the e4 arm of run_btrue_e4.m, standard length)
+%     bhat    b_hat ESTIMATED from the 8/9 seed (production, driver arm 'best'), four blocks (= the prod arm of
+%             run_prod_ladder.m at standard length); optional fifth figure
 %   The four recipe flags are written EXPLICITLY in every arm (production defaults are ON since 2026-09-04 evening).
 %   Negative controls (printed, not asserted): apest vs aptrue_nw_mcorr_full_<traj>.mat nwmcorr (bit-identical),
 %   btest vs btrue_e4_<traj>.mat e4 over the standard length (bit-identical; that run had the hold extended).
@@ -17,7 +19,7 @@
 function run_ladder_endpoints(traj, seeds, arms)
     if nargin < 1 || isempty(traj); traj = 'canon'; end
     if nargin < 2 || isempty(seeds); seeds = 1:10; end
-    if nargin < 3 || isempty(arms); arms = {'apcmd','btcmd','apest','btest'}; end
+    if nargin < 3 || isempty(arms); arms = {'apcmd','btcmd','apest','btest','bhat'}; end
     traj = lower(traj);
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
     addpath(genpath(fullfile(root, 'model'))); addpath(fullfile(root, 'test_script', 'integration'));
@@ -35,7 +37,8 @@ function run_ladder_endpoints(traj, seeds, arms)
         'apcmd', struct('o', struct('ap_known',true,'ap_known_at','cmd','app_known',false), 'cc', setfield(setfield(OFF,'lock_b',true),'ws0_perp',ws0)), ...
         'btcmd', struct('o', struct('b_true',true,'b_true_at','cmd'),                        'cc', setfield(OFF,'ws0_perp',ws0)), ...
         'apest', struct('o', struct('ap_known',true,'ap_known_at','est','app_known',true),  'cc', setfield(setfield(ON3,'lock_b',true),'ws0_perp',ws0)), ...
-        'btest', struct('o', struct('b_true',true,'b_true_at','true'),                       'cc', setfield(ON4,'ws0_perp',ws0)));
+        'btest', struct('o', struct('b_true',true,'b_true_at','true'),                       'cc', setfield(ON4,'ws0_perp',ws0)), ...
+        'bhat',  struct('o', struct(),                                                       'cc', setfield(ON4,'ws0_perp',ws0)));   % b_hat ESTIMATED from 8/9 (production, arm 'best'), four blocks
     fname = fullfile(od, sprintf('ladder_endpoints_%s.mat', traj));
     if exist(fname, 'file'); out = load(fname); else; out = struct(); end
     out.traj = traj; out.seeds = seeds; out.t_hold = t3; out.ws0 = ws0;  nS = numel(seeds);
@@ -61,6 +64,10 @@ function run_ladder_endpoints(traj, seeds, arms)
     f1 = fullfile(od, sprintf('aptrue_nw_mcorr_full_%s.mat', traj));
     if isfield(out, 'apest') && exist(f1, 'file')
         S = load(f1);  fprintf('[%s] negative control apest vs aptrue_nw_mcorr_full nwmcorr: max |dE| %.2e\n', traj, max(abs(out.apest.E - S.nwmcorr.E), [], 'all'));
+    end
+    f3 = fullfile(od, sprintf('prod_ladder_%s.mat', traj));
+    if isfield(out, 'bhat') && exist(f3, 'file')
+        S = load(f3);  n = numel(out.bhat.t);  fprintf('[%s] negative control bhat vs prod_ladder prod (first %d steps): max |dE| %.2e\n', traj, n, max(abs(out.bhat.E - S.prod.E(1:n,:)), [], 'all'));
     end
     f2 = fullfile(od, sprintf('btrue_e4_%s.mat', traj));
     if isfield(out, 'btest') && exist(f2, 'file')
