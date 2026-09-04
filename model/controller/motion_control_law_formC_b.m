@@ -674,7 +674,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         %     A_a Cov(e4 + a' e3, u)
         % which is ~0 in a hold (P34 = -a' P33 there) and -1.2e-6 (canon) / -0.2e-6 (Meng) per step
         % in the near-wall descent (probe_btrue_e4_line.m, 10 seeds). Derivation:
-        % 0903_aptrue_4state_from_true.tex S10. Requires pred_mean2.
+        % 0903_aptrue_4state_from_true.tex S10. Requires pred_mean2. With slot 5 FREE (production) the
+        % same flag adds the e_b line (S11): (d a'/d b_hat) Cov(e_b, u) = (a'/b_hat) [ (1-lc) P35 + alpha (P58 + P59)
+        % + F_dw P45 ] [nw_mcorr: - (1-lc) P15], the filter's own posterior cross-covariances (constant-b model).
         pred_mean2_e4 = logical(get_field_default(ctrl_const, 'pred_mean2_e4', false));
         if pred_mean2_e4 && ~pred_mean2
             error('motion_control_law_formC_b:predMean2E4', ...
@@ -1548,10 +1550,15 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 var_u   = one_minus_lc^2 * Pc(3, 3) + F_dw^2 * Pc(4, 4) + 2 * one_minus_lc * F_dw * Pc(3, 4) + Q33;
             end
             cov_e4u = one_minus_lc * Pc(3, 4) + F_dw * Pc(4, 4);            % Cov(e4, u), pred_mean2_e4 only
-            if ma2_aug; cov_e4u = cov_e4u + alpha_ma2 * (Pc(4, 8) + Pc(4, 9)); end
+            cov_e5u = one_minus_lc * Pc(3, 5) + F_dw * Pc(4, 5);            % Cov(e_b, u) under the filter's constant-b model, pred_mean2_e4 with slot 5 free (S11)
+            if ma2_aug
+                cov_e4u = cov_e4u + alpha_ma2 * (Pc(4, 8) + Pc(4, 9));
+                cov_e5u = cov_e5u + alpha_ma2 * (Pc(5, 8) + Pc(5, 9));
+            end
             if pred_force_step                       % unknown increment = w_T + fbar_d e_a, see init
                 cov_e3u = fbar_d_km1(ax) * Pc(3, 4);
                 cov_e4u = fbar_d_km1(ax) * Pc(4, 4);
+                cov_e5u = fbar_d_km1(ax) * Pc(4, 5);
                 var_u   = fbar_d_km1(ax)^2 * Pc(4, 4) + kappa_T * a_bar_i;
             end
             if nw_mcorr                              % u = (1-lc)(e3 + m-errors - e1) + F_dw e4 + w_T: the n_w share is replaced by -(1-lc) e1
@@ -1566,9 +1573,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                             + one_minus_lc^2 * Pc(1, 1) - 2 * one_minus_lc^2 * Pc(1, 3) - 2 * F_dw * one_minus_lc * Pc(1, 4);
                 end
                 cov_e4u = cov_e4u - one_minus_lc * Pc(1, 4);
+                cov_e5u = cov_e5u - one_minus_lc * Pc(1, 5);
             end
-            if pred_mean2_e4 && ~has_ap_known            % gain-reading start-point term A_a Cov(e4,u), see init
+            if pred_mean2_e4 && ~has_ap_known            % gain-reading start-point term A_a Cov(e4,u) [+ (da'/db) Cov(e_b,u), slot 5 free], see init
                 mean2_i = A_a_i * cov_e4u + 0.5 * app_i * var_u + 0.5 * (app_i - app_law) * M_pred^2;
+                if ~lm(1) && ~has_b_true; mean2_i = mean2_i + dap_db_i * cov_e5u; end   % S11 e_b line; P(:,5) = 0 when slot 5 is locked anyway
             else
                 mean2_i = -app_i * cov_e3u + 0.5 * app_i * var_u + 0.5 * (app_i - app_law) * M_pred^2;
             end
