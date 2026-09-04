@@ -11,6 +11,12 @@
 %   ctrl_const.lock_b = true pins b at its seed (the parameter-free
 %   baseline); false estimates it. Passages below that still say "da" are
 %   inherited from the dist sibling and describe THAT file, not this one.
+%   PRODUCTION RECIPE (default ON since 2026-09-04, derivation
+%   reference/eq17_analysis/derivation/0903_aptrue_4state_from_true.tex):
+%   law_exact_step (exact law step) + pred_mean2 (second-order mean of the
+%   predict) + nw_mcorr (correlated process/measurement noise predict) +
+%   pred_mean2_e4 (gain-reading start-point term, e4 and e_b lines).
+%   law_exact_step = false alone restores the pre-09-04 Euler recipe.
 function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override, varargin_da_known_guard, ap_known, b_true, app_known)
 %MOTION_CONTROL_LAW_FORMC_DIST  Per-axis EKF eq17 controller whose gain slope
 %   is a parameter-free function of the gain state, with an ADDITIVE constant
@@ -563,10 +569,15 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % (09-01, seed-at-truth a'_true arm: open-loop sum +0.00666 on the canonical
         % band vs measured +0.00680). F_e is left linearised (first order identical).
         % EXTENSION over 2a5dc29: the ap_known (exogenous slope) arm is INCLUDED,
-        % via b_eff = a'_ext/(1-A)^2 -- see the predict block. Default false =>
-        % bit-identical.
-        law_exact_step = logical(get_field_default(ctrl_const, 'law_exact_step', false));
-        % pred_mean2 (2026-09-02, default false => bit-identical): add to the row-4
+        % via b_eff = a'_ext/(1-A)^2 -- see the predict block. (Default false until
+        % 2026-09-04.)
+        % PRODUCTION DEFAULT since 2026-09-04: law_exact_step, pred_mean2, nw_mcorr and pred_mean2_e4 are ON
+        % (0903_aptrue_4state_from_true.tex S1-S11; production hold level +0.0012 +- 0.0016 / +0.0004 +- 0.0023
+        % vs +0.019 / +0.010 before, run_prod_ladder.m). The dependent flags DEFAULT TO THEIR UPSTREAM value
+        % (pred_mean2 <- law_exact_step, pred_mean2_e4 <- pred_mean2), so law_exact_step = false alone gives the
+        % pre-09-04 Euler recipe without tripping the dependency errors; nw_mcorr is independent.
+        law_exact_step = logical(get_field_default(ctrl_const, 'law_exact_step', true));
+        % pred_mean2 (2026-09-02, default false until 2026-09-04, now ON): add to the row-4
         % predict the second-order MEAN term of 0902_formC_aptrue_4state.tex S5,
         % i.e. the expected drift of e_a that a first-order predict leaves out:
         %     - a'' E[e3 (B - B_hat)]            (stochastic part of the slope-evaluation term)
@@ -578,7 +589,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % it is removed by reading the exogenous slope at the estimated height
         % (driver ap_known_at = 'est'), never by the controller. Derived on the exact
         % step, so it requires law_exact_step. Diagnostic arm only.
-        pred_mean2 = logical(get_field_default(ctrl_const, 'pred_mean2', false));
+        pred_mean2 = logical(get_field_default(ctrl_const, 'pred_mean2', law_exact_step));   % default follows law_exact_step (production default ON)
         if pred_mean2 && ~law_exact_step
             error('motion_control_law_formC_b:predMean2', ...
                   'ctrl_const.pred_mean2 is derived on the exact law step; set law_exact_step = true as well.');
@@ -653,7 +664,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % K1(4)*innov1 is multiplied by y1_gain_leg_scale -- P (Joseph, unscaled K1)
         % untouched. Paired against the unscaled run they give d(hold drift)/d(flow)
         % for the two first-order mean flows the level-mode equations leave open.
-        % nw_mcorr (2026-09-03, default false => bit-identical): the controller reacts to
+        % nw_mcorr (2026-09-03, default false until 2026-09-04, now ON): the controller reacts to
         % the same y1[k] the update uses, so the process noise w[k] = gn n_w[k] + w_T-part
         % is correlated with the measurement noise: M = E[w n_w] = R1 gn, gn = (1-lc)[0 0 -1 a' ...].
         % The KF assumed M = 0; that assumption is the root of the whole n_w feedthrough
@@ -664,9 +675,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         %            F_e <- F_e - gn e1',  Q <- Q - R1 gn gn'  (the n_w share leaves Q)
         %   pred_mean2: u = (1-lc)(e3 - e1) + ..., so cov/var use P13, P11, P18, P19, P14.
         % c-free: needs y1, x_upd(1), R1, lc, a' only.
-        nw_mcorr = logical(get_field_default(ctrl_const, 'nw_mcorr', false));
+        nw_mcorr = logical(get_field_default(ctrl_const, 'nw_mcorr', true));   % production default ON since 2026-09-04
         res1_km1 = zeros(3, 1);
-        % pred_mean2_e4 (2026-09-04, default false => bit-identical): when the slope reads the
+        % pred_mean2_e4 (2026-09-04, default OFF until the evening of 2026-09-04, now follows pred_mean2): when the slope reads the
         % GAIN STATE (a_bar' = b (1 - a_hat)^2: production and the b_true arm; NOT the ap_known
         % arm, whose slope reads a height), the start-point term of the second-order mean is
         %     (d a_bar'/d a_hat) Cov(e4, u) = A_a [ (1-lc) P34 + alpha (P48 + P49) + F_dw P44 ]   [nw_mcorr: - (1-lc) P14]
@@ -677,7 +688,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % 0903_aptrue_4state_from_true.tex S10. Requires pred_mean2. With slot 5 FREE (production) the
         % same flag adds the e_b line (S11): (d a'/d b_hat) Cov(e_b, u) = (a'/b_hat) [ (1-lc) P35 + alpha (P58 + P59)
         % + F_dw P45 ] [nw_mcorr: - (1-lc) P15], the filter's own posterior cross-covariances (constant-b model).
-        pred_mean2_e4 = logical(get_field_default(ctrl_const, 'pred_mean2_e4', false));
+        pred_mean2_e4 = logical(get_field_default(ctrl_const, 'pred_mean2_e4', pred_mean2));   % default follows pred_mean2 (production default ON)
         if pred_mean2_e4 && ~pred_mean2
             error('motion_control_law_formC_b:predMean2E4', ...
                   'ctrl_const.pred_mean2_e4 replaces a term of pred_mean2; set pred_mean2 = true as well.');
