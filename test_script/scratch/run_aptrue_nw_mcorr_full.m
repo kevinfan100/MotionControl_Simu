@@ -18,7 +18,7 @@ function run_aptrue_nw_mcorr_full(seeds)
         t3 = cfg0.t_hold + cfg0.t_descend_override + cfg0.n_cycles/cfg0.frequency;
         ARM = {'base','nwmcorr'};  out = struct('traj', traj, 'seeds', seeds, 't_hold', t3);  nS = numel(seeds);
         for a = 1:2
-            cc = struct('lock_b',true,'ws0_perp',ws0,'law_exact_step',true,'pred_mean2',true);
+            cc = struct('lock_b',true,'ws0_perp',ws0,'law_exact_step',true,'pred_mean2',true,'nw_mcorr',false,'pred_mean2_e4',false);   % explicit since the 09-04 production defaults turned these ON
             if a == 2; cc.nw_mcorr = true; end
             o = struct('arm','best','ap_known',true,'ap_known_at','est','app_known',true,'ctrl_const_override',cc, ...
                        'config_override',OV,'scenario','deep','verbose',false,'seeds',seeds,'log_P_full',false);

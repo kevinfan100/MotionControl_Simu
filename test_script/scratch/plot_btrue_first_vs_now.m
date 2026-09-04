@@ -11,7 +11,7 @@ function plot_btrue_first_vs_now(seed)
     od = fullfile(root, 'test_results', 'apd_acov_meng');  pc = physical_constants();  R_um = pc.R;
     TR = {'meng','canon'};  NM = {'Meng', 'canon'};
     ARM = {'first','now'};
-    KN  = {struct(), struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true)};
+    KN  = {struct('law_exact_step',false,'pred_mean2',false,'nw_mcorr',false,'pred_mean2_e4',false), struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true)};   % explicit: defaults are ON since 09-04 evening
     out = struct('seed', seed);
     for it = 1:2
         switch TR{it}

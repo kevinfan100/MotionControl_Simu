@@ -36,7 +36,7 @@ function out = run_btrue_e4(traj, seeds)
     ws0 = 1 + w0bar - 1/((8/9)*(1 - at));
     t1 = cfg0.t_hold;  t2 = t1 + cfg0.t_descend_override;  t3 = t2 + cfg0.n_cycles/cfg0.frequency;
     fprintf('[%s btrue e4] ws0 %.5f | hold from %.2f to %.2f s | seeds %s\n', traj, ws0, t3, cfg0.T_sim, mat2str(seeds));
-    ARM = {'nwmcorr','e4'};  KN = {struct('nw_mcorr', true), struct('nw_mcorr', true, 'pred_mean2_e4', true)};
+    ARM = {'nwmcorr','e4'};  KN = {struct('nw_mcorr', true, 'pred_mean2_e4', false), struct('nw_mcorr', true, 'pred_mean2_e4', true)};   % explicit since the 09-04 production defaults
     out = struct('traj', traj, 'seeds', seeds, 'phases', [t1 t2 t3 cfg0.T_sim], 't_hold', t3, 'ws0', ws0, ...
                  'recipe', 'b_true@true + lock_b + exact step + pred_mean2 + nw_mcorr [+ pred_mean2_e4]');
     nS = numel(seeds);

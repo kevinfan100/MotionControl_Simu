@@ -33,7 +33,7 @@ function out = run_aptrue_nw_mcorr(traj, seeds)
     ARM = {'base','nwmcorr'};  KN = {struct(), struct('nw_mcorr', true)};
     out = struct('traj', traj, 'seeds', seeds, 'phases', [t1 t2 t3 cfg0.T_sim]);  nS = numel(seeds);
     for a = 1:2
-        cc = struct('lock_b',true,'ws0_perp',ws0,'law_exact_step',true,'pred_mean2',true);
+        cc = struct('lock_b',true,'ws0_perp',ws0,'law_exact_step',true,'pred_mean2',true,'nw_mcorr',false,'pred_mean2_e4',false);   % explicit since the 09-04 production defaults turned these ON
         fn = fieldnames(KN{a}); for i = 1:numel(fn); cc.(fn{i}) = KN{a}.(fn{i}); end
         o = struct('arm','best','ap_known',true,'ap_known_at','est','app_known',true, 'ctrl_const_override',cc, ...
                    'config_override',OV,'scenario','deep','verbose',false,'seeds',seeds,'log_P_full',false);

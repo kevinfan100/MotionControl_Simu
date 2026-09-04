@@ -40,7 +40,7 @@ function out = probe_btrue_e4_line(traj, seeds)
     w0bar = cfg0.h_init / pc.R;  [~, cp] = calc_correction_functions(w0bar);  at = 1/cp;
     ws0 = 1 + w0bar - 1/((8/9)*(1 - at));
     t1 = cfg0.t_hold;  t2 = t1 + cfg0.t_descend_override;  t3 = t2 + cfg0.n_cycles/cfg0.frequency;
-    cc = struct('ws0_perp',ws0,'law_exact_step',true,'pred_mean2',true);
+    cc = struct('ws0_perp',ws0,'law_exact_step',true,'pred_mean2',true,'nw_mcorr',false,'pred_mean2_e4',false);   % explicit since the 09-04 production defaults turned these ON
     o = struct('arm','best','b_true',true,'b_true_at','true','ctrl_const_override',cc, ...
                'config_override',OV,'scenario','deep','verbose',false,'seeds',seeds,'log_P_full',true);
     clear run_formC_b motion_control_law_formC_b;

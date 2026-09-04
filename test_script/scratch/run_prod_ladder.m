@@ -56,7 +56,7 @@ function out = run_prod_ladder(traj, seeds, arms)
                     'lockw', struct('arm','bmid','cc',LOCKW), ...   % DISCRIMINATOR (09-04): b locked at b_true(w_hold) = the wall value; if the hold-slope
                     ...                                              % difference lockb - curve (-0.18 e-6/step) is the slope mismatch AT THE HOLD HEIGHT it -> 0 here
                     'prod',  struct('arm','best','cc',BLOCKS), ...
-                    'hist',  struct('arm','best','cc',struct()));
+                    'hist',  struct('arm','best','cc',struct('law_exact_step',false,'pred_mean2',false,'nw_mcorr',false,'pred_mean2_e4',false)));   % explicit OFF: the pre-09-04 recipe (defaults are ON since 09-04 evening)
     fprintf('[%s prod ladder] b_true at the hold height w = %.3f: %.5f (lockw arm)\n', traj, cfg0.h_bottom / pc.R, b_wall);
     fname = fullfile(od, sprintf('prod_ladder_%s.mat', traj));
     if exist(fname, 'file'); out = load(fname); else; out = struct(); end
