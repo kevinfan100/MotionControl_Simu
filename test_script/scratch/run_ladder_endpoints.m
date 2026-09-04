@@ -14,7 +14,8 @@
 %   The four recipe flags are written EXPLICITLY in every arm (production defaults are ON since 2026-09-04 evening).
 %   Negative controls (printed, not asserted): apest vs aptrue_nw_mcorr_full_<traj>.mat nwmcorr (bit-identical),
 %   btest vs btrue_e4_<traj>.mat e4 over the standard length (bit-identical; that run had the hold extended).
-%   Output: ladder_endpoints_<traj>.mat (traj, seeds, t_hold; per arm t, E, AH, AT, HB, hd) | EXPIRES: with the ladder
+%   Output: ladder_endpoints_<traj>.mat (traj, seeds, t_hold; per arm t, E, AH, AT, HB, hd, B = b the law used, sP5 = sqrt(P55),
+%   a_nom [um/pN] for the absolute-units plot) | EXPIRES: with the ladder
 %   | 產線改動不會自動跟上
 function run_ladder_endpoints(traj, seeds, arms)
     if nargin < 1 || isempty(traj); traj = 'canon'; end
@@ -49,13 +50,14 @@ function run_ladder_endpoints(traj, seeds, arms)
         fn = fieldnames(A.o); for i = 1:numel(fn); o.(fn{i}) = A.o.(fn{i}); end
         clear run_formC_b motion_control_law_formC_b;
         evalc('R = run_formC_b(o);');
-        t = R.runs{1}.tout(:);  N = numel(t);  E = zeros(N,nS); AH = E; AT = E; HB = E;
+        t = R.runs{1}.tout(:);  N = numel(t);  E = zeros(N,nS); AH = E; AT = E; HB = E;  B = E;  P5 = E;
         for q = 1:nS
             r = R.runs{q}; ad = r.a_hat_out(1,3)/r.a_bar_hat_out(1,3);
             AH(:,q) = r.a_bar_hat_out(:,3); AT(:,q) = r.a_true_out(:,3)/ad; E(:,q) = AH(:,q) - AT(:,q); HB(:,q) = r.h_bar_true_out(:,1);
+            B(:,q) = r.b_hat_out(:,3);  P5(:,q) = r.P_b_out(:,3);   % b the law used (locked constant / fed b_true / estimate); P_b_out is sqrt(P55)
         end
-        hd = R.runs{1}.p_d_out(:,3)/R.runs{1}.R;  clear R;
-        out.(arms{ia}) = struct('t', t, 'E', E, 'AH', AH, 'AT', AT, 'HB', HB, 'hd', hd);
+        hd = R.runs{1}.p_d_out(:,3)/R.runs{1}.R;  a_nom = R.runs{1}.a_hat_out(1,3)/R.runs{1}.a_bar_hat_out(1,3);  clear R;
+        out.(arms{ia}) = struct('t', t, 'E', E, 'AH', AH, 'AT', AT, 'HB', HB, 'hd', hd, 'B', B, 'sP5', P5, 'a_nom', a_nom);
         mh = t > t3;  pm = mean(E(mh,:), 1);
         fprintf('[%s %-5s] health: min w %.4f | min a_hat %.5f | NaN %d | hold est-true %+.5f (SEM %.5f) | sigma_seed %.5f | rel. to a(wall) %+.1f%%\n', ...
             traj, arms{ia}, min(HB(:)), min(AH(:)), sum(~isfinite(E(:))), mean(pm), std(pm)/sqrt(nS), mean(std(E(mh,:),0,2)), 100*mean(pm)/mean(AT(mh,:),'all'));
