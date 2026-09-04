@@ -8,8 +8,11 @@
 %   production-ladder figure (Section 11), the b_true three-arm figure (Section 10) and the a'_true recipe figure. Was: Last two pages: the b_true three-arm figure (Section 10) and the a'_true recipe figure on
 %   both trajectories (seed 7 / gain error / tracking error), no text.
 %
-%   RECIPE = CODE (motion_control_law_formC_b.m, z axis, all flags default off, lock_b):
-%     law_exact_step + ap_known_at = 'est' + app_known + pred_mean2 + nw_mcorr.
+%   RECIPE = CODE (motion_control_law_formC_b.m, z axis, lock_b for the oracle arms):
+%     law_exact_step + ap_known_at = 'est' + app_known + pred_mean2 + nw_mcorr (+ pred_mean2_e4, S10/S11).
+%   PRODUCTION DEFAULT since the evening of 2026-09-04: law_exact_step, pred_mean2, nw_mcorr, pred_mean2_e4 are ON
+%   (dependents default to their upstream flag; law_exact_step = false alone restores the pre-09-04 recipe);
+%   acceptance test_script/integration/verify_formC_b_production_defaults.m.
 %   The slope and the curvature are exogenous (a'_true, a''_true from c(h_bar)) and READ AT THE ESTIMATED
 %   HEIGHT w_d - dw3_hat (writing A = the code's 'est'). The 09-03 version of this file read them at the
 %   commanded height and carried the extra mean line -a'' dw3_hat Delta w_hat; the two writings agree to

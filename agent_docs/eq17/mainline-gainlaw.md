@@ -37,10 +37,14 @@
 目的：斜率是真的（ā′_true 由 c(h̄) 算、讀在估測器自己的高度 w̄_d − δŵ̄₃）時，估測器還會不會自己偏。
 答案：不會，到 10 seeds 的解析度（牆邊 ā 的 0.3%）為止。
 
-- **配方**（全 default-off 旗標）：`law_exact_step`（已知步長精確積分）＋ `ap_known_at='est'`
+- **配方（09-04 晚起為 production 預設，`motion_control_law_formC_b.m`）**：`law_exact_step`（已知步長精確積分）＋ `ap_known_at='est'`
   ＋ `pred_mean2`（predict 二階均值：Jensen／起點差／曲率差，P 為主）＋ **`nw_mcorr`**
   （相關 process／量測雜訊 KF：控制器對同一份 y₁ 雜訊反應 ⇒ M = R₁g_n ≠ 0；predict 加輸入
-  g_n(y₁ − x̂₁)、F_e(:,1) − g_n、Q − R₁g_ng_nᵀ）。`pred_mean2_kr1`／`_full` 是撤回的過度補償，勿開。
+  g_n(y₁ − x̂₁)、F_e(:,1) − g_n、Q − R₁g_ng_nᵀ）＋ **`pred_mean2_e4`**（讀 â 的起點差項 e₄ 行與 e_b 行）。
+  四旗標 **預設 ON**；相依旗標預設跟上游（pred_mean2 ← law_exact_step，pred_mean2_e4 ← pred_mean2），
+  單設 `law_exact_step=false` 即回舊 Euler 配方。驗收腳本 `test_script/integration/verify_formC_b_production_defaults.m`
+  （預設 = 顯式全開逐位相同、顯式全關可跑、各臂 smoke）。09-04 晚之前的 scratch 假設 nw_mcorr／pred_mean2_e4 預設關，
+  要重現須顯式設 false（當日的 runner 已改顯式）。`pred_mean2_kr1`／`_full` 是撤回的過度補償，勿開。
 - **驗收**（同 10 seeds、canon deep 與 Meng ramp、hold 拉長 4 s）：hold 偏差 −0.00035 ± 0.00026／
   +0.00017 ± 0.00068；長 hold 斜率 −0.014 ± 0.041／−0.023 ± 0.075（e-6/步，修前 +0.239／+0.126）；
   散布 = √P 不變；追蹤誤差不變。收官 100-seed（<0.1%）未跑。
