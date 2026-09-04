@@ -2,7 +2,10 @@
 %   CORRELATED-NOISE PREDICT (2026-09-03, unified 2026-09-04).
 %   Order: true dynamics -> the estimator's one line -> their difference -> its mean -> the mean added
 %   back -> Jacobians -> F_e -> H -> Q, R. Equations only. Section 10 = the b_true arm (slope read at the
-%   estimated gain). Last two pages: the b_true three-arm figure (Section 10) and the a'_true recipe figure on
+%   estimated gain); Section 11 = production (b a constant state / locked at 8/9): the constant-b model error
+%   f = (1-a)^2 (b_true - b_hat) integrates to a path function, no first-order drift in a hold, -0.008 (est - true)
+%   at the wall after the descent (open loop; the y2 leg removes >= 95% of it in motion). Last three pages: the
+%   production-ladder figure (Section 11), the b_true three-arm figure (Section 10) and the a'_true recipe figure. Was: Last two pages: the b_true three-arm figure (Section 10) and the a'_true recipe figure on
 %   both trajectories (seed 7 / gain error / tracking error), no text.
 %
 %   RECIPE = CODE (motion_control_law_formC_b.m, z axis, all flags default off, lock_b):
@@ -61,6 +64,16 @@
 %   1.8x the a'_true arm's spread: the law amplifies a gain error along the descent, F_e(4,4) = 1 + (da'/da) Delta w).
 %   nw_mcorr's paired effect in this arm: slope -0.095 +- 0.013 (canon) / -0.113 +- 0.006 (Meng) e-6/step, smaller
 %   than in the a'_true arm (-0.252 / -0.150); the base slopes themselves are unresolved (SEM 0.27 / 0.24).
+%   SECTION 11 (2026-09-04, production: b a constant state, locked at 8/9 or estimated from 8/9): verified
+%   independently (20 algebra + numeric checks): items PASS except the descent line, which integrated the forcing
+%   f alone and omitted the law's own amplification (da'/da) mu -- corrected to mu = (1-a)^2 Int (b_true - b_hat) dw
+%   (open loop 0.06 at the wall from w = 6.67, not 0.008); the curvature line gained (a''/a') f; H24 = 1 - (da'/da) grad w_d
+%   added to S10/S11; P_i5 defined as the filter's own cross-covariance, the b'_true cross-moment written out
+%   separately. Locked-b arm measured (run_prod_ladder.m, paired to the curve arm): end of descent -0.0030 / -0.0005,
+%   hold start -0.0005 / -0.0009, hold slope -0.176 / -0.184 e-6/step (mechanism open; the b' line is ruled out;
+%   b locked at the hold value removes it on canon but not on Meng). Production (b_hat estimated from 8/9, four blocks
+%   + the e_b line): hold level +0.0012 +- 0.0016 / +0.0004 +- 0.0023, equal to the locked-8/9 arm within 0.0014,
+%   b_hat within 0.01 of the seed; production as it was: +0.019 / +0.010. Figure figures/prod_ladder_band.png.
 %   HISTORY (kept, STATUS: HISTORY): 0902_formC_aptrue_4state.tex (the ladder Euler -> exact -> @est ->
 %   pred_mean2, the kr1 retraction, the hold level mode, the code lines and numbers);
 %   0903_formC_aptrue_update_half.tex (update half-step, lemma, C recursion, S6 correlated-noise KF).
@@ -391,12 +404,137 @@ Jacobians and error dynamics (the entries that change)
 \frac{\partial \hat{\ba}_w[k+1]}{\partial \hat{\ba}_w[k]}
   &= 1 + \frac{\partial\ap}{\partial\hat{\ba}_w}\,\dWh[k] + F_{dw}[k]\bigl(\ap + \app\,\dWh[k]\bigr)
   \ \to\ 1 + \frac{\partial\ap}{\partial\hat{\ba}_w}\,\dWh[k] + F_{dw}[k]\,\ap \\
-\tilde{F}_e(4,4) &= 1 + F_{dw}\,\ap + \frac{\partial\ap}{\partial\hat{\ba}_w}\,\dWh
+\tilde{F}_e(4,4) &= 1 + F_{dw}\,\ap + \frac{\partial\ap}{\partial\hat{\ba}_w}\,\dWh \\
+y_2[k] &= \ba_w[k] - \ap\,\nabla_d\bw_d[k] + n_a[k] , \qquad
+H_{24} = 1 - \frac{\partial\ap}{\partial\hat{\ba}_w}\,\nabla_d\bw_d[k]
 \end{align*}
 
-(no $-\app\dWh$ in the $\delta\hat{\bw}_3$ entry: the slope does not read a height;
+(no $-\app\dWh$ in the $\delta\hat{\bw}_3$ entry: the slope does not read a height; $H_{24} \neq 1$ whenever $\ap$ reads $\hat{\ba}_w$
+(Sections 10, 11; code line \texttt{1 - Grad\_wbar\_d*A\_a\_i}), $= 1$ only for the exogenous slope of Sections 1--9;
 the $\partial\ap/\partial\hat{\ba}_w\,\dWh$ entry is the law's own amplification of a gain error along the step,
 $> 1$ when moving toward the wall; $\tilde{Q}_{34} = -\ap\tilde{Q}_{33}$, $\tilde{Q}_{44} = \ap^{2}\tilde{Q}_{33}$ unchanged)
+
+\clearpage
+\section{Production: $b$ a constant state}
+
+(this arm: $\hat{b} := \hat{x}_5$, constant model, $\tilde{Q}_{55} = 0$, seed $8/9$, $\sqrt{P_{55}[0]} = \sup_{\text{env}}|b_{\mathrm{true}} - 8/9|$;
+$\ap := \hat{b}\,(1 - \hat{\ba}_w)^{2}$, $\dfrac{\partial\ap}{\partial\hat{b}} = (1 - \hat{\ba}_w)^{2} = \dfrac{\ap}{\hat{b}}$, $\app := -2\hat{b}(1-\hat{\ba}_w)\,\ap$;
+$e_b[k] := b_{\mathrm{true}}\bigl(\bw[k]\bigr) - \hat{b}[k]$, NOT zero-mean: $b_{\mathrm{true}}$ is a curve, $\hat{b}$ a constant;
+$f(\bw) := \bigl(1 - \ba_{\mathrm{true}}(\bw)\bigr)^{2}\bigl(b_{\mathrm{true}}(\bw) - \hat{b}\bigr)$, $F' = f$;
+everything not listed is as in Sections 1--10)
+
+True dynamics, slope and curvature
+\begin{align*}
+\ap_{\mathrm{true}}\bigl(\bw[k]\bigr) &= b_{\mathrm{true}}\bigl(\bw[k]\bigr)\bigl(1 - \ba_w[k]\bigr)^{2}
+  = \ap + \frac{\partial\ap}{\partial\hat{\ba}_w}\,e_{\ba_w}[k] + \frac{\partial\ap}{\partial\hat{b}}\,e_b[k] + \mathcal{O}\bigl(e^{2}\bigr) \\
+\app_{\mathrm{true}}\bigl(\bw[k]\bigr) &= \frac{d}{d\bw}\Bigl[b_{\mathrm{true}}(\bw)\bigl(1 - \ba_{\mathrm{true}}(\bw)\bigr)^{2}\Bigr]
+  = \app + f'\bigl(\bw[k]\bigr) + \frac{\app}{\ap}\,f\bigl(\bw[k]\bigr) + \mathcal{O}(e_{\ba_w})
+\end{align*}
+
+($\app/\ap = -2\hat{b}(1-\hat{\ba}_w)$; the $(\app/\ap)f$ piece is first order in $e_b$, the same order as the model-error line, and is kept)
+
+$\hat{b}$ and $e_b$
+\begin{align*}
+\hat{b}^{-}[k+1] &= \hat{b}[k] \\
+\hat{b}[k+1] &= \hat{b}^{-}[k+1] + \ell_{51}[k+1]\,e_{y_1}[k+1] + \ell_{52}[k+1]\,e_{y_2}[k+1] \\
+e_b[k+1] &= e_b[k] + b'_{\mathrm{true}}\bigl(\bw[k]\bigr)\,\dW[k] - \ell_{51}[k+1]\,e_{y_1}[k+1] - \ell_{52}[k+1]\,e_{y_2}[k+1]
+\end{align*}
+
+Error increment (Section 10 plus the $e_b$ and $f'$ lines)
+\begin{align*}
+e_{\ba_w}[k+1] - e_{\ba_w}[k]
+  &= \ap\,\eD
+     + \frac{\partial\ap}{\partial\hat{\ba}_w}\,e_{\ba_w}\bigl(\dWh + \eD\bigr)
+     + \frac{\partial\ap}{\partial\hat{b}}\,e_b\bigl(\dWh + \eD\bigr)
+     + \app\,\dWh\,\eD
+     + \tfrac{1}{2}\,\app\,\eD^{2} \\
+  &\qquad + \tfrac{1}{2}\Bigl(f' + \frac{\app}{\ap}\,f\Bigr)\bigl(\dWh + \eD\bigr)^{2}
+     + \mathcal{O}(3)
+\end{align*}
+
+Mean, the $e_b$ and curvature lines ($P_{i5}$ := the filter's own posterior cross-covariance under its constant-$b$ model;
+the part of $e_b$ that fluctuates given the data is $-b'_{\mathrm{true}}\,e_{\delta\bw_3}$, which is NOT $P_{i5}$)
+\begin{align*}
+\E\Bigl[\frac{\partial\ap}{\partial\hat{b}}\,e_b\,\dWh\Bigr] &= \frac{\partial\ap}{\partial\hat{b}}\,\E[e_b]\,\dWh
+  \qquad (\text{first order; } \E[e_b] = b_{\mathrm{true}}(\bw) - \E[\hat{b}] \neq 0) \\
+\E\Bigl[\frac{\partial\ap}{\partial\hat{b}}\,e_b\,\eD\Bigr]
+  &= \frac{\partial\ap}{\partial\hat{b}}\,\bigl[(1-\lambda_c)\bigl(P_{35} - P_{15}\bigr) + F_{dw}P_{45}\bigr] \\
+  &\qquad - \frac{\partial\ap}{\partial\hat{b}}\,b'_{\mathrm{true}}\,\bigl[(1-\lambda_c)\bigl(P_{33} - P_{13}\bigr) + F_{dw}P_{34}\bigr] \\
+\E\Bigl[\tfrac{1}{2}\Bigl(f' + \frac{\app}{\ap}f\Bigr)\bigl(\dWh + \eD\bigr)^{2}\Bigr]
+  &= \tfrac{1}{2}\Bigl(f' + \frac{\app}{\ap}f\Bigr)\bigl(\dWh^{2} + \E[\eD^{2}]\bigr)
+\end{align*}
+
+(second line: the first bracket is the filter's cross-covariance with its constant unknown $b$, the second is the
+height dependence of $b_{\mathrm{true}}$ through $e_{\delta\bw_3}$; $b'_{\mathrm{true}}$ is not $c$-free)
+
+\begin{align*}
+\E\bigl[e_{\ba_w}[k+1]\bigr] - \E\bigl[e_{\ba_w}[k]\bigr]
+  &= \frac{\partial\ap}{\partial\hat{b}}\,\E[e_b]\,\dWh
+     + \tfrac{1}{2}\Bigl(f' + \frac{\app}{\ap}f\Bigr)\bigl(\dWh^{2} + \E[\eD^{2}]\bigr) \\
+  &\qquad - \frac{\partial\ap}{\partial\hat{b}}\,b'_{\mathrm{true}}\bigl[(1-\lambda_c)\bigl(P_{33} - P_{13}\bigr) + F_{dw}P_{34}\bigr] \\
+  &\qquad + \frac{\partial\ap}{\partial\hat{b}}\,\bigl[(1-\lambda_c)\bigl(P_{35} - P_{15}\bigr) + F_{dw}P_{45}\bigr]
+     + \text{(Section 10 lines)}
+\end{align*}
+
+(first two lines: model error, needs $b_{\mathrm{true}}$ and $b'_{\mathrm{true}}$, not $c$-free, not added; third line: added, the Section 10 term with $e_b$)
+
+Estimator with the mean term (the line added to Section 10's)
+\begin{align*}
+\hat{\ba}_w[k+1] &= \text{(Section 10)} + \frac{\partial\ap}{\partial\hat{b}}\,\bigl[(1-\lambda_c)\bigl(P_{35}[k] - P_{15}[k]\bigr) + F_{dw}[k]\,P_{45}[k]\bigr]
+\end{align*}
+
+Model error along a path (first order in $e_b$; open loop, $\mu := \E[e_{\ba_w}]_{\text{model}}$)
+\begin{align*}
+\mu[k+1] &= \Bigl(1 + \frac{\partial\ap}{\partial\hat{\ba}_w}\,\dW[k]\Bigr)\mu[k] + f\bigl(\bw[k]\bigr)\,\dW[k] + \tfrac{1}{2}\Bigl(f' + \frac{\app}{\ap}f\Bigr)\dW[k]^{2} + \mathcal{O}(3) \\
+\frac{d\mu}{d\bw} &= \frac{\partial\ap}{\partial\hat{\ba}_w}\,\mu + f
+  \qquad\Longrightarrow\qquad
+  \mu(\bw) = \bigl(1 - \ba_{\mathrm{true}}(\bw)\bigr)^{2}\int_{\bw_{\mathrm{start}}}^{\bw}\bigl(b_{\mathrm{true}} - \hat{b}\bigr)\,d\bw' \\
+\frac{1}{1 - \ba_{\mathrm{true}}(\bw)} - \frac{1}{1 - \hat{\ba}_w(\bw)} &= \int_{\bw_{\mathrm{start}}}^{\bw}\bigl(b_{\mathrm{true}} - \hat{b}\bigr)\,d\bw'
+  \qquad (\text{exact, noise-free: } \tfrac{d}{d\bw}\tfrac{1}{1-\ba} = b) \\
+\text{stationary hold:}\quad \E\bigl[\Delta\mu\bigr] &\to 0 \\
+  \E[f\,\dW] &= -(1-\lambda_c)\,f'\,\mathrm{Var}(\bw) , \qquad \tfrac{1}{2}f'\,\E[\dW^{2}] = +(1-\lambda_c)\,f'\,\mathrm{Var}(\bw) \\
+  \tfrac{1}{2}\tfrac{\app}{\ap}f\,\E[\dW^{2}] &+ \tfrac{\partial\ap}{\partial\hat{\ba}_w}\,\E[\dW\,e_{\ba_w}] = 0 \qquad (\text{likewise})
+\end{align*}
+
+(the forcing $f$ alone integrates to $F(\bw_{\mathrm{end}}) - F(\bw_{\mathrm{start}})$, $F' = f$; the law then AMPLIFIES what was injected
+far away by $[(1-\ba_{\mathrm{wall}})/(1-\ba_{\mathrm{far}})]^{2}$ = 29.8 from $\bw = 6.67$ to $1.10$ -- the open loop of the measured $\times 22$)
+
+($\hat{b} = 8/9$, $c_\perp$ of the plant: $b_{\mathrm{true}}(6.67) = 0.883$, minimum $0.867$ at $\bw = 2.19$, crosses $8/9$ at $\bw = 1.325$,
+$b_{\mathrm{true}}(1.10) = 0.928$; $f(1.10) = +0.032$, $f(1.8) = -0.0066$, $f(6.67) = -0.0002$.
+Open loop, $\ba_w - \hat{\ba}_w$ at the wall: Meng starts at $\bw = 6.67$ ($15\,\mu$m): $\int_{6.67}^{1.10}(b_{\mathrm{true}} - 8/9)\,d\bw = +0.068$,
+$\mu(1.10) = (1-0.0873)^{2}\times 0.068 = +0.057$ (exact law integration $+0.060$, $69\%$ of $\ba_w(1.10)$); canon starts at $\bw = 22.2$
+($50\,\mu$m): $+0.084$ ($+0.093$ exact). The estimate arrives BELOW the truth, the long stretch with $b_{\mathrm{true}} < 8/9$
+outweighing the short one above it; the 09-04 first writing integrated $f$ alone and gave $0.008$ -- FAIL caught by the
+independent verification. MEASURED (run\_prod\_ladder.m, four blocks, 10 seeds, paired to the $b_{\mathrm{true}}$-curve arm):
+$b$ locked at $8/9$: end of descent $-0.0030 \pm 0.0002$ (canon), $-0.0005 \pm 0.0002$ (Meng); hold start $-0.0005$, $-0.0009$;
+the $y_2$ leg in motion removes $\ge 95\%$ of the open-loop error, sign as derived. $b$ locked at $b_{\mathrm{true}}(\bw_{\mathrm{hold}}) = 0.928$
+(oracle): end of descent $-0.0066$, $-0.0017$ (more negative: $\hat{b} > b_{\mathrm{true}}$ over the whole mid range, as $f < 0$ says).
+$\hat{b}$ estimated from $8/9$ (production): minus locked $8/9$ at the hold start $+0.0014 \pm 0.0009$ (canon), $-0.00002 \pm 0.00013$ (Meng),
+$\hat{b}$ stays within $0.01$ of the seed ($0.885 \pm 0.017$, $0.896 \pm 0.021$ at the end), $\sqrt{P_{55}}$ $0.039 \to 0.023$, $0.027$.
+Absolute hold level of production with the four blocks: $+0.0012 \pm 0.0016$ (canon), $+0.0004 \pm 0.0023$ (Meng); production as it
+was (Euler, no mean terms): $+0.019$, $+0.010$. OPEN: a paired hold-slope difference constant-$b$ minus curve of $-0.176 \pm 0.025$ (canon),
+$-0.184 \pm 0.015$ (Meng) $\times 10^{-6}$ per step; not the $b'_{\mathrm{true}}$ cross-moment ($< 0.002\times10^{-6}$ on the filter's $P$,
+probe\_lockb\_bprime\_line.m); with $b$ locked at the hold value it vanishes on canon ($-0.006 \pm 0.032$) but not on Meng
+($-0.165 \pm 0.014$), so it is not simply the slope mismatch at the hold height either; $-0.0014$ over a 5 s hold, mechanism open)
+
+Jacobians and measurement (the entries that change; code: state writing, $\partial\ap/\partial\hat{b} = +\ap/\hat{b}$)
+\begin{align*}
+\frac{\partial \hat{\ba}_w[k+1]}{\partial \hat{b}[k]} &= \frac{\partial\ap}{\partial\hat{b}}\,\dWh[k] , \qquad
+\frac{\partial \hat{b}[k+1]}{\partial \hat{b}[k]} = 1 \\
+y_2[k] &= \ba_w[k] - \ap\,\nabla_d\bw_d[k] + n_a[k] , \qquad
+H_{24} = 1 - \frac{\partial\ap}{\partial\hat{\ba}_w}\,\nabla_d\bw_d[k] , \qquad
+H_{25} = -\frac{\partial\ap}{\partial\hat{b}}\,\nabla_d\bw_d[k] \\
+g_n[k] &= (1-\lambda_c)\,[\,0,\ 0,\ -1,\ \ap,\ 0\,]^{\top} , \qquad
+\tilde{Q}_{5j} = \tilde{Q}_{j5} = 0
+\end{align*}
+
+(both $\hat{b}$ columns carry a displacement factor and vanish together in a hold, Section 3 of observability-workflow;
+locked-$b$ arm: the filter's $P_{i5} = 0$, so the added line vanishes and the model-error lines, including the
+$b'_{\mathrm{true}}$ cross-moment, remain)
+
+\clearpage
+\thispagestyle{empty}
+\noindent\includegraphics[width=\textwidth]{figures/prod_ladder_band.png}
 
 \clearpage
 \thispagestyle{empty}

@@ -59,6 +59,17 @@
   與 0 相容。nw_mcorr 在此臂配對效果 −0.095／−0.113（a′_true 臂 −0.252／−0.150），base 斜率本身未解析。
   儀器：`run_btrue_nw_mcorr.m`、`probe_btrue_e4_line.m`（F_dw 近似，精確注入量用 pm2 差）、`plot_btrue_e4.m`。
 
+- **production 這一格（09-04，b 當常數 state）**：與 b_true 臂只差 b 是常數（鎖 8/9 或從 8/9 估）。
+  §11 推導：常數 b 的模型誤差 f = (1−ā)²(b_true − b̂) 沿下坡經法則自身放大 F_e(4,4) 累積成
+  μ = (1−ā_wall)²∫(b_true − b̂)dw̄，開環 −0.06（Meng 起點 6.67 R）／−0.09（canon 22.2 R，估值低於真值）——
+  第一版只積 f 得 0.008 是錯的（驗算抓到）；定常 hold 一階不漂。**量到**（同 10 seeds、四塊全開、配對 b_true 曲線臂）：
+  鎖 8/9 下坡末端 −0.0030／−0.0005、hold 起點 −0.0005／−0.0009 ⇒ y₂ 在運動中吃掉 ≥95%；估 b̂（production）與鎖 8/9
+  配對差 +0.0014 ± 0.0009／−0.00002 ± 0.00013，b̂ 留在種子 ±0.01、√P55 0.039 → 0.023／0.027；production 四塊 hold 位準
+  **+0.0012 ± 0.0016／+0.0004 ± 0.0023**（舊 production +0.019／+0.010）。**未解**：常數 b 對曲線 b 的配對 hold 漂移
+  −0.176／−0.184 e-6/步（兩軌跡、12σ、5 s 積 −0.0014）；b′ 交叉矩否證（P 上 <0.002e-6）；b 鎖牆值的判別臂 canon 歸零、
+  Meng 不變，機制開放。code：`pred_mean2_e4` 在 slot 5 自由時多加 (∂ā′/∂b̂)Cov(e_b,u)。儀器 `run_prod_ladder.m`
+  （臂 lockb／lockw／prod／hist）、`plot_prod_ladder.m`、`probe_lockb_bprime_line.m`。圖 = 母本倒數第三頁。
+
 ## 現況（2026-08-03）
 
 - 缺陷 1 已由 7a 代數式修復（descent 11.03% → 5.05%）
