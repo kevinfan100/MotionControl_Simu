@@ -83,6 +83,9 @@
   給 Meng 一個真的 +0.0031 初始偏差：κ=1 hold +0.0007（回收），κ=0.5 hold **+0.0147 ± 0.0026**、最差瞬間 +0.048（放大 15×未修）⇒ **κ 在所有讀法下否證**，
   近壁散布 = 初始增益不確定 × 法則敏感度的誠實代價，槓桿在種子（校正鏈）不在估測器。速度否證（0.2–8.5 R/s 無效）；Meng 顯眼 = 同機制多待 13× 時間。
   儀器 `run_jac_exact_arms.m`／`run_btrue_r2_scale.m`／`run_btrue_prior_vs_offset.m`／`run_btrue_speed_swap.m`；圖 `btrue_prior_vs_offset.png`、`btrue_speed_swap.png`。
+  **b_true 格收官（09-06 使用者裁示）**：估測器對初始值可修（真實 +0.0031：最差瞬間 84% 已修、hold 全修）、對初始信任度 P₄₄[0] 敏感（散布 ∝ P₄₄[0]，兩向）；
+  production 不動（κ=1、四塊、`jac_exact_step` 關）。剩兩項入帳：快速段誠實比 0.66–0.77 來源未追（假說帳 O19）、hold 位準／斜率 10-seed 解析度（O2）。
+  最終圖 `ladder_btest_4row_abs_p0.png`（現配方）／`ladder_btp0_4row_abs_p0.png`（prior 對回起點）。假說帳 R45–R48、C41–C42。
   **b_true 格結案（09-04）**：b 已知時讀 â 的估測器在 10 seeds 解析度內無 hold 偏差；剩解析度（散布 1.8×，κ=0.5 後 canon hold 縮 26%）
   與常數 b 對曲線 b 的配對 hold 漂移 −0.17e-6/步兩項入帳。
 

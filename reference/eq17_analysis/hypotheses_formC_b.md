@@ -28,6 +28,7 @@
 | O16 | 形狀驗收工具 `verify_shape_exponent_bound.m` DRAFT 檔頭 13 條假設未逐條核；遠場形式（Faxén 倒數 vs Lorentz 加法 1+9/8u）對 formB ws 列的影響未量 | 真值無關分母 (A) 兩錨差 formC 0.1111 ⇒ 0.350 PASS 只核了三個分母來源的 code 行；expgain 在 (A) 退化為 0、只剩 (B) 0.352；shape_ledger.md「TIGHT 1.02–1.06×」該行待更正 | 08-25／08-30 | formC_b_audit_ledger.md §4 #12、#18、§6 #15、§6 [未核]；project_formC_b_layered_audit_2026-08-25 | e2ecead（DRAFT） |
 | O17 | 可觀性視窗 W = 500 步未做 10× 不變性掃描（mainline_audit_plan B-1） | 只有 b 的 W 125/250/500/1000/2000 → CRLB/prior 4.71/1.92/1.10/0.866/0.861 一組（08-18）；第 1–3 關未自動化；只跑 z 軸／單 seed／canonical | 08-18 | formC_b_audit_ledger.md §4 #14；project_observability_ledger_2026-08-17 | — |
 | O18 | 三軸 meas_noise [0.62; 0.57; 3.31] nm 是自洽 scenario 不是 spec | 2025-12-12 進 repo 無 datasheet／量測／引用；y 由 0.057 改 0.57 nm（2026-06-08 單檔改、08-12 統一）；mainline-gainlaw 的「y 軸 10×」指這段歷史，現行值是調高的那個 | 08-25 | formC_b_audit_ledger.md §4 #8、§1.9 | — |
+| O19 | prior 對回起點後快速段誠實比仍 0.66–0.77（P 高 1.3–1.5×），來源未追 | Meng p0small 0.66、canon p0tiny 0.77；hold 1.01；R₂÷3、精確步 Jacobian 皆不是 | 09-06 | project_aptrue_second_order_ladder_2026-09-02 | — |
 
 ## REFUTED（被量測否證或撤回；「判決數字」= 殺死它的那個數字）
 
@@ -77,6 +78,10 @@
 | R42 | Var(δx) 近壁超額的四候選：跨 seed Jensen／y₂ gate 偷關／非高斯重尾／（g≠1 無關） | 逐 seed a_true 重算動 0.19%；G2 全程 0.013%、末端 hold 0%；峰度四段 2.971；g≠1 那條後撤回（見 R16） | 08-20 | project_formC_var_identity_deep_band_2026-08-20 | — |
 | R43 | 「Cov(a′_used, M̂) 就是偏差」（注入 = 偏差） | 12 臂變體：a′_true@真 Meng 注入 +0.016 但淨偏差 −0.024（迴圈反號 ×1.5）；b_true 遠場 +0.0012 → +0.023（×22）；只在 b_true 遠場（ℓ₄₁ ≈ −0.03，迴圈惰性）成立 | 09-02 | project_btrue_seed_is_slope_step_covariance_2026-09-02 | — |
 | R44 | 臂 4 predict 在 hold 過修 r₄ = −0.62 e-6/步；減速段 +0.0019 是「A2/A3 餘數」 | 固定一階參考 a′_c 後 r₄ = +0.015±0.032 ≈ 0（舊 analyze 把 est 斜率當一階參考）；殘差住 update 通道、predict/update 一階 ±14 相消 1.5% 餘數；後由 nw_mcorr 吃掉（Meng 短 hold +0.00023±0.00068） | 09-02／09-03 | project_btrue_seed_is_slope_step_covariance_2026-09-02；project_aptrue_second_order_ladder_2026-09-02 | — |
+| R45 | 近壁快速段散布是速度／停留時間效應（Meng 慢 ⇒ 多）或抵消失效本身 | 速度 0.2–8.5 R/s 對 σ_seed 對 w̄ 曲線無效（Meng 1 s = 10 s、canon 1/10/38 s 相同）；κ=1 兩軌跡對 w̄ 重疊；Meng 顯眼 = 同機制多待 13× 時間（半高寬 1.63 s 對 0.09 s） | 09-06 | project_aptrue_second_order_ladder_2026-09-02 | 149a712 |
+| R46 | 列 4 Jacobian 少乘精確步因子 (1−â⁺)²/(1−â)² 是 P₄₄ 膨脹／散布的機制 | 閉式 sympy 驗算 PASS（SSOT §12），`jac_exact_step` 接上後三臂兩軌跡配對差 ≤ 2e-4（散布、ℓ₄₁+ā′ℓ₃₁、hold 全不動）⇒ 推導正確、REFUTED-as-mechanism；旗標留 default off | 09-06 | project_aptrue_second_order_ladder_2026-09-02 | 35e25a4 |
+| R47 | κ=0.5 是在補 R₂ 偏大 3×（NIS₂ 0.3） | K_var÷3：快速段 √P₄₄ 0.0101→0.0100 不動；最差瞬間 0.0264→0.0290／0.0323→0.0370；hold 誠實 0.87→1.65／1.08→1.71（過度自信）；lockb 同 | 09-06 | project_aptrue_second_order_ladder_2026-09-02 | 6a51bed |
+| R48 | κ = fe44_Aa_scale = 0.5 可作 production 量（任何讀法） | 真實 +0.0031 初始偏差（Meng，= 1 prior σ）：κ=1 最差瞬間均值 +0.0096、hold +0.0007±0.0022（收回）；κ=0.5 最差 +0.048、hold +0.0147±0.0026（放大 15× 留下）；與常數 b 臂塌陷（C.9）同根 | 09-06 | project_aptrue_second_order_ladder_2026-09-02 | 35e25a4 |
 
 ## CONFIRMED（已 [量到] 或 [推導] 並落地的機制與修復）
 
@@ -122,6 +127,8 @@
 | C38 | 兩層讀法：層 1 = 曲率×二階矩均值（pred_mean2，「線性化餘項均值 = 0」破）；層 2 = 相關雜訊 KF（nw_mcorr，「過程雜訊 ⊥ 量測雜訊」破）；機械拆法 = 劃掉波浪號與 e₁ 項 | 兩份讀本：archive/0903_aptrue_4state_from_true_mcorr（7 頁，x[k+1] 寫法、(1)–(5) 標項）、0904_btrue_4state_from_true（新，九節）；SSOT 0903 未動；§11 production 讀本未寫 | 09-06 | project_two_layer_reading_copies_2026-09-06 | cf59ea7 |
 | C39 | hold 位準模態定態方程（μ₄ = s/κ，κ = 5.1e-5/步 τ ≈ 12 s；E = ℓ₄₁ + ā′ℓ₃₁ ≈ 0） | 1–2 s hold 幾乎開迴路積分；Q 在 (3,4) rank-1 沿 (1,−ā′) ⇒ ℓ₄₁ = −ā′ℓ₃₁；echo S = 0.38／0.28 = code 0.32；sympy 驗算 | 09-03 | project_aptrue_second_order_ladder_2026-09-02 | 40c039a |
 | C40 | 一階傳遞 sd(a_true) = \|a′\|·sd(w̄) 全程正確；ε 由 a′ 掃 320× 造成 | 遠場 0.9999、谷底 1.0353（殘 3.5% = 曲率）；ε 0.003% → 3.9%；sd(w̄) 反而變小 3×；Jensen 位移 −8.37e-6 vs 預測 −7.47e-6（相對 ā −0.0096%） | 08-24 | project_formC_atrue_var_multiplicative_bound_2026-08-24 | — |
+| C41 | 讀 â 的臂近壁散布 = prior P₄₄[0] 經法則自我敏感度放大（Π(1−â⁺)²/(1−â)² = ā′_wall/ā′_entry；1/(1−a) 座標下起點誤差是常數） | seed-at-truth 臂把 P₄₄[0] 0.0031→3e-4（Meng）／0.00026→1e-5（canon），κ=1：最差瞬間 sd 0.0323→0.0051／0.0264→0.0035，ℓ₄₁+ā′ℓ₃₁ → +0.002／+0.003，hold 誠實 1.01、位準不動；強制 Meng P₄₄[0] = canon 走到 6.67 R 的 0.00089 ⇒ σ 對 w̄ 逐點落回 canon 家族 | 09-06 | project_aptrue_second_order_ladder_2026-09-02 | 35e25a4 |
+| C42 | b_true 格結案：估測器對初始值可修、對初始信任度敏感 | 真實 +0.0031：κ=1 最差瞬間 84% 已修（開環 +0.061 → +0.0096）、hold 內全修；散布 ∝ P₄₄[0]（兩向：信任太大 ⇒ 幻影散布，太小 ⇒ 修不回）；剩 O19 與 10-seed 解析度（O2） | 09-06 | project_aptrue_second_order_ladder_2026-09-02 | — |
 
 ## 附：formC_b_audit_ledger.md §4／§6 對照（只列 09-06 狀態與本檔對應列，內容不抄）
 
