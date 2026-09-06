@@ -4,7 +4,8 @@
 %   back -> Jacobians -> F_e -> H -> Q, R. Equations only. Section 10 = the b_true arm (slope read at the
 %   estimated gain); Section 11 = production (b a constant state / locked at 8/9): the constant-b model error
 %   f = (1-a)^2 (b_true - b_hat) integrates to a path function, no first-order drift in a hold, -0.008 (est - true)
-%   at the wall after the descent (open loop; the y2 leg removes >= 95% of it in motion). Last three pages: the
+%   at the wall after the descent (open loop; the y2 leg removes >= 95% of it in motion). Section 12 = the covariance
+%   weight kappa of the self-referential law (0.5 calibrated on the b_true arm; production stays at 1, see S12). Last three pages: the
 %   production-ladder figure (Section 11), the b_true three-arm figure (Section 10) and the a'_true recipe figure. Was: Last two pages: the b_true three-arm figure (Section 10) and the a'_true recipe figure on
 %   both trajectories (seed 7 / gain error / tracking error), no text.
 %
@@ -12,7 +13,7 @@
 %     law_exact_step + ap_known_at = 'est' + app_known + pred_mean2 + nw_mcorr (+ pred_mean2_e4, S10/S11).
 %   PRODUCTION DEFAULT since the evening of 2026-09-04: law_exact_step, pred_mean2, nw_mcorr, pred_mean2_e4 are ON
 %   (dependents default to their upstream flag; law_exact_step = false alone restores the pre-09-04 recipe);
-%   acceptance test_script/integration/verify_formC_b_production_defaults.m.
+%   fe44_Aa_scale stays 1 (Section 12); acceptance test_script/integration/verify_formC_b_production_defaults.m.
 %   The slope and the curvature are exogenous (a'_true, a''_true from c(h_bar)) and READ AT THE ESTIMATED
 %   HEIGHT w_d - dw3_hat (writing A = the code's 'est'). The 09-03 version of this file read them at the
 %   commanded height and carried the extra mean line -a'' dw3_hat Delta w_hat; the two writings agree to
@@ -546,6 +547,71 @@ g_n[k] &= (1-\lambda_c)\,[\,0,\ 0,\ -1,\ \ap,\ 0\,]^{\top} , \qquad
 (both $\hat{b}$ columns carry a displacement factor and vanish together in a hold, Section 3 of observability-workflow;
 locked-$b$ arm: the filter's $P_{i5} = 0$, so the added line vanishes and the model-error lines, including the
 $b'_{\mathrm{true}}$ cross-moment, remain)
+
+\clearpage
+\section{Covariance propagation of the self-referential law: the weight $\kappa$}
+
+(arms whose slope reads $\hat{\ba}_w$, Sections 10--11; $A := \partial\ap/\partial\hat{\ba}_w = -2\hat{b}(1-\hat{\ba}_w)$;
+$z := e_{\ba_w} + \ap\,e_{\delta\bw_3}$ the law-slaved combination of Section 2 of the update-half document;
+everything else as in Sections 1--11)
+
+Linear error dynamics in the $(e_{\delta\bw_3},\ z)$ basis (from Section 10, $e_{\ba_w} = z - \ap e_{\delta\bw_3}$, $\ap[k+1] = \ap + \app\dWh$, $\app = A\,\ap$)
+\begin{align*}
+z[k+1] &= \bigl(1 + A\,\dWh\bigr)\,z[k] - A\,\dWh\,\ap\,\eD[k] \\
+e_{\delta\bw_3}[k+1] &= \bigl(\lambda_c + F_{dw}\,\ap\bigr)\,e_{\delta\bw_3}[k] + (1-\lambda_c)\,e_{\delta\bw_1}[k] - F_{dw}\,z[k] - \et[k] \\
+\ell_{41} + \ap\,\ell_{31} &= 0 \iff \mathrm{Cov}\bigl(z,\ e_{\delta\bw_1}\bigr) = 0
+\end{align*}
+
+(the amplification $1 + A\dWh$ acts on $z$; the position noise enters the gain through the law as $\ap\,\et$ and is
+removed by the $y_1$ update exactly when the second line holds -- the a$'_{\mathrm{true}}$ arm keeps it in every segment,
+$|\ell_{41} + \ap\ell_{31}| < 0.002$)
+
+Measured (b$_{\mathrm{true}}$ arm, four blocks, canon $1.0$--$1.5$ s, 10--30 seeds; Meng $7$--$10$ s in brackets)
+\begin{align*}
+\kappa = 1:\quad P_{44} &\ \text{grows } \times 16 \text{ along the descent} \\
+\ell_{41} &= +0.036 , \qquad -\ap\ell_{31} = -0.157 , \qquad \ell_{41} + \ap\ell_{31} = +0.19\ [+0.039] \\
+\sigma(\text{predict}) &= 0.025 , \qquad \sigma(y_1\ \text{leg}) = 0.009 , \qquad \text{corr} = -0.40
+  \qquad (\text{a}'_{\mathrm{true}}\text{ arm: } 0.018,\ 0.017,\ -0.99) \\
+\sigma_{\mathrm{seed}}(\hat{\ba}_w - \ba_w) &= 0.026\ [0.032] \text{ at the worst instant} , \qquad
+  \sigma_{\mathrm{seed}}/\sqrt{P_{44}} = 0.66\ [0.81] \\
+\kappa = 0:\quad \ell_{41} + \ap\ell_{31} &= 0.002\ [0.001] , \qquad \sigma_{\mathrm{seed}} = 0.0045\ [0.0079] \\
+\sigma_{\mathrm{seed}}/\sqrt{P_{44}} &= 1.24\ [1.60] \text{ (fast)} , \qquad 1.75\ [2.07] \text{ (hold)}
+\end{align*}
+
+Weighted propagation (covariance only; the state predict, the mean term and $H_2$ keep $A$)
+\begin{align*}
+\tilde{F}_e(4,4) &= 1 + F_{dw}\,\ap + \kappa\,A\,\dWh , \qquad \kappa \in [0, 1]
+\end{align*}
+
+Calibration (seeds 1:10, both trajectories; honesty $= \sigma_{\mathrm{seed}}/\sqrt{P_{44}}$, geometric mean over $\{\text{fast},\ \text{hold}\}\times\{\text{canon},\ \text{Meng}\}$)
+\begin{align*}
+\kappa &= 0,\ 0.25,\ 0.5,\ 0.75,\ 1 \\
+\text{honesty (geo.\ mean)} &= 1.64,\ 1.27,\ \mathbf{0.96},\ 0.81,\ 0.84 \\
+\sigma_{\mathrm{seed}}\ \text{worst instant, canon} &= 0.0045,\ 0.0046,\ \mathbf{0.0054},\ 0.0109,\ 0.0264 \\
+\sigma_{\mathrm{seed}}\ \text{worst instant, Meng} &= 0.0079,\ 0.0101,\ \mathbf{0.0158},\ 0.0249,\ 0.0323 \\
+\text{hold honesty canon / Meng} &= 1.75/2.07,\ 1.68/1.25,\ \mathbf{1.19/1.06},\ 0.88/1.07,\ 0.87/1.08
+\end{align*}
+
+Validation (seeds 11:20, $\kappa = 0.5$ vs $1$)
+\begin{align*}
+\sigma_{\mathrm{seed}}\ \text{worst instant} &: 0.0237 \to 0.0026\ (\text{canon}),\quad 0.0272 \to 0.0082\ (\text{Meng}) \\
+\text{hold } \sigma_{\mathrm{seed}} &: 0.0103 \to 0.0056,\quad 0.0091 \to 0.0081 \qquad
+\text{hold honesty}: 1.43 \to 1.25,\quad 1.36 \to 1.29 \\
+\text{hold level} &: +0.0022 \pm 0.0031 \to +0.0012 \pm 0.0016,\quad +0.0001 \pm 0.0027 \to +0.0004 \pm 0.0024
+\end{align*}
+
+($\kappa$ = code ctrl\_const.fe44\_Aa\_scale. STATUS: $\kappa = 0.5$ is a CALIBRATED value for the b$_{\mathrm{true}}$ arm only
+(observable: the honesty ratio; calibration and judgement on disjoint seeds). It was made the production default for a few
+hours on 2026-09-04 and REVERTED to $\kappa = 1$ the same night: on the arms with a constant $b$ the smaller $P_{44}$ lets the
+constant-$b$ model error of Section 11 stand -- $b$ locked at $8/9$, canon, 10 seeds: hold $-0.0197 \pm 0.0007$, every seed at the
+$\ba$ floor ($+0.0006$ at $\kappa = 1$); $\hat{b}$ estimated (production): hold $+0.0030$ vs $+0.0017$, worst-instant mean $-0.031$ vs
+$-0.034$ (no gain), $\hat{b}$ pulled to $0.852$--$0.858$ with $\sqrt{P_{55}}$ collapsing to $0.004$ (canon). The calibration does not
+transfer across arms: the term it weights competes with the $y_2$ correction of the model error, which the b$_{\mathrm{true}}$
+arm does not have. What it stands in for: the split of the gain error into a free part, amplified by $1 + A\dWh$, and a
+law-slaved part that follows $e_{\delta\bw_3}$ and the growth of $\ap$, which the first-order propagation treats alike; the
+closed form is open, and a production-safe version must be derived (or calibrated) with the model error present.
+Not part of this: the $y_2$ weight -- $\mathrm{NIS}_2 = e_{y_2}^2/S_2 = 0.27$--$0.34$ in every segment, both trajectories, both $\kappa$
+(the $IF$ colour design), $\mathrm{NIS}_1 = 1.00$; nothing segment-specific to correct there)
 
 \clearpage
 \thispagestyle{empty}
