@@ -356,6 +356,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent lambda_c d_delay Ts kappa_T R_radius a_o a_disp r22_delay_scale
     persistent a_inject_step a_inject_frac a_inject_axis   % diagnostic hook, default off
     persistent fe43_off q34_off q44_scale fe44_Aa_off fe44_Aa_scale   % diagnostic flags, default off / scale 1
+    persistent jac_exact_step                               % row-4 Jacobian / Q / g_n of the EXACT law step (2026-09-06), default off
     persistent law_exact_step                               % exact (quadrature-free) law step, default off (port of 2a5dc29)
     persistent pred_mean2                                   % second-order mean term in predict (0902 tex S5), default off
     persistent pred_force_step                              % row-4 known increment = a_hat * fbar_d[k-1] (commanded displacement), default off
@@ -450,6 +451,26 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % b_true arm and for the closed-form work (0903 tex S12).
         fe44_Aa_scale = get_field_default(ctrl_const, 'fe44_Aa_scale', 1);
         if fe44_Aa_off; fe44_Aa_scale = 0; end
+        % jac_exact_step (2026-09-06, 0903 tex S12 closed form): linearise the EXACT law step consistently.
+        %   The predict is a_pred = 1 - 1/(1/(1-a) + b M) (law_exact_step), whose Jacobian row 4 is
+        %       d a_pred / d x = (1 - a_pred)^2 * d(1/(1-a) + b M)/d x
+        %   so EVERY row-4 entry carries the common factor D = (1-a_pred)^2/(1-a)^2 = 1/(1 + b(1-a)M)^2 = a'(a_pred)/a'(a):
+        %       F_e(4,4) = D (1 + a' F_dw),  F_e(4,3) = D (1-lc) a',  F_e(4,8:9) = D alpha a',  F_e(4,5) = D J_b,
+        %       F_e(4,1) = -D (1-lc) a' (nw_mcorr),  Q(4,:) and Q(:,4) x D (Q44 x D^2), g_n(4) x D.
+        %   The production row keeps the EULER Jacobian (1 + a' F_dw + A_a M on the diagonal, left-endpoint a' elsewhere),
+        %   which is exact for the Euler predict but NOT for the exact step: per step the difference is A_a M x (row-4 coupling)
+        %   = O(1e-2), and it compounds along the descent like the diagonal does (sum A_a M = O(1)). In the (e3, z) basis,
+        %   z = e4 + a' e3, the consistent row gives z+ = D z exactly (the law-slaved part is removed by y1 every step),
+        %   the Euler row forces z by A_a M a' (lc e3 + (1-lc) e1 - F_dw e4) per step => P44 grows x16 along the descent,
+        %   P41 becomes -F_dw P44 dominated and l41 + a' l31 leaves 0 (measured 09-04/09-06). Replaces the calibrated
+        %   kappa (fe44_Aa_scale) by a derived structure; when on, fe44_Aa_scale is ignored (asserted = 1).
+        %   Inert on the ap_known arm (exogenous slope, A_a = 0 by construction) and when law_exact_step is off.
+        %   Default false => bit-identical.
+        jac_exact_step = logical(get_field_default(ctrl_const, 'jac_exact_step', false));
+        if jac_exact_step
+            assert(fe44_Aa_scale == 1, 'motion_control_law_formC_b:jacExactStep', ...
+                   'ctrl_const.jac_exact_step replaces fe44_Aa_scale; leave fe44_Aa_scale at 1.');
+        end                                          % the law_exact_step dependency is asserted where that flag is read
         % DIAGNOSTIC FLAG (2026-08-26): remove the THERMAL position<->gain
         % cross-covariance from P propagation only: Q(3,4), Q(4,8) and the
         % memory->gain rows F_aug(4,8:9). Q44, Q33, the state predict and
@@ -620,6 +641,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         if pred_mean2 && ~law_exact_step
             error('motion_control_law_formC_b:predMean2', ...
                   'ctrl_const.pred_mean2 is derived on the exact law step; set law_exact_step = true as well.');
+        if jac_exact_step
+            assert(law_exact_step, 'motion_control_law_formC_b:jacExactStep', ...
+                   'ctrl_const.jac_exact_step linearises the exact law step; set law_exact_step = true as well.');
+        end
         end
         % pred_force_step (2026-09-02, default false => bit-identical): the row-4
         % predict's KNOWN increment becomes the commanded displacement
@@ -1640,6 +1665,21 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             gn_c = zeros(n_state, 1);  gn_c(3) = -one_minus_lc;  gn_c(4) = a_prime_i * one_minus_lc;
             F_e(:, 1) = F_e(:, 1) - gn_c;
             Q_i = Q_i - sigma2_n_nd(ax) * (gn_c * gn_c.');
+        end
+        if jac_exact_step && ~has_ap_known               % consistent row-4 Jacobian of the exact law step, see init
+            M_jac = M_tot;
+            if nw_mcorr; M_jac = M_jac + one_minus_lc * res1_km1(ax); end
+            if pred_force_step; M_jac = a_ctrl_km1(ax) * fbar_d_km1(ax); end
+            den_jac = 1 + b_hat_i * (1 - x_curr(4)) * M_jac;
+            if den_jac > 0
+                D_jac = 1 / den_jac^2;                   % = (1 - a_pred)^2 / (1 - a)^2 for the exact step actually taken
+            else
+                D_jac = 1 + A_a_i * M_jac;               % the predict fell back to Euler (edge only): keep its Jacobian
+            end
+            F_e(4, :) = D_jac * F_e(4, :);               % every off-diagonal row-4 entry is proportional to a'(a)
+            F_e(4, 4) = D_jac * (1 + a_prime_i * F_dw);  % diagonal: D (1 + a' F_dw) replaces 1 + a' F_dw + A_a M
+            Q_i(4, :) = D_jac * Q_i(4, :);               % noise enters the gain row through a'(a_pred) = D a'(a)
+            Q_i(:, 4) = D_jac * Q_i(:, 4);
         end
         P_pred = F_e * P_curr * F_e' + Q_i;
         P_pred = 0.5 * (P_pred + P_pred');

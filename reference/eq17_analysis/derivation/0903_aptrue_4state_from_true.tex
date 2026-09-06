@@ -613,6 +613,85 @@ closed form is open, and a production-safe version must be derived (or calibrate
 Not part of this: the $y_2$ weight -- $\mathrm{NIS}_2 = e_{y_2}^2/S_2 = 0.27$--$0.34$ in every segment, both trajectories, both $\kappa$
 (the $IF$ colour design), $\mathrm{NIS}_1 = 1.00$; nothing segment-specific to correct there)
 
+\subsection*{Closed form: the Jacobian of the exact law step (replaces $\kappa$)}
+
+(the predict of Section 5 with the exact step of 09-01/09-04; $\hat b$ = the constant the law uses ($b_{\mathrm{true}}(\bw)$ fed on the
+b$_{\mathrm{true}}$ arm, $\hat b$ on the production arm); $\dWh = \dW_d + (1-\lambda_c)\,\delta\hat{\bw}_3 + \alpha\,(m_1+m_2) + (1-\lambda_c)\,(y_1 - \delta\hat{\bw}_1)$
+the bracket the predict multiplies; $\partial\dWh/\partial\hat{\ba}_w = F_{dw}$ the loop coupling of Section 6; $A = \partial\ap/\partial\hat{\ba}_w = -2\hat b(1-\hat{\ba}_w)$)
+
+Exact step and its partial derivatives
+\begin{align*}
+\hat{\ba}_w[k+1] &= 1 - \Bigl(\frac{1}{1-\hat{\ba}_w[k]} + \hat b\,\dWh\Bigr)^{-1} \\
+\frac{\partial\hat{\ba}_w[k+1]}{\partial\hat{\ba}_w[k]} &= \frac{(1-\hat{\ba}_w[k+1])^{2}}{(1-\hat{\ba}_w[k])^{2}}
+  = \frac{1}{\bigl(1 + \hat b\,(1-\hat{\ba}_w[k])\,\dWh\bigr)^{2}}
+  = 1 + A\,\dWh + \tfrac{3}{4}\,A^{2}\dWh^{2} + \dots \\
+\frac{\partial\hat{\ba}_w[k+1]}{\partial\dWh} &= \hat b\,(1-\hat{\ba}_w[k+1])^{2}
+  = \frac{(1-\hat{\ba}_w[k+1])^{2}}{(1-\hat{\ba}_w[k])^{2}}\,\ap \\
+\frac{\partial\hat{\ba}_w[k+1]}{\partial\hat b} &= \dWh\,(1-\hat{\ba}_w[k+1])^{2}
+  = \frac{(1-\hat{\ba}_w[k+1])^{2}}{(1-\hat{\ba}_w[k])^{2}}\,\frac{\ap\,\dWh}{\hat b}
+\end{align*}
+
+Row 4 of the Jacobian of the exact step (every entry carries the same factor; Section 10 puts it on the diagonal only)
+\begin{align*}
+\tilde F_e(4,4) &= \frac{(1-\hat{\ba}_w[k+1])^{2}}{(1-\hat{\ba}_w[k])^{2}}\,\bigl(1 + F_{dw}\,\ap\bigr) \\
+\tilde F_e(4,3) &= \frac{(1-\hat{\ba}_w[k+1])^{2}}{(1-\hat{\ba}_w[k])^{2}}\,(1-\lambda_c)\,\ap \\
+\tilde F_e(4,8) = \tilde F_e(4,9) &= \frac{(1-\hat{\ba}_w[k+1])^{2}}{(1-\hat{\ba}_w[k])^{2}}\,\alpha\,\ap \\
+\tilde F_e(4,5) &= \frac{(1-\hat{\ba}_w[k+1])^{2}}{(1-\hat{\ba}_w[k])^{2}}\,\frac{\ap\,\dWh}{\hat b} \qquad (\text{slot 5 free}) \\
+\tilde F_e(4,1) &= -\frac{(1-\hat{\ba}_w[k+1])^{2}}{(1-\hat{\ba}_w[k])^{2}}\,(1-\lambda_c)\,\ap \qquad (\text{the } n_w \text{ input of Section 9}) \\
+Q(4,4) &= \Bigl(\frac{(1-\hat{\ba}_w[k+1])^{2}}{(1-\hat{\ba}_w[k])^{2}}\Bigr)^{2}\,\ap^{2}\,Q(3,3) , \qquad
+Q(3,4) = -\frac{(1-\hat{\ba}_w[k+1])^{2}}{(1-\hat{\ba}_w[k])^{2}}\,\ap\,Q(3,3)
+\end{align*}
+
+Error dynamics in the $(e_{\delta\bw_3},\ z)$ basis, noise-free, first order (row 3 as in Section 10)
+\begin{align*}
+\text{exact-step row:}\qquad z[k+1] &= \frac{(1-\hat{\ba}_w[k+1])^{2}}{(1-\hat{\ba}_w[k])^{2}}\,z[k] \\
+\text{Euler row (Section 10):}\qquad z[k+1] &= \bigl(1 + A\,\dWh\bigr)\,z[k]
+  + A\,\dWh\,\ap\,\Bigl((1-\lambda_c)\,\bigl(e_{\delta\bw_1}[k] - e_{\delta\bw_3}[k]\bigr) - F_{dw}\,e_{\ba_w}[k]\Bigr)
+\end{align*}
+
+(the Euler row is the exact Jacobian of the Euler predict $\hat{\ba}_w + \ap\dWh$ and was kept when the predict became the exact step;
+per step the two rows differ by $A\dWh\times$(coupling), but the difference compounds along the descent as the diagonal does,
+$\sum A\dWh = O(1)$, and the second line forces the law-slaved combination by the position errors that $y_1$ removes -- the
+$\mathrm{Cov}(z, e_{\delta\bw_1}) \neq 0$ of the third line of this section. Code: ctrl\_const.jac\_exact\_step (default false);
+acceptance pre-registered in test\_script/scratch/run\_jac\_exact\_arms.m; independent sympy verification 09-06: partials, row 4, $z[k+1]$ under both rows and the $Q$ row all PASS -- the Euler-row forcing above is the verifier's expression, the first draft had $\lambda_c e_{\delta\bw_3}$ in place of $-(1-\lambda_c)e_{\delta\bw_3}$)
+
+Measured (10 seeds, four blocks, $\kappa = 1$, flag off $\to$ on; canon [Meng]; test\_script/scratch/run\_jac\_exact\_arms.m)
+\begin{align*}
+\text{b}_{\mathrm{true}}\ \text{arm:}\quad \sigma_{\mathrm{seed}}\ \text{worst instant} &: 0.0264 \to 0.0265\ [0.0323 \to 0.0327] , \qquad
+  \ell_{41} + \ap\ell_{31}\ (\text{fast}) : +0.193 \to +0.195\ [+0.039 \to +0.040] \\
+\text{hold level, paired on} - \text{off} &: +0.00016 \pm 0.00009\ [-0.00006 \pm 0.00006] \\
+b = 8/9\ \text{and}\ \hat b\ \text{arms:} \quad \text{paired worst instant} &: \le 0.0002 , \qquad \text{paired hold} : \le 0.00023 \\
+\text{off arms vs ladder\_endpoints (negative control)} &: \max|\Delta E| = 0
+\end{align*}
+
+(STATUS: the consistent row is the exact linearisation and is INERT -- every paired difference is at the $10^{-4}$ level on
+every arm and both trajectories. The row-4 factor is therefore NOT the mechanism of the $P_{44}$ growth or of the spread;
+the growth is the law's own sensitivity, $\prod (1-\hat{\ba}_w[k+1])^{2}/(1-\hat{\ba}_w[k])^{2} = \ap_{\mathrm{wall}}/\ap_{\mathrm{entry}}$,
+which is the $(1-\ba)^{2}$ growth of a fixed error in $1/(1-\ba)$ and is present in truth and model alike. Refuted the same day:
+$R_2/3$ (K\_var/3; the NIS$_2 = 0.3$ backlog) leaves the fast-window $\sqrt{P_{44}}$ unchanged (0.0101 $\to$ 0.0100) and makes the
+hold over-confident (honesty 0.87 $\to$ 1.65 canon, 1.08 $\to$ 1.71 Meng). Flag kept, default false.)
+
+Prior versus a real initial error (b$_{\mathrm{true}}$ arm, 10 seeds, four blocks; test\_script/scratch/run\_btrue\_prior\_vs\_offset.m)
+\begin{align*}
+P_{44}[0] &= \ap[0]^{2}\,P_{f,w_0}^{2} + P_{f,a,\mathrm{floor}}^{2} : \quad \sqrt{P_{44}[0]} = 0.0031\ (\text{Meng},\ 6.67\,R),\quad 0.00026\ (\text{canon},\ 22.2\,R) \\
+\text{seed at truth, } \sqrt{P_{44}[0]} \to 3\times10^{-4}\ [10^{-5}],\ \kappa = 1:\quad
+  \sigma_{\mathrm{seed}}\ \text{worst instant} &: 0.0323 \to 0.0051\ [0.0264 \to 0.0035] , \qquad
+  \ell_{41} + \ap\ell_{31} : +0.039 \to +0.002\ [+0.193 \to +0.003] \\
+  \text{hold: level } +0.0014 \pm 0.0017\ [+0.0010 \pm 0.0010],\ \text{honesty } 1.01\ [1.01] &, \qquad \text{fast honesty } 0.66\ [0.77] \\
+\text{seed } +0.0031 \text{ (one prior sigma), Meng, } \kappa = 1:\quad \text{worst-instant mean} &= +0.0096 ,\quad \text{hold } +0.0007 \pm 0.0022 ,\quad \text{fast honesty } 0.88 \\
+\text{seed } +0.0031,\ \kappa = 0.5:\quad \text{worst-instant mean} &= +0.0479 ,\quad \text{hold } +0.0147 \pm 0.0026 ,\quad \text{fast honesty } 0.92
+\end{align*}
+
+(VERDICT 09-06: the fast-descent $P_{44}$ of the arms that read $\ap$ at $\hat{\ba}_w$ is the prior $P_{44}[0]$ carried through the
+law's own sensitivity $\prod (1-\hat{\ba}_w[k+1])^{2}/(1-\hat{\ba}_w[k])^{2}$; the realised spread follows it through the gains. In a
+seed-at-truth simulation that prior is a phantom -- matching it to the start removes the spread at $\kappa = 1$ on both
+trajectories, with the hold honest. With a REAL initial error of one prior sigma, $\kappa = 1$ removes it (hold $+0.0007$) and
+$\kappa = 0.5$ does not ($+0.0147$, $5.6$ SEM; worst instant $+0.048$, the offset amplified $15\times$) -- the same failure as the
+constant-$b$ collapse of the paragraph above. $\kappa$ is therefore REFUTED as a production quantity in every reading; the
+near-wall spread is the honest price of the initial gain uncertainty under a self-referential law, and its lever is the seed
+(calibration chain), not the estimator. The a$'_{\mathrm{true}}$ arm has no amplification ($A = 0$) and no such spread.)
+
+
 \clearpage
 \thispagestyle{empty}
 \noindent\includegraphics[width=\textwidth]{figures/prod_ladder_band.png}
