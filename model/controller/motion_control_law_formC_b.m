@@ -16,6 +16,9 @@
 %   law_exact_step (exact law step) + pred_mean2 (second-order mean of the
 %   predict) + nw_mcorr (correlated process/measurement noise predict) +
 %   pred_mean2_e4 (gain-reading start-point term, e4 and e_b lines).
+%   fe44_Aa_scale (kappa, default 1) weights the law's self-sensitivity in
+%   the P propagation; 0.5 helps the b_true arm but not the constant-b arms
+%   (see its init block), so production stays at 1.
 %   law_exact_step = false alone restores the pre-09-04 Euler recipe.
 function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, params, ctrl_const, a_ctrl_override, varargin_da_known_guard, ap_known, b_true, app_known)
 %MOTION_CONTROL_LAW_FORMC_DIST  Per-axis EKF eq17 controller whose gain slope
@@ -437,6 +440,14 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % kappa = 1 gives sigma_seed/sqrt(P44) 0.66 / 0.81 in the fast descent (P too large, y1 leg flips sign, spread x6-10),
         % kappa = 0 gives 1.24-1.60 (fast) and 1.75-2.07 (hold): P too small. The value is CALIBRATED against the honesty
         % ratio (its own observable, stacked-fix-audit C.8/C.9) until the split free / law-slaved gain error has a closed form.
+        % kappa = 0.5 was CALIBRATED on the b_true arm (b known; honesty ratio sigma_seed/sqrt(P44), seeds 1:10,
+        % validated 11:20: worst-instant sd 0.0237 -> 0.0026 canon, 0.0272 -> 0.0082 Meng) and was briefly the
+        % production default (2026-09-04 evening). REVERTED to 1 the same night: the verify_formC_b_production_defaults
+        % arm smoke showed that with a CONSTANT b (locked 8/9 or estimated) the smaller P44 lets the constant-b model
+        % error stand -- locked 8/9 on canon collapsed to the a_bar floor in 10/10 seeds (hold -0.0197 +- 0.0007 vs
+        % +0.0006 at kappa = 1); the estimated-b arm kept its hold level but its worst-instant mean did not improve
+        % (-0.031 vs -0.034). The calibration does not transfer across arms (stacked-fix-audit C.9). Knob kept for the
+        % b_true arm and for the closed-form work (0903 tex S12).
         fe44_Aa_scale = get_field_default(ctrl_const, 'fe44_Aa_scale', 1);
         if fe44_Aa_off; fe44_Aa_scale = 0; end
         % DIAGNOSTIC FLAG (2026-08-26): remove the THERMAL position<->gain

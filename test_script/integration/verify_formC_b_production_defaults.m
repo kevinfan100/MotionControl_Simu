@@ -1,8 +1,9 @@
 % VERIFY_FORMC_B_PRODUCTION_DEFAULTS  Acceptance for the 2026-09-04 production defaults of formC_b.
-%   The four blocks law_exact_step + pred_mean2 + nw_mcorr + pred_mean2_e4 are ON by default since 2026-09-04
+%   The four blocks law_exact_step + pred_mean2 + nw_mcorr + pred_mean2_e4 are ON by default since 2026-09-04; the
+%   covariance weight fe44_Aa_scale stays 1 in production (0.5 only on the b_true arm, V2c checks the knob is wired)
 %   (derivation reference/eq17_analysis/derivation/0903_aptrue_4state_from_true.tex S1-S11). Self-contained
 %   (no stored results needed). Three checks, z axis, canonical deep scenario:
-%     V1  default ctrl_const == the four flags set explicitly true          (bit-identical, arm 'best', seeds 1:3)
+%     V1  default ctrl_const == the four flags true + fe44_Aa_scale 1 set explicitly (bit-identical, arm 'best', seeds 1:3)
 %     V2  the four flags explicitly false runs and is finite (the pre-09-04 Euler recipe), and differs from V1
 %         (the flags are wired)
 %     V3  every driver arm and both oracle arms run to completion with the defaults, 1 seed each:
@@ -16,8 +17,8 @@ function verify_formC_b_production_defaults()
     addpath(genpath(fullfile(root, 'model'))); addpath(here);
     seeds = 1:3;
     base = struct('arm','best','scenario','deep','verbose',false,'seeds',seeds,'log_P_full',false);
-    ON  = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true);
-    OFF = struct('law_exact_step',false,'pred_mean2',false,'nw_mcorr',false,'pred_mean2_e4',false);
+    ON  = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true,'fe44_Aa_scale',1);
+    OFF = struct('law_exact_step',false,'pred_mean2',false,'nw_mcorr',false,'pred_mean2_e4',false,'fe44_Aa_scale',1);
     E_def = local_E(base, struct());
     E_on  = local_E(base, ON);
     d = max(abs(E_def - E_on), [], 'all');
@@ -34,6 +35,12 @@ function verify_formC_b_production_defaults()
     try; local_E(setfield(base, 'seeds', 1), struct('law_exact_step', false, 'pred_mean2', true)); catch; ok_err = true; end
     fprintf('V2b law_exact_step=false alone runs (%d), pred_mean2 without exact step errors (%d)  -> %s\n', ok_dep, ok_err, local_pf(ok_dep && ok_err));
     assert(ok_dep && ok_err, 'V2b FAIL: dependency defaults');
+    % kappa knob: default 1 (production); 0.5 must differ and run (it is NOT the production value: with a constant b it lets
+    % the model error stand -- locked 8/9 collapsed to the floor on canon, 10/10 seeds, 2026-09-04)
+    E_k5 = local_E(base, setfield(ON, 'fe44_Aa_scale', 0.5));
+    d3 = max(abs(E_def - E_k5), [], 'all');
+    fprintf('V2c fe44_Aa_scale: default (1) differs from kappa = 0.5: max |dE| = %.3e  -> %s\n', d3, local_pf(d3 > 1e-6 && all(isfinite(E_k5(:)))));
+    assert(d3 > 1e-6 && all(isfinite(E_k5(:))), 'V2c FAIL: kappa not wired');
     % arm smoke
     arms = {'b1','bmid','best','b98','bfree1'};
     for a = 1:numel(arms)
