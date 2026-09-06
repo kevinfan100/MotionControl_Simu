@@ -17,12 +17,12 @@
 %   Output: ladder_endpoints_<traj>.mat (traj, seeds, t_hold; per arm t, E, AH, AT, HB, hd, B = b the law used, sP5 = sqrt(P55),
 %   a_nom [um/pN] for the absolute-units plot) | EXPIRES: with the ladder
 %   | 產線改動不會自動跟上
-function run_ladder_endpoints(traj, seeds, arms, kappa)
+function run_ladder_endpoints(traj, seeds, arms, kappa, tag)
     if nargin < 1 || isempty(traj); traj = 'canon'; end
     if nargin < 2 || isempty(seeds); seeds = 1:10; end
     if nargin < 3 || isempty(arms); arms = {'apcmd','btcmd','apest','btest','bhat'}; end
     if nargin < 4 || isempty(kappa); kappa = 1; end        % fe44_Aa_scale: 1 = the pre-kappa covariance (the 09-04 figure set), 0.5 = production since 09-04 evening
-    tag = ''; if kappa ~= 1; tag = sprintf('_k%03d', round(100*kappa)); end
+    if nargin < 5 || isempty(tag); tag = ''; if kappa ~= 1; tag = sprintf('_k%03d', round(100*kappa)); end; end   % 5th arg: explicit file tag (e.g. '_p0')
     traj = lower(traj);
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
     addpath(genpath(fullfile(root, 'model'))); addpath(fullfile(root, 'test_script', 'integration'));
@@ -33,6 +33,7 @@ function run_ladder_endpoints(traj, seeds, arms, kappa)
     end
     w0bar = cfg0.h_init / pc.R; [~, cp] = calc_correction_functions(w0bar); at = 1/cp; ws0 = 1 + w0bar - 1/((8/9)*(1 - at));
     t3 = cfg0.t_hold + cfg0.t_descend_override + cfg0.n_cycles/cfg0.frequency;
+    switch traj; case 'meng'; p0_floor = 3e-4; otherwise; p0_floor = 1e-5; end
     OFF = struct('law_exact_step',false,'pred_mean2',false,'nw_mcorr',false,'pred_mean2_e4',false,'fe44_Aa_scale',kappa);
     ON3 = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',false,'fe44_Aa_scale',kappa);
     ON4 = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true,'fe44_Aa_scale',kappa);
@@ -41,7 +42,10 @@ function run_ladder_endpoints(traj, seeds, arms, kappa)
         'btcmd', struct('o', struct('b_true',true,'b_true_at','cmd'),                        'cc', setfield(OFF,'ws0_perp',ws0)), ...
         'apest', struct('o', struct('ap_known',true,'ap_known_at','est','app_known',true),  'cc', setfield(setfield(ON3,'lock_b',true),'ws0_perp',ws0)), ...
         'btest', struct('o', struct('b_true',true,'b_true_at','true'),                       'cc', setfield(ON4,'ws0_perp',ws0)), ...
-        'bhat',  struct('o', struct(),                                                       'cc', setfield(ON4,'ws0_perp',ws0)));   % b_hat ESTIMATED from 8/9 (production, arm 'best'), four blocks
+        'bhat',  struct('o', struct(),                                                       'cc', setfield(ON4,'ws0_perp',ws0)), ...   % b_hat ESTIMATED from 8/9 (production, arm 'best'), four blocks
+        'btp0',  struct('o', struct('b_true',true,'b_true_at','true'),                       'cc', setfield(setfield(setfield(ON4,'ws0_perp',ws0),'Pf_w0_std',0),'Pf_a_floor',p0_floor)));
+        % btp0 (09-06): btest with the prior P44[0] matched to the seed-at-truth start (sqrt P44[0] 3e-4 Meng / 1e-5 canon instead of
+        % 0.0031 / 0.00026) -- the b_true arm's fast-descent spread is that prior amplified by the law's own sensitivity (0903 tex S12).
     fname = fullfile(od, sprintf('ladder_endpoints_%s%s.mat', traj, tag));
     if exist(fname, 'file'); out = load(fname); else; out = struct(); end
     out.traj = traj; out.seeds = seeds; out.t_hold = t3; out.ws0 = ws0; out.kappa = kappa;  nS = numel(seeds);
