@@ -1,5 +1,4 @@
 {
-  "autoMemoryDirectory": "~/ClaudeVault/auto-memory/motioncontrol-simu",
   "permissions": {
     "allow": [
       "mcp__matlab__check_matlab_code",
@@ -22,33 +21,13 @@
       "Bash(mv:*)",
       "Bash(python:*)",
       "mcp__perplexity__perplexity_ask",
-      "WebFetch(domain:pubs.acs.org)"
+      "WebFetch(domain:pubs.acs.org)",
+      "Read(//Users/kevin/Downloads/**)",
+      "Bash(mdls -name kMDItemNumberOfPages /Users/kevin/Downloads/RevisedConrol＿Vpersonal.pdf)",
+      "mcp__matlab__evaluate_matlab_code"
     ],
     "deny": [],
     "ask": []
   },
-  "hooks": {
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell -c \"(New-Object Media.SoundPlayer 'C:\\Windows\\Media\\chimes.wav').PlaySync()\""
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell -ExecutionPolicy Bypass -File \".claude\\notification.ps1\""
-          }
-        ]
-      }
-    ]
-  }
+  "autoMemoryDirectory": "~/ClaudeVault/auto-memory/motioncontrol-simu"
 }
