@@ -45,7 +45,7 @@ function out = run_btrue_nw_mcorr(traj, seeds)
                  'recipe', 'b_true@true + lock_b + exact step + pred_mean2 (law curvature) [+ nw_mcorr]');
     nS = numel(seeds);
     for a = 1:2
-        cc = struct('ws0_perp',ws0,'law_exact_step',true,'pred_mean2',true,'nw_mcorr',false,'pred_mean2_e4',false);   % lock_b is set by the driver for b_true; flags explicit since the 09-04 production defaults turned them ON
+        cc = struct('ws0_perp',ws0,'law_exact_step',true,'pred_mean2',true,'nw_mcorr',false,'pred_mean2_e4',false,'fe44_Aa_scale',1);   % lock_b is set by the driver for b_true; flags explicit since the 09-04 production defaults turned them ON
         fn = fieldnames(KN{a}); for i = 1:numel(fn); cc.(fn{i}) = KN{a}.(fn{i}); end
         o = struct('arm','best','b_true',true,'b_true_at','true','ctrl_const_override',cc, ...
                    'config_override',OV,'scenario','deep','verbose',false,'seeds',seeds,'log_P_full',false);

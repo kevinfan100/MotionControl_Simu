@@ -31,7 +31,7 @@ function out = run_btrue_aa_off(traj, seeds)
     end
     w0bar = cfg0.h_init / pc.R; [~, cp] = calc_correction_functions(w0bar); at = 1/cp; ws0 = 1 + w0bar - 1/((8/9)*(1 - at));
     t3 = cfg0.t_hold + cfg0.t_descend_override + cfg0.n_cycles/cfg0.frequency;
-    ON4 = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true,'ws0_perp',ws0);
+    ON4 = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true,'fe44_Aa_scale',1,'ws0_perp',ws0);
     ARM = {'base','aaoff'};  KN = {struct(), struct('fe44_Aa_off', true)};  nS = numel(seeds);
     out = struct('traj', traj, 'seeds', seeds, 't_hold', t3, 'win', WIN);
     for a = 1:2

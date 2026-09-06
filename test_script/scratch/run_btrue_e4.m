@@ -41,7 +41,7 @@ function out = run_btrue_e4(traj, seeds)
                  'recipe', 'b_true@true + lock_b + exact step + pred_mean2 + nw_mcorr [+ pred_mean2_e4]');
     nS = numel(seeds);
     for a = 1:2
-        cc = struct('ws0_perp',ws0,'law_exact_step',true,'pred_mean2',true);
+        cc = struct('ws0_perp',ws0,'law_exact_step',true,'pred_mean2',true,'fe44_Aa_scale',1);   % kappa = 1: the pre-kappa covariance these numbers were taken with
         fn = fieldnames(KN{a}); for i = 1:numel(fn); cc.(fn{i}) = KN{a}.(fn{i}); end
         o = struct('arm','best','b_true',true,'b_true_at','true','ctrl_const_override',cc, ...
                    'config_override',OV,'scenario','deep','verbose',false,'seeds',seeds,'log_P_full',false);

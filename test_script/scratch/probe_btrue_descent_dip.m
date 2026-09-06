@@ -23,7 +23,7 @@ function out = probe_btrue_descent_dip(traj, seeds)
     end
     w0bar = cfg0.h_init / pc.R; [~, cp] = calc_correction_functions(w0bar); at = 1/cp; ws0 = 1 + w0bar - 1/((8/9)*(1 - at));
     t1 = cfg0.t_hold;  t2 = t1 + cfg0.t_descend_override;  t3 = t2 + cfg0.n_cycles/cfg0.frequency;
-    ON4 = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true,'ws0_perp',ws0);
+    ON4 = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true,'fe44_Aa_scale',1,'ws0_perp',ws0);
     ON3 = ON4;  ON3.pred_mean2_e4 = false;  ON3.lock_b = true;
     DEF = struct('btest', struct('o', struct('b_true',true,'b_true_at','true'), 'cc', ON4), ...
                  'apest', struct('o', struct('ap_known',true,'ap_known_at','est','app_known',true), 'cc', ON3));

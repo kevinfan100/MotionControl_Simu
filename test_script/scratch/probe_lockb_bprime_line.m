@@ -30,7 +30,7 @@ function out = probe_lockb_bprime_line(traj, seeds)
     wg = linspace(1.0, 8, 40000);  ag = zeros(size(wg));
     for i = 1:numel(wg); [~, c] = calc_correction_functions(wg(i)); ag(i) = 1/c; end
     apg = gradient(ag, wg);  bg = apg ./ (1 - ag).^2;  bpg = gradient(bg, wg);
-    cc = struct('ws0_perp',ws0,'law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true);
+    cc = struct('ws0_perp',ws0,'law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true,'fe44_Aa_scale',1);
     o = struct('arm','bmid','ctrl_const_override',cc,'config_override',OV,'scenario','deep','verbose',false,'seeds',seeds,'log_P_full',true);
     clear run_formC_b motion_control_law_formC_b;
     evalc('R = run_formC_b(o);');

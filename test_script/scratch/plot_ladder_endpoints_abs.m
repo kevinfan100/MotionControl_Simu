@@ -5,11 +5,12 @@
 %   (btcmd / btest) or the ESTIMATE b_hat (bhat: 10-seed mean, band +- sqrt(P55) mean over seeds, dotted +- sd over seeds),
 %   dashed grey = 8/9. Rows 1 and 3 as in the parent (seed 7 absolute gain vs true; R dw3 [um]). Shared y per row
 %   across the arms. Output ladder_<arm>_4row_abs.png. | EXPIRES: with the ladder | 產線改動不會自動跟上
-function plot_ladder_endpoints_abs(arms)
+function plot_ladder_endpoints_abs(arms, tag)
     if nargin < 1 || isempty(arms); arms = {'apcmd','btcmd','apest','btest','bhat'}; end
+    if nargin < 2; tag = ''; end                            % '' = the kappa = 1 set, '_k050' = production kappa = 0.5
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
     od = fullfile(root, 'test_results', 'apd_acov_meng');
-    A = load(fullfile(od, 'ladder_endpoints_meng.mat')); B = load(fullfile(od, 'ladder_endpoints_canon.mat'));
+    A = load(fullfile(od, ['ladder_endpoints_meng' tag '.mat'])); B = load(fullfile(od, ['ladder_endpoints_canon' tag '.mat']));
     NM = {'Meng', 'canon'}; TH = [A.t_hold B.t_hold]; R_um = 2.25;  SEED = 7;
     COL_TRUE = [0.8 0 0]; COL_HAT = [0 0.2 0.9]; BANDC = [0.45 0.55 0.95]; COL_SEED = [0.55 0.74 0.96];
     FS = 15; LFS = 11; AXLW = 1.8;
@@ -80,6 +81,6 @@ function plot_ladder_endpoints_abs(arms)
             fprintf('[%-5s %-5s] hold: a_hat - a %+.3e um/pN (SEM %.1e) | sigma_seed %.1e um/pN | a_nom %.4e | b used/est hold mean %.4f (sd over seeds %.4f, sqrt(P55) %.4f) | b_true(w_hold) %.4f\n', ...
                 arm, NM{a}, mean(Ea(mh,:),'all'), std(mean(Ea(mh,:),1))/sqrt(nS), mean(sE(mh)), d.a_nom, mean(mb(mh)), mean(sb(mh)), mean(sp(mh)), mean(bt(mh)));
         end
-        png = fullfile(od, sprintf('ladder_%s_4row_abs.png', arm)); exportgraphics(f, png, 'Resolution', 150); close(f); fprintf('saved %s\n', png);
+        png = fullfile(od, sprintf('ladder_%s_4row_abs%s.png', arm, tag)); exportgraphics(f, png, 'Resolution', 150); close(f); fprintf('saved %s\n', png);
     end
 end

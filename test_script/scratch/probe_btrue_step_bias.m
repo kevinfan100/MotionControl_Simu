@@ -23,7 +23,7 @@ function out = probe_btrue_step_bias(traj, seeds)
     end
     w0bar = cfg0.h_init / pc.R; [~, cp] = calc_correction_functions(w0bar); at = 1/cp; ws0 = 1 + w0bar - 1/((8/9)*(1 - at));
     lc = cfg0.lambda_c; if isempty(lc); lc = 0.7; end;  alpha = 1 - lc;
-    ON4 = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true,'ws0_perp',ws0,'obs_dump',true);
+    ON4 = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true,'fe44_Aa_scale',1,'ws0_perp',ws0,'obs_dump',true);
     ON3 = ON4; ON3.pred_mean2_e4 = false; ON3.lock_b = true;
     DEF = struct('btest', struct('o', struct('b_true',true,'b_true_at','true'), 'cc', ON4), ...
                  'apest', struct('o', struct('ap_known',true,'ap_known_at','est','app_known',true), 'cc', ON3));

@@ -23,7 +23,7 @@ function out = probe_btrue_comp_error(traj, seeds)
     end
     w0bar = cfg0.h_init / pc.R; [~, cp] = calc_correction_functions(w0bar); at = 1/cp; ws0 = 1 + w0bar - 1/((8/9)*(1 - at));
     if isfield(cfg0, 'lambda_c'); lc = cfg0.lambda_c; else; lc = 0.7; end;  alpha = 1 - lc;   % Meng override struct carries no lambda_c (house value 0.7)
-    cc = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true,'ws0_perp',ws0,'obs_dump',true);
+    cc = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true,'fe44_Aa_scale',1,'ws0_perp',ws0,'obs_dump',true);
     nS = numel(seeds);  ED = []; E4 = []; E3 = []; CP = []; VP = []; AA = []; APP = []; P44 = []; P34 = []; T = []; M2 = [];
     for q = 1:nS
         o = struct('arm','best','b_true',true,'b_true_at','true','ctrl_const_override',cc,'config_override',OV,'scenario','deep','verbose',false,'seeds',seeds(q),'log_P_full',false);

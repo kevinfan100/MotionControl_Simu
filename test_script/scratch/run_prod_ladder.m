@@ -47,7 +47,7 @@ function out = run_prod_ladder(traj, seeds, arms)
     w0bar = cfg0.h_init / pc.R;  [~, cp] = calc_correction_functions(w0bar);  at = 1/cp;
     ws0 = 1 + w0bar - 1/((8/9)*(1 - at));
     t1 = cfg0.t_hold;  t2 = t1 + cfg0.t_descend_override;  t3 = t2 + cfg0.n_cycles/cfg0.frequency;
-    BLOCKS = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true);
+    BLOCKS = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true,'fe44_Aa_scale',1);   % kappa = 1: the pre-kappa covariance these numbers were taken with
     [~, cpw] = calc_correction_functions(cfg0.h_bottom / pc.R);  aw = 1/cpw;   % b_true at the hold height (oracle, discriminator arm only)
     dw = 1e-4; [~, cpp] = calc_correction_functions(cfg0.h_bottom / pc.R + dw); [~, cpm] = calc_correction_functions(cfg0.h_bottom / pc.R - dw);
     b_wall = ((1/cpp - 1/cpm) / (2*dw)) / (1 - aw)^2;
@@ -56,7 +56,7 @@ function out = run_prod_ladder(traj, seeds, arms)
                     'lockw', struct('arm','bmid','cc',LOCKW), ...   % DISCRIMINATOR (09-04): b locked at b_true(w_hold) = the wall value; if the hold-slope
                     ...                                              % difference lockb - curve (-0.18 e-6/step) is the slope mismatch AT THE HOLD HEIGHT it -> 0 here
                     'prod',  struct('arm','best','cc',BLOCKS), ...
-                    'hist',  struct('arm','best','cc',struct('law_exact_step',false,'pred_mean2',false,'nw_mcorr',false,'pred_mean2_e4',false)));   % explicit OFF: the pre-09-04 recipe (defaults are ON since 09-04 evening)
+                    'hist',  struct('arm','best','cc',struct('law_exact_step',false,'pred_mean2',false,'nw_mcorr',false,'pred_mean2_e4',false,'fe44_Aa_scale',1)));   % explicit OFF: the pre-09-04 recipe (defaults are ON since 09-04 evening)
     fprintf('[%s prod ladder] b_true at the hold height w = %.3f: %.5f (lockw arm)\n', traj, cfg0.h_bottom / pc.R, b_wall);
     fname = fullfile(od, sprintf('prod_ladder_%s.mat', traj));
     if exist(fname, 'file'); out = load(fname); else; out = struct(); end

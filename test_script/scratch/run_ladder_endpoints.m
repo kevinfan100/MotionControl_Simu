@@ -17,10 +17,12 @@
 %   Output: ladder_endpoints_<traj>.mat (traj, seeds, t_hold; per arm t, E, AH, AT, HB, hd, B = b the law used, sP5 = sqrt(P55),
 %   a_nom [um/pN] for the absolute-units plot) | EXPIRES: with the ladder
 %   | 產線改動不會自動跟上
-function run_ladder_endpoints(traj, seeds, arms)
+function run_ladder_endpoints(traj, seeds, arms, kappa)
     if nargin < 1 || isempty(traj); traj = 'canon'; end
     if nargin < 2 || isempty(seeds); seeds = 1:10; end
     if nargin < 3 || isempty(arms); arms = {'apcmd','btcmd','apest','btest','bhat'}; end
+    if nargin < 4 || isempty(kappa); kappa = 1; end        % fe44_Aa_scale: 1 = the pre-kappa covariance (the 09-04 figure set), 0.5 = production since 09-04 evening
+    tag = ''; if kappa ~= 1; tag = sprintf('_k%03d', round(100*kappa)); end
     traj = lower(traj);
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
     addpath(genpath(fullfile(root, 'model'))); addpath(fullfile(root, 'test_script', 'integration'));
@@ -31,18 +33,18 @@ function run_ladder_endpoints(traj, seeds, arms)
     end
     w0bar = cfg0.h_init / pc.R; [~, cp] = calc_correction_functions(w0bar); at = 1/cp; ws0 = 1 + w0bar - 1/((8/9)*(1 - at));
     t3 = cfg0.t_hold + cfg0.t_descend_override + cfg0.n_cycles/cfg0.frequency;
-    OFF = struct('law_exact_step',false,'pred_mean2',false,'nw_mcorr',false,'pred_mean2_e4',false);
-    ON3 = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',false);
-    ON4 = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true);
+    OFF = struct('law_exact_step',false,'pred_mean2',false,'nw_mcorr',false,'pred_mean2_e4',false,'fe44_Aa_scale',kappa);
+    ON3 = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',false,'fe44_Aa_scale',kappa);
+    ON4 = struct('law_exact_step',true,'pred_mean2',true,'nw_mcorr',true,'pred_mean2_e4',true,'fe44_Aa_scale',kappa);
     DEF = struct( ...
         'apcmd', struct('o', struct('ap_known',true,'ap_known_at','cmd','app_known',false), 'cc', setfield(setfield(OFF,'lock_b',true),'ws0_perp',ws0)), ...
         'btcmd', struct('o', struct('b_true',true,'b_true_at','cmd'),                        'cc', setfield(OFF,'ws0_perp',ws0)), ...
         'apest', struct('o', struct('ap_known',true,'ap_known_at','est','app_known',true),  'cc', setfield(setfield(ON3,'lock_b',true),'ws0_perp',ws0)), ...
         'btest', struct('o', struct('b_true',true,'b_true_at','true'),                       'cc', setfield(ON4,'ws0_perp',ws0)), ...
         'bhat',  struct('o', struct(),                                                       'cc', setfield(ON4,'ws0_perp',ws0)));   % b_hat ESTIMATED from 8/9 (production, arm 'best'), four blocks
-    fname = fullfile(od, sprintf('ladder_endpoints_%s.mat', traj));
+    fname = fullfile(od, sprintf('ladder_endpoints_%s%s.mat', traj, tag));
     if exist(fname, 'file'); out = load(fname); else; out = struct(); end
-    out.traj = traj; out.seeds = seeds; out.t_hold = t3; out.ws0 = ws0;  nS = numel(seeds);
+    out.traj = traj; out.seeds = seeds; out.t_hold = t3; out.ws0 = ws0; out.kappa = kappa;  nS = numel(seeds);
     fprintf('[%s ladder] ws0 %.5f | hold from %.2f s | seeds %s | arms %s\n', traj, ws0, t3, mat2str(seeds), strjoin(arms, ','));
     for ia = 1:numel(arms)
         A = DEF.(arms{ia});
@@ -76,5 +78,5 @@ function run_ladder_endpoints(traj, seeds, arms)
         S = load(f2);  n = numel(out.btest.t);  fprintf('[%s] negative control btest vs btrue_e4 e4 (first %d steps): max |dE| %.2e\n', traj, n, max(abs(out.btest.E - S.e4.E(1:n,:)), [], 'all'));
     end
     save(fname, '-struct', 'out', '-v7.3');
-    fprintf('[%s ladder] saved ladder_endpoints_%s.mat\n', traj, traj);
+    fprintf('[%s ladder] saved ladder_endpoints_%s%s.mat\n', traj, traj, tag);
 end
