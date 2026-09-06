@@ -28,29 +28,5 @@
     "deny": [],
     "ask": []
   },
-  "hooks": {
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell -c \"(New-Object Media.SoundPlayer 'C:\\Windows\\Media\\chimes.wav').PlaySync()\""
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "powershell -ExecutionPolicy Bypass -File \".claude\\notification.ps1\""
-          }
-        ]
-      }
-    ]
-  },
   "autoMemoryDirectory": "~/ClaudeVault/auto-memory/motioncontrol-simu"
 }
