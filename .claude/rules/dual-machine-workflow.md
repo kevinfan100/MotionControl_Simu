@@ -16,6 +16,9 @@
    來源:曾有 `powershell` 的 Stop/Notification hook 寫在專案設定裡,Mac 每次收尾都噴
    `/bin/sh: powershell: command not found`(而 Notification 指向的 `.claude\notification.ps1`
    repo 內根本不存在,Windows 側也是壞的)。Mac 的 Tink 音效本來就在 user settings,是正確位置。
+   **09-06 補**:linked worktree 也會載入**主 checkout**(`git worktree list` 第一列)的
+   `.claude/settings.local.json`,而且 hooks 是合併執行不是覆蓋。所以在某個分支拿掉 hook 不夠,
+   查 hook/設定問題時要一併看主 checkout 的 `.claude/`;hooks 在 session 啟動時快照,改完要開新 session。
 
    Windows 若要恢復 chime,貼到 `%USERPROFILE%\.claude\settings.json` 的 `hooks`:
    ```json
