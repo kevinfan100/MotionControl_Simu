@@ -67,6 +67,18 @@
 %   1.8x the a'_true arm's spread: the law amplifies a gain error along the descent, F_e(4,4) = 1 + (da'/da) Delta w).
 %   nw_mcorr's paired effect in this arm: slope -0.095 +- 0.013 (canon) / -0.113 +- 0.006 (Meng) e-6/step, smaller
 %   than in the a'_true arm (-0.252 / -0.150); the base slopes themselves are unresolved (SEM 0.27 / 0.24).
+%   DESCENT TRANSIENT of the b_true arm (probe_btrue_descent_dip.m, 30 seeds, standard length, closed 2026-09-04):
+%   the gain estimate undershoots the truth in the fast near-wall part of the descent and recovers before the hold.
+%   canon (1 s descent): at t = 1.42 s mean -0.0105 +- 0.0038 (2.8 sigma, 12% of a(wall)), median = mean (no skew),
+%   0.2 s wide; window 1.0-1.5 s mean -0.0018 +- 0.0010; hold +0.0011 +- 0.0012. Meng (10 s ramp): window 7-10 s
+%   mean -0.0011 +- 0.0026 (not resolved), worst instant -0.0058 +- 0.0043, skew -0.74 (heavier negative tail);
+%   hold +0.0013 +- 0.0012. Budget of d(a_hat - a) over the window (closure 1e-16): canon predict - truth -0.0103
+%   (pred_mean2 +0.0017), y1 leg +0.0026, y2 leg +0.0051; Meng -0.0094 / +0.0071 / +0.0015. In the a'_true@est arm
+%   the predict and the y1 leg cancel to -0.0004 / -0.0002 (the rank-1 machinery); reading a_hat breaks the balance in
+%   the fastest part (a_hat below the truth => steeper law slope => the predict drops faster, F_e(4,4) > 1) and the
+%   y2 leg restores it. Verdict: a transient of the positive feedback that reading a_hat creates, mostly spread
+%   (sigma_seed 0.02-0.03 there, negative skew), not a hold bias; the a'_true arm has none. Estimator-side removal
+%   would mean not reading a_hat or re-weighting y2 in motion (tuning); the lever is the approach trajectory.
 %   SECTION 11 (2026-09-04, production: b a constant state, locked at 8/9 or estimated from 8/9): verified
 %   independently (20 algebra + numeric checks): items PASS except the descent line, which integrated the forcing
 %   f alone and omitted the law's own amplification (da'/da) mu -- corrected to mu = (1-a)^2 Int (b_true - b_hat) dw
