@@ -352,7 +352,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent initialized
     persistent lambda_c d_delay Ts kappa_T R_radius a_o a_disp r22_delay_scale
     persistent a_inject_step a_inject_frac a_inject_axis   % diagnostic hook, default off
-    persistent fe43_off q34_off q44_scale                   % diagnostic flags, default off
+    persistent fe43_off q34_off q44_scale fe44_Aa_off fe44_Aa_scale   % diagnostic flags, default off / scale 1
     persistent law_exact_step                               % exact (quadrature-free) law step, default off (port of 2a5dc29)
     persistent pred_mean2                                   % second-order mean term in predict (0902 tex S5), default off
     persistent pred_force_step                              % row-4 known increment = a_hat * fbar_d[k-1] (commanded displacement), default off
@@ -423,6 +423,22 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % propagation only. Discriminates the sign-of-P(4,1) hypothesis from the
         % injection-response test. Default false => bit-identical.
         fe43_off = get_field_default(ctrl_const, 'fe43_off', false);
+        % DIAGNOSTIC FLAG (2026-09-04): drop the law's self-sensitivity A_a*M from F_e(4,4) in the COVARIANCE
+        % propagation only (the state predict keeps the exact law step read at a_hat; the mean term keeps A_a).
+        % Discriminator for the fast-descent spread of the b_true / production arms: with A_a*M in, P44 grows
+        % x16 along the descent, P41 becomes -F_dw P44 dominated, l41 flips sign (+0.036 vs the law-consistent
+        % -a' l31 = -0.157 on canon 1.0-1.5 s) and the y1 leg stops cancelling the law-injected position noise
+        % (cross-seed sd 0.023 vs 0.0025 in the a'_true arm). 2026-08-13 judged "zeroing A_a = over-confident"
+        % on the pre-four-block production arm (+20% bias); the premise differs now (honesty 0.66 = P too LARGE).
+        % Default false => bit-identical.
+        fe44_Aa_off = get_field_default(ctrl_const, 'fe44_Aa_off', false);
+        % fe44_Aa_scale (2026-09-04): kappa in F_e(4,4) = 1 + a' F_dw + kappa * A_a * M for the COVARIANCE propagation
+        % (state predict unchanged). kappa = 1 is the EKF Jacobian (current), kappa = 0 == fe44_Aa_off. Measured 09-04:
+        % kappa = 1 gives sigma_seed/sqrt(P44) 0.66 / 0.81 in the fast descent (P too large, y1 leg flips sign, spread x6-10),
+        % kappa = 0 gives 1.24-1.60 (fast) and 1.75-2.07 (hold): P too small. The value is CALIBRATED against the honesty
+        % ratio (its own observable, stacked-fix-audit C.8/C.9) until the split free / law-slaved gain error has a closed form.
+        fe44_Aa_scale = get_field_default(ctrl_const, 'fe44_Aa_scale', 1);
+        if fe44_Aa_off; fe44_Aa_scale = 0; end
         % DIAGNOSTIC FLAG (2026-08-26): remove the THERMAL position<->gain
         % cross-covariance from P propagation only: Q(3,4), Q(4,8) and the
         % memory->gain rows F_aug(4,8:9). Q44, Q33, the state predict and
@@ -1458,6 +1474,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         F_e = local_build_F_e_formC(lambda_c, F_dw, a_prime_i, A_a_i, ...
                                     J_b_fac_i * M_tot, M_tot, dap_dd3_i);
         if fe43_off; F_e(4, 3) = 0; end          % diagnostic, see init
+        if fe44_Aa_scale ~= 1; F_e(4, 4) = F_e(4, 4) - (1 - fe44_Aa_scale) * A_a_i * M_tot; end   % see init: kappa-weighted self-sensitivity in P (kappa = 0 == fe44_Aa_off)
 
         % --- EKF predict (tex S5(b)). Row 4 carries the ADDITIVE disturbance
         %     x_curr(5) outside the a_bar' bracket; row 5 is an integrator of
