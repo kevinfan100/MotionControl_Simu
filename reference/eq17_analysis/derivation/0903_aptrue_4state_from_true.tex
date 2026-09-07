@@ -601,6 +601,68 @@ $b_{\mathrm{true}}$ sits at the wall, late on a descent and early on an ascent. 
 margin through the ascent with $\hat b$ frozen, but the filter shrinks $P_{55}$ at every update, so that margin is not guaranteed --
 consistent with the measured $\hat b$ drift on the oscillating canon profile.)
 
+\subsection*{E2 (09-07): the additive gain disturbance $\delta a$ alongside $\hat b$ -- paper gates 1--3}
+
+(slot 6 of the state, the formC\_dist 'gain' placement: $\hat{\ba}_w[k+1]$ gains $+\delta\hat a[k]$ outside the law bracket, $\delta\hat a[k+1] = \delta\hat a[k]$,
+$\sqrt{P_{66}[0]}$ = the driver's $S3(b)$ closed-form supremum, $\tilde Q_{66} = 0$, seed $0$; purpose: the innovations that the
+estimated-$\hat b$ arm with a small $P_{44}[0]$ charges to $\hat b$ -- canon $+0.057$ in the descent, $99\%$ through $\ell_{51}$; Meng $+0.039$
+through $P_{54}H_{24}$ -- get a level-type state to go to; motivation and the E1 discriminator in the memory file of 09-07)
+
+Gate 1, the two columns of each slot
+\begin{align*}
+\tilde F_e(4,6) &= 1 , \qquad H_{26} = -d \qquad (\text{structural constants: non-zero in a hold and at a turning point}) \\
+\tilde F_e(4,5) &= \frac{\ap\,\dWh}{\hat b} , \qquad H_{25} = -\frac{\partial\ap}{\partial\hat b}\,\nabla_d\bw_d \qquad (\text{both carry a displacement})
+\end{align*}
+
+Gate 2, time signature of an error: $e_{\delta a}$ = a ramp of $\hat{\ba}_w$ with slope $e_{\delta a}$ per step plus the direct readout $-d\,e_{\delta a}$;
+$e_b$ = a ramp with slope $\ap\dWh\,e_b/\hat b$ per step plus the readout $H_{25}e_b$: the same shape wherever $\ap\dWh$ is constant.
+
+Gate 3, the three-state subsystem $[\ba_w,\ \delta a,\ b]$ seen by $y_2$ ($\nabla_d\bw_d = 0$ for the moment)
+\begin{align*}
+F_3 &= \begin{bmatrix} 1 & 1 & \ap\dWh \\ 0 & 1 & 0 \\ 0 & 0 & 1 \end{bmatrix} , \qquad
+H_3 = \begin{bmatrix} 1 & -d & 0 \end{bmatrix} \\
+O_3 &= \begin{bmatrix} H_3 \\ H_3 F_3[k] \\ H_3 F_3[k+1] F_3[k] \end{bmatrix}
+   = \begin{bmatrix} 1 & -d & 0 \\ 1 & 1-d & \ap\dWh[k] \\ 1 & 2-d & \ap\dWh[k] + \ap\dWh[k+1] \end{bmatrix} \\
+\det O_3 &= \ap\dWh[k+1] - \ap\dWh[k] \\
+\det O_3 = 0 &\iff \ap\dWh \ \text{constant across the window} \qquad (\text{uniform far-field descent: } \delta a \text{ and } b \text{ alias})
+\end{align*}
+
+(they separate where $\ap$ changes -- near the wall -- or where $\dWh$ changes -- turning points and the entry to a hold; in a hold
+$\delta a$ stays observable through $H_{26} = -d$ and the ramp, $b$ does not (Section 11). Gates 4--5: test\_script/scratch/verify\_obs\_da\_slot.m,
+negative control slot 7. Code: ctrl\_const.da\_slot, default false; arms bhd / btd / bhatd in run\_ladder\_endpoints.m)
+
+Gates 4--5 measured (seed 7, window 500 steps unless stated; best CRLB / prior; test\_script/scratch/verify\_obs\_da\_slot.m)
+\begin{align*}
+\text{canon, } \delta a \text{ free}:&\quad \text{rank } 8/8,\ \text{negative control } \infty\ 15/15;\quad
+  \ba_w\ 0.060,\ b\ 0.047,\ \delta a\ 0.0044 \quad (\text{without } \delta a:\ \ba_w\ 0.017,\ b\ 0.0088) \\
+\text{Meng, } \delta a \text{ free}:&\quad \text{rank } 8/8,\ \infty\ 40/40;\quad b\ 2.88\ \text{FAIL at 500 steps},\ 0.17\ \text{at 2000},\ 0.040\ \text{at 4000};\quad \delta a\ 0.53
+  \quad (\text{without } \delta a:\ b\ 0.54) \\
+\text{gate-3 condition seen:}&\quad \text{on the slow ramp a 500-step window spans } 0.13\,R,\ \ap\dWh \text{ hardly changes} \Rightarrow \delta a \text{ and } b \text{ alias; a window over more path separates them}
+\end{align*}
+
+Arms (10 seeds; near-wall window Meng 7--10 s, canon 1.0--1.5 s; $\ba$ units; Meng [canon])
+\begin{align*}
+\text{bhp0 (estimated } \hat b,\ \text{seed-at-truth } P_{44}[0]):&\quad \text{hold } -0.0024 \pm 0.0021\ [-0.0106 \pm 0.0021],\
+  \text{near wall } -0.019\ \sigma\,0.017\ [-0.012\ \sigma\,0.009],\ \hat b\ 0.940\ [0.973] \\
+\text{bhd (the same} + \delta a):&\quad \text{hold } -0.0006 \pm 0.0023\ [+0.0035 \pm 0.0017],\
+  \text{near wall } -0.010\ \sigma\,\mathbf{0.046}\ [-0.0002\ \sigma\,\mathbf{0.038}],\ \hat b\ 0.885\ (\sqrt{P_{55}}\ 0.033)\ [0.869\ (0.028)],\
+  \delta\hat a \to 0,\ \sqrt{P_{66}} \to 0 \\
+\text{btd (b}_{\mathrm{true}} + \delta a):&\quad \text{hold } +0.0002 \pm 0.0023\ [+0.0017 \pm 0.0017],\ \sigma\ 0.046\ [0.038]\ \text{against btp0's } 0.003\ [0.001] \\
+\text{bhatd (production } P_{44}[0] + \delta a):&\quad \text{identical to bhd on both trajectories}
+\end{align*}
+
+(STATUS 09-07: the slot does what it was asked -- $\hat b$ is no longer pulled to the wall value and locked ($0.87$--$0.89$ with
+$\sqrt{P_{55}}$ open), the canon hold bias $-0.0106$ becomes $+0.0035$, Meng's $-0.0006$ -- but the pre-registered spread line fails
+by $3$--$4\times$: $\delta a$ is a per-step INCREMENT with the $S3(b)$ prior $3\times10^{-4}$ [$1.6\times10^{-5}$] per step, which integrates
+to a gain uncertainty of order $0.1$--$0.5$ over the far-field part of the descent; the filter lets $\hat{\ba}_w$ walk until $y_2$ pins
+$\delta a$ (figure: seed 7 steps of $\pm 0.05$ between $2$ and $7$ s on Meng, $0.2$--$1.3$ s on canon), and the b$_{\mathrm{true}}$ arm pays
+the same $0.04$. The near-wall MEAN of the estimated-$\hat b$ arms is unchanged on Meng ($-0.010$): as with $\tilde Q_{55}$, a state
+that carries model error does not remove the mean of a constant-$b$ law. REFUTED as a production candidate; kept as an instrument,
+default false. What survives from E1/E2: the innovations of the estimated-$\hat b$ arm with a small $P_{44}[0]$ need a home -- a drift
+state gives them one at the price of far-field spread, a large $P_{44}[0]$ (production) gives them one at the price of near-wall
+spread, and neither touches the mid-band mean.)
+
+
 \clearpage
 \section{Covariance propagation of the self-referential law: the weight $\kappa$}
 

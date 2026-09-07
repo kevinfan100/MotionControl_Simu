@@ -359,6 +359,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent jac_exact_step                               % row-4 Jacobian / Q / g_n of the EXACT law step (2026-09-06), default off
     persistent q55_path q55_per_R                           % Q55 = (Delta_b^2/W)|dw_hat| container of the b'_true dw line (2026-09-07), default off
     persistent l51_off                                      % DIAGNOSTIC (2026-09-07): zero the y1 gain on slot 5 (b_hat updated by y2 only), Joseph P update stays consistent
+    persistent da_slot Pf_da_std                            % E2 (2026-09-07): slot 6 = additive gain disturbance da (formC_dist writing), default off
     persistent law_exact_step                               % exact (quadrature-free) law step, default off (port of 2a5dc29)
     persistent pred_mean2                                   % second-order mean term in predict (0902 tex S5), default off
     persistent pred_force_step                              % row-4 known increment = a_hat * fbar_d[k-1] (commanded displacement), default off
@@ -934,7 +935,17 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % block at [8 9]) carries over unchanged. The filter IS the 5-state of
         % the tex when slot 5 is free, and the 4-state when it is locked.
         lock_da = logical(get_field_default(ctrl_const, 'lock_b', false));
-        lock_mask_g  = [lock_da; true; true];         % slot order 5, 6, 7
+        % E2 (2026-09-07): ctrl_const.da_slot frees slot 6 as the ADDITIVE gain disturbance da of formC_dist ('gain' placement):
+        % row 4 gains + da per step outside the a_bar' bracket, F_e(4,6) = 1, H(2,6) = -d, P66[0] = Pf_da_std^2 (the driver's S3(b)
+        % closed-form sup), Q66 = 0, seed 0. Purpose: give the innovations that the estimated-b arm otherwise charges to b_hat
+        % (probe_estb_l52_split.m: canon +0.057 through y1) a level-type home. Paper gate 3 (0903 tex S11): da and b alias when
+        % a' M is constant over the window (uniform far-field descent); they separate where a' or M changes. Default false.
+        da_slot   = logical(get_field_default(ctrl_const, 'da_slot', false));
+        Pf_da_std = expand3(get_field_default(ctrl_const, 'Pf_da_std', 0));
+        if da_slot
+            assert(all(Pf_da_std > 0), 'motion_control_law_formC_b:daSlot', 'ctrl_const.da_slot needs Pf_da_std > 0 from the driver.');
+        end
+        lock_mask_g  = [lock_da; ~da_slot; true];     % slot order 5, 6, 7 (6 = da when da_slot)
         lock_mask_ax = repmat(lock_mask_g, 1, 3);
         if par_law
             lock_mask_ax(1, AX_PAR) = true;           % x/y carry no disturbance
@@ -1002,12 +1013,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         %              it enters P(4,4) once, through (d a_bar / d w0) = -a_bar'.
         T_REMOVAL_S = 1;      % [s] order of a manoeuvre; fallback only
         Pf_a_floor_pre = get_field_default(ctrl_const, 'Pf_a_floor', 0.0066);
-        % DEAD KNOB (08-25 audit): there is no da state here, so a Pf_da_std
-        % would set the prior of nothing. Refuse it rather than ignore it.
-        if isfield(ctrl_const, 'Pf_da_std') && ~isempty(ctrl_const.Pf_da_std)
-            error('motion_control_law_formC_b:deadKnob', ...
-                  'ctrl_const.Pf_da_std has no state to act on in this writing (slot 5 = b).');
-        end
+        % (08-25 audit had a DEAD-KNOB error here refusing ctrl_const.Pf_da_std. Since 2026-09-07 the driver always passes it
+        %  -- the S3(b) sup -- and it acts only when ctrl_const.da_slot frees slot 6 as da; without da_slot it is ignored.)
         Pf_w0_std  = expand3(get_field_default(ctrl_const, 'Pf_w0_std',  0.111));
         Pf_a_floor = expand3(get_field_default(ctrl_const, 'Pf_a_floor', 0.0066));
         if par_law
@@ -1111,15 +1118,15 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             P7(4, 5) = free_da * dA_db * Pf_b_std(ax)^2;
             P7(5, 4) = P7(4, 5);
             P7(5, 5) = free_da * Pf_b_std(ax)^2;
-            % slots 6-7 stay exact zeros (inert)
+            P7(6, 6) = double(da_slot) * Pf_da_std(ax)^2;   % slot 6 = da when da_slot, else exact zero (inert); slot 7 inert
             P_aa_v(ax)  = P7(4, 4);
             P_bb0_v(ax) = P7(5, 5);
-            P_pp0_v(ax) = 0;
+            P_pp0_v(ax) = P7(6, 6);
             P_ws0_v(ax) = dA_dw0^2 * Pf_w0_std(ax)^2;   % wall share of P_aa
 
             % chol PD check on the free-state submatrix (locked rows/cols are
             % exact zeros by construction, so the full matrix is only PSD).
-            free_idx = [1:4, 5 * ones(1, free_da)];
+            free_idx = [1:4, 5 * ones(1, free_da), 6 * ones(1, double(da_slot))];
             if ma2_aug
                 free_idx = [free_idx, 8, 9];
             end
@@ -1529,6 +1536,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                                     J_b_fac_i * M_tot, M_tot, dap_dd3_i);
         if fe43_off; F_e(4, 3) = 0; end          % diagnostic, see init
         if fe44_Aa_scale ~= 1; F_e(4, 4) = F_e(4, 4) - (1 - fe44_Aa_scale) * A_a_i * M_tot; end   % see init: kappa-weighted self-sensitivity in P (kappa = 0 == fe44_Aa_off)
+        if da_slot; F_e(4, 6) = 1; end                 % E2: additive disturbance enters a_bar at unit gain every step
 
         % --- EKF predict (tex S5(b)). Row 4 carries the ADDITIVE disturbance
         %     x_curr(5) outside the a_bar' bracket; row 5 is an integrator of
@@ -1558,6 +1566,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             end
             x4_pred = x_curr(4) + ap_q * M_pred;
         end
+        if da_slot; x4_pred = x4_pred + x_curr(6); end   % E2: + da per step, outside the a_bar' bracket
         x_pred = [x_curr(2); ...
                   x_curr(3); ...
                   lambda_c * x_curr(3); ...
@@ -1698,6 +1707,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             F_e(4, 4) = D_jac * (1 + a_prime_i * F_dw);  % diagonal: D (1 + a' F_dw) replaces 1 + a' F_dw + A_a M
             Q_i(4, :) = D_jac * Q_i(4, :);               % noise enters the gain row through a'(a_pred) = D a'(a)
             Q_i(:, 4) = D_jac * Q_i(:, 4);
+            if da_slot; F_e(4, 6) = 1; end               % da enters outside the law: not scaled
         end
         P_pred = F_e * P_curr * F_e' + Q_i;
         P_pred = 0.5 * (P_pred + P_pred');
@@ -1766,7 +1776,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                              -Grad_wbar_d * dap_dd3_i, ...
                              1 - Grad_wbar_d * A_a_i, ...
                              -Grad_wbar_d * dap_db_i * double(~lm(1)), ...
-                             0, 0, zeros(1, n_state - 7)];
+                             -d_delay * double(da_slot), 0, zeros(1, n_state - 7)];   % E2: y2 backs off d applications of da
             % NONLINEAR predicted measurement (S7 innovation line); H2*x_upd
             % would be wrong here -- see the header. The echo share S of the
             % reading tracks the APPLIED gain (= the estimate), so the
@@ -1775,7 +1785,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             % of the disturbance d*da_hat -- scale by (1-S), exactly as their
             % Jacobians do in H2 above.
             y2_pred = H2_scale * (x_upd(4) ...
-                        - echo_fac * a_prime_i * Grad_wbar_d);
+                        - echo_fac * a_prime_i * Grad_wbar_d ...
+                        - echo_fac * d_delay * x_upd(6) * double(da_slot));   % E2: d applications of da_hat, scaled like its Jacobian
             H2_log = H2;
             S2  = H2 * P_upd * H2' + R2_i;
             K2  = (P_upd * H2') / S2;

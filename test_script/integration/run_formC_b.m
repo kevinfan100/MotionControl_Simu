@@ -289,6 +289,7 @@ function out = run_formC_b(opts, test_opts)
 
     ov = struct();
     ov.Pf_w0_std  = opts.Pf_w0_std;   % wall prior, carried over from formB_ws
+    ov.Pf_da_std  = Pf_da_used;       % additive-disturbance prior (S3(b) sup); used only when ctrl_const.da_slot (E2, 2026-09-07)
     ov.ws0_perp   = 1;                % plane
     ov.lambda_f   = opts.lambda_f;    % Menq (4.15) forgetting factor
     ov.ap_src     = opts.ap_src;      % slope evaluation point
