@@ -33,6 +33,7 @@
 | O21 | 球面的 b（b_B 0.87 對平面 1.15）由球半徑從兩球問題推 | 擬合 (1.156, +0.162)，Meng 掃出 R_s 5.17 µm；未推 | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | — |
 | O22 | 遠場 hold 沒有增益資訊（√P₄₄ 0.5 s 內不縮、種子錯原封帶進下坡再放大 25×）：起點誤差只能靠運動修，且要 prior 承認種子可能錯 | 球面 canon E −0.0114 → −0.0114、Meng −0.0358 → −0.0356（prod）；wide 臂在遠場下坡修回（Meng 下坡均值 −0.035 → +0.004） | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | — |
 | O23 | 08-17 可觀性總表的 b CRLB/prior 0.86 量在淺帶；深帶無 δa 時 canon 0.0088、Meng 0.54，要重登 | verify_obs_da_slot.m | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | 1eae694 |
+| O24 | 牆種 bank 的 y₂ 似然未校準：Λ₂ = Σ½(e₂²/S₂ + ln S₂) 被 ln S₂ 主導（NIS₂ 設計值 0.3、R₂ 隨 â），錯 prior 在細胞 plant 上 Λ₂ 反而較低；只用 y₁ 的 Λ₁ 可用（NIS₁ ≈ 1）。共用迴路的 bank 未實作（3×3 各 prior 各跑自己的迴路） | ΔΛ₂ 細胞 plant：plane prior −71（下坡末）／−1634（Meng）；ΔΛ₁ 同格 +22／+159 | 09-08 | project_wall_hypothesis_3x3_2026-09-08 | — |
 
 ## REFUTED（被量測否證或撤回；「判決數字」= 殺死它的那個數字）
 
@@ -91,6 +92,7 @@
 | R51 | 兩錨推導的 b(w̄) 內插可取代常數 8/9 | 真曲線谷底 0.867 低於兩錨（8/9、1），任何單調內插帶內 sup／積分誤差都比常數差（1/w̄³：0.050／−0.094 對常數 0.039／−0.057） | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | — |
 | R52 | 估 b̂ 臂 b̂ 被拉錯是 y₂ 讀數路 H₂₅ | 探針：canon +0.057 全在 y₁ 腿 ℓ₅₁（經 P₅₁）、Meng +0.039 全在 y₂ 狀態路 P₅₄H₂₄，讀數路 0；E1 封 ℓ₅₁ canon hold −0.0106 → −0.0001 | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | 987f01f |
 | R53 | 第一段 hold 被 y₂ warmup 閘關掉所以讀不回種子錯 | t_warmup_kf = 0（2026-05-05 起預設），閘沒關；是 hold 無資訊（見 O22） | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | — |
+| R54 | 09-07 三牆 wide 臂「球面 b̂ 從 0.89 走向 1.16」 | controller `b_ceil` 預設 1.05 把 slot 5 每步夾住：wide 臂球面 b̂ 貼頂 1549 步、hold 1.035；球面 prior b = 1.156 在預設下不可表示（首輪 3×3 sphere×sphere hold +0.30、ŵ_wall 0.42）；b_ceil 1.5 後 sphere×sphere hold +0.002、ŵ_wall 1.024（真 1.027）。C44 的球面數字要以此修正讀 | 09-08 | project_wall_hypothesis_3x3_2026-09-08 | — |
 
 ## CONFIRMED（已 [量到] 或 [推導] 並落地的機制與修復）
 
@@ -142,6 +144,8 @@
 | C44 | 未知牆種下：production 在細胞牆崩、prior 放寬到牆家族三牆都活；球面 hold 偏差 = 法則 b 錯在最後下坡積出（a′_true 臂無） | 細胞 prod hold −0.081／−0.052、wide −0.003／−0.007；球面 prod canon +0.016、apest −0.009 | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | 2a76a67 |
 | C45 | 估 b̂ 臂在 seed-at-truth P₄₄[0] 下：常數 b 的谷底均值誤差 −1～−2% 是任何協方差容器（大 P₄₄[0]、Q55、δa、封 y₁）都拿不掉的；家放哪散布出在哪 | 六格表（memory）；b_true 臂為零 | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | 4b48946 |
 | C46 | 估 b̂ 5-state 一階 F_e 文件 `0907_estb_5state_core.tex`；二階（ā″ 群、m₂）版經 sympy 驗算（ā′_true 展開含 e_b e₄²、m₂ 的 Cov(e_b,e_Δ) 係數 (ā′+ā″Δŵ̄)/b̂，code 少 (1+AΔŵ̄) < 1%/步） | 54ca746（二階）、8f49cd4（乾淨一階） | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | 8f49cd4 |
+| C47 | 把「估 b」改成「判斷是哪種牆」：三 plant × 三 prior（各牆 (b, w̄_s) 當種子、窄 prior、各自閉迴路）—— 對角線三牆都健康；只用 y₁ 的 ΔΛ₁ 在第一次下坡內選出正確牆；導出牆位 ŵ_wall 對的 prior 平、錯的走 | 對角線 canon 下坡 −0.005／−0.001／−0.001、hold +0.0014／+0.0021／−0.0040（plane／sphere／cell），Meng hold −0.0001／+0.0002／+0.0075；ΔΛ₁ 過 ln 3 中位 canon 0.97–1.33 s（下坡 0.5–1.5 s）、Meng 0.5–6.9 s（斜坡 0.5–10.5 s），最弱一對 = 球面 plant 上 plane prior（canon 下坡末 +3.2，8/10）；ŵ_wall 斜率 對 ≤ 0.004、錯 0.005–0.09 R/R；錯 prior 代價（運動段）plane↔sphere canon ±0.014–0.019（最差 −0.05）、Meng ±0.03，細胞混淆 canon 0.02–0.04（最差 0.17–0.23）、Meng 0.06–0.08、hold −0.04～−0.05 | 09-08 | project_wall_hypothesis_3x3_2026-09-08 | — |
+| C48 | 常數 b 的代價是第一趟的代價，不是回訪的：分格記憶（b 對高度）最多撿 0.003 | canon bhat 臂按高度格×圈數：第 1 次下坡 −0.021～−0.028（b_true 臂 −0.006～−0.013），之後三次經過 ≤ 0.003、同號、不隨方向翻（b_true 臂 ≤ 0.0002）；推導 (1−ā)²·Δb·Δw̄ ≈ 0.3×0.02×2.2 = 0.013 對量到超額 −0.011 | 09-08 | project_wall_hypothesis_3x3_2026-09-08 | — |
 
 ## 附：formC_b_audit_ledger.md §4／§6 對照（只列 09-06 狀態與本檔對應列，內容不抄）
 

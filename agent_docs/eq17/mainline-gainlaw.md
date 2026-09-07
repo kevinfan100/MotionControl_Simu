@@ -109,6 +109,12 @@
   b̂ 被拉的通道量到（canon y₁ 經 P₅₁、Meng y₂ 狀態路）；Q55 容器、E1 封 y₁、E2 δa 槽（五關 PASS）都能停止 b̂ 被拉，但各付散布（近壁 2×／1.5×／遠場 3–4×）；
   谷底常數 b 的均值誤差 −1～−2% 誰都拿不掉；兩錨曲線比常數差。**估測器到地板，production 是最均衡的一格**。旗標 `q55_path`、`l51_off`、`da_slot`、`jac_exact_step` 全 default off。
 - 文件：`0907_estb_5state_core.tex`（估 b̂ 一階 F_e 讀本，0831 版型）；SSOT §11 加 Q55 與 E2 小節；假說帳 R45–R53、C41–C46、O19–O23。
+- **牆種判別 3×3（09-08，`run_wall_mm_3x3.m`／`plot_wall_mm_3x3.m`）**：把「估 b」改成「判斷是哪種牆」。三 plant × 三 prior（各牆的 (b, w̄_s) 當種子、窄 prior、各自閉迴路）：
+  對角線三牆都健康（canon hold +0.0014／+0.0021／−0.0040，Meng −0.0001／+0.0002／+0.0075）；只用 y₁ 的 innovation 似然差 ΔΛ₁ 在第一次下坡內選出正確牆（canon 過 ln 3 於 0.97–1.33 s、Meng 0.5–6.9 s），
+  最弱一對 = 球面 plant 上的 plane prior；導出牆位 ŵ_wall = ŵ̄ − â/(b̂(1−â)) 對的 prior 平、錯的走。錯 prior 代價（運動段）：plane↔sphere ±0.015–0.03、細胞 0.02–0.08（最差 0.17–0.25）。
+  **兩個儀器發現**：(1) controller `b_ceil` 預設 1.05 —— 球面 b 1.156 不可表示，09-07 wide 臂球面 b̂ 貼頂 1549 步（C44 數字以 R54 修正）；3×3 傳 b_ceil 1.5。
+  (2) y₂ 的 per-step 高斯似然不可用（ln S₂ 主導，NIS₂ 0.3 設計值、R₂ 隨 â）；bank 要用 y₁ 或白化 y₂（O24）。共用迴路的 bank 未實作。
+  常數 b 的代價量到是第一趟的（C48：回訪 ≤ 0.003）⇒ 「b 對高度」的記憶沒東西可撿，缺口在出發前的 prior。log 新增 S₁／S₂（`S1_out`／`S2_out`，logging only；plane×plane 對 09-07 逐位相同）。圖 `wall_mm_3x3_{canon,meng}.png`。
 
 ## 現況（2026-08-03）
 
