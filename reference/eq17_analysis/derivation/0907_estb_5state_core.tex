@@ -71,7 +71,7 @@ Model error of a constant $\hat b$ (the only approximation of the law), and the 
 \begin{align*}
 e_b[k] &:= b_{\mathrm{true}}\bigl(\bw[k]\bigr) - \hat b[k] \\
 f[k]   &:= \bigl(1-\hat{\ba}_w[k]\bigr)^{2}\,e_b[k] \\
-\ap_{\mathrm{true}}\bigl(\bw[k]\bigr)  &= \ap + A\,e_{\ba_w}[k] + f[k] + \hat b\,e_{\ba_w}[k]^{2} - 2\,(1-\hat{\ba}_w)\,e_{\ba_w}[k]\,e_b[k] \\
+\ap_{\mathrm{true}}\bigl(\bw[k]\bigr)  &= \ap + A\,e_{\ba_w}[k] + f[k] + \hat b\,e_{\ba_w}[k]^{2} - 2\,(1-\hat{\ba}_w)\,e_{\ba_w}[k]\,e_b[k] + e_b[k]\,e_{\ba_w}[k]^{2} \qquad (\text{exact}) \\
 \app_{\mathrm{true}}\bigl(\bw[k]\bigr) &= \app + f'[k] + \frac{\app}{\ap}\,f[k] + \mathcal{O}(e) , \qquad f' = \frac{df}{d\bw}
 \end{align*}
 
@@ -131,15 +131,20 @@ e_{\delta\bw_3}[k+1] &= \lambda_c\,e_{\delta\bw_3}[k] - F_{dw}[k]\,e_{\ba_w}[k] 
 Gain, all terms to second order (true increment minus estimator increment, $\dW = \dWh + \eD$)
 \begin{align*}
 e_{\ba_w}[k+1] - e_{\ba_w}[k]
-  &= \Bigl[\ap + A\,e_{\ba_w} + f + \hat b\,e_{\ba_w}^{2} - 2(1-\hat{\ba}_w)e_{\ba_w}e_b\Bigr]\bigl(\dWh + \eD\bigr) \\
+  &= \Bigl[\ap + A\,e_{\ba_w} + f + \hat b\,e_{\ba_w}^{2} - 2(1-\hat{\ba}_w)e_{\ba_w}e_b + e_b e_{\ba_w}^{2}\Bigr]\bigl(\dWh + \eD\bigr) \\
   &\quad + \tfrac{1}{2}\Bigl[\app + f' + \tfrac{\app}{\ap}f\Bigr]\bigl(\dWh + \eD\bigr)^{2}
      - \ap\,\dWh - \tfrac{1}{2}\,\app\,\dWh^{2} - m_2 \\[4pt]
   &= \underbrace{\ap\,\eD + A\,\dWh\,e_{\ba_w} + \dWh\,f}_{(1)\ \text{first order}}
    + \underbrace{A\,e_{\ba_w}\,\eD + f\,\eD + \app\,\dWh\,\eD + \tfrac{1}{2}\,\app\,\eD^{2}}_{(2)\ \text{second order, the } \app \text{ group}} \\
   &\quad + \underbrace{\tfrac{1}{2}\Bigl(f' + \tfrac{\app}{\ap}f\Bigr)\bigl(\dWh + \eD\bigr)^{2}
      + \hat b\,e_{\ba_w}^{2}\bigl(\dWh + \eD\bigr) - 2(1-\hat{\ba}_w)\,e_{\ba_w}e_b\bigl(\dWh + \eD\bigr)}_{(3)\ \text{second order, model-error curvature and squares}}
-   - m_2 + \mathcal{O}(3)
+   - m_2 + e_b\,e_{\ba_w}^{2}\bigl(\dWh + \eD\bigr)
 \end{align*}
+
+(grouping rule: every term that carries a curvature, $\app$ or $f'$, is counted in (2)/(3) whatever its degree in the small quantities;
+group (1) is exactly the degree-1 terms without curvature. The last term is third order. Independent sympy verification 09-07:
+groups (1)--(3) reproduce the difference of the two increments term by term; $e_b = 0$, $f' = 0$ returns the a$'_{\mathrm{true}}$-arm
+expressions of the SSOT exactly)
 
 Law constant (the constant model has no term for the second line)
 \begin{align*}
@@ -148,13 +153,15 @@ e_b[k+1] &= e_b[k] + b'_{\mathrm{true}}\bigl(\bw[k]\bigr)\,\dW[k]
 
 Mean of the second-order group (this is $m_2$; $\E[e] = 0$ for every state, $\E[\eD] = 0$)
 \begin{align*}
-m_2[k] &= A\,\mathrm{Cov}(e_{\ba_w},\eD) + \tfrac{1}{2}\,\app\,\mathrm{Var}(\eD) + \frac{\ap}{\hat b}\,\mathrm{Cov}(e_b,\eD) \\
-       &\quad + \tfrac{1}{2}\Bigl(f' + \tfrac{\app}{\ap}f\Bigr)\bigl(\dWh^{2} + \mathrm{Var}(\eD)\bigr)
-        + \hat b\,P_{44}\,\dWh - 2(1-\hat{\ba}_w)\,P_{45}\,\dWh
+m_2[k] &= A\,\mathrm{Cov}(e_{\ba_w},\eD) + \tfrac{1}{2}\,\app\,\mathrm{Var}(\eD) + \frac{\ap + \app\,\dWh}{\hat b}\,\mathrm{Cov}(e_b,\eD) \\
+       &\quad + \tfrac{1}{2}\,f'\bigl(\dWh^{2} + \mathrm{Var}(\eD)\bigr)
+        + \hat b\,P_{44}\,\dWh - 2(1-\hat{\ba}_w)\,P_{45}\,\dWh + (\text{third moments})
 \end{align*}
 
-(code: pred\_mean2 carries the first two terms, pred\_mean2\_e4 the $A\,\mathrm{Cov}(e_{\ba_w},\eD)$ form and the $e_b$ line;
-the $f$, $f'$ terms need $b_{\mathrm{true}}$ and are NOT in the estimator; the two square terms are $\mathcal{O}(P)\,\dWh$ and are dropped)
+($\E[e_b] = 0$ kills the $\dWh^{2}$ part of the $\tfrac{\app}{\ap}f$ line but not its cross term $2\dWh\,\eD$, which is the $\app\dWh/\hat b$ share of the
+$\mathrm{Cov}(e_b,\eD)$ coefficient -- caught by the sympy verification; the code's pred\_mean2\_e4 $e_b$ line carries only $\ap/\hat b$, short by the
+factor $1 + A\dWh$, i.e.\ under $1\%$ per step. Code: pred\_mean2 = the first two terms, pred\_mean2\_e4 = the $A\,\mathrm{Cov}(e_{\ba_w},\eD)$ form and
+the $e_b$ line; $f'$ needs $b_{\mathrm{true}}$ and is NOT in the estimator; the two square terms are $\mathcal{O}(P)\,\dWh$ and are dropped)
 
 First-order part written as $e[k+1] = F_e\,e[k] + g\,\varepsilon_w[k] + (\text{model error})$, $e = [e_{\delta\bw_1},\ e_{\delta\bw_2},\ e_{\delta\bw_3},\ e_{\ba_w},\ e_b]^{\top}$
 \begin{align*}
