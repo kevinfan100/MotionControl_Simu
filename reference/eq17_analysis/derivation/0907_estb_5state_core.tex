@@ -1,6 +1,7 @@
 % STATUS: ACTIVE | READING COPY of 0903_aptrue_4state_from_true.tex S3 / S5 / S6 / S11 restricted to the
 %   ESTIMATED-b arm in its 5-state core: x = [dw1 dw2 dw3 a_w b], first order, no correlated-noise predict
-%   (nw_mcorr), no MA(2) memory slots, no second-order mean terms. Four blocks: gain model -> true dynamics
+%   (nw_mcorr), no MA(2) memory slots, no second-order mean terms; the TRUE b is the law's constant here (the
+%   published curve's b_true(w) and its b'_true dw line are in 479c08e and in the SSOT S11). Four blocks: gain model -> true dynamics
 %   -> estimator -> error dynamics with F_e written out. Layout of 0831_formC_state_b_5state. 2026-09-07.
 %   The second-order (a'') group, its mean m2 and the exact-step form live in the SSOT S10-S11 and in git
 %   history of this file (54ca746).
@@ -45,7 +46,7 @@ a_w &= a_o\,\ba_w , \qquad a_o = \frac{\Delta t}{\gamma_N R}
 
 \section{True dynamics}
 
-$\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2;\ b_{\mathrm{true}}[k] := b_{\mathrm{true}}(\bw[k])\bigr)$
+$\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2\bigr)$
 
 \begin{align*}
 \bw[k]           &= \bw_d[k] - \delta\bw_3[k] \\
@@ -54,8 +55,8 @@ $\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2;\ b_{\math
 \delta\bw_2[k+1] &= \delta\bw_3[k] \\
 \delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k] - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
 \dW[k]           &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k] \\
-\ba_w[k+1]       &= \ba_w[k] + b_{\mathrm{true}}[k]\bigl(1-\ba_w[k]\bigr)^{2}\,\dW[k] \\
-b_{\mathrm{true}}[k+1] &= b_{\mathrm{true}}[k] + b'_{\mathrm{true}}[k]\,\dW[k]
+\ba_w[k+1]       &= \ba_w[k] + b[k]\bigl(1-\ba_w[k]\bigr)^{2}\,\dW[k] \\
+b[k+1]           &= b[k]
 \end{align*}
 
 \begin{align*}
@@ -80,11 +81,11 @@ F_{dw}[k]        &= \bar f_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar f_{dw}[k-i]
 
 \section{Error dynamics}
 
-(True $-$ Estimator; coefficients at the estimate; $e_b[k] := b_{\mathrm{true}}[k] - \bh[k]$)
+(True $-$ Estimator; coefficients at the estimate)
 
 \begin{align*}
 \eD[k] &= \dW[k] - \dWh[k] = (1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k] \\
-b_{\mathrm{true}}[k]\bigl(1-\ba_w[k]\bigr)^{2} &= \bh[k]\bigl(1-\ah[k]\bigr)^{2} - 2\,\bh[k]\bigl(1-\ah[k]\bigr)\,e_{\ba_w}[k] + \bigl(1-\ah[k]\bigr)^{2}e_b[k] + \mathcal{O}\bigl(e^{2}\bigr)
+b[k]\bigl(1-\ba_w[k]\bigr)^{2} &= \bh[k]\bigl(1-\ah[k]\bigr)^{2} - 2\,\bh[k]\bigl(1-\ah[k]\bigr)\,e_{\ba_w}[k] + \bigl(1-\ah[k]\bigr)^{2}e_b[k] + \mathcal{O}\bigl(e^{2}\bigr)
 \end{align*}
 
 \begin{align*}
@@ -95,7 +96,7 @@ e_{\ba_w}[k+1] &= \Bigl[1 + \bh\bigl(1-\ah\bigr)^{2}F_{dw} - 2\bh\bigl(1-\ah\big
   &\quad + (1-\lambda_c)\,\bh\bigl(1-\ah\bigr)^{2}e_{\delta\bw_3}[k]
         + \bigl(1-\ah\bigr)^{2}\bigl(\Delta\bw_d + (1-\lambda_c)\,\delta\hat{\bw}_3\bigr)e_b[k]
         + \bh\bigl(1-\ah\bigr)^{2}\varepsilon_w[k] \\
-e_b[k+1] &= e_b[k] + b'_{\mathrm{true}}[k]\,\dW[k]
+e_b[k+1] &= e_b[k]
 \end{align*}
 
 \begin{align*}
