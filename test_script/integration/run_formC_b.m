@@ -264,6 +264,7 @@ function out = run_formC_b(opts, test_opts)
     % in the TEST's denominator, not a reason to mis-seed the filter; it is
     % recorded here rather than repaired by distorting the prior.
     [b_mid, b_half, b_lo_e, b_hi_e] = local_envelope_b_range(env_lo, env_hi);
+    q55_per_R = (b_hi_e - b_lo_e)^2 / (env_hi - env_lo);   % 0903 tex S11 Q55 container: Delta_b^2 / W, the controller multiplies by |dw_hat| per step (used only when ctrl_const.q55_path)
 
     % Shape floor for P44[0]. P[0] is a statement about the belief AT t = 0:
     % E[(truth - a_bar_hat[0])^2]. The envelope supremum is the worst error
@@ -318,6 +319,7 @@ function out = run_formC_b(opts, test_opts)
             error('run_formC_b:arm', 'opts.arm must be ''b1'' | ''bmid'' | ''best''.');
     end
     ov.Pf_b_std = (~ov.lock_b) * b_half;
+    ov.q55_per_R = q55_per_R;
 
     floor_a_seed = local_seed_floor(env_hi - ENV_HI_MARGIN, W0_PLANE, ov.b_init);
     if opts.floor_from_envelope

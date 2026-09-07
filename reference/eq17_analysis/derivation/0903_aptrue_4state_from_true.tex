@@ -548,6 +548,51 @@ g_n[k] &= (1-\lambda_c)\,[\,0,\ 0,\ -1,\ \ap,\ 0\,]^{\top} , \qquad
 locked-$b$ arm: the filter's $P_{i5} = 0$, so the added line vanishes and the model-error lines, including the
 $b'_{\mathrm{true}}$ cross-moment, remain)
 
+\subsection*{The container of the $b'_{\mathrm{true}}\,\dW$ line: $\tilde{Q}_{55}$ proportional to the path (09-07)}
+
+($e_b$ is driven every step by $b'_{\mathrm{true}}(\bw)\,\dW$, the change of the exact law factor along the path; the constant model
+has no term for it and $\tilde{Q}_{55} = 0$ lets $P_{55}$ collapse below $|e_b|$ -- measured 09-07 on the estimated-$\hat b$ arm with
+the seed-at-truth $P_{44}[0]$: $\sqrt{P_{55}} \to 0.0065$, hold $-0.0106 \pm 0.0021$ canon, $\hat b$ pinned at $0.96$ against
+$b_{\mathrm{true}}(\bw_{\mathrm{hold}}) = 0.928$. $\Delta b := \sup_{\text{env}} b_{\mathrm{true}} - \inf_{\text{env}} b_{\mathrm{true}}$,
+$W := \bw_{hi} - \bw_{lo}$, both from the envelope the driver already sweeps; the sign of $b'_{\mathrm{true}}$ is not known to the filter)
+\begin{align*}
+e_b[k+1] &= e_b[k] + b'_{\mathrm{true}}\bigl(\bw[k]\bigr)\,\dW[k] - \ell_{51}[k+1]\,e_{y_1}[k+1] - \ell_{52}[k+1]\,e_{y_2}[k+1] \\
+\sum_{\text{one traverse}} \bigl|\,b'_{\mathrm{true}}\bigl(\bw[k]\bigr)\,\dW[k]\,\bigr| &\le \Delta b \\
+\tilde{Q}_{55}[k] &= \frac{\Delta b^{2}}{W}\,\bigl|\dWh[k]\bigr| \\
+\sum_{\text{one traverse}} \tilde{Q}_{55}[k] &= \Delta b^{2} \\
+P_{55}^{-}[k+1] &= P_{55}[k] + \tilde{Q}_{55}[k] \qquad (\text{row and column 5 of } \tilde{F}_e P \tilde{F}_e^{\top} \text{ unchanged}) \\
+\sqrt{P_{55}}\ \text{after a path } s W,\ 0 \le s \le 1,\ \text{from } P_{55} = 0 &= \Delta b\,\sqrt{s} \ \ge\ \Delta b\,s
+  \ \ge\ \Bigl|\sum b'_{\mathrm{true}}\dW\Bigr| \qquad (\text{a one-signed drift inside one traverse is covered at every point}) \\
+\tilde{Q}_{55} &= 0 \ \text{in a hold } (\dWh = 0) , \qquad \Delta b = 0 \ \text{on the b}_{\mathrm{true}}\text{ arm (Section 10 recovered)}
+\end{align*}
+
+(no free number: $\Delta b$ and $W$ are the envelope's; $\Delta b^{2}/W$ is passed by the driver as q55\_per\_R, the controller multiplies by
+$|\dWh|$ each step. Code: ctrl\_const.q55\_path (default false). Acceptance pre-registered in test\_script/scratch/run\_ladder\_endpoints.m
+arms bhq5 / btq5 / bhq5s: the estimated-$\hat b$ arm with the seed-at-truth $P_{44}[0]$ must reach hold $|{\rm mean}| \le 1$ SEM and a
+near-wall mean $|\cdot| < 0.01$ (from $-0.0106$ and $-0.04$), $\sqrt{P_{55}}$ at the end $\ge 0.02$, $\hat b$ in hold within $\sqrt{P_{55}}$
+of $b_{\mathrm{true}}(\bw_{\mathrm{hold}})$, near-wall $\sigma_{\mathrm{seed}} \le 0.015$; the b$_{\mathrm{true}}$ arm bit-identical;
+production ($P_{44}[0]$ as is) with the term: hold within 1 SEM, $\sigma_{\mathrm{seed}}$ not above $0.032$)
+
+Measured (10 seeds, four blocks, $\kappa = 1$; Meng [canon]; near-wall window Meng 7--10 s, canon 1.0--1.5 s; $\ba$ units)
+\begin{align*}
+\text{seed-at-truth } P_{44}[0],\ \tilde Q_{55} = 0:&\quad \text{hold } -0.0024 \pm 0.0021\ [-0.0106 \pm 0.0021],\quad
+  \text{near wall } -0.019\ \sigma\,0.017\ [-0.012\ \sigma\,0.009],\quad \hat b\ 0.940\ (\sqrt{P_{55}}\ 0.010)\ [0.973\ (0.006)] \\
+\text{seed-at-truth } P_{44}[0],\ \tilde Q_{55}\ \text{on}:&\quad \text{hold } -0.0006 \pm 0.0024\ [+0.0059 \pm 0.0031],\quad
+  \text{near wall } -0.013\ \sigma\,0.039\ [-0.003\ \sigma\,0.023],\quad \hat b\ 0.875\ (0.066)\ [0.867\ (0.039)] \\
+\text{production } P_{44}[0],\ \tilde Q_{55}\ \text{on}:&\quad \text{hold } -0.0006 \pm 0.0024\ [+0.0060 \pm 0.0031],\quad
+  \text{near wall } -0.012\ \sigma\,0.039\ [-0.003\ \sigma\,0.023] \\
+\text{b}_{\mathrm{true}}\text{ arm with the term}:&\quad \text{bit-identical to Section 10}, \qquad b_{\mathrm{true}}(\bw_{\mathrm{hold}}) = 0.924\ [0.928]
+\end{align*}
+
+(STATUS 09-07: REFUTED as written. The container removes the hold bias on Meng and halves canon's near-wall mean, but doubles the
+near-wall spread (pre-registered lines 2 and 4 fail), $\sqrt{P_{55}}$ over-covers $|e_b|$ by $2\times$ -- the $\sqrt{s}$ against $s$ of the
+line above, by construction -- and $\hat b$ drifts below the curve ($0.87$ against $0.92$--$0.93$) while the extra freedom is filled by
+gain transients, not by $b_{\mathrm{true}}$ (the 08-17 information bound). With the term on, the seed-at-truth and the production
+$P_{44}[0]$ give the same run: the container dominates $P_{44}$ through $\tilde F_e(4,5)$. What the three estimated-$\hat b$ rows share is a
+near-wall MEAN of $-0.01$ to $-0.02$ that no covariance container removes -- it is the mean model error of a constant $b$
+(the $\mu$ of this section), and the b$_{\mathrm{true}}$ arm, whose mean model follows the curve, has none. A covariance term is the
+wrong category for a coherent bias; the mean model is. Flag kept, default false.)
+
 \clearpage
 \section{Covariance propagation of the self-referential law: the weight $\kappa$}
 

@@ -357,6 +357,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent a_inject_step a_inject_frac a_inject_axis   % diagnostic hook, default off
     persistent fe43_off q34_off q44_scale fe44_Aa_off fe44_Aa_scale   % diagnostic flags, default off / scale 1
     persistent jac_exact_step                               % row-4 Jacobian / Q / g_n of the EXACT law step (2026-09-06), default off
+    persistent q55_path q55_per_R                           % Q55 = (Delta_b^2/W)|dw_hat| container of the b'_true dw line (2026-09-07), default off
     persistent law_exact_step                               % exact (quadrature-free) law step, default off (port of 2a5dc29)
     persistent pred_mean2                                   % second-order mean term in predict (0902 tex S5), default off
     persistent pred_force_step                              % row-4 known increment = a_hat * fbar_d[k-1] (commanded displacement), default off
@@ -466,6 +467,17 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         %   kappa (fe44_Aa_scale) by a derived structure; when on, fe44_Aa_scale is ignored (asserted = 1).
         %   Inert on the ap_known arm (exogenous slope, A_a = 0 by construction) and when law_exact_step is off.
         %   Default false => bit-identical.
+        % q55_path (2026-09-07, 0903 tex S11 'container of the b'_true dw line'): with b a constant state and Q55 = 0, P55 collapses
+        % below |e_b| = |b_true(w) - b_hat| along the descent (sqrt P55 -> 0.0065 on the seed-at-truth-P44[0] arm, hold -0.0106) because
+        % the exact law factor b_true(w) changes along the path and the constant model has no term for that change. The container is a
+        % random walk in the PATH: Q55 = (Delta_b^2 / W) |dw_hat| per step, Delta_b = range of b_true on the envelope, W = envelope width
+        % (both from the driver's envelope sweep, passed as q55_per_R = Delta_b^2/W); one traverse accumulates Delta_b^2, a hold adds
+        % nothing, and the b_true arm (slot 5 locked) is untouched. No free number. Default false => bit-identical.
+        q55_path  = logical(get_field_default(ctrl_const, 'q55_path', false));
+        q55_per_R = get_field_default(ctrl_const, 'q55_per_R', 0);
+        if q55_path
+            assert(q55_per_R > 0, 'motion_control_law_formC_b:q55Path', 'ctrl_const.q55_path needs q55_per_R = Delta_b^2/W > 0 from the driver.');
+        end
         jac_exact_step = logical(get_field_default(ctrl_const, 'jac_exact_step', false));
         if jac_exact_step
             assert(fe44_Aa_scale == 1, 'motion_control_law_formC_b:jacExactStep', ...
@@ -1507,6 +1519,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         end
         F_dw = F_dw_km1(ax);
         if t2_pure_prop; F_dw = 0; Q_i = zeros(n_state); end
+        if q55_path && ~lm(1); Q_i(5, 5) = Q_i(5, 5) + q55_per_R * abs(M_tot); end   % path-proportional container of the b'_true dw line, see init
         F_e = local_build_F_e_formC(lambda_c, F_dw, a_prime_i, A_a_i, ...
                                     J_b_fac_i * M_tot, M_tot, dap_dd3_i);
         if fe43_off; F_e(4, 3) = 0; end          % diagnostic, see init
