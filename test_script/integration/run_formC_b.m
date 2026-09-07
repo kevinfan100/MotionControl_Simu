@@ -152,6 +152,7 @@ function out = run_formC_b(opts, test_opts)
     % arm (plant and estimator are the same curve); anything else is the
     % c(h_bar) mismatch the disturbance pair is asked to absorb.
     if ~isfield(opts, 'plant_law_b');  opts.plant_law_b = NaN;   end
+    if ~isfield(opts, 'plant_law_w0'); opts.plant_law_w0 = [];   end   % [] = W0_PLANE; else the plant law's origin w_s (2026-09-07 three-wall test: 1/(1-a) = b (w - w_s))
     % true  = legacy envelope supremum; false = honest seed-local floor
     if ~isfield(opts, 'floor_from_envelope'); opts.floor_from_envelope = false; end
     if ~isfield(opts, 'ap_ewma_a');   opts.ap_ewma_a   = 0.05;  end
@@ -390,7 +391,8 @@ function out = run_formC_b(opts, test_opts)
 
     plant_cperp = [];   % [] = published plane polynomial
     if ~isempty(opts.plant_law_b) && all(isfinite(opts.plant_law_b))
-        plant_cperp = @(hb) local_plant_cperp_law(hb, opts.plant_law_b, W0_PLANE);
+        w0_plant = W0_PLANE; if ~isempty(opts.plant_law_w0); w0_plant = opts.plant_law_w0; end
+        plant_cperp = @(hb) local_plant_cperp_law(hb, opts.plant_law_b, w0_plant);
         if isscalar(opts.plant_law_b)
             fprintf(['PLANT WALL OVERRIDE: c_perp from the law with b_plant = %.5f ' ...
                      '(estimator b_init = %.5f, mismatch %+.2f%%)\n'], ...
@@ -943,7 +945,11 @@ function simOut = local_run_once(config, seed, ctrl_const_override, verbose, a_c
         % TRUE-b ARM: b_true(w_bar) = a'/(1-a)^2 on the exact correction curve,
         % tabulated once (same construction as plot_arms_pair's red line).
         wq_b = linspace(1.05, 30, 4000); cpq = zeros(size(wq_b));
-        for iq = 1:numel(wq_b); [~, cpq(iq)] = calc_correction_functions(wq_b(iq)); end
+        if ~isempty(plant_cperp)                       % TRUE-b ARM must follow the PLANT's curve when the plant wall is overridden (2026-09-07)
+            for iq = 1:numel(wq_b); cpq(iq) = plant_cperp(wq_b(iq)); end
+        else
+            for iq = 1:numel(wq_b); [~, cpq(iq)] = calc_correction_functions(wq_b(iq)); end
+        end
         aq_b = 1 ./ cpq; bq_b = gradient(aq_b, wq_b) ./ (1 - aq_b).^2;
     end
     if nargin < 9  || isempty(da_known_on); da_known_on = false; end
