@@ -1340,6 +1340,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     dws_y2_v   = zeros(3, 1);   % logging only: ws update via y2, K2(7)*innov2
     innov_y2_v = zeros(3, 1);
     innov_y1_v = zeros(3, 1);   % logging only (whiteness diagnostic)
+    S1_v       = nan(3, 1);     % logging only: innovation covariance of y1 (2026-09-08, wall-hypothesis likelihood)
+    S2_v       = nan(3, 1);     % logging only: innovation covariance of y2 (NaN when the y2 gate is closed)
     gate_off   = false(3, 1);
     G_flags    = false(3, 3);
     a_prime_v  = zeros(3, 1);
@@ -1726,6 +1728,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         if l51_off; K1(5) = 0; end                     % E1 diagnostic, see init
         innov1 = delta_w_m(ax) - H1 * x_pred;
         innov_y1_v(ax) = innov1;          % logging only (whiteness diagnostic)
+        S1_v(ax)       = S1;              % logging only
         x_upd  = x_pred + K1 * innov1;
         if mean_knob_from > 0 && k_step >= mean_knob_from && y1_gain_leg_scale ~= 1
             x_upd(4) = x_upd(4) + (y1_gain_leg_scale - 1) * K1(4) * innov1;   % state only; P below uses the unscaled K1
@@ -1801,6 +1804,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             K_dx_y2_v(ax)  = K2(3);
             K_b_y2_v(ax)   = K2(5);
             innov_y2_v(ax) = innov2;
+            S2_v(ax)       = S2;              % logging only
             dws_y2_v(ax)   = K2(7) * innov2;
         end
 
@@ -1908,6 +1912,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         diag.delta_x_m      = delta_w_m * R_radius;   % [um]
         diag.innovation_y2  = innov_y2_v;
         diag.innovation_y1  = innov_y1_v;   % [-] normalized; whiteness diagnostic
+        diag.S1             = S1_v;         % innovation covariance of y1 (logging only)
+        diag.S2             = S2_v;         % innovation covariance of y2 (NaN when gated off)
         diag.K_kf_a_y2      = K_a_y2_v;
         diag.K_kf_dx_y2     = K_dx_y2_v;   % L32
         diag.K_kf_b_y1      = K_b_y1_v;      % L51
