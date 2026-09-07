@@ -358,6 +358,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent fe43_off q34_off q44_scale fe44_Aa_off fe44_Aa_scale   % diagnostic flags, default off / scale 1
     persistent jac_exact_step                               % row-4 Jacobian / Q / g_n of the EXACT law step (2026-09-06), default off
     persistent q55_path q55_per_R                           % Q55 = (Delta_b^2/W)|dw_hat| container of the b'_true dw line (2026-09-07), default off
+    persistent l51_off                                      % DIAGNOSTIC (2026-09-07): zero the y1 gain on slot 5 (b_hat updated by y2 only), Joseph P update stays consistent
     persistent law_exact_step                               % exact (quadrature-free) law step, default off (port of 2a5dc29)
     persistent pred_mean2                                   % second-order mean term in predict (0902 tex S5), default off
     persistent pred_force_step                              % row-4 known increment = a_hat * fbar_d[k-1] (commanded displacement), default off
@@ -473,6 +474,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % random walk in the PATH: Q55 = (Delta_b^2 / W) |dw_hat| per step, Delta_b = range of b_true on the envelope, W = envelope width
         % (both from the driver's envelope sweep, passed as q55_per_R = Delta_b^2/W); one traverse accumulates Delta_b^2, a hold adds
         % nothing, and the b_true arm (slot 5 locked) is untouched. No free number. Default false => bit-identical.
+        % l51_off (2026-09-07, E1 diagnostic): the estimated-b arm with the seed-at-truth P44[0] pulls b_hat up by +0.057 in the canon
+        % descent, 99% through the y1 leg l51*innov1 (probe_estb_l52_split.m); on Meng the pull comes through the y2 state path P54 H24.
+        % Zeroing K1(5) lets b_hat take information from y2 only; the Joseph form keeps P consistent for the modified gain. Default false.
+        l51_off = logical(get_field_default(ctrl_const, 'l51_off', false));
         q55_path  = logical(get_field_default(ctrl_const, 'q55_path', false));
         q55_per_R = get_field_default(ctrl_const, 'q55_per_R', 0);
         if q55_path
@@ -1708,6 +1713,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         K31_km1(ax) = K1(3);                         % kept for the next call's pred_mean2_kr1 term
         if freeze_gain || y1_gain_off || (y1_gain_off_from > 0 && k_step >= y1_gain_off_from); K1(4:7) = 0; end
         K1(lock_state_idx_ax{ax}) = 0;
+        if l51_off; K1(5) = 0; end                     % E1 diagnostic, see init
         innov1 = delta_w_m(ax) - H1 * x_pred;
         innov_y1_v(ax) = innov1;          % logging only (whiteness diagnostic)
         x_upd  = x_pred + K1 * innov1;
