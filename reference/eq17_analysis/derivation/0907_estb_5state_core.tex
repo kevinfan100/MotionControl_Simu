@@ -1,9 +1,9 @@
 % STATUS: ACTIVE | READING COPY of 0903_aptrue_4state_from_true.tex S3 / S5 / S6 / S11 restricted to the
-%   ESTIMATED-b arm in its 5-state core: x = [dw1 dw2 dw3 a_w b], no correlated-noise predict (nw_mcorr),
-%   no MA(2) memory slots. Same layout as 0831_formC_state_b_5state (equations only, nine sections), plus the
-%   second-order (a'') group and its mean m2 in the error dynamics. Independent sympy verification 2026-09-07
-%   (a'_true expansion exact incl. e_b e4^2; groups (1)-(3); first-order coefficients; m2 with the
-%   (a' + a'' dw)/b coefficient on Cov(e_b, e_D); the b_true limit). 2026-09-07.
+%   ESTIMATED-b arm in its 5-state core: x = [dw1 dw2 dw3 a_w b], first order, no correlated-noise predict
+%   (nw_mcorr), no MA(2) memory slots, no second-order mean terms. Four blocks: gain model -> true dynamics
+%   -> estimator -> error dynamics with F_e written out. Layout of 0831_formC_state_b_5state. 2026-09-07.
+%   The second-order (a'') group, its mean m2 and the exact-step form live in the SSOT S10-S11 and in git
+%   history of this file (54ca746).
 
 \documentclass[11pt,a4paper,fontset=none]{ctexart}
 \usepackage[fleqn]{amsmath}
@@ -20,7 +20,6 @@
 
 \newcommand{\ba}{\bar{a}}
 \newcommand{\bw}{\bar{w}}
-\newcommand{\E}{\mathbb{E}}
 \newcommand{\dW}{\Delta\bw}
 \newcommand{\dWh}{\Delta\hat{\bw}}
 \newcommand{\eD}{e_{\Delta\bw}}
@@ -38,39 +37,15 @@ $\ba := a/a_{\mathrm{nom}}$; forces by $a_o$: $\bar f := a_o f$, so that $\ba\,\
 hats sit on the normalized quantities $\ah$, $\bh$, $\delta\hat{\bw}$; $e_\theta = \theta - \hat\theta$)
 
 \begin{align*}
-\ba_{\mathrm{true}}(\bw)  &= 1 - \frac{9}{8\bw} + \frac{1}{2\bw^{3}} - \frac{57}{100\bw^{4}} + \frac{1}{5\bw^{5}} + \frac{7}{200\bw^{11}} - \frac{1}{25\bw^{12}} \\
-\ap_{\mathrm{true}}(\bw)  &= \frac{d\ba_{\mathrm{true}}}{d\bw} \\
-\app_{\mathrm{true}}(\bw) &= \frac{d^{2}\ba_{\mathrm{true}}}{d\bw^{2}}
-\end{align*}
-
-\begin{align*}
-\ap_{\mathrm{true}}(\bw) > 0 \ \text{on}\ \bw > 1 \quad &\Longrightarrow \quad
-  \ap = b_{\mathrm{true}}(\ba)\bigl(1-\ba\bigr)^{2}\ \text{exactly}, \qquad
-  b_{\mathrm{true}} := \frac{\ap_{\mathrm{true}}}{\bigl(1-\ba_{\mathrm{true}}\bigr)^{2}} \\
-\ba_{\mathrm{true}}(1) = 0,\ \ap_{\mathrm{true}}(1) = 1 \quad &\Longrightarrow \quad b_{\mathrm{true}}\bigl(\ba = 0\bigr) = 1 \\
-1 - \ba_{\mathrm{true}} = \frac{9}{8\bw} + \mathcal{O}(\bw^{-3}) \quad &\Longrightarrow \quad b_{\mathrm{true}}\bigl(\ba \to 1\bigr) = \frac{8}{9} \\
-\app_{\mathrm{true}}(\bw) &= b'_{\mathrm{true}}(\bw)\bigl(1-\ba_{\mathrm{true}}\bigr)^{2} - 2\,b_{\mathrm{true}}\bigl(1-\ba_{\mathrm{true}}\bigr)\,\ap_{\mathrm{true}}
-\end{align*}
-
-\begin{align*}
-\ba(\bw)         &= 1 - \frac{1}{b\,(\bw - \bw_s)} \\
-\ap(\ba, b)      &:= b\bigl(1-\ba\bigr)^{2} \\
-\app(\ba, b)     &:= \frac{d\ap}{d\bw} = \frac{\partial\ap}{\partial\ba}\,\ap = -2\,b\bigl(1-\ba\bigr)\ap = -2\,b^{2}\bigl(1-\ba\bigr)^{3} \\
+\ba(\bw)      &= 1 - \frac{1}{b\,(\bw - \bw_s)} \\
+\ap(\ba, b)   &:= \frac{d\ba}{d\bw} = b\bigl(1-\ba\bigr)^{2} \\
+\app(\ba, b)  &:= \frac{d\ap}{d\bw} = -2\,b^{2}\bigl(1-\ba\bigr)^{3} \\
 a_w &= a_o\,\ba_w , \qquad a_o = \frac{\Delta t}{\gamma_N R}
-\end{align*}
-
-\section{Jacobians}
-
-\begin{align*}
-A := \frac{\partial\ap}{\partial\ba} &= -2b\bigl(1-\ba\bigr) \\
-\frac{\partial\ap}{\partial b}       &= \bigl(1-\ba\bigr)^{2} = \frac{\ap}{b} \\
-\frac{\partial\app}{\partial\ba}     &= 6\,b^{2}\bigl(1-\ba\bigr)^{2} \\
-\frac{\partial\app}{\partial b}      &= -4\,b\bigl(1-\ba\bigr)^{3} = \frac{2\app}{b}
 \end{align*}
 
 \section{True dynamics}
 
-$\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2\bigr)$
+$\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2;\ b_{\mathrm{true}}[k] := b_{\mathrm{true}}(\bw[k])\bigr)$
 
 \begin{align*}
 \bw[k]           &= \bw_d[k] - \delta\bw_3[k] \\
@@ -79,7 +54,7 @@ $\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2\bigr)$
 \delta\bw_2[k+1] &= \delta\bw_3[k] \\
 \delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k] - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
 \dW[k]           &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k] \\
-\ba_w[k+1]       &= \ba_w[k] + \ap_{\mathrm{true}}[k]\,\dW[k] + \tfrac{1}{2}\,\app_{\mathrm{true}}[k]\,\dW[k]^{2} \\
+\ba_w[k+1]       &= \ba_w[k] + b_{\mathrm{true}}[k]\bigl(1-\ba_w[k]\bigr)^{2}\,\dW[k] \\
 b_{\mathrm{true}}[k+1] &= b_{\mathrm{true}}[k] + b'_{\mathrm{true}}[k]\,\dW[k]
 \end{align*}
 
@@ -88,66 +63,37 @@ F_{dw}[k]        &= \bar f_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar f_{dw}[k-i]
 \varepsilon_w[k] &= \ba_w[k]\,\bar f_T[k] + (1-\lambda_c)\sum_{i=1}^{d}\ba_w[k-i]\,\bar f_T[k-i] - (1-\lambda_c)\,n_w[k]
 \end{align*}
 
-\section{Process model}
+\section{Estimator}
 
 \begin{align*}
 \mathbf{x} &= \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w,\ b\,\bigr]^{\top} \qquad (d = 2)
 \end{align*}
-
-\section{Estimator}
 
 \begin{align*}
 \delta\hat{\bw}_1[k+1] &= \delta\hat{\bw}_2[k] \\
 \delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k] \\
 \delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k] \\
 \dWh[k]                &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k] \\
-\ah[k+1]               &= \ah[k] + \bh[k]\bigl(1-\ah[k]\bigr)^{2}\,\dWh[k] - \bh[k]^{2}\bigl(1-\ah[k]\bigr)^{3}\,\dWh[k]^{2} + m_2[k] \\
+\ah[k+1]               &= \ah[k] + \bh[k]\bigl(1-\ah[k]\bigr)^{2}\,\dWh[k] \\
 \bh[k+1]               &= \bh[k]
-\end{align*}
-
-\begin{align*}
-\frac{1}{1-\ah[k+1]} &= \frac{1}{1-\ah[k]} + \bh[k]\,\dWh[k] \qquad (\text{exact step; equal to the two law terms above to second order})
 \end{align*}
 
 \section{Error dynamics}
 
-(True $-$ Estimator; coefficients at the estimate; $\ap := \bh(1-\ah)^{2}$, $A := -2\bh(1-\ah)$, $\app := A\,\ap$;
-$e_b[k] := b_{\mathrm{true}}[k] - \bh[k]$, $f[k] := (1-\ah[k])^{2}\,e_b[k]$, $f' := df/d\bw$)
+(True $-$ Estimator; coefficients at the estimate; $e_b[k] := b_{\mathrm{true}}[k] - \bh[k]$)
 
 \begin{align*}
 \eD[k] &= \dW[k] - \dWh[k] = (1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k] \\
-\ap_{\mathrm{true}}[k]  &= \ap + A\,e_{\ba_w}[k] + f[k] + \bh\,e_{\ba_w}[k]^{2} - 2\bigl(1-\ah\bigr)e_{\ba_w}[k]\,e_b[k] + e_b[k]\,e_{\ba_w}[k]^{2} \\
-\app_{\mathrm{true}}[k] &= \app + f'[k] + \frac{\app}{\ap}\,f[k] + \mathcal{O}(e)
+b_{\mathrm{true}}[k]\bigl(1-\ba_w[k]\bigr)^{2} &= \bh[k]\bigl(1-\ah[k]\bigr)^{2} - 2\,\bh[k]\bigl(1-\ah[k]\bigr)\,e_{\ba_w}[k] + \bigl(1-\ah[k]\bigr)^{2}e_b[k] + \mathcal{O}\bigl(e^{2}\bigr)
 \end{align*}
 
 \begin{align*}
 e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k] \\
 e_{\delta\bw_2}[k+1] &= e_{\delta\bw_3}[k] \\
 e_{\delta\bw_3}[k+1] &= \lambda_c\,e_{\delta\bw_3}[k] - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
-e_{\ba_w}[k+1] &= e_{\ba_w}[k]
-   + \underbrace{\ap\,\eD + A\,\dWh\,e_{\ba_w} + \dWh\,f}_{(1)}
-   + \underbrace{A\,e_{\ba_w}\,\eD + f\,\eD + \app\,\dWh\,\eD + \tfrac{1}{2}\,\app\,\eD^{2}}_{(2)} \\
-  &\quad + \underbrace{\tfrac{1}{2}\Bigl(f' + \tfrac{\app}{\ap}f\Bigr)\bigl(\dWh + \eD\bigr)^{2}
-     + \bh\,e_{\ba_w}^{2}\bigl(\dWh + \eD\bigr) - 2\bigl(1-\ah\bigr)e_{\ba_w}e_b\bigl(\dWh + \eD\bigr)}_{(3)} \\
-  &\quad - m_2 + e_b\,e_{\ba_w}^{2}\bigl(\dWh + \eD\bigr) \\
-e_b[k+1] &= e_b[k] + b'_{\mathrm{true}}[k]\,\dW[k]
-\end{align*}
-
-((1) degree one without curvature; (2), (3) every term carrying $\app$ or $f'$; last term third order)
-
-\begin{align*}
-\mathrm{Var}(\eD)                  &= (1-\lambda_c)^{2}P_{33} + F_{dw}^{2}P_{44} + 2(1-\lambda_c)F_{dw}P_{34} + Q_{33} \\
-\mathrm{Cov}(e_{\ba_w},\eD)        &= (1-\lambda_c)P_{34} + F_{dw}P_{44} \\
-\mathrm{Cov}(e_b,\eD)              &= (1-\lambda_c)P_{35} + F_{dw}P_{45} \\
-m_2[k] &= A\,\mathrm{Cov}(e_{\ba_w},\eD) + \tfrac{1}{2}\,\app\,\mathrm{Var}(\eD) + \frac{\ap + \app\,\dWh}{\bh}\,\mathrm{Cov}(e_b,\eD) \\
-       &\quad + \tfrac{1}{2}\,f'\bigl(\dWh^{2} + \mathrm{Var}(\eD)\bigr) + \bh\,P_{44}\,\dWh - 2\bigl(1-\ah\bigr)P_{45}\,\dWh
-\end{align*}
-
-First order, $(1)$ with $\eD$ substituted:
-\begin{align*}
-e_{\ba_w}[k+1] &= \Bigl[1 + \bh\bigl(1-\ah\bigr)^{2}F_{dw} - 2\bh\bigl(1-\ah\bigr)\bigl(\Delta\bw_d + (1-\lambda_c)\delta\hat{\bw}_3\bigr)\Bigr]e_{\ba_w}[k] \\
+e_{\ba_w}[k+1] &= \Bigl[1 + \bh\bigl(1-\ah\bigr)^{2}F_{dw} - 2\bh\bigl(1-\ah\bigr)\bigl(\Delta\bw_d + (1-\lambda_c)\,\delta\hat{\bw}_3\bigr)\Bigr]e_{\ba_w}[k] \\
   &\quad + (1-\lambda_c)\,\bh\bigl(1-\ah\bigr)^{2}e_{\delta\bw_3}[k]
-        + \bigl(1-\ah\bigr)^{2}\bigl(\Delta\bw_d + (1-\lambda_c)\delta\hat{\bw}_3\bigr)e_b[k]
+        + \bigl(1-\ah\bigr)^{2}\bigl(\Delta\bw_d + (1-\lambda_c)\,\delta\hat{\bw}_3\bigr)e_b[k]
         + \bh\bigl(1-\ah\bigr)^{2}\varepsilon_w[k] \\
 e_b[k+1] &= e_b[k] + b'_{\mathrm{true}}[k]\,\dW[k]
 \end{align*}
@@ -165,62 +111,7 @@ F_e[k] = \begin{bmatrix}
 \end{align*}
 
 \begin{align*}
-\mathbf{q}[k] &= \Bigl[\,0,\ 0,\ -\varepsilon_w,\ \bh\bigl(1-\ah\bigr)^{2}\varepsilon_w,\ 0\,\Bigr]^{\top} \\
-\text{model error} &: \quad \text{row 4:}\ \dWh\,f = F_e(4,5)\,e_b\ \text{with}\ \E[e_b] \ne 0 ; \qquad \text{row 5:}\ b'_{\mathrm{true}}\,\dW
-\end{align*}
-
-\section{Measurement and innovation}
-
-\begin{align*}
-\nabla_d\bw_d[k] &= \bw_d[k] - \bw_d[k-d] \\
-y_1[k] &= \delta\bw_1[k] + n_w[k] \\
-y_2[k] &= \ba_w[k-d] + n_a[k]
-\end{align*}
-
-\begin{align*}
-\ba_w[k-d] &= \ba_w[k] - b\bigl(1-\ba_w[k]\bigr)^{2}\,\nabla_d\bw_d[k] \\
-\frac{\partial y_2}{\partial\ba_w} &= 1 + 2\bh\bigl(1-\ah\bigr)\nabla_d\bw_d \\
-\frac{\partial y_2}{\partial b}    &= -\bigl(1-\ah\bigr)^{2}\nabla_d\bw_d
-\end{align*}
-
-\begin{align*}
-H[k] &= \begin{bmatrix}
-1 & 0 & 0 & 0 & 0 \\
-0 & 0 & 0 & 1 + 2\bh\bigl(1-\ah\bigr)\nabla_d\bw_d & -\bigl(1-\ah\bigr)^{2}\nabla_d\bw_d
-\end{bmatrix} \\
-L[k] &= P^{f}H^{\top}\bigl(HP^{f}H^{\top} + R\bigr)^{-1} \\
-e_{y_1}[k] &= e_{\delta\bw_1}[k] + n_w[k] \\
-e_{y_2}[k] &= \Bigl[1 + 2\bh\bigl(1-\ah\bigr)\nabla_d\bw_d\Bigr]e_{\ba_w}[k] - \bigl(1-\ah\bigr)^{2}\nabla_d\bw_d\,e_b[k] + n_a[k]
-\end{align*}
-
-\section{Process and measurement noise}
-
-\begin{align*}
-\kappa_T &:= \frac{4k_BT\,a_o}{R} = \frac{4k_BT\,a_{\mathrm{nom}}}{R^{2}} \\
-\mathrm{Var}\bigl(\ba_w[k]\,\bar f_T[k]\bigr) &= \kappa_T\,\ba_w[k] \ \to\ \kappa_T\,\ah[k] \\
-\sigma^{2}_{n_w} &= \frac{\sigma^{2}_n}{R^{2}}
-\end{align*}
-
-\begin{align*}
-Q_{33} &= \mathrm{Var}(\varepsilon_w)[k] = \kappa_T\Bigl(\ah[k] + (1-\lambda_c)^{2}\bigl(\ah[k-1] + \ah[k-2]\bigr)\Bigr) + (1-\lambda_c)^{2}\sigma^{2}_{n_w} \\
-Q_{34} = Q_{43} &= -\bh\bigl(1-\ah\bigr)^{2}Q_{33} \\
-Q_{44} &= \bh^{2}\bigl(1-\ah\bigr)^{4}Q_{33} \\
-Q_{55} &= 0
-\end{align*}
-
-\begin{align*}
-R &= \mathrm{diag}(R_1, R_2) \\
-R_1 &= \sigma^{2}_{n_w} \\
-R_2 &= K_{\mathrm{var}}\,IF_{\mathrm{var}}\bigl(\ah + \xi\bigr)^{2} + d\,Q_{44} \\
-K_{\mathrm{var}} &= \frac{2a_{\mathrm{cov}}}{2 - a_{\mathrm{cov}}}
-\end{align*}
-
-\section*{Seed and prior}
-
-\begin{align*}
-\bh[0] &= \tfrac{8}{9} , \qquad P_{55}[0] = \Bigl(\sup_{\mathrm{env}}\bigl|b_{\mathrm{true}} - \tfrac{8}{9}\bigr|\Bigr)^{2} \\
-\ah[0] &= 1 - \frac{1}{\bh[0]\bigl(\bw[0] - \bw_s\bigr)} , \qquad
-P_{44}[0] = \ap[0]^{2}\,P_{f,w_0}^{2} + P_{f,a,\mathrm{floor}}^{2}
+\mathbf{q}[k] &= \Bigl[\,0,\ 0,\ -\varepsilon_w,\ \bh\bigl(1-\ah\bigr)^{2}\varepsilon_w,\ 0\,\Bigr]^{\top}
 \end{align*}
 
 \end{document}
