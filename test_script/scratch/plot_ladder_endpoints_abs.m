@@ -54,7 +54,7 @@ function plot_ladder_endpoints_abs(arms, tag)
             hr = plot(t, bt, '-', 'Color', COL_TRUE, 'LineWidth', 2.0);
             hg = yline(8/9, '--', 'Color', [0.35 0.35 0.35], 'LineWidth', 1.2);
             mb = mean(d.B,2); sb = std(d.B,0,2); sp = mean(d.sP5,2);
-            if any(strcmp(arm, {'bhat','bhp0','bhq5','bhq5s','bhn1'}))
+            if any(strcmp(arm, {'bhat','bhp0','bhq5','bhq5s','bhn1','bhp0i'}))
                 hb = fill([t; flipud(t)], [mb+sp; flipud(mb-sp)], BANDC, 'FaceAlpha', 0.30, 'EdgeColor','none');
                 hs = plot(t, mb + sb, ':', 'Color', COL_HAT, 'LineWidth', 1.0); plot(t, mb - sb, ':', 'Color', COL_HAT, 'LineWidth', 1.0);
                 hm = plot(t, mb, '-', 'Color', COL_HAT, 'LineWidth', 2.0);

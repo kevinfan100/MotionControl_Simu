@@ -31,7 +31,9 @@ function run_ladder_endpoints(traj, seeds, arms, kappa, tag)
         case 'meng'; OV = struct('trajectory_type','osc','h_init',15,'h_bottom',2.5,'amplitude',0,'frequency',1,'n_cycles',1,'t_hold',0.5,'t_descend_override',10,'T_sim',12.5,'h_min',2.475); cfg0 = OV;
         case 'canon'; OV = struct(); cfg0 = canonical_scenario(0.05, 1.1, 'deep');
     end
-    w0bar = cfg0.h_init / pc.R; [~, cp] = calc_correction_functions(w0bar); at = 1/cp; ws0 = 1 + w0bar - 1/((8/9)*(1 - at));
+    w0bar = cfg0.h_init / pc.R; [~, cp, dd] = calc_correction_functions(w0bar, true); at = 1/cp; ws0 = 1 + w0bar - 1/((8/9)*(1 - at));
+    b0_true = (-dd.dc_perp_dh / cp^2) / (1 - at)^2;                 % b_true at the start height (oracle, for the bhp0i arm only)
+    ws0_b0 = 1 + w0bar - 1/(b0_true*(1 - at));                       % law origin consistent with that b (seed a_hat at truth)
     t3 = cfg0.t_hold + cfg0.t_descend_override + cfg0.n_cycles/cfg0.frequency;
     switch traj; case 'meng'; p0_floor = 3e-4; otherwise; p0_floor = 1e-5; end
     OFF = struct('law_exact_step',false,'pred_mean2',false,'nw_mcorr',false,'pred_mean2_e4',false,'fe44_Aa_scale',kappa);
@@ -48,7 +50,17 @@ function run_ladder_endpoints(traj, seeds, arms, kappa, tag)
         'bhq5',  struct('o', struct(),                                                       'cc', setfield(setfield(setfield(setfield(ON4,'ws0_perp',ws0),'Pf_w0_std',0),'Pf_a_floor',p0_floor),'q55_path',true)), ...
         'btq5',  struct('o', struct('b_true',true,'b_true_at','true'),                       'cc', setfield(setfield(setfield(setfield(ON4,'ws0_perp',ws0),'Pf_w0_std',0),'Pf_a_floor',p0_floor),'q55_path',true)), ...
         'bhq5s', struct('o', struct(),                                                       'cc', setfield(setfield(ON4,'ws0_perp',ws0),'q55_path',true)), ...
+        'bhp0i', struct('o', struct(),                                                       'cc', setfield(setfield(setfield(setfield(ON4,'ws0_perp',ws0_b0),'Pf_w0_std',0),'Pf_a_floor',p0_floor),'b_init',b0_true)), ...
+        'bhd',   struct('o', struct(),                                                       'cc', setfield(setfield(setfield(setfield(ON4,'ws0_perp',ws0),'Pf_w0_std',0),'Pf_a_floor',p0_floor),'da_slot',true)), ...
+        'btd',   struct('o', struct('b_true',true,'b_true_at','true'),                       'cc', setfield(setfield(setfield(setfield(ON4,'ws0_perp',ws0),'Pf_w0_std',0),'Pf_a_floor',p0_floor),'da_slot',true)), ...
+        'bhatd', struct('o', struct(),                                                       'cc', setfield(setfield(ON4,'ws0_perp',ws0),'da_slot',true)), ...
         'bhn1',  struct('o', struct(),                                                       'cc', setfield(setfield(setfield(setfield(ON4,'ws0_perp',ws0),'Pf_w0_std',0),'Pf_a_floor',p0_floor),'l51_off',true)));
+        % bhp0i (09-07): bhp0 with b_hat SEEDED AT b_true(w_0) (Meng 0.883, canon ~0.887) instead of 8/9, law origin ws0 consistent, prior width unchanged.
+        % bhd / btd / bhatd (09-07, E2): slot 6 = additive gain disturbance da alongside b_hat -- on bhp0 (estimated b, seed-at-truth P44[0]),
+        % on btp0 (b_true fed; da's truth ~ 0 there) and on production's P44[0]. PRE-REGISTERED (bhd vs bhp0): canon hold into 1 SEM,
+        % b_hat stays 0.88-0.90 with sqrt(P55) not collapsing, near-wall mean halved to |.| < 0.006, near-wall sigma <= 0.015;
+        % btd: da_hat ~ 0 and a within 1 SEM of btp0; bhatd: within 1 SEM of bhat or better. Opponent: da and b alias on the
+        % descent => b_hat still pulled or da_hat wanders with sqrt(P66) not shrinking.
         % bhn1 (09-07, E1): bhp0 with the y1 gain on b_hat zeroed (b_hat updated by y2 only). PRE-REGISTERED: canon b_hat no longer jumps
         % at the first bottom (descent change <= +0.01 vs +0.057), sqrt(P55) does not collapse; the near-wall a error stays or grows
         % (the mid-band model error now has to be cleared by y2 on a_hat). Opponent: b_hat still jumps => another channel.
@@ -61,24 +73,25 @@ function run_ladder_endpoints(traj, seeds, arms, kappa, tag)
     fname = fullfile(od, sprintf('ladder_endpoints_%s%s.mat', traj, tag));
     if exist(fname, 'file'); out = load(fname); else; out = struct(); end
     out.traj = traj; out.seeds = seeds; out.t_hold = t3; out.ws0 = ws0; out.kappa = kappa;  nS = numel(seeds);
-    fprintf('[%s ladder] ws0 %.5f | hold from %.2f s | seeds %s | arms %s\n', traj, ws0, t3, mat2str(seeds), strjoin(arms, ','));
+    fprintf('[%s ladder] b_true(w0) %.4f ws0_b0 %.5f | ws0 %.5f | hold from %.2f s | seeds %s | arms %s\n', traj, b0_true, ws0_b0, ws0, t3, mat2str(seeds), strjoin(arms, ','));
     for ia = 1:numel(arms)
         A = DEF.(arms{ia});
         o = struct('arm','best','ctrl_const_override',A.cc,'config_override',OV,'scenario','deep','verbose',false,'seeds',seeds,'log_P_full',false);
         fn = fieldnames(A.o); for i = 1:numel(fn); o.(fn{i}) = A.o.(fn{i}); end
         clear run_formC_b motion_control_law_formC_b;
         evalc('R = run_formC_b(o);');
-        t = R.runs{1}.tout(:);  N = numel(t);  E = zeros(N,nS); AH = E; AT = E; HB = E;  B = E;  P5 = E;
+        t = R.runs{1}.tout(:);  N = numel(t);  E = zeros(N,nS); AH = E; AT = E; HB = E;  B = E;  P5 = E;  DA = E;  P6 = E;
         for q = 1:nS
             r = R.runs{q}; ad = r.a_hat_out(1,3)/r.a_bar_hat_out(1,3);
             AH(:,q) = r.a_bar_hat_out(:,3); AT(:,q) = r.a_true_out(:,3)/ad; E(:,q) = AH(:,q) - AT(:,q); HB(:,q) = r.h_bar_true_out(:,1);
             B(:,q) = r.b_hat_out(:,3);  P5(:,q) = r.P_b_out(:,3);   % b the law used (locked constant / fed b_true / estimate); P_b_out is sqrt(P55)
+            DA(:,q) = r.p_hat_out(:,3); P6(:,q) = r.P_p_out(:,3);   % slot 6 (= da when da_slot; inert 0 otherwise), P_p_out is sqrt(P66)
         end
         hd = R.runs{1}.p_d_out(:,3)/R.runs{1}.R;  a_nom = R.runs{1}.a_hat_out(1,3)/R.runs{1}.a_bar_hat_out(1,3);  clear R;
-        out.(arms{ia}) = struct('t', t, 'E', E, 'AH', AH, 'AT', AT, 'HB', HB, 'hd', hd, 'B', B, 'sP5', P5, 'a_nom', a_nom);
+        out.(arms{ia}) = struct('t', t, 'E', E, 'AH', AH, 'AT', AT, 'HB', HB, 'hd', hd, 'B', B, 'sP5', P5, 'DA', DA, 'sP6', P6, 'a_nom', a_nom);
         mh = t > t3;  pm = mean(E(mh,:), 1);
-        fprintf('[%s %-5s] health: min w %.4f | min a_hat %.5f | NaN %d | hold est-true %+.5f (SEM %.5f) | sigma_seed %.5f | rel. to a(wall) %+.1f%%\n', ...
-            traj, arms{ia}, min(HB(:)), min(AH(:)), sum(~isfinite(E(:))), mean(pm), std(pm)/sqrt(nS), mean(std(E(mh,:),0,2)), 100*mean(pm)/mean(AT(mh,:),'all'));
+        fprintf('[%s %-5s] health: min w %.4f | min a_hat %.5f | NaN %d | hold est-true %+.5f (SEM %.5f) | sigma_seed %.5f | rel. to a(wall) %+.1f%% | b_hat hold %.3f sqrtP55 %.3f | da_hat hold %+.5f sqrtP66 %.5f\n', ...
+            traj, arms{ia}, min(HB(:)), min(AH(:)), sum(~isfinite(E(:))), mean(pm), std(pm)/sqrt(nS), mean(std(E(mh,:),0,2)), 100*mean(pm)/mean(AT(mh,:),'all'), mean(B(mh,:),'all'), mean(P5(end,:)), mean(DA(mh,:),'all'), mean(P6(end,:)));
     end
     % negative controls against the existing recipe runs
     f1 = fullfile(od, sprintf('aptrue_nw_mcorr_full_%s.mat', traj));
