@@ -100,6 +100,16 @@
   Meng 不變，機制開放。code：`pred_mean2_e4` 在 slot 5 自由時多加 (∂ā′/∂b̂)Cov(e_b,u)。儀器 `run_prod_ladder.m`
   （臂 lockb／lockw／prod／hist）、`plot_prod_ladder.m`、`probe_lockb_bprime_line.m`。圖 = 母本倒數第三頁。
 
+## 未知牆面線與估 b̂ 延伸（2026-09-07）
+
+- **三牆 = 法則家族的兩個數**：Meng Fig 11 實驗曲線數位化（`reference/eq17_analysis/data/`）擬合 1/(1−ā) = b(w̄ − w̄_s)：細胞 = 平面平移 −1 R（b 同）、球面 = b +33%。
+  三牆 plant（`run_three_walls.m`）：production 在細胞崩（hold −0.08），prior 放寬到牆家族（Pf_b 0.15、Pf_w0 1 R，房規值）三牆都活；平面代價散布 3×。
+  遠場 hold 沒有增益資訊，種子錯只能靠運動修 ⇒ prior 必須承認種子可能錯（假說帳 O 條）。
+- **估 b̂ 延伸走完設計空間**：b_true 乾淨結果（散布 0.005）不能直接延伸到估 b̂（同 prior 下 hold −0.011、b̂ 被拉到 0.96 鎖死）；
+  b̂ 被拉的通道量到（canon y₁ 經 P₅₁、Meng y₂ 狀態路）；Q55 容器、E1 封 y₁、E2 δa 槽（五關 PASS）都能停止 b̂ 被拉，但各付散布（近壁 2×／1.5×／遠場 3–4×）；
+  谷底常數 b 的均值誤差 −1～−2% 誰都拿不掉；兩錨曲線比常數差。**估測器到地板，production 是最均衡的一格**。旗標 `q55_path`、`l51_off`、`da_slot`、`jac_exact_step` 全 default off。
+- 文件：`0907_estb_5state_core.tex`（估 b̂ 一階 F_e 讀本，0831 版型）；SSOT §11 加 Q55 與 E2 小節；假說帳 R45–R53、C41–C46、O19–O23。
+
 ## 現況（2026-08-03）
 
 - 缺陷 1 已由 7a 代數式修復（descent 11.03% → 5.05%）

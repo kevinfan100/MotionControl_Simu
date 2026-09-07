@@ -29,6 +29,10 @@
 | O17 | 可觀性視窗 W = 500 步未做 10× 不變性掃描（mainline_audit_plan B-1） | 只有 b 的 W 125/250/500/1000/2000 → CRLB/prior 4.71/1.92/1.10/0.866/0.861 一組（08-18）；第 1–3 關未自動化；只跑 z 軸／單 seed／canonical | 08-18 | formC_b_audit_ledger.md §4 #14；project_observability_ledger_2026-08-17 | — |
 | O18 | 三軸 meas_noise [0.62; 0.57; 3.31] nm 是自洽 scenario 不是 spec | 2025-12-12 進 repo 無 datasheet／量測／引用；y 由 0.057 改 0.57 nm（2026-06-08 單檔改、08-12 統一）；mainline-gainlaw 的「y 軸 10×」指這段歷史，現行值是調高的那個 | 08-25 | formC_b_audit_ledger.md §4 #8、§1.9 | — |
 | O19 | prior 對回起點後快速段誠實比仍 0.66–0.77（P 高 1.3–1.5×），來源未追 | Meng p0small 0.66、canon p0tiny 0.77；hold 1.01；R₂÷3、精確步 Jacobian 皆不是 | 09-06 | project_aptrue_second_order_ladder_2026-09-02 | — |
+| O20 | 牆家族 prior（Pf_b_std 0.15、Pf_w0_std 1 R）目前是判別用房規值，需由牆家族範圍推導 | 三牆測試：細胞 hold −0.081 → −0.003、平面代價散布 3×、+0.005 | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | 2a76a67 |
+| O21 | 球面的 b（b_B 0.87 對平面 1.15）由球半徑從兩球問題推 | 擬合 (1.156, +0.162)，Meng 掃出 R_s 5.17 µm；未推 | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | — |
+| O22 | 遠場 hold 沒有增益資訊（√P₄₄ 0.5 s 內不縮、種子錯原封帶進下坡再放大 25×）：起點誤差只能靠運動修，且要 prior 承認種子可能錯 | 球面 canon E −0.0114 → −0.0114、Meng −0.0358 → −0.0356（prod）；wide 臂在遠場下坡修回（Meng 下坡均值 −0.035 → +0.004） | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | — |
+| O23 | 08-17 可觀性總表的 b CRLB/prior 0.86 量在淺帶；深帶無 δa 時 canon 0.0088、Meng 0.54，要重登 | verify_obs_da_slot.m | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | 1eae694 |
 
 ## REFUTED（被量測否證或撤回；「判決數字」= 殺死它的那個數字）
 
@@ -82,6 +86,11 @@
 | R46 | 列 4 Jacobian 少乘精確步因子 (1−â⁺)²/(1−â)² 是 P₄₄ 膨脹／散布的機制 | 閉式 sympy 驗算 PASS（SSOT §12），`jac_exact_step` 接上後三臂兩軌跡配對差 ≤ 2e-4（散布、ℓ₄₁+ā′ℓ₃₁、hold 全不動）⇒ 推導正確、REFUTED-as-mechanism；旗標留 default off | 09-06 | project_aptrue_second_order_ladder_2026-09-02 | 35e25a4 |
 | R47 | κ=0.5 是在補 R₂ 偏大 3×（NIS₂ 0.3） | K_var÷3：快速段 √P₄₄ 0.0101→0.0100 不動；最差瞬間 0.0264→0.0290／0.0323→0.0370；hold 誠實 0.87→1.65／1.08→1.71（過度自信）；lockb 同 | 09-06 | project_aptrue_second_order_ladder_2026-09-02 | 6a51bed |
 | R48 | κ = fe44_Aa_scale = 0.5 可作 production 量（任何讀法） | 真實 +0.0031 初始偏差（Meng，= 1 prior σ）：κ=1 最差瞬間均值 +0.0096、hold +0.0007±0.0022（收回）；κ=0.5 最差 +0.048、hold +0.0147±0.0026（放大 15× 留下）；與常數 b 臂塌陷（C.9）同根 | 09-06 | project_aptrue_second_order_ladder_2026-09-02 | 35e25a4 |
+| R49 | Q55 = (Δb²/W)\|Δŵ̄\| 路徑容器讓估 b̂ 臂在小 P₄₄[0] 下乾淨 | hold 回零（Meng −0.0006、canon +0.0059±0.0031），但近壁散布加倍（0.039／0.023）、√P55 過蓋 2×（√s 對 s）、b̂ 走偏 0.87；驗算：蓋得住下坡、蓋不住上坡（2.5–4.8×）；均值 −1% 不動 | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | cd52e95 |
+| R50 | 加 δa 槽（formC_dist 每步增量）給 innovation 一個家 ⇒ production 候選 | 五關 PASS（Meng 視窗相依）、b̂ 不再被拉、hold 近零；但遠場散布 3–4×（prior 3e-4/步積成 0.1–0.5）、b_true+δa 臂同樣 0.04；均值 −1% 不動 | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | 4b48946 |
+| R51 | 兩錨推導的 b(w̄) 內插可取代常數 8/9 | 真曲線谷底 0.867 低於兩錨（8/9、1），任何單調內插帶內 sup／積分誤差都比常數差（1/w̄³：0.050／−0.094 對常數 0.039／−0.057） | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | — |
+| R52 | 估 b̂ 臂 b̂ 被拉錯是 y₂ 讀數路 H₂₅ | 探針：canon +0.057 全在 y₁ 腿 ℓ₅₁（經 P₅₁）、Meng +0.039 全在 y₂ 狀態路 P₅₄H₂₄，讀數路 0；E1 封 ℓ₅₁ canon hold −0.0106 → −0.0001 | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | 987f01f |
+| R53 | 第一段 hold 被 y₂ warmup 閘關掉所以讀不回種子錯 | t_warmup_kf = 0（2026-05-05 起預設），閘沒關；是 hold 無資訊（見 O22） | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | — |
 
 ## CONFIRMED（已 [量到] 或 [推導] 並落地的機制與修復）
 
@@ -129,6 +138,10 @@
 | C40 | 一階傳遞 sd(a_true) = \|a′\|·sd(w̄) 全程正確；ε 由 a′ 掃 320× 造成 | 遠場 0.9999、谷底 1.0353（殘 3.5% = 曲率）；ε 0.003% → 3.9%；sd(w̄) 反而變小 3×；Jensen 位移 −8.37e-6 vs 預測 −7.47e-6（相對 ā −0.0096%） | 08-24 | project_formC_atrue_var_multiplicative_bound_2026-08-24 | — |
 | C41 | 讀 â 的臂近壁散布 = prior P₄₄[0] 經法則自我敏感度放大（Π(1−â⁺)²/(1−â)² = ā′_wall/ā′_entry；1/(1−a) 座標下起點誤差是常數） | seed-at-truth 臂把 P₄₄[0] 0.0031→3e-4（Meng）／0.00026→1e-5（canon），κ=1：最差瞬間 sd 0.0323→0.0051／0.0264→0.0035，ℓ₄₁+ā′ℓ₃₁ → +0.002／+0.003，hold 誠實 1.01、位準不動；強制 Meng P₄₄[0] = canon 走到 6.67 R 的 0.00089 ⇒ σ 對 w̄ 逐點落回 canon 家族 | 09-06 | project_aptrue_second_order_ladder_2026-09-02 | 35e25a4 |
 | C42 | b_true 格結案：估測器對初始值可修、對初始信任度敏感 | 真實 +0.0031：κ=1 最差瞬間 84% 已修（開環 +0.061 → +0.0096）、hold 內全修；散布 ∝ P₄₄[0]（兩向：信任太大 ⇒ 幻影散布，太小 ⇒ 修不回）；剩 O19 與 10-seed 解析度（O2） | 09-06 | project_aptrue_second_order_ladder_2026-09-02 | — |
+| C43 | Meng Fig 11 三種牆（平面／球面／細胞）都落在法則家族 1/(1−ā) = b(w̄ − w̄_s)：細胞 = 平面往下平移 1 R（b 不變）、球面 = b +33%（牆位不變） | rms 0.0017／0.0053／0.0062；Form B 寫法 (b_B, w̄_s,B)：(1.15, 0.98)、(0.87, 1.03)、(1.14, −0.06) | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | 2a76a67 |
+| C44 | 未知牆種下：production 在細胞牆崩、prior 放寬到牆家族三牆都活；球面 hold 偏差 = 法則 b 錯在最後下坡積出（a′_true 臂無） | 細胞 prod hold −0.081／−0.052、wide −0.003／−0.007；球面 prod canon +0.016、apest −0.009 | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | 2a76a67 |
+| C45 | 估 b̂ 臂在 seed-at-truth P₄₄[0] 下：常數 b 的谷底均值誤差 −1～−2% 是任何協方差容器（大 P₄₄[0]、Q55、δa、封 y₁）都拿不掉的；家放哪散布出在哪 | 六格表（memory）；b_true 臂為零 | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | 4b48946 |
+| C46 | 估 b̂ 5-state 一階 F_e 文件 `0907_estb_5state_core.tex`；二階（ā″ 群、m₂）版經 sympy 驗算（ā′_true 展開含 e_b e₄²、m₂ 的 Cov(e_b,e_Δ) 係數 (ā′+ā″Δŵ̄)/b̂，code 少 (1+AΔŵ̄) < 1%/步） | 54ca746（二階）、8f49cd4（乾淨一階） | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | 8f49cd4 |
 
 ## 附：formC_b_audit_ledger.md §4／§6 對照（只列 09-06 狀態與本檔對應列，內容不抄）
 
