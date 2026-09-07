@@ -562,7 +562,8 @@ e_b[k+1] &= e_b[k] + b'_{\mathrm{true}}\bigl(\bw[k]\bigr)\,\dW[k] - \ell_{51}[k+
 \sum_{\text{one traverse}} \tilde{Q}_{55}[k] &= \Delta b^{2} \\
 P_{55}^{-}[k+1] &= P_{55}[k] + \tilde{Q}_{55}[k] \qquad (\text{row and column 5 of } \tilde{F}_e P \tilde{F}_e^{\top} \text{ unchanged}) \\
 \sqrt{P_{55}}\ \text{after a path } s W,\ 0 \le s \le 1,\ \text{from } P_{55} = 0 &= \Delta b\,\sqrt{s} \ \ge\ \Delta b\,s
-  \ \ge\ \Bigl|\sum b'_{\mathrm{true}}\dW\Bigr| \qquad (\text{a one-signed drift inside one traverse is covered at every point}) \\
+  \ \ge\ \Bigl|\sum b'_{\mathrm{true}}\dW\Bigr| \qquad \text{only if } \max\bigl|b'_{\mathrm{true}}\bigr| \le \Delta b / W
+  \quad (\text{uniform-rate condition; the real curve exceeds it } 10\times) \\
 \tilde{Q}_{55} &= 0 \ \text{in a hold } (\dWh = 0) , \qquad \Delta b = 0 \ \text{on the b}_{\mathrm{true}}\text{ arm (Section 10 recovered)}
 \end{align*}
 
@@ -591,7 +592,14 @@ gain transients, not by $b_{\mathrm{true}}$ (the 08-17 information bound). With 
 $P_{44}[0]$ give the same run: the container dominates $P_{44}$ through $\tilde F_e(4,5)$. What the three estimated-$\hat b$ rows share is a
 near-wall MEAN of $-0.01$ to $-0.02$ that no covariance container removes -- it is the mean model error of a constant $b$
 (the $\mu$ of this section), and the b$_{\mathrm{true}}$ arm, whose mean model follows the curve, has none. A covariance term is the
-wrong category for a coherent bias; the mean model is. Flag kept, default false.)
+wrong category for a coherent bias; the mean model is. Flag kept, default false.
+Independent verification 09-07 (sympy / numeric, three interpolants of the real $b_{\mathrm{true}}$ through $0.883$ at $6.67$, $0.867$ at $2.19$,
+$0.928$ at $1.10$): items 1 and 4 exact; the honesty line needs the uniform-rate condition written above -- with it dropped a curve that
+spends its whole $\Delta b$ early is uncovered; on the real curve the container covers every DESCENT (worst $|e_b|/\sqrt{P_{55}} = 0.74$,
+at the wall end) but not an ASCENT ($2.5\times$ Meng, $4.8\times$ canon, $1.55\times$ the outward oscillation leg): the steep part of
+$b_{\mathrm{true}}$ sits at the wall, late on a descent and early on an ascent. A run that never resets $P_{55}$ carries the descent's
+margin through the ascent with $\hat b$ frozen, but the filter shrinks $P_{55}$ at every update, so that margin is not guaranteed --
+consistent with the measured $\hat b$ drift on the oscillating canon profile.)
 
 \clearpage
 \section{Covariance propagation of the self-referential law: the weight $\kappa$}
