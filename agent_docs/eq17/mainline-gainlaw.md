@@ -115,6 +115,11 @@
   **兩個儀器發現**：(1) controller `b_ceil` 預設 1.05 —— 球面 b 1.156 不可表示，09-07 wide 臂球面 b̂ 貼頂 1549 步（C44 數字以 R54 修正）；3×3 傳 b_ceil 1.5。
   (2) y₂ 的 per-step 高斯似然不可用（ln S₂ 主導，NIS₂ 0.3 設計值、R₂ 隨 â）；bank 要用 y₁ 或白化 y₂（O24）。共用迴路的 bank 未實作。
   常數 b 的代價量到是第一趟的（C48：回訪 ≤ 0.003）⇒ 「b 對高度」的記憶沒東西可撿，缺口在出發前的 prior。log 新增 S₁／S₂（`S1_out`／`S2_out`，logging only；plane×plane 對 09-07 逐位相同）。圖 `wall_mm_3x3_{canon,meng}.png`。
+- **種子線假象（09-08 下午，R55／C49）**：seed-at-truth 只對 â[0]、b̂[0] 留 8/9，合成的直線在 canon 於 1.106 R 歸零（谷底 1.10 之上）；法則沿 21 R 把 â 搬到 floor，P₄₄[0] 小故 y₁ 經 ℓ₅₁ 把 b̂ 踢到 0.97、hold −0.0106。
+  **09-02～09-07 所有 seed-at-truth 的估 b̂ 臂都帶這個 init**，其結論（b̂ 被拉、innovation 要有家、E1/E2/Q55）列 O25 重驗；餵 b_true 的臂不受影響。正確種法 = 弦：b̂[0] = (1/(1−â[0]) − 1)/(w̄₀ − w_c)（`run_three_walls` 臂 bseed/bseed0）。
+  儀器規則：跑前印種子線歸零高度 w̄₀ − (1/(1−â[0]) − 1)/b̂[0]，必須低於軌跡最低點。production 自己的線（w₀ = 0、8/9）歸零 1.125，靠大 P₄₄[0] 由 y₂ 拉回，剩第一次下坡 −0.035 的坑；改錨接觸高度 canon −0.022、Meng 翻號 +0.025（O26）。
+  **「起點＋牆位已知、c(h̄) 未知」這一格結案（C50）**：弦種法＋P₄₄[0] 起點實況下，常數 b̂ 對餵 b_true(w̄) 只差牆邊一瞬 ±0.017、回訪 ±0.003、散布 5–10×；法則形狀不是問題。
+  圖：`seed_line_mismatch_canon.png`、`ladder_{btseed0,bseed0}_4row_abs_tw_p0.png`（平面）、`_cellb.png`（Brenner 下移 1.03 R 的細胞）；儀器 `plot_ladder_tw_abs.m`、`plot_three_walls_arms.m`、driver `opts.plant_cperp`（函數柄 plant）。
 
 ## 現況（2026-08-03）
 
