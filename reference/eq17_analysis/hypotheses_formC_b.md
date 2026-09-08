@@ -34,7 +34,7 @@
 | O22 | 遠場 hold 沒有增益資訊（√P₄₄ 0.5 s 內不縮、種子錯原封帶進下坡再放大 25×）：起點誤差只能靠運動修，且要 prior 承認種子可能錯 | 球面 canon E −0.0114 → −0.0114、Meng −0.0358 → −0.0356（prod）；wide 臂在遠場下坡修回（Meng 下坡均值 −0.035 → +0.004） | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | — |
 | O23 | 08-17 可觀性總表的 b CRLB/prior 0.86 量在淺帶；深帶無 δa 時 canon 0.0088、Meng 0.54，要重登 | verify_obs_da_slot.m | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | 1eae694 |
 | O24 | 牆種 bank 的 y₂ 似然未校準：Λ₂ = Σ½(e₂²/S₂ + ln S₂) 被 ln S₂ 主導（NIS₂ 設計值 0.3、R₂ 隨 â），錯 prior 在細胞 plant 上 Λ₂ 反而較低；只用 y₁ 的 Λ₁ 可用（NIS₁ ≈ 1）。共用迴路的 bank 未實作（3×3 各 prior 各跑自己的迴路） | ΔΛ₂ 細胞 plant：plane prior −71（下坡末）／−1634（Meng）；ΔΛ₁ 同格 +22／+159 | 09-08 | project_wall_hypothesis_3x3_2026-09-08 | — |
-| O25 | 09-07 估 b̂ 延伸的每一項（Q55 容器、E1 l51_off、E2 δa 槽、b̂ 被拉的通道探針）用弦種法重驗；停損 = 弦種法下 bseed0 已到地板則旗標全部退場 | R55 的 2×2 只在 canon 平面 10 seeds 做過 | 09-08 | project_wall_hypothesis_3x3_2026-09-08 | — |
+| O25 | ~~09-07 估 b̂ 延伸各項用弦種法重驗~~ → **CLOSED 09-08 晚**（R56：三旗標在弦種法下全部比純估測器差） | canon／Meng 10／5 seeds | 09-08 | project_wall_hypothesis_3x3_2026-09-08 | — |
 | O26 | production 種子線的錨（w₀ = 0 對接觸高度）：兩者在常數 b 下各錯一段（canon 谷底坑 −0.035／−0.022，Meng 翻號 ±0.025）；要壓牆邊只有餵曲線 | prod_wc 配對 | 09-08 | project_wall_hypothesis_3x3_2026-09-08 | — |
 
 ## REFUTED（被量測否證或撤回；「判決數字」= 殺死它的那個數字）
@@ -96,6 +96,7 @@
 | R53 | 第一段 hold 被 y₂ warmup 閘關掉所以讀不回種子錯 | t_warmup_kf = 0（2026-05-05 起預設），閘沒關；是 hold 無資訊（見 O22） | 09-07 | project_unknown_wall_three_surfaces_2026-09-07 | — |
 | R54 | 09-07 三牆 wide 臂「球面 b̂ 從 0.89 走向 1.16」 | controller `b_ceil` 預設 1.05 把 slot 5 每步夾住：wide 臂球面 b̂ 貼頂 1549 步、hold 1.035；球面 prior b = 1.156 在預設下不可表示（首輪 3×3 sphere×sphere hold +0.30、ŵ_wall 0.42）；b_ceil 1.5 後 sphere×sphere hold +0.002、ŵ_wall 1.024（真 1.027）。C44 的球面數字要以此修正讀 | 09-08 | project_wall_hypothesis_3x3_2026-09-08 | — |
 | R55 | 09-07 估 b̂ 臂（bhp0／bhq5／bhn1／bhd 等 seed-at-truth 臂）的結論「估 b̂ 延伸不到 b_true、b̂ 被 y₁ 經 P₅₁ 拉、innovation 要有家」 | 種子線假象：seed-at-truth 只把 â[0] 對到真值、b̂[0] 留 8/9，兩者合成的直線在 canon 於 1.106 R 歸零（谷底 1.10 R 之上）；法則沿 21 R 下坡把 â 搬到 floor（1.50 s：0.051 對真 0.084），P₄₄[0] 小故不修位準、y₁ 經 ℓ₅₁ 把 b̂ 踢到 0.97（Σℓ₅₁e₁ +0.084 對 +0.002）、hold −0.0106。2×2 判別：只換原點 → −0.0007、只換 b̂[0] → −0.0106、換 b_ceil 無效。弦種法（b̂[0] = (1/(1−â[0])−1)/(w̄₀−w_c)）下同一估測器 hold −0.0004。餵 b_true 的臂不受影響（btp0 = btseed0 逐位相同） | 09-08 | project_wall_hypothesis_3x3_2026-09-08 | — |
+| R56 | 09-07 的三個估 b̂ 容器（Q55 路徑、E1 l51_off、E2 δa 槽）在正確種子線下仍有用 | 弦種法＋P₄₄[0] 起點實況，基線 bseed0 canon 下坡最差 −0.017／σ 0.004／hold −0.0004，Meng +0.015／0.005／+0.0009。Q55：−0.025／0.011／+0.006，Meng +0.051／0.013；E1：−0.025／0.0075／+0.0003，Meng 不變；E2：σ 0.037／0.041（9×）、遠場亂走 −0.040／+0.073。三者全輸 ⇒ 旗標退場（code 留 default off），「innovation 要有家」的說法隨 R55 一併撤 | 09-08 | project_wall_hypothesis_3x3_2026-09-08 | — |
 
 ## CONFIRMED（已 [量到] 或 [推導] 並落地的機制與修復）
 

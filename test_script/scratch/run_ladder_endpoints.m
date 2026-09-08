@@ -1,3 +1,6 @@
+% WARNING (2026-09-08, R55): the seed-at-truth line here (b 8/9 through the start gain) zeroes at 1.106 R on canon, ABOVE the
+%   bottom 1.10 R; every ESTIMATED-b arm below (bhat/bhp0/bhq5/bhn1/bhd/bhp0i) carries that init artefact. Use run_three_walls
+%   arms bseed/bseed0 (chord seed) for new work; this file is kept to reproduce the 09-04..09-07 figures.
 % FORK OF test_script/scratch/run_aptrue_nw_mcorr_full.m (2026-09-04) | PURPOSE: the four END POINTS of the
 %   September oracle ladder at STANDARD run length, same 10 seeds, seed-at-truth init (ws0_perp from the plant's
 %   c_perp), both trajectories, one compact schema for plot_ladder_endpoints.m:

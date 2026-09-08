@@ -349,6 +349,15 @@ function out = run_formC_b(opts, test_opts)
     for idx = 1:numel(fn)
         ov.(fn{idx}) = opts.ctrl_const_override.(fn{idx});
     end
+    % SEED LINE CHECK (2026-09-08, hypotheses R55/C49): the seed (a_bar_hat[0], b_hat[0]) IS a straight line in
+    % u = 1/(1 - a_bar), and the exact law step carries the level along that line, so the line's zero-gain height
+    % w0 + 1/b_init must lie BELOW the lowest commanded height or the law arrives at the bottom with a_bar <= 0.
+    w_zero_seed = (ov.ws0_perp - 1) + 1/ov.b_init;  w_bottom_cmd = cfg.h_bottom / pc.R;
+    if w_zero_seed >= w_bottom_cmd
+        fprintf('SEED LINE: zero gain at %.3f R -- AT OR ABOVE the commanded bottom %.3f R (b_init %.4f, ws0_perp %.4f). The law will carry a_bar to <= 0 there; only a wide P44[0] lets y2 pull it back. Seed with the chord: b_init = (1/(1-a_bar_0) - 1)/(w_0 - w_contact).\n', w_zero_seed, w_bottom_cmd, ov.b_init, ov.ws0_perp);
+    else
+        fprintf('SEED LINE: zero gain at %.3f R (commanded bottom %.3f R) -- ok\n', w_zero_seed, w_bottom_cmd);
+    end
     % arm tag (file name + report header)
     tag = lower(opts.arm);
     if opts.y2_on; tag = [tag '_y2on']; else; tag = [tag '_y2off']; end

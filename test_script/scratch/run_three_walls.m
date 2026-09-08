@@ -57,6 +57,9 @@ function out = run_three_walls(traj, seeds, arms, walls)
                  'bseed', struct('arm','best', 'cc', struct('b_ceil', 1.5), 'o', struct()), ...   % b_init / ws0_perp filled per wall below
                  'btseed', struct('arm','best', 'cc', struct('b_ceil', 1.5), 'o', struct('b_true', true, 'b_true_at', 'true')), ...   % same seeds as bseed, but the law reads the PLANT's local b(w) (b_true arm): the b(w) ceiling in the user's cell
                  'bseed0',  struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0), 'o', struct()), ...                                   % bseed + P44[0] at the start truth (start FULLY known: Pf_a_floor set per traj below)
+                 'bhq5c', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'q55_path', true), 'o', struct()), ...   % O25 re-verification on the CHORD seed: Q55 path container
+                 'bhn1c', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'l51_off', true), 'o', struct()), ...    % O25: E1 (b_hat fed by y2 only)
+                 'bhdc',  struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'da_slot', true), 'o', struct()), ...    % O25: E2 (da slot)
                  'prod_wc',     struct('arm','best', 'cc', struct('ws0_perp', 1 + 1.0 - 1/(8/9)), 'o', struct()), ...   % 09-08: production priors, seed LINE anchored at the contact height (a_bar = 0 at w = 1) instead of w0 = 0 (zero at 1.125)
                  'rep_bhp0',    struct('arm','best', 'cc', struct('Pf_w0_std', 0), 'o', struct()), ...                 % 09-08 discriminator: the ladder bhp0 arm rebuilt here (b_init 8/9, ws0 = ladder seed-at-truth line, b_ceil default 1.05)
                  'rep_bhp0_c15',struct('arm','best', 'cc', struct('Pf_w0_std', 0, 'b_ceil', 1.5), 'o', struct()), ...   % same + b_ceil 1.5
@@ -72,7 +75,7 @@ function out = run_three_walls(traj, seeds, arms, walls)
     for iw = 1:size(WALLS, 1)
         for ia = 1:numel(arms)
             A = ARM.(arms{ia});  cc = ON4;  fn = fieldnames(A.cc); for i = 1:numel(fn); cc.(fn{i}) = A.cc.(fn{i}); end
-            if any(strcmp(arms{ia}, {'bseed0','btseed0','rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99'})); if strcmp(traj, 'meng'); cc.Pf_a_floor = 3e-4; else; cc.Pf_a_floor = 1e-5; end; end   % ladder p0 convention (09-06)
+            if any(strcmp(arms{ia}, {'bseed0','btseed0','rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99','bhq5c','bhn1c','bhdc'})); if strcmp(traj, 'meng'); cc.Pf_a_floor = 3e-4; else; cc.Pf_a_floor = 1e-5; end; end   % ladder p0 convention (09-06)
             if any(strcmp(arms{ia}, {'rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99'}))
                 pc = physical_constants(); w0bar = cfg0.h_init / pc.R; [~, cp] = calc_correction_functions(w0bar, true); a0 = 1/cp;
                 ws0_lad = 1 + w0bar - 1/((8/9)*(1 - a0));                          % the ladder's seed-at-truth line (b 8/9 through the start gain)
@@ -85,7 +88,7 @@ function out = run_three_walls(traj, seeds, arms, walls)
                 end
                 fprintf('[%s %s %s] b_init %.4f ws0_perp %.4f (b_ceil %s)\n', traj, WALLS{iw,1}, arms{ia}, cc.b_init, cc.ws0_perp, mat2str(isfield(cc,'b_ceil')));
             end
-            if any(strcmp(arms{ia}, {'bseed','btseed','bseed0','btseed0'}))
+            if any(strcmp(arms{ia}, {'bseed','btseed','bseed0','btseed0','bhq5c','bhn1c','bhdc'}))
                 pc = physical_constants(); w0bar = cfg0.h_init / pc.R;
                 if isnan(WALLS{iw,2}); [~, cp] = calc_correction_functions(w0bar + WALLS{iw,4}, true); a0 = 1/cp; w_c = 1.0 - WALLS{iw,4};
                 else; a0 = 1 - 1/(WALLS{iw,2} * (w0bar - WALLS{iw,3})); w_c = WALLS{iw,3} + 1/WALLS{iw,2}; end
