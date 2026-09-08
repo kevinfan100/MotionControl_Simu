@@ -120,6 +120,7 @@
   儀器規則：跑前印種子線歸零高度 w̄₀ − (1/(1−â[0]) − 1)/b̂[0]，必須低於軌跡最低點。production 自己的線（w₀ = 0、8/9）歸零 1.125，靠大 P₄₄[0] 由 y₂ 拉回，剩第一次下坡 −0.035 的坑；改錨接觸高度 canon −0.022、Meng 翻號 +0.025（O26）。
   **「起點＋牆位已知、c(h̄) 未知」這一格結案（C50）**：弦種法＋P₄₄[0] 起點實況下，常數 b̂ 對餵 b_true(w̄) 只差牆邊一瞬 ±0.017、回訪 ±0.003、散布 5–10×；法則形狀不是問題。
   圖：`seed_line_mismatch_canon.png`、`ladder_{btseed0,bseed0}_4row_abs_tw_p0.png`（平面）、`_cellb.png`（Brenner 下移 1.03 R 的細胞）；儀器 `plot_ladder_tw_abs.m`、`plot_three_walls_arms.m`、driver `opts.plant_cperp`（函數柄 plant）。
+  **b(w̄) 可觀性（09-08 晚，C51／O27，`verify_obs_b_of_w.m`）**：canon 上線性 b 與 4 個高度格都結構可辨識（CRLB/prior 0.016–0.14，ā_w 不受害）；Meng 單趟只有常數 b（0.57）。「常數 b」在 canon 是回報上界（回訪 ±0.003）的決定，不是可觀性的決定；在 Meng 是可觀性的決定。
   **O25 重驗（09-08 晚，R56）**：Q55／E1／E2 換弦種法後全部比純估測器差（canon 最差 −0.017 → −0.025／−0.025／−0.040，σ 2.8×／1.8×／9×）⇒ 三旗標退場，「innovation 要有家」撤。driver 每 run 印 `SEED LINE:` 檢查；規則 stacked-fix-audit B.8。
 
 ## 現況（2026-08-03）
