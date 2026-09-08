@@ -16,7 +16,22 @@
 %     (4) opponent: with the wide prior b_hat wanders on the plane (sqrt P55 does not shrink) => the scheme fails, b from geometry.
 %   Health first: min w_true > 1.0, no NaN, a_hat floor hits, and the truth log a_true_out must follow the plant curve (checked
 %   against the law at the true height, max |dev|).
-%   Output three_walls_<traj>.mat | EXPIRES: with the unknown-wall line | 產線改動不會自動跟上
+%   09-08 SPLIT ARMS (the unknown wall = two unknowns of different type; each arm opens ONE of them; all three carry b_ceil 1.5
+%   because the controller default 1.05 pinned the 09-07 wide arm's sphere b_hat -- see hypotheses R54):
+%     widew   only the wall position opened: Pf_w0_std 1.0 R, b prior as production (0.039)   -- level-type unknown
+%     wideb   only b opened:                 Pf_b_std 0.15, Pf_w0_std 0.111 (production)     -- shape-type unknown
+%     wide15  both opened (the 09-07 wide arm rerun with b_ceil 1.5)
+%   PRE-REGISTERED (canon 10 seeds / Meng 5 seeds, motion segment first):
+%     (a) cell plant: widew recovers (descent / hold as wide15), wideb does not (hold stays ~ -0.08).
+%     (b) sphere plant: wideb recovers (b_hat -> ~1.16, descent / hold ~ 0), widew does not (descent -0.02, hold +0.016 stay).
+%     (c) plane plant: widew pays the near-wall descent spread (P44[0] amplified by the law), wideb pays little.
+%   09-08 'bseed' ARM (the user's cell: start fully known + wall position known, c(h) unknown). With a_bar_0 at the start height
+%   and the contact height w_c (where a_bar = 0) both known, the constant-b law has NO freedom left:
+%       b_0 = (1/(1 - a_bar_0) - 1) / (w_0 - w_c),   ws0_perp = 1 + w_c - 1/b_0
+%   so the only unknown left is how b varies along the path (the curvature of c). Production prior otherwise (sqrt P55[0] 0.039,
+%   Pf_w0_std 0.111 R, b_ceil 1.5). PRE-REGISTERED: all three plants at the matching-prior floor (canon hold |E| < 0.005,
+%   descent mean |E| < 0.01); sphere / cell reproduce their 3x3 diagonals within seed noise (b_0 = 1.156 / 0.877 exactly).
+%   Output three_walls_<traj>[_<walls>_<arms>].mat | EXPIRES: with the unknown-wall line | 產線改動不會自動跟上
 function out = run_three_walls(traj, seeds, arms, walls)
     if nargin < 1 || isempty(traj); traj = 'canon'; end
     if nargin < 2 || isempty(seeds); seeds = 1:10; end
@@ -30,10 +45,25 @@ function out = run_three_walls(traj, seeds, arms, walls)
         case 'canon'; OV = struct(); cfg0 = canonical_scenario(0.05, 1.1, 'deep');
     end
     t1 = cfg0.t_hold; t2 = t1 + cfg0.t_descend_override; t3 = t2 + cfg0.n_cycles/cfg0.frequency;
-    WALLS = {'plane', NaN, [];  'sphere', 1.156, 0.162;  'cell', 0.877, -1.197};
+    WALLS = {'plane', NaN, [], 0;  'sphere', 1.156, 0.162, 0;  'cell', 0.877, -1.197, 0;  'cellb', NaN, [], 1.03};
+    % 4th column = shift [R]: 'cellb' = the published Brenner plane curve shifted DOWN by 1.03 R (the 09-07 fit: cell law origin -1.197 vs
+    % plane -0.168), i.e. a cell whose no-slip surface sits 1.03 R below its visible top and whose b(w) is the plane's CURVE, not a constant.
     ARM = struct('prod',  struct('arm','best', 'cc', struct(), 'o', struct()), ...
                  'wide',  struct('arm','best', 'cc', struct('Pf_b_std', 0.15, 'Pf_w0_std', 1.0), 'o', struct()), ...
                  'lockb', struct('arm','bmid', 'cc', struct(), 'o', struct()), ...
+                 'widew', struct('arm','best', 'cc', struct('Pf_w0_std', 1.0, 'b_ceil', 1.5), 'o', struct()), ...
+                 'wideb', struct('arm','best', 'cc', struct('Pf_b_std', 0.15, 'b_ceil', 1.5), 'o', struct()), ...
+                 'wide15', struct('arm','best', 'cc', struct('Pf_b_std', 0.15, 'Pf_w0_std', 1.0, 'b_ceil', 1.5), 'o', struct()), ...
+                 'bseed', struct('arm','best', 'cc', struct('b_ceil', 1.5), 'o', struct()), ...   % b_init / ws0_perp filled per wall below
+                 'btseed', struct('arm','best', 'cc', struct('b_ceil', 1.5), 'o', struct('b_true', true, 'b_true_at', 'true')), ...   % same seeds as bseed, but the law reads the PLANT's local b(w) (b_true arm): the b(w) ceiling in the user's cell
+                 'bseed0',  struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0), 'o', struct()), ...                                   % bseed + P44[0] at the start truth (start FULLY known: Pf_a_floor set per traj below)
+                 'prod_wc',     struct('arm','best', 'cc', struct('ws0_perp', 1 + 1.0 - 1/(8/9)), 'o', struct()), ...   % 09-08: production priors, seed LINE anchored at the contact height (a_bar = 0 at w = 1) instead of w0 = 0 (zero at 1.125)
+                 'rep_bhp0',    struct('arm','best', 'cc', struct('Pf_w0_std', 0), 'o', struct()), ...                 % 09-08 discriminator: the ladder bhp0 arm rebuilt here (b_init 8/9, ws0 = ladder seed-at-truth line, b_ceil default 1.05)
+                 'rep_bhp0_c15',struct('arm','best', 'cc', struct('Pf_w0_std', 0, 'b_ceil', 1.5), 'o', struct()), ...   % same + b_ceil 1.5
+                 'bseed0_c105', struct('arm','best', 'cc', struct('Pf_w0_std', 0), 'o', struct()), ...                 % bseed0 with b_ceil default 1.05
+                 'mix_b89_wc',  struct('arm','best', 'cc', struct('Pf_w0_std', 0, 'b_ceil', 1.5), 'o', struct()), ...   % b_init 8/9 with the CONTACT-anchored origin
+                 'mix_bch_w99', struct('arm','best', 'cc', struct('Pf_w0_std', 0, 'b_ceil', 1.5), 'o', struct()), ...   % chord b_0 with the ladder's ws0 line
+                 'btseed0', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0), 'o', struct('b_true', true, 'b_true_at', 'true')), ...
                  'btrue', struct('arm','best', 'cc', struct(), 'o', struct('b_true', true, 'b_true_at', 'true')), ...          % law exactly right for THIS plant (b_true from the plant curve), slope at a_hat
                  'apest', struct('arm','best', 'cc', struct('lock_b', true), 'o', struct('ap_known', true, 'ap_known_at', 'est', 'app_known', true)));   % slope fed from the plant curve
     if nargin >= 4 && ~isempty(walls); WALLS = WALLS(ismember(WALLS(:,1), walls), :); end
@@ -42,9 +72,30 @@ function out = run_three_walls(traj, seeds, arms, walls)
     for iw = 1:size(WALLS, 1)
         for ia = 1:numel(arms)
             A = ARM.(arms{ia});  cc = ON4;  fn = fieldnames(A.cc); for i = 1:numel(fn); cc.(fn{i}) = A.cc.(fn{i}); end
+            if any(strcmp(arms{ia}, {'bseed0','btseed0','rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99'})); if strcmp(traj, 'meng'); cc.Pf_a_floor = 3e-4; else; cc.Pf_a_floor = 1e-5; end; end   % ladder p0 convention (09-06)
+            if any(strcmp(arms{ia}, {'rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99'}))
+                pc = physical_constants(); w0bar = cfg0.h_init / pc.R; [~, cp] = calc_correction_functions(w0bar, true); a0 = 1/cp;
+                ws0_lad = 1 + w0bar - 1/((8/9)*(1 - a0));                          % the ladder's seed-at-truth line (b 8/9 through the start gain)
+                b_ch = (1/(1 - a0) - 1) / (w0bar - 1.0);  ws0_ch = 1 + 1.0 - 1/b_ch;   % the chord line (through start gain and contact 1.0)
+                switch arms{ia}
+                    case {'rep_bhp0','rep_bhp0_c15'}; cc.b_init = 8/9;  cc.ws0_perp = ws0_lad;
+                    case 'bseed0_c105';               cc.b_init = b_ch; cc.ws0_perp = ws0_ch;
+                    case 'mix_b89_wc';                cc.b_init = 8/9;  cc.ws0_perp = 1 + 1.0 - 1/(8/9);
+                    case 'mix_bch_w99';               cc.b_init = b_ch; cc.ws0_perp = ws0_lad;
+                end
+                fprintf('[%s %s %s] b_init %.4f ws0_perp %.4f (b_ceil %s)\n', traj, WALLS{iw,1}, arms{ia}, cc.b_init, cc.ws0_perp, mat2str(isfield(cc,'b_ceil')));
+            end
+            if any(strcmp(arms{ia}, {'bseed','btseed','bseed0','btseed0'}))
+                pc = physical_constants(); w0bar = cfg0.h_init / pc.R;
+                if isnan(WALLS{iw,2}); [~, cp] = calc_correction_functions(w0bar + WALLS{iw,4}, true); a0 = 1/cp; w_c = 1.0 - WALLS{iw,4};
+                else; a0 = 1 - 1/(WALLS{iw,2} * (w0bar - WALLS{iw,3})); w_c = WALLS{iw,3} + 1/WALLS{iw,2}; end
+                cc.b_init = (1/(1 - a0) - 1) / (w0bar - w_c);  cc.ws0_perp = 1 + w_c - 1/cc.b_init;
+                fprintf('[%s %s %s] a_bar_0 %.4f at w %.3f, contact %.3f => b_0 %.4f, ws0_perp %.4f\n', traj, WALLS{iw,1}, arms{ia}, a0, w0bar, w_c, cc.b_init, cc.ws0_perp);
+            end
             o = struct('arm', A.arm, 'ctrl_const_override', cc, 'config_override', OV, 'scenario', 'deep', 'verbose', false, 'seeds', seeds, 'log_P_full', false);
             fo = fieldnames(A.o); for i = 1:numel(fo); o.(fo{i}) = A.o.(fo{i}); end
             if ~isnan(WALLS{iw,2}); o.plant_law_b = WALLS{iw,2}; o.plant_law_w0 = WALLS{iw,3}; end
+            if isnan(WALLS{iw,2}) && WALLS{iw,4} ~= 0; sh = WALLS{iw,4}; o.plant_cperp = @(hb) local_cperp_shifted(hb, sh); end
             clear run_formC_b motion_control_law_formC_b;
             evalc('R = run_formC_b(o);');
             t = R.runs{1}.tout(:); N = numel(t); E = zeros(N,nS); AH = E; AT = E; HB = E; B = E; SP5 = E; SP = E; WW = E;
@@ -70,4 +121,10 @@ function out = run_three_walls(traj, seeds, arms, walls)
     tag = ''; if nargin >= 4 && ~isempty(walls); tag = ['_' strjoin(walls, '-') '_' strjoin(arms, '-')]; end
     save(fullfile(od, sprintf('three_walls_%s%s.mat', traj, tag)), '-struct', 'out', '-v7.3');
     fprintf('[%s] saved three_walls_%s%s.mat\n', traj, traj, tag);
+end
+
+function cp = local_cperp_shifted(hb, shift)
+%LOCAL_CPERP_SHIFTED  Brenner plane c_perp evaluated at hb + shift (the no-slip surface is `shift` R below the nominal wall).
+    cp = zeros(size(hb));
+    for i = 1:numel(hb); [~, cp(i)] = calc_correction_functions(hb(i) + shift, true); end
 end

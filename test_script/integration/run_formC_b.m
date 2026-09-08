@@ -407,6 +407,10 @@ function out = run_formC_b(opts, test_opts)
                      '(estimator b_init = %.5f)\n'], pl(1), pl(2), pl(3), pl(4), ov.b_init);
         end
     end
+    if isfield(opts, 'plant_cperp') && isa(opts.plant_cperp, 'function_handle')   % 2026-09-08: arbitrary true c_perp(h_bar), e.g. the Brenner plane shifted (cell)
+        plant_cperp = opts.plant_cperp;
+        fprintf('PLANT WALL OVERRIDE: c_perp from a user function handle (estimator b_init = %.5f)\n', ov.b_init);
+    end
     n_seeds = numel(seeds);
     runs  = cell(n_seeds, 1);
     Mrows = zeros(n_seeds, 7);   % desc | osc | hold | rms_all | bud_b | bud_p | nan
