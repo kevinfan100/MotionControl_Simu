@@ -4,7 +4,8 @@
 %   (three_walls_<traj>_plane-sphere-cell_<tag>.mat, keys plane_<arm>). Shared y per row across the arms of one call.
 %   Usage: plot_ladder_tw_abs({'btseed','bseed'}, 'btseed')  -> the red b_true(w) line is taken from plane_<ref>.
 %   Output ladder_<arm>_4row_abs_tw.png | EXPIRES: with the unknown-wall line | 產線改動不會自動跟上
-function plot_ladder_tw_abs(arms, ref, wall, tags, out)
+function plot_ladder_tw_abs(arms, ref, wall, tags, out, suffix)
+    if nargin < 6; suffix = ''; end                    % e.g. '_nohold' -> reads three_walls_<traj>_nohold_<tag>.mat
     if nargin < 1 || isempty(arms); arms = {'btseed','bseed'}; end
     if nargin < 2 || isempty(ref); ref = 'btseed'; end
     if nargin < 3 || isempty(wall); wall = 'plane'; end
@@ -15,7 +16,7 @@ function plot_ladder_tw_abs(arms, ref, wall, tags, out)
     NM = {'Meng', 'canon'}; R_um = 2.25;  SEEDS = [5 7];   % shown trace: Meng ran 5 seeds, canon 10
     SRC = cell(1,2); TH = [0 0];
     for s = 1:2
-        tr = lower(NM{s}); S = struct();
+        tr = [lower(NM{s}) suffix]; S = struct();
         for i = 1:numel(tags)
             T = load(fullfile(od, sprintf('three_walls_%s_%s.mat', tr, tags{i}))); TH(s) = T.phases(3);
             for a = [arms {ref}]; k = sprintf('%s_%s', wall, a{1}); if isfield(T, k); S.(a{1}) = T.(k); end; end

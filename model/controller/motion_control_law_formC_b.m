@@ -376,6 +376,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent pred_mean2_e4                                      % gain-reading start-point term of the second-order mean (2026-09-04), default off
     persistent lambda_f_b lfb_alpha lfb_floor lam_b_spend
     persistent p55_floor_on p55_floor_std                     % 2026-09-09: directional forgetting on slot 5 as a P55 floor (default off)
+    persistent b_bins_on b_bin_edges bbin_b bbin_P bbin_cur bbin_switch   % 2026-09-09: b per HEIGHT BIN (default off)
     persistent ap_src ap_ewma_a a_bar_slope_v law_b_formC
     persistent q33_dc_match q33_dc_fac
     persistent y2_echo_corr S_echo_T S_echo_n
@@ -1000,6 +1001,25 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         Pf_b_std = expand3(get_field_default(ctrl_const, 'Pf_b_std', 0));
         b_floor  = get_field_default(ctrl_const, 'b_floor', 0.60);
         b_ceil   = get_field_default(ctrl_const, 'b_ceil',  1.05);
+        % --- b PER HEIGHT BIN (2026-09-09, user-approved; observability C51: 4 bins PASS on canon) ---
+        % b is a property of the WALL AT THIS HEIGHT, not of the run: b_true runs 8/9 far field -> ~0.93 near the
+        % wall -> 1 at contact (the two published anchors already say b is not constant). One constant state
+        % averages all of that into a single number, so it is wrong at both ends. Here slot 5 carries the b OF THE
+        % BIN THE PROBE IS IN: on a bin change the current (b_hat, P55) is stored back and the new bin's pair is
+        % loaded, with the cross-covariances zeroed (a priori the new bin's b is uncorrelated with the current
+        % dw/a_w states -- the standard map approximation; it DISCARDS information rather than inventing it).
+        % The bin index comes from the COMMANDED height, which is deterministic and known: no self-loop, no gate.
+        % Q55 stays 0 inside a bin: within one bin b IS a constant, so nothing here re-opens the forgetting family
+        % (R56/R57/R58). Edges are supplied by the caller (driver default: the seed line's own contact belief plus
+        % 0.5 R steps); there is no house default, and b_bins_on without edges is an error.
+        b_bins_on   = logical(get_field_default(ctrl_const, 'b_bins_on', false));
+        b_bin_edges = get_field_default(ctrl_const, 'b_bin_edges', []);
+        if b_bins_on
+            assert(~isempty(b_bin_edges) && isvector(b_bin_edges) && issorted(b_bin_edges(:)), ...
+                   'motion_control_law_formC_b:bBins', ...
+                   'b_bins_on requires ctrl_const.b_bin_edges: an ascending vector of inner bin edges in R (no house default).');
+            b_bin_edges = b_bin_edges(:).';
+        end
         % --- P55 FLOOR (2026-09-09, directional forgetting in its steady-state form; literature O28) ---
         % A uniform forgetting factor inflates P55 every step, including the hold and far-field steps that carry no
         % information about b, and winds up (Meng: sqrt P55 0.039 -> 0.29). The directional form (Kulhavy-Karny 1984,
@@ -1132,6 +1152,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             P7(4, 5) = free_da * dA_db * Pf_b_std(ax)^2;
             P7(5, 4) = P7(4, 5);
             P7(5, 5) = free_da * Pf_b_std(ax)^2;
+            if b_bins_on && ax == 1
+                nb = numel(b_bin_edges) + 1;                       % every bin starts at the SAME seed pair (b_init, Pf_b_std)
+                bbin_b = repmat(seed_b(:), 1, nb);  bbin_P = repmat(Pf_b_std(:).^2, 1, nb);
+                bbin_cur = nan(3, 1);  bbin_switch = zeros(3, 1);
+            end
             P7(6, 6) = double(da_slot) * Pf_da_std(ax)^2;   % slot 6 = da when da_slot, else exact zero (inert); slot 7 inert
             P_aa_v(ax)  = P7(4, 4);
             P_bb0_v(ax) = P7(5, 5);
@@ -1372,6 +1397,18 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         innov2 = NaN;  S2 = NaN;
         x_curr = x_e_per_axis(:, ax);
         P_curr = P_per_axis{ax};
+        if b_bins_on && ~lock_mask_ax(1, ax) && isfinite(w_bar_d)
+            j_new = 1 + sum(w_bar_d >= b_bin_edges);               % bin from the COMMANDED height (deterministic)
+            if isnan(bbin_cur(ax))
+                bbin_cur(ax) = j_new;                              % first step: the seed belongs to this bin
+            elseif j_new ~= bbin_cur(ax)
+                bbin_b(ax, bbin_cur(ax)) = x_curr(5);  bbin_P(ax, bbin_cur(ax)) = P_curr(5, 5);   % store what this bin learnt
+                x_curr(5) = bbin_b(ax, j_new);
+                P_curr(5, :) = 0;  P_curr(:, 5) = 0;               % new bin's b: a priori uncorrelated with the other states
+                P_curr(5, 5) = bbin_P(ax, j_new);
+                bbin_cur(ax) = j_new;  bbin_switch(ax) = bbin_switch(ax) + 1;
+            end
+        end
         a_bar_i = min(max(x_curr(4), a_bar_floor), a_bar_ceil);
         % SLOT 5 IS b. Read the CURRENT state -- reading x_e_per_axis here
         % would take the seed every step and the law would never see the
@@ -1881,6 +1918,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         end
 
         res1_km1(ax) = delta_w_m(ax) - x_upd(1);    % posterior y1 residual = E[n_w[k] | data], used by nw_mcorr in the next call
+        if b_bins_on && ~lm(1) && ~isnan(bbin_cur(ax))
+            bbin_b(ax, bbin_cur(ax)) = x_upd(5);  bbin_P(ax, bbin_cur(ax)) = P_upd(5, 5);   % keep the map current
+        end
         x_e_per_axis(:, ax) = x_upd;
         P_per_axis{ax} = P_upd;
     end
@@ -1949,6 +1989,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             b_post(b_true > 0) = b_true(b_true > 0);   % report the b the law used
         end
         diag.b_hat          = b_post;
+        if b_bins_on; diag.b_bin = bbin_cur; else; diag.b_bin = zeros(3, 1); end   % which height bin slot 5 is carrying
         diag.p_hat          = p_post;                 % REAL p (not the sibling alias)
         diag.ws_hat         = ws_post;
         diag.delta_a_hat    = b_post;                 % driver-log alias

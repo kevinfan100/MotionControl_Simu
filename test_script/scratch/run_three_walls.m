@@ -38,6 +38,12 @@
 %   forgetting arm pays spread (08-10 verdict, Q55 precedent) and buys nothing; on the ramp the fixed arms track b_hat toward the local
 %   b (1.16 near the wall) and cut the near-wall error vs bseed0, the adaptive arm sits between. DECISION: forgetting earns a place only
 %   if its ramp gain (paired vs bseed0, near-wall worst instant and osc mean) exceeds its plane loss (paired sigma, hold) -- else R57.
+%   09-09 B-PER-BIN ARM bseed0_bins (4 height bins, controller flag b_bins_on; chord seed, P44[0] at the start truth).
+%   PRE-REGISTERED (user approved 09-09, plane, no-hold): (1) first descent unchanged vs bseed0 (no data yet, any method equal);
+%   (2) canon 2nd/3rd trough worst instant from -0.007 to <= -0.003 and mid-band revisit from 0.003 to <= 0.001;
+%   (3) the near-wall bin's b_hat lands in 0.92 +- 0.02 and the mid-band bin in 0.87 +- 0.02 (= 'b follows the red curve');
+%   (4) spread not worse than 1.5x bseed0; Meng (single traverse) only required not to get worse.
+%   Fail any -> this closes too and only 'feed the physical curve' remains.
 %   09-09 P55 FLOOR ARM bseed0_pf (directional forgetting in steady-state form, controller flag p55_floor_on, floor = Pf_b_std):
 %   PRE-REGISTERED (user approved 09-09): (1) Meng plane: sqrt P55 stays 0.039 (no windup), desc / hold not worse than bseed0 (paired);
 %   (2) canon plane near-wall worst instant <= -0.006 (what lambda 0.9999 reached) with hold within SEM of bseed0;
@@ -48,15 +54,20 @@ function out = run_three_walls(traj, seeds, arms, walls)
     if nargin < 1 || isempty(traj); traj = 'canon'; end
     if nargin < 2 || isempty(seeds); seeds = 1:10; end
     if nargin < 3 || isempty(arms); arms = {'prod','wide','lockb'}; end
-    traj = lower(traj);
+    traj = lower(traj);  nohold = endsWith(traj, '_nohold'); traj_base = strrep(traj, '_nohold', '');   % 09-09: '<traj>_nohold' = no initial hold, run ends when the motion ends
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
     addpath(genpath(fullfile(root, 'model'))); addpath(fullfile(root, 'test_script', 'integration'));
     od = fullfile(root, 'test_results', 'apd_acov_meng');
-    switch traj
+    switch traj_base
         case 'meng'; OV = struct('trajectory_type','osc','h_init',15,'h_bottom',2.5,'amplitude',0,'frequency',1,'n_cycles',1,'t_hold',0.5,'t_descend_override',10,'T_sim',12.5,'h_min',2.475); cfg0 = OV;
         case 'canon'; OV = struct(); cfg0 = canonical_scenario(0.05, 1.1, 'deep');
     end
-    t1 = cfg0.t_hold; t2 = t1 + cfg0.t_descend_override; t3 = t2 + cfg0.n_cycles/cfg0.frequency;
+    if nohold
+        OV.t_hold = 0;  cfg0.t_hold = 0;
+        if strcmp(traj_base, 'meng'); OV.T_sim = cfg0.t_descend_override; else; OV.T_sim = cfg0.t_descend_override + cfg0.n_cycles/cfg0.frequency; end   % Meng: end at the bottom; canon: end after the last cycle
+        cfg0.T_sim = OV.T_sim;
+    end
+    t1 = cfg0.t_hold; t2 = t1 + cfg0.t_descend_override; t3 = min(t2 + cfg0.n_cycles/cfg0.frequency, cfg0.T_sim);
     WALLS = {'plane', NaN, [], 0;  'sphere', 1.156, 0.162, 0;  'cell', 0.877, -1.197, 0;  'cellb', NaN, [], 1.03;  'ramp', [1.16 0.87 2.0 0.3], 0, 0};
     % 'ramp' (09-09): the driver's 4-vector plant [b_wall b_far w_c Delta] -- b changes ALONG THE HEIGHT (1.16 near the wall -> 0.87 far,
     % logistic step at 2.0 R, width 0.3 R): the 1-D proxy for 'the wall's property changes as the probe moves'. Contact (B = 1) found by fzero.
@@ -71,6 +82,10 @@ function out = run_three_walls(traj, seeds, arms, walls)
                  'bseed', struct('arm','best', 'cc', struct('b_ceil', 1.5), 'o', struct()), ...   % b_init / ws0_perp filled per wall below
                  'btseed', struct('arm','best', 'cc', struct('b_ceil', 1.5), 'o', struct('b_true', true, 'b_true_at', 'true')), ...   % same seeds as bseed, but the law reads the PLANT's local b(w) (b_true arm): the b(w) ceiling in the user's cell
                  'bseed0',  struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0), 'o', struct()), ...                                   % bseed + P44[0] at the start truth (start FULLY known: Pf_a_floor set per traj below)
+                 'bseed0_bins', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'b_bins_on', true), 'o', struct()), ...   % 09-09 user-approved: b per height bin (4 bins), chord seed, P44[0] at the start truth
+                 'bloc0',       struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0), 'o', struct()), ...   % 09-09 user: a_hat[0] AND b_hat[0] at the truth (local b_true(w_0)), then ESTIMATE (P55[0] = family prior 0.039)
+                 'bloc0_ptiny', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'Pf_b_std', 1e-3), 'o', struct()), ...   % 09-09 user check: b_hat[0] = LOCAL b_true(w_0) (not the chord), P55[0] tiny (b 'fully cheated')
+                 'bseed0_ptiny', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'Pf_b_std', 1e-3), 'o', struct()), ...  % chord seed with P55[0] tiny (b frozen at the chord)
                  'bseed0_pf',     struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'p55_floor_on', true), 'o', struct()), ...   % 09-09 directional forgetting as a P55 floor at the family prior (0.039): never more certain about b than the band's own b variation
                  'bseed0_lf999',  struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'lambda_f_b', 0.999), 'o', struct()), ...    % 09-09 forgetting on slot 5: fixed, tau 1000 steps (0.6 s)
                  'bseed0_lf9999', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'lambda_f_b', 0.9999), 'o', struct()), ...   % fixed, tau 6 s
@@ -93,7 +108,7 @@ function out = run_three_walls(traj, seeds, arms, walls)
     for iw = 1:size(WALLS, 1)
         for ia = 1:numel(arms)
             A = ARM.(arms{ia});  cc = ON4;  fn = fieldnames(A.cc); for i = 1:numel(fn); cc.(fn{i}) = A.cc.(fn{i}); end
-            if any(strcmp(arms{ia}, {'bseed0','btseed0','rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99','bhq5c','bhn1c','bhdc','bseed0_lf999','bseed0_lf9999','bseed0_lfa','bseed0_pf'})); if strcmp(traj, 'meng'); cc.Pf_a_floor = 3e-4; else; cc.Pf_a_floor = 1e-5; end; end   % ladder p0 convention (09-06)
+            if any(strcmp(arms{ia}, {'bseed0','btseed0','rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99','bhq5c','bhn1c','bhdc','bseed0_lf999','bseed0_lf9999','bseed0_lfa','bseed0_pf','bloc0_ptiny','bseed0_ptiny','bloc0','bseed0_bins'})); if strcmp(traj, 'meng'); cc.Pf_a_floor = 3e-4; else; cc.Pf_a_floor = 1e-5; end; end   % ladder p0 convention (09-06)
             if any(strcmp(arms{ia}, {'rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99'}))
                 pc = physical_constants(); w0bar = cfg0.h_init / pc.R; [~, cp] = calc_correction_functions(w0bar, true); a0 = 1/cp;
                 ws0_lad = 1 + w0bar - 1/((8/9)*(1 - a0));                          % the ladder's seed-at-truth line (b 8/9 through the start gain)
@@ -106,13 +121,18 @@ function out = run_three_walls(traj, seeds, arms, walls)
                 end
                 fprintf('[%s %s %s] b_init %.4f ws0_perp %.4f (b_ceil %s)\n', traj, WALLS{iw,1}, arms{ia}, cc.b_init, cc.ws0_perp, mat2str(isfield(cc,'b_ceil')));
             end
-            if any(strcmp(arms{ia}, {'bseed','btseed','bseed0','btseed0','bhq5c','bhn1c','bhdc','bseed0_lf999','bseed0_lf9999','bseed0_lfa','bseed0_pf'}))
+            if any(strcmp(arms{ia}, {'bseed','btseed','bseed0','btseed0','bhq5c','bhn1c','bhdc','bseed0_lf999','bseed0_lf9999','bseed0_lfa','bseed0_pf','bloc0_ptiny','bseed0_ptiny','bloc0','bseed0_bins'}))
                 pc = physical_constants(); w0bar = cfg0.h_init / pc.R;
                 if ~isscalar(WALLS{iw,2}); pl = WALLS{iw,2}; w0p = WALLS{iw,3}; a0 = 1 - 1/local_B(w0bar - w0p, pl); w_c = w0p + fzero(@(u) local_B(u, pl) - 1, 0.9);
                 elseif isnan(WALLS{iw,2}); [~, cp] = calc_correction_functions(w0bar + WALLS{iw,4}, true); a0 = 1/cp; w_c = 1.0 - WALLS{iw,4};
                 else; a0 = 1 - 1/(WALLS{iw,2} * (w0bar - WALLS{iw,3})); w_c = WALLS{iw,3} + 1/WALLS{iw,2}; end
                 cc.b_init = (1/(1 - a0) - 1) / (w0bar - w_c);  cc.ws0_perp = 1 + w_c - 1/cc.b_init;
                 fprintf('[%s %s %s] a_bar_0 %.4f at w %.3f, contact %.3f => b_0 %.4f, ws0_perp %.4f\n', traj, WALLS{iw,1}, arms{ia}, a0, w0bar, w_c, cc.b_init, cc.ws0_perp);
+                if any(strcmp(arms{ia}, {'bloc0_ptiny','bloc0'}))
+                    [~, cpl, ddl] = calc_correction_functions(w0bar + WALLS{iw,4}, true); b_loc = (-ddl.dc_perp_dh / cpl^2) / (1 - 1/cpl)^2;   % local b_true at the start height
+                    cc.b_init = b_loc; cc.ws0_perp = 1 + w0bar - 1/(b_loc * (1 - a0));                                                  % same start level, LOCAL slope
+                    fprintf('[%s %s %s] LOCAL b_true(w_0) %.4f, ws0_perp %.4f, seed line zero at %.3f R\n', traj, WALLS{iw,1}, arms{ia}, b_loc, cc.ws0_perp, cc.ws0_perp - 1 + 1/b_loc);
+                end
             end
             o = struct('arm', A.arm, 'ctrl_const_override', cc, 'config_override', OV, 'scenario', 'deep', 'verbose', false, 'seeds', seeds, 'log_P_full', false);
             fo = fieldnames(A.o); for i = 1:numel(fo); o.(fo{i}) = A.o.(fo{i}); end
@@ -133,6 +153,7 @@ function out = run_three_walls(traj, seeds, arms, walls)
             key = sprintf('%s_%s', WALLS{iw,1}, arms{ia});
             out.(key) = struct('t', t, 'E', E, 'AH', AH, 'AT', AT, 'HB', HB, 'hd', hd, 'B', B, 'sP5', SP5, 'sP', SP, 'W', WW, 'a_nom', a_nom);
             md = t > t1 & t <= t2; mo = t > t2 & t <= t3; mh = t > t3; m0 = t <= t1;
+            if ~any(mo); mo(end) = true; end; if ~any(mh); mh(end) = true; end; if ~any(m0); m0(1) = true; end   % nohold: keep the printf alive on empty segments (values then = last sample)
             [~, iwst] = max(abs(mean(E, 2)));
             fprintf('[%s %-6s %-5s] HEALTH min w %.3f NaN %d min a_hat %.4f floor hits %d truth-vs-law %.1e | E first hold %+.4f -> end of first hold %+.4f | desc: mean %+.4f sd %.4f worst t=%.2f %+.4f | osc: mean %+.4f sd %.4f | hold: mean %+.5f SEM %.5f sd %.5f | b_hat: start %.3f desc-end %.3f hold %.3f sqrtP55 end %.3f | w_wall hold %.3f (sd %.3f) | a_true hold %.3f\n', ...
                 traj, WALLS{iw,1}, arms{ia}, min(HB(:)), nnz(isnan(E)), min(AH(:)), nnz(min(AH,[],1) < 0.0312), dev, mean(E(1,:)), mean(E(find(m0,1,'last'),:)), ...

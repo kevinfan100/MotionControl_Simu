@@ -358,6 +358,14 @@ function out = run_formC_b(opts, test_opts)
     else
         fprintf('SEED LINE: zero gain at %.3f R (commanded bottom %.3f R) -- ok\n', w_zero_seed, w_bottom_cmd);
     end
+    % b-per-bin edges (2026-09-09): anchored on the estimator's OWN contact belief (the seed line's zero), so they are
+    % c-free; 0.5 R steps match the bin width that passed gates 4-5 on 09-08 (a design choice, reported, not derived).
+    if ~isfield(ov, 'b_bin_edges') || isempty(ov.b_bin_edges)
+        ov.b_bin_edges = w_zero_seed + [0.5 1.0 1.5];
+    end
+    if isfield(ov, 'b_bins_on') && ov.b_bins_on
+        fprintf('B BINS: 4 bins, inner edges at %s R (below %.3f | ... | above %.3f)\n', mat2str(round(ov.b_bin_edges, 3)), ov.b_bin_edges(1), ov.b_bin_edges(end));
+    end
     % arm tag (file name + report header)
     tag = lower(opts.arm);
     if opts.y2_on; tag = [tag '_y2on']; else; tag = [tag '_y2off']; end
@@ -1092,6 +1100,7 @@ if nargin < 8; plant_cperp = []; end
     P_ws_out    = zeros(N, 3);
     innov_y2_out = zeros(N, 3);
     innov_y1_out = zeros(N, 3);
+    b_bin_out    = zeros(N, 3);
     S1_out       = nan(N, 3);
     S2_out       = nan(N, 3);
     dws_y1_out = zeros(N, 3);
@@ -1273,6 +1282,7 @@ if nargin < 8; plant_cperp = []; end
         innov_y2_out(k, :) = diag_k.innovation_y2(:).';
         innov_y1_out(k, :) = diag_k.innovation_y1(:).';
         if isfield(diag_k, 'S1'); S1_out(k, :) = diag_k.S1(:).'; S2_out(k, :) = diag_k.S2(:).'; end
+        if isfield(diag_k, 'b_bin'); b_bin_out(k, :) = diag_k.b_bin(:).'; end
         dws_y1_out(k, :) = diag_k.dws_y1(:).';
         dws_y2_out(k, :) = diag_k.dws_y2(:).';
         K_a_y2_out(k, :)   = diag_k.K_kf_a_y2(:).';
@@ -1335,6 +1345,7 @@ if nargin < 8; plant_cperp = []; end
     simOut.P_ws_out    = P_ws_out;
     simOut.innov_y2_out = innov_y2_out;
     simOut.innov_y1_out = innov_y1_out;
+    simOut.b_bin_out = b_bin_out;
     simOut.S1_out = S1_out;
     simOut.S2_out = S2_out;
     simOut.dws_y1_out = dws_y1_out;
