@@ -5,11 +5,27 @@
 %   -> estimator -> error dynamics with F_e written out. Layout of 0831_formC_state_b_5state. 2026-09-07.
 %   The second-order (a'') group, its mean m2 and the exact-step form live in the SSOT S10-S11 and in git
 %   history of this file (54ca746).
+%   2026-09-09: three sections appended for the question "can b be estimated" -- Measurement (H, with H24 and H25),
+%   Noise (Q, R), Observability (09-09 third pass, SINGULAR VALUES ONLY: the two columns of b; e[k] = Phi e[k0]
+%   and the stacked O; the NOISE-WHITENED O_w = R_w^{-1/2} O (R1 and R2 differ by ~8000, so the raw O's singular
+%   values are set by the y2 rows and mean nothing for what the filter can resolve); O_w v_i = sigma_i u_i,
+%   sigma_1 / sigma_5 as max / min of |O_w v|, rank, the locked-slot zero column; the least-squares error along
+%   v_i has std 1/sigma_i, so when v_5 -> e_b (measured: |V_55| >= 0.97 on both trajectories) 1/sigma_5 IS b's
+%   error bar, and the criterion is 1/sigma_5 vs sqrt(P55[0]). SINGULAR VALUES ONLY: G, CRLB_j, the information
+%   addition, the unit e_b response, det O_2, the y1/y2 split, the victim line and uniform complete observability
+%   are in git history. Last page: figures/obs_b_5state_two_traj.png (5-state core at a production linearisation
+%   point, both trajectories, 500-step windows: w_d/R, sigma_min/sigma_max, 1/sigma_min against sqrt(P55[0]);
+%   scratch/plot_obs_b_5state_two_traj.m). No text.
+%   Gates 1-3 are read off THIS 5-state pair (F_e, H). Gates 4-5 are numbers and must be
+%   taken from the PRODUCTION linearisation (obs_dump -> verify_state_observability.m, 9-state, free slots
+%   [1 2 3 4 5 8 9], negative control slot 7): production differs from this core by the correlated-noise column
+%   F_e(:,1) - g_n (nw_mcorr), the MA(2) slots 8-9, and nothing else at first order. Equations only, no numbers.
 
 \documentclass[11pt,a4paper,fontset=none]{ctexart}
 \usepackage[fleqn]{amsmath}
 \usepackage{amssymb,bm}
 \setlength{\mathindent}{0pt}
+\usepackage{graphicx}
 \usepackage{geometry}
 \geometry{margin=2.0cm}
 
@@ -28,6 +44,7 @@
 \newcommand{\app}{\ba''}
 \newcommand{\ah}{\hat{\ba}_w}
 \newcommand{\bh}{\hat{b}}
+\newcommand{\E}{\mathbb{E}}
 
 \begin{document}
 
@@ -114,5 +131,88 @@ F_e[k] = \begin{bmatrix}
 \begin{align*}
 \mathbf{q}[k] &= \Bigl[\,0,\ 0,\ -\varepsilon_w,\ \bh\bigl(1-\ah\bigr)^{2}\varepsilon_w,\ 0\,\Bigr]^{\top}
 \end{align*}
+
+
+\section{Measurement}
+
+$\bigl(\nabla_d\bw_d[k] := \bw_d[k] - \bw_d[k-d]\bigr)$
+
+\begin{align*}
+y_1[k]     &= \delta\bw_1[k] + n_w[k] \\
+y_2[k]     &= \ba_w[k-d] + n_a[k], \qquad
+\ba_w[k-d]  = \ba_w[k] - b\bigl(1-\ba_w[k]\bigr)^{2}\,\nabla_d\bw_d[k] \\
+\hat y_1[k] &= \delta\hat{\bw}_1[k] \\
+\hat y_2[k] &= \ah[k] - \bh[k]\bigl(1-\ah[k]\bigr)^{2}\,\nabla_d\bw_d[k] \\
+H_{24}[k]  &= \frac{\partial \hat y_2[k]}{\partial \ah[k]} = 1 + 2\,\bh[k]\bigl(1-\ah[k]\bigr)\,\nabla_d\bw_d[k] \\
+H_{25}[k]  &= \frac{\partial \hat y_2[k]}{\partial \bh[k]} = -\bigl(1-\ah[k]\bigr)^{2}\,\nabla_d\bw_d[k] \\
+H[k]       &= \begin{bmatrix} 1 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & H_{24}[k] & H_{25}[k] \end{bmatrix} \\
+\mathbf{e}_y[k] &= H[k]\,\mathbf{e}^{-}[k] + \begin{bmatrix} n_w[k] \\ n_a[k] \end{bmatrix}
+\end{align*}
+
+\section{Noise}
+
+\begin{align*}
+Q[k]    &= Q_{33}[k]\,\mathbf{g}[k]\,\mathbf{g}[k]^{\top}, \qquad
+\mathbf{g}[k] = \Bigl[\,0,\ 0,\ -1,\ \bh[k]\bigl(1-\ah[k]\bigr)^{2},\ 0\,\Bigr]^{\top}, \qquad Q_{55} = 0 \\
+Q_{33}[k] &= \kappa_T\Bigl(\ah[k] + (1-\lambda_c)^{2}\bigl(\ah[k-1] + \ah[k-2]\bigr)\Bigr) + (1-\lambda_c)^{2}\sigma^{2}_{n_w},
+\qquad \kappa_T = \frac{4k_BT\,a_o}{R} \\
+R[k]    &= \mathrm{diag}\bigl(R_1,\ R_2[k]\bigr), \qquad R_1 = \sigma^{2}_{n_w} = \frac{\sigma^{2}_{n}}{R^{2}}, \qquad
+R_2[k] = 2a_{\mathrm{cov}}^{2}\,IF_{\mathrm{var}}\bigl(\ah[k]\bigr)\bigl(\ah[k] + \xi\bigr)^{2}
+\end{align*}
+
+\clearpage
+\section{Observability}
+
+($\mathbf{e}[k] = [\,e_{\delta\bw_1},\ e_{\delta\bw_2},\ e_{\delta\bw_3},\ e_{\ba_w},\ e_b\,]^{\top}$,
+$\mathbf{n}[k] = [\,n_w[k],\ n_a[k]\,]^{\top}$ \\
+$\Phi(k,k_0) := F_e[k-1]\,F_e[k-2]\cdots F_e[k_0]$, $\Phi(k_0,k_0) = I$ \\
+$N$ window length \\
+$\mathbf{Y} := [\,\mathbf{e}_y[k_0];\ \mathbf{e}_y[k_0+1];\ \dots;\ \mathbf{e}_y[k_0+N]\,]$,
+$\mathbf{N} := [\,\mathbf{n}[k_0];\ \mathbf{n}[k_0+1];\ \dots;\ \mathbf{n}[k_0+N]\,]$ \\
+$X_{:,j}$ column $j$ of $X$)
+
+\begin{align*}
+F_e[k]_{:,5} &= \Bigl[\,0,\ 0,\ 0,\ \bigl(1-\ah\bigr)^{2}\bigl(\Delta\bw_d + (1-\lambda_c)\,\delta\hat{\bw}_3\bigr),\ 1\,\Bigr]^{\top} \\
+H[k]_{:,5}   &= \Bigl[\,0,\ -\bigl(1-\ah\bigr)^{2}\,\nabla_d\bw_d\,\Bigr]^{\top}
+\end{align*}
+
+\begin{align*}
+\mathbf{e}[k]   &= \Phi(k,k_0)\,\mathbf{e}[k_0] \\
+\mathbf{e}_y[k] &= H[k]\,\Phi(k,k_0)\,\mathbf{e}[k_0] + \mathbf{n}[k] \\
+\mathbf{Y}      &= O(k_0,N)\,\mathbf{e}[k_0] + \mathbf{N}, \qquad
+O(k_0,N) := \begin{bmatrix} H[k_0]\,\Phi(k_0,k_0) \\ H[k_0+1]\,\Phi(k_0+1,k_0) \\ \vdots \\ H[k_0+N]\,\Phi(k_0+N,k_0) \end{bmatrix}
+\end{align*}
+
+\begin{align*}
+R_w &:= \mathrm{diag}\bigl(R[k_0],\ R[k_0+1],\ \dots,\ R[k_0+N]\bigr), \qquad
+O_w(k_0,N) := R_w^{-1/2}\,O(k_0,N) \\
+\mathbf{Y}_w &:= R_w^{-1/2}\,\mathbf{Y} = O_w(k_0,N)\,\mathbf{e}[k_0] + \mathbf{N}_w, \qquad
+\E\bigl[\mathbf{N}_w\mathbf{N}_w^{\top}\bigr] = I
+\end{align*}
+
+\begin{align*}
+O_w(k_0,N)\,\mathbf{v}_i &= \sigma_i\,\mathbf{u}_i, \qquad i = 1,\dots,5, \qquad
+\sigma_1 \ge \dots \ge \sigma_5 \ge 0, \qquad \|\mathbf{v}_i\| = \|\mathbf{u}_i\| = 1 \\
+\sigma_1 &= \max_{\|\mathbf{v}\|=1}\|O_w(k_0,N)\,\mathbf{v}\|, \qquad
+\sigma_5  = \min_{\|\mathbf{v}\|=1}\|O_w(k_0,N)\,\mathbf{v}\| \\
+\operatorname{rank} O_w(k_0,N) &= \#\{\,i : \sigma_i > 0\,\} \\
+F_e[k]_{:,j} = I_{:,j},\ \ H[k]_{:,j} = 0\ \ \forall k
+  &\ \Rightarrow\ O_w(k_0,N)_{:,j} = 0 \ \Rightarrow\ \sigma_5 = 0
+\end{align*}
+
+\begin{align*}
+\hat{\mathbf{e}}[k_0] &= \sum_{i=1}^{5}\frac{\mathbf{u}_i^{\top}\mathbf{Y}_w}{\sigma_i}\,\mathbf{v}_i \\
+\mathbf{v}_i^{\top}\bigl(\hat{\mathbf{e}}[k_0] - \mathbf{e}[k_0]\bigr)
+  &= \frac{\mathbf{u}_i^{\top}\mathbf{N}_w}{\sigma_i}, \qquad
+\E\Bigl[\Bigl(\mathbf{v}_i^{\top}\bigl(\hat{\mathbf{e}}[k_0] - \mathbf{e}[k_0]\bigr)\Bigr)^{2}\Bigr] = \frac{1}{\sigma_i^{2}} \\
+\mathbf{v}_5 \to \bigl[\,0,\ 0,\ 0,\ 0,\ 1\,\bigr]^{\top}
+  &\ \Rightarrow\ \E\bigl[(\hat{e}_b - e_b)^{2}\bigr] \to \frac{1}{\sigma_5^{2}} \\
+\frac{1}{\sigma_5} &\lessgtr \sqrt{P_{55}[0]}, \qquad
+\sqrt{P_{55}[0]} = \sup_{\bw\in\text{env}}\Bigl|\,b_{\mathrm{true}}(\bw) - \tfrac{8}{9}\,\Bigr|
+\end{align*}
+
+\clearpage
+\thispagestyle{empty}
+\noindent\includegraphics[width=\textwidth]{figures/obs_b_5state_two_traj.png}
 
 \end{document}
