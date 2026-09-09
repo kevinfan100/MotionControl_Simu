@@ -23,7 +23,12 @@
 %     Delta w_bar        true height increment          w[k+1] - w[k]
 %     Delta w_bar_hat    estimator's height increment   Delta w_d + (1-lc)(dw3_hat + y1 - dw1_hat)
 %     e_{Delta w_bar}    increment error                Delta w_bar - Delta w_bar_hat
-%   Last page: figures/btrue_three_arms_band.png (the SSOT's b_true three-arm figure), no text.
+%   Last two pages (09-07, replace the 09-04 three-arm figure): the b_true rung's final figure set, 10 seeds, Meng ramp
+%     (left) and canon deep (right), four rows = a_hat/a_nom vs true, a_hat - a with the seed band, the b the law reads vs
+%     b_true(w) at the true height, R dw3.
+%     p.6 figures/ladder_btest_4row_abs_p0.png  -- the current recipe (prior P44[0] = envelope width);
+%     p.7 figures/ladder_btp0_4row_abs_p0.png   -- the same arm with P44[0] matched to the seed-at-truth start
+%     (SSOT S12 verdict: the fast-descent spread is that prior carried through the law's own sensitivity). No text.
 % ======================================================
 % Compile: cd reference/eq17_analysis/derivation && xelatex 0904_btrue_4state_from_true.tex
 % Path:    reference/eq17_analysis/derivation/0904_btrue_4state_from_true.tex
@@ -309,6 +314,10 @@ R_2 = 2a_{\mathrm{cov}}^{2}\,IF_{\mathrm{var}}\bigl(\hat{\ba}_w\bigr)\bigl(\hat{
 
 \clearpage
 \thispagestyle{empty}
-\noindent\includegraphics[width=\textwidth]{figures/btrue_three_arms_band.png}
+\noindent\includegraphics[width=\textwidth]{figures/ladder_btest_4row_abs_p0.png}
+
+\clearpage
+\thispagestyle{empty}
+\noindent\includegraphics[width=\textwidth]{figures/ladder_btp0_4row_abs_p0.png}
 
 \end{document}
