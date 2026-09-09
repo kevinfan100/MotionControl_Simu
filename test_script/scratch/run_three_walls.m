@@ -31,6 +31,13 @@
 %   so the only unknown left is how b varies along the path (the curvature of c). Production prior otherwise (sqrt P55[0] 0.039,
 %   Pf_w0_std 0.111 R, b_ceil 1.5). PRE-REGISTERED: all three plants at the matching-prior floor (canon hold |E| < 0.005,
 %   descent mean |E| < 0.01); sphere / cell reproduce their 3x3 diagonals within seed noise (b_0 = 1.156 / 0.877 exactly).
+%   09-09 FORGETTING ON THE CHORD SEED (user: 'can a forgetting factor let b keep absorbing current information?'):
+%     bseed0_lf999 / _lf9999  fixed slot-5 forgetting lambda_f_b (Menq (4.15) applied to slot 5 only), tau 0.6 s / 6 s
+%     bseed0_lfa              adaptive: lambda = exp(-0.05 (NIS2 - 1)_+), floor 0.99 -- forgets only when y2 is surprised
+%   on the 'plane' (b nearly constant) and the 'ramp' plant (b 1.16 -> 0.87 along the height). PRE-REGISTERED: on the plane every
+%   forgetting arm pays spread (08-10 verdict, Q55 precedent) and buys nothing; on the ramp the fixed arms track b_hat toward the local
+%   b (1.16 near the wall) and cut the near-wall error vs bseed0, the adaptive arm sits between. DECISION: forgetting earns a place only
+%   if its ramp gain (paired vs bseed0, near-wall worst instant and osc mean) exceeds its plane loss (paired sigma, hold) -- else R57.
 %   Output three_walls_<traj>[_<walls>_<arms>].mat | EXPIRES: with the unknown-wall line | 產線改動不會自動跟上
 function out = run_three_walls(traj, seeds, arms, walls)
     if nargin < 1 || isempty(traj); traj = 'canon'; end
@@ -45,7 +52,9 @@ function out = run_three_walls(traj, seeds, arms, walls)
         case 'canon'; OV = struct(); cfg0 = canonical_scenario(0.05, 1.1, 'deep');
     end
     t1 = cfg0.t_hold; t2 = t1 + cfg0.t_descend_override; t3 = t2 + cfg0.n_cycles/cfg0.frequency;
-    WALLS = {'plane', NaN, [], 0;  'sphere', 1.156, 0.162, 0;  'cell', 0.877, -1.197, 0;  'cellb', NaN, [], 1.03};
+    WALLS = {'plane', NaN, [], 0;  'sphere', 1.156, 0.162, 0;  'cell', 0.877, -1.197, 0;  'cellb', NaN, [], 1.03;  'ramp', [1.16 0.87 2.0 0.3], 0, 0};
+    % 'ramp' (09-09): the driver's 4-vector plant [b_wall b_far w_c Delta] -- b changes ALONG THE HEIGHT (1.16 near the wall -> 0.87 far,
+    % logistic step at 2.0 R, width 0.3 R): the 1-D proxy for 'the wall's property changes as the probe moves'. Contact (B = 1) found by fzero.
     % 4th column = shift [R]: 'cellb' = the published Brenner plane curve shifted DOWN by 1.03 R (the 09-07 fit: cell law origin -1.197 vs
     % plane -0.168), i.e. a cell whose no-slip surface sits 1.03 R below its visible top and whose b(w) is the plane's CURVE, not a constant.
     ARM = struct('prod',  struct('arm','best', 'cc', struct(), 'o', struct()), ...
@@ -57,6 +66,9 @@ function out = run_three_walls(traj, seeds, arms, walls)
                  'bseed', struct('arm','best', 'cc', struct('b_ceil', 1.5), 'o', struct()), ...   % b_init / ws0_perp filled per wall below
                  'btseed', struct('arm','best', 'cc', struct('b_ceil', 1.5), 'o', struct('b_true', true, 'b_true_at', 'true')), ...   % same seeds as bseed, but the law reads the PLANT's local b(w) (b_true arm): the b(w) ceiling in the user's cell
                  'bseed0',  struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0), 'o', struct()), ...                                   % bseed + P44[0] at the start truth (start FULLY known: Pf_a_floor set per traj below)
+                 'bseed0_lf999',  struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'lambda_f_b', 0.999), 'o', struct()), ...    % 09-09 forgetting on slot 5: fixed, tau 1000 steps (0.6 s)
+                 'bseed0_lf9999', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'lambda_f_b', 0.9999), 'o', struct()), ...   % fixed, tau 6 s
+                 'bseed0_lfa',    struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'lambda_f_b_alpha', 0.05, 'lambda_f_b_floor', 0.99), 'o', struct()), ...   % adaptive: forget only when NIS2 excess > 0
                  'bhq5c', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'q55_path', true), 'o', struct()), ...   % O25 re-verification on the CHORD seed: Q55 path container
                  'bhn1c', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'l51_off', true), 'o', struct()), ...    % O25: E1 (b_hat fed by y2 only)
                  'bhdc',  struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'da_slot', true), 'o', struct()), ...    % O25: E2 (da slot)
@@ -75,7 +87,7 @@ function out = run_three_walls(traj, seeds, arms, walls)
     for iw = 1:size(WALLS, 1)
         for ia = 1:numel(arms)
             A = ARM.(arms{ia});  cc = ON4;  fn = fieldnames(A.cc); for i = 1:numel(fn); cc.(fn{i}) = A.cc.(fn{i}); end
-            if any(strcmp(arms{ia}, {'bseed0','btseed0','rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99','bhq5c','bhn1c','bhdc'})); if strcmp(traj, 'meng'); cc.Pf_a_floor = 3e-4; else; cc.Pf_a_floor = 1e-5; end; end   % ladder p0 convention (09-06)
+            if any(strcmp(arms{ia}, {'bseed0','btseed0','rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99','bhq5c','bhn1c','bhdc','bseed0_lf999','bseed0_lf9999','bseed0_lfa'})); if strcmp(traj, 'meng'); cc.Pf_a_floor = 3e-4; else; cc.Pf_a_floor = 1e-5; end; end   % ladder p0 convention (09-06)
             if any(strcmp(arms{ia}, {'rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99'}))
                 pc = physical_constants(); w0bar = cfg0.h_init / pc.R; [~, cp] = calc_correction_functions(w0bar, true); a0 = 1/cp;
                 ws0_lad = 1 + w0bar - 1/((8/9)*(1 - a0));                          % the ladder's seed-at-truth line (b 8/9 through the start gain)
@@ -88,17 +100,18 @@ function out = run_three_walls(traj, seeds, arms, walls)
                 end
                 fprintf('[%s %s %s] b_init %.4f ws0_perp %.4f (b_ceil %s)\n', traj, WALLS{iw,1}, arms{ia}, cc.b_init, cc.ws0_perp, mat2str(isfield(cc,'b_ceil')));
             end
-            if any(strcmp(arms{ia}, {'bseed','btseed','bseed0','btseed0','bhq5c','bhn1c','bhdc'}))
+            if any(strcmp(arms{ia}, {'bseed','btseed','bseed0','btseed0','bhq5c','bhn1c','bhdc','bseed0_lf999','bseed0_lf9999','bseed0_lfa'}))
                 pc = physical_constants(); w0bar = cfg0.h_init / pc.R;
-                if isnan(WALLS{iw,2}); [~, cp] = calc_correction_functions(w0bar + WALLS{iw,4}, true); a0 = 1/cp; w_c = 1.0 - WALLS{iw,4};
+                if ~isscalar(WALLS{iw,2}); pl = WALLS{iw,2}; w0p = WALLS{iw,3}; a0 = 1 - 1/local_B(w0bar - w0p, pl); w_c = w0p + fzero(@(u) local_B(u, pl) - 1, 0.9);
+                elseif isnan(WALLS{iw,2}); [~, cp] = calc_correction_functions(w0bar + WALLS{iw,4}, true); a0 = 1/cp; w_c = 1.0 - WALLS{iw,4};
                 else; a0 = 1 - 1/(WALLS{iw,2} * (w0bar - WALLS{iw,3})); w_c = WALLS{iw,3} + 1/WALLS{iw,2}; end
                 cc.b_init = (1/(1 - a0) - 1) / (w0bar - w_c);  cc.ws0_perp = 1 + w_c - 1/cc.b_init;
                 fprintf('[%s %s %s] a_bar_0 %.4f at w %.3f, contact %.3f => b_0 %.4f, ws0_perp %.4f\n', traj, WALLS{iw,1}, arms{ia}, a0, w0bar, w_c, cc.b_init, cc.ws0_perp);
             end
             o = struct('arm', A.arm, 'ctrl_const_override', cc, 'config_override', OV, 'scenario', 'deep', 'verbose', false, 'seeds', seeds, 'log_P_full', false);
             fo = fieldnames(A.o); for i = 1:numel(fo); o.(fo{i}) = A.o.(fo{i}); end
-            if ~isnan(WALLS{iw,2}); o.plant_law_b = WALLS{iw,2}; o.plant_law_w0 = WALLS{iw,3}; end
-            if isnan(WALLS{iw,2}) && WALLS{iw,4} ~= 0; sh = WALLS{iw,4}; o.plant_cperp = @(hb) local_cperp_shifted(hb, sh); end
+            if ~(isscalar(WALLS{iw,2}) && isnan(WALLS{iw,2})); o.plant_law_b = WALLS{iw,2}; o.plant_law_w0 = WALLS{iw,3}; end
+            if isscalar(WALLS{iw,2}) && isnan(WALLS{iw,2}) && WALLS{iw,4} ~= 0; sh = WALLS{iw,4}; o.plant_cperp = @(hb) local_cperp_shifted(hb, sh); end
             clear run_formC_b motion_control_law_formC_b;
             evalc('R = run_formC_b(o);');
             t = R.runs{1}.tout(:); N = numel(t); E = zeros(N,nS); AH = E; AT = E; HB = E; B = E; SP5 = E; SP = E; WW = E;
@@ -110,7 +123,7 @@ function out = run_three_walls(traj, seeds, arms, walls)
             end
             hd = R.runs{1}.p_d_out(:,3)/R.runs{1}.R;  a_nom = R.runs{1}.a_hat_out(1,3)/R.runs{1}.a_bar_hat_out(1,3);  clear R;
             % truth-log check against the plant law at the true height
-            if ~isnan(WALLS{iw,2}); at_law = 1 - 1 ./ max(WALLS{iw,2} * (HB - WALLS{iw,3}), 1.05); dev = max(abs(AT - at_law), [], 'all'); else; dev = NaN; end
+            if isscalar(WALLS{iw,2}) && ~isnan(WALLS{iw,2}); at_law = 1 - 1 ./ max(WALLS{iw,2} * (HB - WALLS{iw,3}), 1.05); dev = max(abs(AT - at_law), [], 'all'); else; dev = NaN; end
             key = sprintf('%s_%s', WALLS{iw,1}, arms{ia});
             out.(key) = struct('t', t, 'E', E, 'AH', AH, 'AT', AT, 'HB', HB, 'hd', hd, 'B', B, 'sP5', SP5, 'sP', SP, 'W', WW, 'a_nom', a_nom);
             md = t > t1 & t <= t2; mo = t > t2 & t <= t3; mh = t > t3; m0 = t <= t1;
@@ -130,4 +143,11 @@ function cp = local_cperp_shifted(hb, shift)
 %LOCAL_CPERP_SHIFTED  Brenner plane c_perp evaluated at hb + shift (the no-slip surface is `shift` R below the nominal wall).
     cp = zeros(size(hb));
     for i = 1:numel(hb); [~, cp(i)] = calc_correction_functions(hb(i) + shift, true); end
+end
+
+function B = local_B(u, pl)
+%LOCAL_B  antiderivative of the driver's logistic b(w): B(u) = b_wall u + (b_far - b_wall) De [sp((u - w_c)/De) - sp(-w_c/De)],  sp(x) = log(1 + e^x).
+    b_wall = pl(1); b_far = pl(2); w_c = pl(3); De = pl(4);
+    sp = @(x) max(x, 0) + log1p(exp(-abs(x)));
+    B = b_wall * u + (b_far - b_wall) * De * (sp((u - w_c)/De) - sp(-w_c/De));
 end
