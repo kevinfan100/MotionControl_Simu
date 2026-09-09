@@ -375,6 +375,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent nw_mcorr res1_km1                                  % correlated process/measurement noise correction (2026-09-03), default off
     persistent pred_mean2_e4                                      % gain-reading start-point term of the second-order mean (2026-09-04), default off
     persistent lambda_f_b lfb_alpha lfb_floor lam_b_spend
+    persistent p55_floor_on p55_floor_std                     % 2026-09-09: directional forgetting on slot 5 as a P55 floor (default off)
     persistent ap_src ap_ewma_a a_bar_slope_v law_b_formC
     persistent q33_dc_match q33_dc_fac
     persistent y2_echo_corr S_echo_T S_echo_n
@@ -999,6 +1000,19 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         Pf_b_std = expand3(get_field_default(ctrl_const, 'Pf_b_std', 0));
         b_floor  = get_field_default(ctrl_const, 'b_floor', 0.60);
         b_ceil   = get_field_default(ctrl_const, 'b_ceil',  1.05);
+        % --- P55 FLOOR (2026-09-09, directional forgetting in its steady-state form; literature O28) ---
+        % A uniform forgetting factor inflates P55 every step, including the hold and far-field steps that carry no
+        % information about b, and winds up (Meng: sqrt P55 0.039 -> 0.29). The directional form (Kulhavy-Karny 1984,
+        % Cao-Schwartz 2000) inflates only along the excited direction; for the scalar slot 5 its steady state is a
+        % floor on P55 reached only where b is being learned. Written as the floor directly: after the update, if
+        % P55 < p55_floor_std^2, scale row/column 5 back up to the floor (congruence, P stays PSD). Zero new numbers:
+        % the default floor is the family prior Pf_b_std, i.e. the estimator is never allowed to be more certain about b
+        % than the within-band variation of b_true (rule 4: sup|theta_eff - theta_0| <~ sqrt P, applied continuously).
+        % Does nothing when no information arrives (P55 does not shrink there), so no windup. Default OFF.
+        p55_floor_on  = logical(get_field_default(ctrl_const, 'p55_floor_on', false));
+        p55_floor_std = expand3(get_field_default(ctrl_const, 'p55_floor_std', Pf_b_std));
+        assert(~(p55_floor_on && (lambda_f_b < 1 || lfb_alpha > 0)), 'motion_control_law_formC_b:p55Floor', ...
+               'p55_floor_on cannot be combined with lambda_f_b / lambda_f_b_alpha (two forgetting devices on one slot).');
 
         % --- 0G. P0 widths ---
         % Pf_da_std  : prior on the additive disturbance, the tex's ONLY
@@ -1840,6 +1854,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             % evidence, so no forgetting -- NOT "forget by default".
             excess  = max(0, innov2^2 / S2 - 1);
             lam_b_k = max(exp(-lfb_alpha * excess), lfb_floor);
+            lam_b_spend(ax) = lam_b_spend(ax) + (1 - lam_b_k);
+        end
+        if p55_floor_on && ~lm(1) && P_upd(5, 5) < p55_floor_std(ax)^2 && P_upd(5, 5) > 0
+            lam_b_k = P_upd(5, 5) / p55_floor_std(ax)^2;   % < 1: the congruence below lifts P55 exactly to the floor
             lam_b_spend(ax) = lam_b_spend(ax) + (1 - lam_b_k);
         end
         if lam_b_k < 1

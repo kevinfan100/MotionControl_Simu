@@ -38,6 +38,11 @@
 %   forgetting arm pays spread (08-10 verdict, Q55 precedent) and buys nothing; on the ramp the fixed arms track b_hat toward the local
 %   b (1.16 near the wall) and cut the near-wall error vs bseed0, the adaptive arm sits between. DECISION: forgetting earns a place only
 %   if its ramp gain (paired vs bseed0, near-wall worst instant and osc mean) exceeds its plane loss (paired sigma, hold) -- else R57.
+%   09-09 P55 FLOOR ARM bseed0_pf (directional forgetting in steady-state form, controller flag p55_floor_on, floor = Pf_b_std):
+%   PRE-REGISTERED (user approved 09-09): (1) Meng plane: sqrt P55 stays 0.039 (no windup), desc / hold not worse than bseed0 (paired);
+%   (2) canon plane near-wall worst instant <= -0.006 (what lambda 0.9999 reached) with hold within SEM of bseed0;
+%   (3) ramp: b_hat near the wall >= 1.05 and both osc mean and hold |error| smaller than bseed0 on both trajectories.
+%   All three or the forgetting family closes (R58) and the line moves to CUSUM + per-wall map.
 %   Output three_walls_<traj>[_<walls>_<arms>].mat | EXPIRES: with the unknown-wall line | 產線改動不會自動跟上
 function out = run_three_walls(traj, seeds, arms, walls)
     if nargin < 1 || isempty(traj); traj = 'canon'; end
@@ -66,6 +71,7 @@ function out = run_three_walls(traj, seeds, arms, walls)
                  'bseed', struct('arm','best', 'cc', struct('b_ceil', 1.5), 'o', struct()), ...   % b_init / ws0_perp filled per wall below
                  'btseed', struct('arm','best', 'cc', struct('b_ceil', 1.5), 'o', struct('b_true', true, 'b_true_at', 'true')), ...   % same seeds as bseed, but the law reads the PLANT's local b(w) (b_true arm): the b(w) ceiling in the user's cell
                  'bseed0',  struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0), 'o', struct()), ...                                   % bseed + P44[0] at the start truth (start FULLY known: Pf_a_floor set per traj below)
+                 'bseed0_pf',     struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'p55_floor_on', true), 'o', struct()), ...   % 09-09 directional forgetting as a P55 floor at the family prior (0.039): never more certain about b than the band's own b variation
                  'bseed0_lf999',  struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'lambda_f_b', 0.999), 'o', struct()), ...    % 09-09 forgetting on slot 5: fixed, tau 1000 steps (0.6 s)
                  'bseed0_lf9999', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'lambda_f_b', 0.9999), 'o', struct()), ...   % fixed, tau 6 s
                  'bseed0_lfa',    struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'lambda_f_b_alpha', 0.05, 'lambda_f_b_floor', 0.99), 'o', struct()), ...   % adaptive: forget only when NIS2 excess > 0
@@ -87,7 +93,7 @@ function out = run_three_walls(traj, seeds, arms, walls)
     for iw = 1:size(WALLS, 1)
         for ia = 1:numel(arms)
             A = ARM.(arms{ia});  cc = ON4;  fn = fieldnames(A.cc); for i = 1:numel(fn); cc.(fn{i}) = A.cc.(fn{i}); end
-            if any(strcmp(arms{ia}, {'bseed0','btseed0','rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99','bhq5c','bhn1c','bhdc','bseed0_lf999','bseed0_lf9999','bseed0_lfa'})); if strcmp(traj, 'meng'); cc.Pf_a_floor = 3e-4; else; cc.Pf_a_floor = 1e-5; end; end   % ladder p0 convention (09-06)
+            if any(strcmp(arms{ia}, {'bseed0','btseed0','rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99','bhq5c','bhn1c','bhdc','bseed0_lf999','bseed0_lf9999','bseed0_lfa','bseed0_pf'})); if strcmp(traj, 'meng'); cc.Pf_a_floor = 3e-4; else; cc.Pf_a_floor = 1e-5; end; end   % ladder p0 convention (09-06)
             if any(strcmp(arms{ia}, {'rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99'}))
                 pc = physical_constants(); w0bar = cfg0.h_init / pc.R; [~, cp] = calc_correction_functions(w0bar, true); a0 = 1/cp;
                 ws0_lad = 1 + w0bar - 1/((8/9)*(1 - a0));                          % the ladder's seed-at-truth line (b 8/9 through the start gain)
@@ -100,7 +106,7 @@ function out = run_three_walls(traj, seeds, arms, walls)
                 end
                 fprintf('[%s %s %s] b_init %.4f ws0_perp %.4f (b_ceil %s)\n', traj, WALLS{iw,1}, arms{ia}, cc.b_init, cc.ws0_perp, mat2str(isfield(cc,'b_ceil')));
             end
-            if any(strcmp(arms{ia}, {'bseed','btseed','bseed0','btseed0','bhq5c','bhn1c','bhdc','bseed0_lf999','bseed0_lf9999','bseed0_lfa'}))
+            if any(strcmp(arms{ia}, {'bseed','btseed','bseed0','btseed0','bhq5c','bhn1c','bhdc','bseed0_lf999','bseed0_lf9999','bseed0_lfa','bseed0_pf'}))
                 pc = physical_constants(); w0bar = cfg0.h_init / pc.R;
                 if ~isscalar(WALLS{iw,2}); pl = WALLS{iw,2}; w0p = WALLS{iw,3}; a0 = 1 - 1/local_B(w0bar - w0p, pl); w_c = w0p + fzero(@(u) local_B(u, pl) - 1, 0.9);
                 elseif isnan(WALLS{iw,2}); [~, cp] = calc_correction_functions(w0bar + WALLS{iw,4}, true); a0 = 1/cp; w_c = 1.0 - WALLS{iw,4};

@@ -121,6 +121,7 @@
   **「起點＋牆位已知、c(h̄) 未知」這一格結案（C50）**：弦種法＋P₄₄[0] 起點實況下，常數 b̂ 對餵 b_true(w̄) 只差牆邊一瞬 ±0.017、回訪 ±0.003、散布 5–10×；法則形狀不是問題。
   圖：`seed_line_mismatch_canon.png`、`ladder_{btseed0,bseed0}_4row_abs_tw_p0.png`（平面）、`_cellb.png`（Brenner 下移 1.03 R 的細胞）；儀器 `plot_ladder_tw_abs.m`、`plot_three_walls_arms.m`、driver `opts.plant_cperp`（函數柄 plant）。
   **b(w̄) 可觀性（09-08 晚，C51／O27，`verify_obs_b_of_w.m`）**：canon 上線性 b 與 4 個高度格都結構可辨識（CRLB/prior 0.016–0.14，ā_w 不受害）；Meng 單趟只有常數 b（0.57）。「常數 b」在 canon 是回報上界（回訪 ±0.003）的決定，不是可觀性的決定；在 Meng 是可觀性的決定。
+  **directional forgetting 落地並否證（09-09，R58，`p55_floor_on` default off，驗收 ALL PASS）**：P₅₅ 底線 = prior 0.039²，Meng 不 windup 但 ramp 上 b̂ 只到 0.98／0.97（真 1.16）、canon 振盪 σ 2.3×、hold 變差 ⇒ 遺忘家族全關；b 每趟近壁只換得到 0.05–0.2，是資訊率不是容器。剩 CUSUM 換牆偵測 + per-wall map。圖 `pf_ramp.png`、`pf_plane.png`。
   **遺忘因子重驗（09-09，R57）＋文獻（O28，`reference/eq17_analysis/literature_varying_parameter_2026-09-09.md`）**：固定／驚訝觸發的 slot-5 遺忘在 ramp plant（b 沿高度 1.16→0.87）不買追蹤、Meng windup；文獻無人線上估牆參數，同構問題 = 路面摩擦（Gustafsson 1997：Q=0 + CUSUM + 觸發重置），該做的是 directional forgetting（只在有資訊的步放 P₅₅）→ CUSUM 換牆偵測 + per-wall map。
   **O25 重驗（09-08 晚，R56）**：Q55／E1／E2 換弦種法後全部比純估測器差（canon 最差 −0.017 → −0.025／−0.025／−0.040，σ 2.8×／1.8×／9×）⇒ 三旗標退場，「innovation 要有家」撤。driver 每 run 印 `SEED LINE:` 檢查；規則 stacked-fix-audit B.8。
 
