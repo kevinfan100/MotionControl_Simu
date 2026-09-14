@@ -1,0 +1,193 @@
+% STATUS: ACTIVE | READING COPY (2026-09-10): the particle row of the estimated-b 5-state core, state [dw1 dw2 dw3 a_w b].
+%   Control law written in the base-chain form (4state_del_hd.tex, boxed implementable control effort; code
+%   motion_control_law_formC_b.m:1337, past gains = the gains the law used, :1329).
+%   (A) past gain errors set equal to today's. (B) the gain-error row run one and two steps back, exact within the linear
+%   error model. (B') = (B) with every entry at its leading order in dWh.
+%   Checks 2026-09-10 (sympy): (4) from the control law, residual 0; (B') row 3, residual 0; (B) minus (B') in the e_b column
+%   is second order in dWh. Equations only.
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{graphicx}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\pagestyle{plain}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\dW}{\Delta\bw}
+\newcommand{\dWh}{\Delta\hat{\bw}}
+\newcommand{\eD}{e_{\Delta\bw}}
+\newcommand{\ap}{\ba'}
+\newcommand{\ah}{\hat{\ba}_w}
+\newcommand{\bh}{\hat{b}}
+\newcommand{\fd}{\bar f_{dw}}
+\newcommand{\ea}{e_{\ba_w}}
+
+\begin{document}
+
+\section{Gain law}
+
+($e_\theta = \theta - \hat\theta$)
+
+\begin{align*}
+\ba(\bw)    &= 1 - \frac{1}{b\,(\bw - \bw_s)} \\
+\ap(\ba, b) &:= \frac{d\ba}{d\bw} = b\bigl(1-\ba\bigr)^{2}
+\end{align*}
+
+\section{Control law}
+
+$(d = 2)$
+
+\begin{align*}
+\delta\bw_3[k] &= \delta\bw_1[k] + \sum_{i=1}^{d}\Delta\bw_d[k-i] - \sum_{i=1}^{d}\ba_w[k-i]\bigl\{\fd[k-i] + \bar f_T[k-i]\bigr\}
+\end{align*}
+
+\begin{align*}
+\boxed{\ \fd[k] = \ah^{-1}[k]\Bigl\{\Delta\bw_d[k] + (1-\lambda_c)\sum_{i=1}^{d}\Delta\bw_d[k-i]
+       + (1-\lambda_c)\Bigl[y_1[k] - \sum_{i=1}^{d}\ah[k-i]\,\fd[k-i]\Bigr]\Bigr\}\ }
+\end{align*}
+
+\begin{align*}
+y_1[k] &= \delta\bw_1[k] + n_w[k]
+\end{align*}
+
+\section{True dynamics}
+
+\begin{align*}
+\bw[k]    &= \bw_d[k] - \delta\bw_3[k] \\
+\dW[k]    &:= \bw[k+1] - \bw[k] \\
+\ea[k-i]  &:= \ba_w[k-i] - \ah[k-i]
+\end{align*}
+
+\begin{align*}
+\delta\bw_3[k+1] &= \delta\bw_3[k] + \Delta\bw_d[k] - \ba_w[k]\bigl\{\fd[k] + \bar f_T[k]\bigr\} \tag{1} \\[4pt]
+\ba_w[k]\,\fd[k] &= \ah[k]\,\fd[k] + \ea[k]\,\fd[k] \tag{2} \\[4pt]
+\ah[k]\,\fd[k]   &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k]
+                    + (1-\lambda_c)\sum_{i=1}^{d}\ea[k-i]\,\fd[k-i] \\
+                 &\quad + (1-\lambda_c)\sum_{i=1}^{d}\ba_w[k-i]\,\bar f_T[k-i] + (1-\lambda_c)\,n_w[k] \tag{3} \\[4pt]
+\delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k] - \fd[k]\,\ea[k]
+                    - (1-\lambda_c)\sum_{i=1}^{d}\fd[k-i]\,\ea[k-i] - \varepsilon_w[k] \tag{4}
+\end{align*}
+
+\begin{align*}
+\varepsilon_w[k] &= \ba_w[k]\,\bar f_T[k] + (1-\lambda_c)\sum_{i=1}^{d}\ba_w[k-i]\,\bar f_T[k-i] + (1-\lambda_c)\,n_w[k] \\
+\ba_w[k+1]       &= \ba_w[k] + b\bigl(1-\ba_w[k]\bigr)^{2}\,\dW[k] \\
+b[k+1]           &= b[k]
+\end{align*}
+
+\section{Estimator}
+
+\begin{align*}
+\mathbf{x} &= \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w,\ b\,\bigr]^{\top}
+\end{align*}
+
+\begin{align*}
+\delta\hat{\bw}_1[k+1] &= \delta\hat{\bw}_2[k] \\
+\delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k] \\
+\delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k] \\
+\dWh[k]                &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k] \\
+\ah[k+1]               &= \ah[k] + \bh[k]\bigl(1-\ah[k]\bigr)^{2}\,\dWh[k] \\
+\bh[k+1]               &= \bh[k]
+\end{align*}
+
+\section{Error dynamics}
+
+\begin{align*}
+\eD[k] &:= \dW[k] - \dWh[k]
+\end{align*}
+
+\begin{align*}
+e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k] \\
+e_{\delta\bw_2}[k+1] &= e_{\delta\bw_3}[k] \\
+e_{\delta\bw_3}[k+1] &= e_{\delta\bw_3}[k] - \eD[k] \tag{5} \\
+\ea[k+1]             &= \Bigl(1 - 2\bh\bigl(1-\ah[k]\bigr)\dWh[k]\Bigr)\ea[k] + \bh\bigl(1-\ah[k]\bigr)^{2}\eD[k]
+                        + \bigl(1-\ah[k]\bigr)^{2}\dWh[k]\,e_b[k] \tag{6} \\
+e_b[k+1]             &= e_b[k]
+\end{align*}
+
+\begin{align*}
+\eD[k] &= (1-\lambda_c)\,e_{\delta\bw_3}[k] + \fd[k]\,\ea[k] + (1-\lambda_c)\sum_{i=1}^{d}\fd[k-i]\,\ea[k-i] + \varepsilon_w[k] \tag{7}
+\end{align*}
+
+\subsection*{(A)}
+
+\begin{align*}
+\ea[k-i]  &= \ea[k] \\
+\eD[k]    &= (1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,\ea[k] + \varepsilon_w[k] \\
+F_{dw}[k] &= \fd[k] + (1-\lambda_c)\sum_{i=1}^{d}\fd[k-i]
+\end{align*}
+
+\subsection*{(B)}
+
+\begin{align*}
+\eD[k-1] &= e_{\delta\bw_2}[k] - e_{\delta\bw_3}[k] \\
+\eD[k-2] &= e_{\delta\bw_1}[k] - e_{\delta\bw_2}[k] \\[6pt]
+\ea[k-1] &= \frac{\ea[k] - \bh\bigl(1-\ah[k-1]\bigr)^{2}\bigl(e_{\delta\bw_2}[k] - e_{\delta\bw_3}[k]\bigr)
+            - \bigl(1-\ah[k-1]\bigr)^{2}\dWh[k-1]\,e_b[k]}{1 - 2\bh\bigl(1-\ah[k-1]\bigr)\dWh[k-1]} \tag{8} \\[8pt]
+\ea[k-2] &= \frac{\ea[k-1] - \bh\bigl(1-\ah[k-2]\bigr)^{2}\bigl(e_{\delta\bw_1}[k] - e_{\delta\bw_2}[k]\bigr)
+            - \bigl(1-\ah[k-2]\bigr)^{2}\dWh[k-2]\,e_b[k]}{1 - 2\bh\bigl(1-\ah[k-2]\bigr)\dWh[k-2]} \tag{9}
+\end{align*}
+
+\subsection*{(B$'$)}
+
+\begin{align*}
+\ea[k-1] &= \ea[k] - \bh\bigl(1-\ah[k]\bigr)^{2}\bigl(e_{\delta\bw_2}[k] - e_{\delta\bw_3}[k]\bigr)
+            - \bigl(1-\ah[k]\bigr)^{2}\dWh[k-1]\,e_b[k] \tag{8$'$} \\
+\ea[k-2] &= \ea[k] - \bh\bigl(1-\ah[k]\bigr)^{2}\bigl(e_{\delta\bw_1}[k] - e_{\delta\bw_3}[k]\bigr) \\
+         &\quad - \bigl(1-\ah[k]\bigr)^{2}\bigl(\dWh[k-1] + \dWh[k-2]\bigr)e_b[k] \tag{9$'$}
+\end{align*}
+
+\begin{align*}
+\eD[k] &= (1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,\ea[k] \\
+       &\quad - (1-\lambda_c)\,\bh\bigl(1-\ah[k]\bigr)^{2}\Bigl(\fd[k-1]\bigl(e_{\delta\bw_2}[k] - e_{\delta\bw_3}[k]\bigr)
+                 + \fd[k-2]\bigl(e_{\delta\bw_1}[k] - e_{\delta\bw_3}[k]\bigr)\Bigr) \\
+       &\quad - (1-\lambda_c)\bigl(1-\ah[k]\bigr)^{2}\Bigl(\fd[k-1]\,\dWh[k-1] + \fd[k-2]\bigl(\dWh[k-1] + \dWh[k-2]\bigr)\Bigr)e_b[k] \\
+       &\quad + \varepsilon_w[k]
+\end{align*}
+
+\clearpage
+\subsection*{$F_e$}
+
+\begin{align*}
+F_e^{(A)}[k] = \begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\[2pt]
+0 & 0 & 1 & 0 & 0 \\[2pt]
+0 & 0 & \lambda_c & -F_{dw} & 0 \\[2pt]
+0 & 0 & (1-\lambda_c)\,\bh\bigl(1-\ah\bigr)^{2} &
+  \begin{array}{l} 1 + \bh\bigl(1-\ah\bigr)^{2}F_{dw} \\ \quad - 2\bh\bigl(1-\ah\bigr)\dWh \end{array} &
+  \bigl(1-\ah\bigr)^{2}\dWh \\[10pt]
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\end{align*}
+
+\begin{align*}
+F_e^{(B')}[k]_{1,:} &= F_e^{(A)}[k]_{1,:} \\
+F_e^{(B')}[k]_{2,:} &= F_e^{(A)}[k]_{2,:} \\
+F_e^{(B')}[k]_{5,:} &= F_e^{(A)}[k]_{5,:} \\[8pt]
+F_e^{(B')}[k]_{31} &= (1-\lambda_c)\,\bh\bigl(1-\ah\bigr)^{2}\fd[k-2] \\
+F_e^{(B')}[k]_{32} &= (1-\lambda_c)\,\bh\bigl(1-\ah\bigr)^{2}\fd[k-1] \\
+F_e^{(B')}[k]_{33} &= \lambda_c - (1-\lambda_c)\,\bh\bigl(1-\ah\bigr)^{2}\bigl(\fd[k-1] + \fd[k-2]\bigr) \\
+F_e^{(B')}[k]_{34} &= -F_{dw} \\
+F_e^{(B')}[k]_{35} &= (1-\lambda_c)\bigl(1-\ah\bigr)^{2}\Bigl(\fd[k-1]\,\dWh[k-1] + \fd[k-2]\bigl(\dWh[k-1] + \dWh[k-2]\bigr)\Bigr) \\[8pt]
+F_e^{(B')}[k]_{41} &= -(1-\lambda_c)\,\bh^{2}\bigl(1-\ah\bigr)^{4}\fd[k-2] \\
+F_e^{(B')}[k]_{42} &= -(1-\lambda_c)\,\bh^{2}\bigl(1-\ah\bigr)^{4}\fd[k-1] \\
+F_e^{(B')}[k]_{43} &= (1-\lambda_c)\,\bh\bigl(1-\ah\bigr)^{2}\Bigl(1 + \bh\bigl(1-\ah\bigr)^{2}\bigl(\fd[k-1] + \fd[k-2]\bigr)\Bigr) \\
+F_e^{(B')}[k]_{44} &= 1 + \bh\bigl(1-\ah\bigr)^{2}F_{dw} - 2\bh\bigl(1-\ah\bigr)\dWh \\
+F_e^{(B')}[k]_{45} &= \bigl(1-\ah\bigr)^{2}\dWh \\
+                   &\quad - (1-\lambda_c)\,\bh\bigl(1-\ah\bigr)^{4}\Bigl(\fd[k-1]\,\dWh[k-1] + \fd[k-2]\bigl(\dWh[k-1] + \dWh[k-2]\bigr)\Bigr)
+\end{align*}
+
+\begin{align*}
+\mathbf{q}^{(A)}[k] = \mathbf{q}^{(B')}[k] &= \Bigl[\,0,\ 0,\ -\varepsilon_w[k],\ \bh\bigl(1-\ah\bigr)^{2}\varepsilon_w[k],\ 0\,\Bigr]^{\top}
+\end{align*}
+
+\end{document}

@@ -1,0 +1,138 @@
+% STATUS: ACTIVE | DERIVATION (2026-09-12) for the "orange" variant of the estimated-b filter, production structure
+%   (9 slots: dw1 dw2 dw3 a_w b, 6-7 inert, 8-9 = MA(2) memory m1 m2; alpha = 1 - lc, formC_b.m:608).
+%   Orange = green (0911_estb_green_variant.tex: e_a -> psi in F_e rows 3-4 and in the second-order mean of the a_w predict)
+%   PLUS the same substitution in the measurement row of y2, so the gain error is read through the a model everywhere in
+%   the error model. The predicted measurement y2_pred, Q, R, P[0], the mean predict and the control law are unchanged.
+%   Code map: H row 2 = formC_b.m:1871 (s = H2_scale, e = 1 - S the echo factor); F_e rows 3-4 = :1607-1617.
+%   Checks 2026-09-12 (sympy, residuals 0): (1) the redistribution H^o = H T with T carrying e_4 -> psi equals the closed
+%   form below; (2) with dap_dd3 = 0 it equals the 0910 a-model document's H row; (3) the S2 quadratic form is the same
+%   under H^o = H T; (4) column 4 of H1, of H^o and of F_e^green rows 1-3, 5-9 is zero while F_e(4,4) = 1 + A_a M, so
+%   H Phi^n e_4 = 0 for every n -- the a slot is UNOBSERVABLE (gate 4 rank 6 of 7) while K_4 stays nonzero through
+%   P_{41}, P_{43}, P_{45}. Equations only.
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{graphicx}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\dWh}{\Delta\hat{\bw}}
+\newcommand{\ap}{\ba'}
+\newcommand{\app}{\ba''}
+\newcommand{\ah}{\hat{\ba}_w}
+\newcommand{\bh}{\hat{b}}
+\newcommand{\ea}{e_{\ba_w}}
+\newcommand{\Cov}{\mathrm{Cov}}
+\newcommand{\Var}{\mathrm{Var}}
+
+\begin{document}
+
+\section{Gain law}
+
+($e_\theta = \theta - \hat\theta$; coefficients at the estimate)
+
+\begin{align*}
+\ba(\bw, b) &= 1 - \frac{1}{b\,(\bw - \bw_s)} \\
+\ap &:= \frac{\partial\ba}{\partial\bw} = b\bigl(1-\ba\bigr)^{2} \\
+\app &:= \frac{\partial\ap}{\partial\bw} = -2\,b^{2}\bigl(1-\ba\bigr)^{3} \\
+A_a &:= \frac{\partial\ap}{\partial\ba} = -2\,b\bigl(1-\ba\bigr) \\
+\Bigl(\frac{\partial\ap}{\partial b}\Bigr)_{\ba} &= \bigl(1-\ba\bigr)^{2} \\
+\Bigl(\frac{\partial\ba}{\partial b}\Bigr)_{\bw,\,\bw_s} &= \frac{1-\ba}{b}
+\end{align*}
+
+\section{State}
+
+$(\alpha = 1-\lambda_c)$
+
+\begin{align*}
+\mathbf{x} &= \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w,\ b,\ x_6,\ x_7,\ m_1,\ m_2\,\bigr]^{\top} \\
+\mathbf{e} &= \bigl[\,e_1,\ e_2,\ e_3,\ e_4,\ e_b,\ e_6,\ e_7,\ e_8,\ e_9\,\bigr]^{\top}, \qquad
+e_j = e_{\delta\bw_j}\ (j \le 3), \quad e_4 = \ea
+\end{align*}
+
+\section{Substitution}
+
+\begin{align*}
+\ea[k] = \psi[k] := -\bh\bigl(1-\ah\bigr)^{2}e_3[k] + \frac{1-\ah}{\bh}\,e_b[k]
+\end{align*}
+
+\section{Error dynamics}
+
+\begin{align*}
+F_{12} = F_{23} = F_{55} = F_{66} = F_{77} = F_{98} &= 1 \\
+F_{33} &= \lambda_c + F_{dw}\,\ap, \qquad F_{34} = 0, \qquad F_{35} = -F_{dw}\,\frac{1-\ah}{\bh}, \qquad F_{38} = F_{39} = -\alpha \\
+F_{43} &= (1-\lambda_c)\,\ap + J_{d3}M - F_{dw}\,\ap^{2} \\
+F_{44} &= 1 + A_a M \\
+F_{45} &= \bigl(1-\ah\bigr)^{2}M + F_{dw}\bigl(1-\ah\bigr)^{3} \\
+F_{48} &= F_{49} = \ap\alpha \\
+\mathbf{g}_n &= \bigl[\,0,\ 0,\ -(1-\lambda_c),\ \ap(1-\lambda_c),\ 0,\ 0,\ 0,\ 0,\ 0\,\bigr]^{\top} \\
+F_{:,1} &\leftarrow F_{:,1} - \mathbf{g}_n
+\end{align*}
+
+\section{Measurement}
+
+\begin{align*}
+H_1 &= \bigl[\,1,\ 0,\ 0,\ 0,\ 0,\ 0,\ 0,\ 0,\ 0\,\bigr] \\
+\varepsilon &:= 1 - S
+\end{align*}
+
+\subsection*{Original}
+
+\begin{align*}
+H_2 &= s\,\varepsilon\Bigl[\,0,\ 0,\ -\nabla_d\bw_d\,\frac{\partial\ap}{\partial\delta\hat{\bw}_3},\
+        1 - \nabla_d\bw_d\,A_a,\ -\nabla_d\bw_d\bigl(1-\ah\bigr)^{2},\ 0,\ 0,\ 0,\ 0\,\Bigr]
+\end{align*}
+
+\subsection*{Orange}
+
+\begin{align*}
+H_{23} &= s\,\varepsilon\Bigl(-\nabla_d\bw_d\,\frac{\partial\ap}{\partial\delta\hat{\bw}_3}
+          - \bigl(1 - \nabla_d\bw_d\,A_a\bigr)\ap\Bigr) \\
+H_{24} &= 0 \\
+H_{25} &= s\,\varepsilon\Bigl(-\nabla_d\bw_d\bigl(1-\ah\bigr)^{2}
+          + \bigl(1 - \nabla_d\bw_d\,A_a\bigr)\frac{1-\ah}{\bh}\Bigr)
+\end{align*}
+
+With $\partial\ap/\partial\delta\hat{\bw}_3 = 0$:
+
+\begin{align*}
+H_{23} &= -s\,\varepsilon\bigl(1 + 2\bh(1-\ah)\,\nabla_d\bw_d\bigr)\,\bh\bigl(1-\ah\bigr)^{2} \\
+H_{25} &= s\,\varepsilon\Bigl(\frac{1-\ah}{\bh} + \nabla_d\bw_d\bigl(1-\ah\bigr)^{2}\Bigr)
+\end{align*}
+
+\section{Second-order mean of the gain slot}
+
+\begin{align*}
+\mathbf{c} &= \Bigl[\,-(1-\lambda_c),\ 0,\ (1-\lambda_c) - F_{dw}\,\ap,\ 0,\ F_{dw}\,\frac{1-\ah}{\bh},\ 0,\ 0,\ \alpha,\ \alpha\,\Bigr]^{\top} \\
+u[k] &= \mathbf{c}[k]^{\top}\mathbf{e}[k] + w_T[k], \qquad
+\Cov\bigl(e_j, u\bigr) = \bigl(P\,\mathbf{c}\bigr)_j, \qquad \Var(u) = \mathbf{c}^{\top}P\,\mathbf{c} + \kappa_T\ah \\
+\ah[k+1] &= 1 - \frac{1}{1/\bigl(1-\ah[k]\bigr) + \bh[k]\,\dWh[k]}
+            - \app\,\Cov\bigl(e_3, u\bigr) - \bigl(1-\ah\bigr)^{2}\Cov\bigl(e_b, u\bigr) + \tfrac{1}{2}\,\app\,\Var(u)
+\end{align*}
+
+\section{Unobservable direction}
+
+\begin{align*}
+F\,\mathbf{e}_4 &= \bigl(1 + A_a M\bigr)\mathbf{e}_4 \\
+H_1\mathbf{e}_4 = H_2\mathbf{e}_4 &= 0 \\
+H\,\Phi(k, k_0)\,\mathbf{e}_4 &= 0 \qquad \forall\,k \ge k_0
+\end{align*}
+
+\section{Unchanged}
+
+\begin{align*}
+\hat{y}_2 &= s\Bigl(\ah - \varepsilon\,\ap\,\nabla_d\bw_d\Bigr) \\
+Q^{\mathrm{orange}} = Q, \qquad R^{\mathrm{orange}} &= R, \qquad P^{\mathrm{orange}}[0] = P[0]
+\end{align*}
+
+\end{document}

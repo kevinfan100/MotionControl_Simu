@@ -1,0 +1,158 @@
+% STATUS: ACTIVE | DERIVATION (2026-09-11) for the "green" variant of the estimated-b filter, production structure
+%   (9 slots: dw1 dw2 dw3 a_w b, 6-7 inert, 8-9 = MA(2) memory m1 m2; alpha = 1 - lc, formC_b.m:608).
+%   Green = the a-model substitution of e_a -> psi = -a' e_dw3 + ((1-a)/b) e_b wherever the error model carries the
+%   gain error: F_e rows 3-4 (the F_dw e_4 share of the step error u) AND the second-order mean term of the a_w predict
+%   (user decision 2026-09-11: the E[ee] terms follow the green model). H, Q, R, P[0], the mean predict of every slot
+%   other than the second-order a_w term, the correlated-noise column g_n and the MA(2) columns are unchanged.
+%   Code map: F_e = local_build_F_e_formC + MA(2) columns (formC_b.m:1588, 174-175) + correlated-noise column (:1744);
+%   second-order mean = pred_mean2 / pred_mean2_e4 block (:1680-1733), u = c'e + w_T in the ma2_aug & nw_mcorr branch.
+%   Checks 2026-09-11 (sympy, all residuals 0): (1) green F_e rows 3-4; (2) the vector form u = c'e + w_T with c_orig
+%   reproduces the controller's cov_e3u, var_u, cov_e4u, cov_e5u term by term; (3) the expanded green moments equal the
+%   vector form; (4) A_a Cov(psi,u) + (1-a)^2 Cov(e_b,u) = -a'' Cov(e3,u) - (1-a)^2 Cov(e_b,u). Equations only.
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{graphicx}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\dWh}{\Delta\hat{\bw}}
+\newcommand{\ap}{\ba'}
+\newcommand{\app}{\ba''}
+\newcommand{\ah}{\hat{\ba}_w}
+\newcommand{\bh}{\hat{b}}
+\newcommand{\ea}{e_{\ba_w}}
+\newcommand{\Cov}{\mathrm{Cov}}
+\newcommand{\Var}{\mathrm{Var}}
+
+\begin{document}
+
+\section{Gain law}
+
+($e_\theta = \theta - \hat\theta$; coefficients at the estimate)
+
+\begin{align*}
+\ba(\bw, b) &= 1 - \frac{1}{b\,(\bw - \bw_s)} \\
+\ap &:= \frac{\partial\ba}{\partial\bw} = b\bigl(1-\ba\bigr)^{2} \\
+\app &:= \frac{\partial\ap}{\partial\bw} = -2\,b^{2}\bigl(1-\ba\bigr)^{3} \\
+A_a &:= \frac{\partial\ap}{\partial\ba} = -2\,b\bigl(1-\ba\bigr) \\
+\Bigl(\frac{\partial\ap}{\partial b}\Bigr)_{\ba} &= \bigl(1-\ba\bigr)^{2} \\
+\Bigl(\frac{\partial\ba}{\partial b}\Bigr)_{\bw,\,\bw_s} &= \frac{1-\ba}{b}
+\end{align*}
+
+\section{State}
+
+$(\alpha = 1-\lambda_c)$
+
+\begin{align*}
+\mathbf{x} &= \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w,\ b,\ x_6,\ x_7,\ m_1,\ m_2\,\bigr]^{\top} \\
+\mathbf{e} &= \bigl[\,e_1,\ e_2,\ e_3,\ e_4,\ e_b,\ e_6,\ e_7,\ e_8,\ e_9\,\bigr]^{\top}, \qquad
+e_j = e_{\delta\bw_j}\ (j \le 3), \quad e_4 = \ea
+\end{align*}
+
+\section{Substitution}
+
+\begin{align*}
+\ea[k] = \psi[k] := -\bh\bigl(1-\ah\bigr)^{2}e_3[k] + \frac{1-\ah}{\bh}\,e_b[k]
+\end{align*}
+
+\section{Error dynamics}
+
+\begin{align*}
+F_{12} = F_{23} = F_{55} = F_{66} = F_{77} = F_{98} &= 1
+\end{align*}
+
+\subsection*{Original}
+
+\begin{align*}
+F_{33} &= \lambda_c, \qquad F_{34} = -F_{dw}, \qquad F_{35} = 0, \qquad F_{38} = F_{39} = -\alpha \\
+F_{43} &= (1-\lambda_c)\,\ap + J_{d3}M \\
+F_{44} &= 1 + \ap F_{dw} + A_a M \\
+F_{45} &= \bigl(1-\ah\bigr)^{2}M \\
+F_{48} &= F_{49} = \ap\alpha
+\end{align*}
+
+\subsection*{Green}
+
+\begin{align*}
+F_{33} &= \lambda_c + F_{dw}\,\ap, \qquad F_{34} = 0, \qquad F_{35} = -F_{dw}\,\frac{1-\ah}{\bh}, \qquad F_{38} = F_{39} = -\alpha \\
+F_{43} &= (1-\lambda_c)\,\ap + J_{d3}M - F_{dw}\,\ap^{2} \\
+F_{44} &= 1 + A_a M \\
+F_{45} &= \bigl(1-\ah\bigr)^{2}M + F_{dw}\bigl(1-\ah\bigr)^{3} \\
+F_{48} &= F_{49} = \ap\alpha
+\end{align*}
+
+\subsection*{Both}
+
+\begin{align*}
+\mathbf{g}_n &= \bigl[\,0,\ 0,\ -(1-\lambda_c),\ \ap(1-\lambda_c),\ 0,\ 0,\ 0,\ 0,\ 0\,\bigr]^{\top} \\
+F_{:,1} &\leftarrow F_{:,1} - \mathbf{g}_n \\
+\mathbf{g}_T &= \bigl[\,0,\ 0,\ -1,\ \ap,\ 0,\ 0,\ 0,\ 1,\ 0\,\bigr]^{\top} \\
+Q &= \kappa_T\ah\,\mathbf{g}_T\mathbf{g}_T^{\top}
+\end{align*}
+
+\section{Step error}
+
+\begin{align*}
+u[k] &= \mathbf{c}[k]^{\top}\mathbf{e}[k] + w_T[k], \qquad \Var\bigl(w_T[k]\bigr) = \kappa_T\ah[k] \\
+\mathbf{c}_{\mathrm{orig}} &= \Bigl[\,-(1-\lambda_c),\ 0,\ (1-\lambda_c),\ F_{dw},\ 0,\ 0,\ 0,\ \alpha,\ \alpha\,\Bigr]^{\top} \\
+\mathbf{c}_{\mathrm{green}} &= \Bigl[\,-(1-\lambda_c),\ 0,\ (1-\lambda_c) - F_{dw}\,\ap,\ 0,\ F_{dw}\,\frac{1-\ah}{\bh},\ 0,\ 0,\ \alpha,\ \alpha\,\Bigr]^{\top} \\[4pt]
+\Cov\bigl(e_j, u\bigr) &= \bigl(P\,\mathbf{c}\bigr)_j, \qquad \Var(u) = \mathbf{c}^{\top}P\,\mathbf{c} + \kappa_T\ah
+\end{align*}
+
+\section{Second-order moments (green)}
+
+\begin{align*}
+\Cov\bigl(e_3, u\bigr) &= (1-\lambda_c)\bigl(P_{33} - P_{13}\bigr) + \alpha\bigl(P_{38} + P_{39}\bigr)
+                          + F_{dw}\Bigl(-\ap P_{33} + \frac{1-\ah}{\bh}P_{35}\Bigr) \\[4pt]
+\Cov\bigl(e_b, u\bigr) &= (1-\lambda_c)\bigl(P_{35} - P_{15}\bigr) + \alpha\bigl(P_{58} + P_{59}\bigr)
+                          + F_{dw}\Bigl(-\ap P_{35} + \frac{1-\ah}{\bh}P_{55}\Bigr) \\[4pt]
+\Cov\bigl(\psi, u\bigr) &= -\ap\,\Cov\bigl(e_3, u\bigr) + \frac{1-\ah}{\bh}\,\Cov\bigl(e_b, u\bigr) \\[4pt]
+\Var(u) &= (1-\lambda_c)^{2}\bigl(P_{33} - 2P_{13} + P_{11}\bigr) + \alpha^{2}\bigl(P_{88} + P_{99} + 2P_{89}\bigr) \\
+        &\quad + 2(1-\lambda_c)\,\alpha\bigl(P_{38} + P_{39} - P_{18} - P_{19}\bigr) \\
+        &\quad + F_{dw}^{2}\Bigl(\ap^{2}P_{33} - 2\,\ap\,\frac{1-\ah}{\bh}P_{35} + \Bigl(\frac{1-\ah}{\bh}\Bigr)^{2}P_{55}\Bigr) \\
+        &\quad - 2F_{dw}\,\ap\bigl((1-\lambda_c)(P_{33} - P_{13}) + \alpha(P_{38} + P_{39})\bigr) \\
+        &\quad + 2F_{dw}\,\frac{1-\ah}{\bh}\bigl((1-\lambda_c)(P_{35} - P_{15}) + \alpha(P_{58} + P_{59})\bigr) \\
+        &\quad + \kappa_T\ah
+\end{align*}
+
+\section{Predict of the gain slot}
+
+\begin{align*}
+\dWh[k] &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k] + \alpha\bigl(\hat m_1[k] + \hat m_2[k]\bigr)
+           + (1-\lambda_c)\bigl(y_1[k] - \delta\hat{\bw}_1[k]\bigr)
+\end{align*}
+
+\subsection*{Original}
+
+\begin{align*}
+\ah[k+1] &= 1 - \frac{1}{1/\bigl(1-\ah[k]\bigr) + \bh[k]\,\dWh[k]}
+            + A_a\,\Cov\bigl(\ea, u\bigr) + \bigl(1-\ah\bigr)^{2}\Cov\bigl(e_b, u\bigr) + \tfrac{1}{2}\,\app\,\Var(u)
+\end{align*}
+
+\subsection*{Green}
+
+\begin{align*}
+\ah[k+1] &= 1 - \frac{1}{1/\bigl(1-\ah[k]\bigr) + \bh[k]\,\dWh[k]}
+            + A_a\,\Cov\bigl(\psi, u\bigr) + \bigl(1-\ah\bigr)^{2}\Cov\bigl(e_b, u\bigr) + \tfrac{1}{2}\,\app\,\Var(u) \\
+         &= 1 - \frac{1}{1/\bigl(1-\ah[k]\bigr) + \bh[k]\,\dWh[k]}
+            - \app\,\Cov\bigl(e_3, u\bigr) - \bigl(1-\ah\bigr)^{2}\Cov\bigl(e_b, u\bigr) + \tfrac{1}{2}\,\app\,\Var(u)
+\end{align*}
+
+\section{Unchanged}
+
+\begin{align*}
+H^{\mathrm{green}} = H, \qquad Q^{\mathrm{green}} = Q, \qquad R^{\mathrm{green}} = R, \qquad P^{\mathrm{green}}[0] = P[0]
+\end{align*}
+
+\end{document}

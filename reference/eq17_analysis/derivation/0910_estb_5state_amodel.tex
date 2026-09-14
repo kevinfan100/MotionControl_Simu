@@ -1,0 +1,179 @@
+% STATUS: ACTIVE | READING COPY (2026-09-10): estimated-b 5-state core, x = [dw1 dw2 dw3 a_w b], first order, no correlated-
+%   noise predict, no MA(2) slots, Euler law step; same layout as the 2026-09-07 core. ONE change: the e_a used in the true
+%   dynamics is replaced through the gain model (the a model): true gain a(w, b), estimated gain a(w_hat, b_hat)
+%   (w_s a constant of the law, not an argument), first-order expansion -> e_a = -b_hat(1-a_hat)^2 e_dw3 + ((1-a_hat)/b_hat) e_b. The a state is kept.
+%   Consequence: F_e(3,4) = 0, F_e(3,5) = -F_dw (1-a_hat)/b_hat, row 4 re-expressed; q unchanged. The same replacement in
+%   the y2 row: H = [1 0 0 0 0; 0 0 H23 0 H25] (the a-state column of H is zero). Noise unchanged. The replacement holds while the a state sits on its own a-model curve (a_hat = a(w_hat, b_hat)):
+%   exact at the chord seed, kept by the predict, broken only by the measurement update.
+%   Sign of n_w in eps_w: + (y1 = dw1 + n_w enters the control law with +(1-lc)).
+%   Checks 2026-09-10 (sympy): partials of the a model; F_e rows 3 and 4; H23, H25; residuals 0. Equations only.
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{graphicx}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\dW}{\Delta\bw}
+\newcommand{\dWh}{\Delta\hat{\bw}}
+\newcommand{\eD}{e_{\Delta\bw}}
+\newcommand{\ap}{\ba'}
+\newcommand{\app}{\ba''}
+\newcommand{\ah}{\hat{\ba}_w}
+\newcommand{\bh}{\hat{b}}
+\newcommand{\E}{\mathbb{E}}
+
+\begin{document}
+
+\section{Gain law}
+
+(bars denote normalized quantities: lengths by $R$; $a_o := \Delta t/(\gamma_N R)$ [1/pN] and $a_{\mathrm{nom}} := \Delta t/\gamma_N = a_o R$ [$\mu$m/pN];
+$\ba := a/a_{\mathrm{nom}}$; forces by $a_o$: $\bar f := a_o f$, so that $\ba\,\bar f = \dW$; $0 \le \ba \le 1$, far field 1, contact 0;
+hats sit on the normalized quantities $\ah$, $\bh$, $\delta\hat{\bw}$; $e_\theta = \theta - \hat\theta$)
+
+\begin{align*}
+\ba(\bw, b) &= 1 - \frac{1}{b\,(\bw - \bw_s)} \\
+\ap(\bw, b) &:= \frac{\partial\ba}{\partial\bw} = \frac{1}{b\,(\bw - \bw_s)^{2}} = b\bigl(1-\ba\bigr)^{2} \\
+\frac{\partial\ba}{\partial b} &= \frac{1}{b^{2}(\bw - \bw_s)} = \frac{1-\ba}{b}
+\end{align*}
+
+\section{True dynamics}
+
+$\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2\bigr)$
+
+\begin{align*}
+\bw[k]           &= \bw_d[k] - \delta\bw_3[k] \\
+\bw_d[k+1]       &= \bw_d[k] + \Delta\bw_d[k] \\
+\delta\bw_1[k+1] &= \delta\bw_2[k] \\
+\delta\bw_2[k+1] &= \delta\bw_3[k] \\
+\delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k] - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
+\dW[k]           &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k] \\
+\ba_w[k+1]       &= \ba_w[k] + b[k]\bigl(1-\ba_w[k]\bigr)^{2}\,\dW[k] \\
+b[k+1]           &= b[k]
+\end{align*}
+
+\begin{align*}
+F_{dw}[k]        &= \bar f_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar f_{dw}[k-i] \\
+\varepsilon_w[k] &= \ba_w[k]\,\bar f_T[k] + (1-\lambda_c)\sum_{i=1}^{d}\ba_w[k-i]\,\bar f_T[k-i] + (1-\lambda_c)\,n_w[k]
+\end{align*}
+
+\begin{align*}
+\ba_w[k]   &= \ba\bigl(\bw[k],\ b\bigr) \\
+\ah[k]     &= \ba\bigl(\hat{\bw}[k],\ \bh[k]\bigr), \qquad \hat{\bw}[k] = \bw_d[k] - \delta\hat{\bw}_3[k] \\
+\bw[k] - \hat{\bw}[k] &= -e_{\delta\bw_3}[k] \\
+e_{\ba_w}[k] &= \frac{\partial\ba}{\partial\bw}\bigl(\bw[k] - \hat{\bw}[k]\bigr) + \frac{\partial\ba}{\partial b}\,e_b[k] + \mathcal{O}\bigl(e^{2}\bigr) \\
+             &= -\bh\bigl(1-\ah\bigr)^{2}e_{\delta\bw_3}[k] + \frac{1-\ah}{\bh}\,e_b[k]
+\end{align*}
+
+\begin{align*}
+\delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k]
+                    - F_{dw}[k]\Bigl(-\bh\bigl(1-\ah\bigr)^{2}e_{\delta\bw_3}[k] + \frac{1-\ah}{\bh}\,e_b[k]\Bigr) - \varepsilon_w[k] \\
+\dW[k]           &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k] \\
+                 &\quad + F_{dw}[k]\Bigl(-\bh\bigl(1-\ah\bigr)^{2}e_{\delta\bw_3}[k] + \frac{1-\ah}{\bh}\,e_b[k]\Bigr) + \varepsilon_w[k]
+\end{align*}
+
+\section{Estimator}
+
+\begin{align*}
+\mathbf{x} &= \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w,\ b\,\bigr]^{\top} \qquad (d = 2)
+\end{align*}
+
+\begin{align*}
+\delta\hat{\bw}_1[k+1] &= \delta\hat{\bw}_2[k] \\
+\delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k] \\
+\delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k] \\
+\dWh[k]                &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k] \\
+\ah[k+1]               &= \ah[k] + \bh[k]\bigl(1-\ah[k]\bigr)^{2}\,\dWh[k] \\
+\bh[k+1]               &= \bh[k]
+\end{align*}
+
+\section{Error dynamics}
+
+(True $-$ Estimator; coefficients at the estimate)
+
+\begin{align*}
+\eD[k] &= \dW[k] - \dWh[k] \\
+       &= \Bigl((1-\lambda_c) - F_{dw}[k]\,\bh\bigl(1-\ah\bigr)^{2}\Bigr)e_{\delta\bw_3}[k]
+          + F_{dw}[k]\,\frac{1-\ah}{\bh}\,e_b[k] + \varepsilon_w[k] \\
+b[k]\bigl(1-\ba_w[k]\bigr)^{2} &= \bh[k]\bigl(1-\ah[k]\bigr)^{2} - 2\,\bh[k]\bigl(1-\ah[k]\bigr)\,e_{\ba_w}[k] + \bigl(1-\ah[k]\bigr)^{2}e_b[k] + \mathcal{O}\bigl(e^{2}\bigr)
+\end{align*}
+
+\begin{align*}
+e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k] \\
+e_{\delta\bw_2}[k+1] &= e_{\delta\bw_3}[k] \\
+e_{\delta\bw_3}[k+1] &= \Bigl(\lambda_c + F_{dw}\,\bh\bigl(1-\ah\bigr)^{2}\Bigr)e_{\delta\bw_3}[k]
+                        - F_{dw}\,\frac{1-\ah}{\bh}\,e_b[k] - \varepsilon_w[k] \\
+e_{\ba_w}[k+1] &= \Bigl[1 - 2\bh\bigl(1-\ah\bigr)\bigl(\Delta\bw_d + (1-\lambda_c)\,\delta\hat{\bw}_3\bigr)\Bigr]e_{\ba_w}[k] \\
+  &\quad + \bh\bigl(1-\ah\bigr)^{2}\Bigl((1-\lambda_c) - F_{dw}\,\bh\bigl(1-\ah\bigr)^{2}\Bigr)e_{\delta\bw_3}[k] \\
+  &\quad + \Bigl(\bigl(1-\ah\bigr)^{2}\bigl(\Delta\bw_d + (1-\lambda_c)\,\delta\hat{\bw}_3\bigr) + F_{dw}\bigl(1-\ah\bigr)^{3}\Bigr)e_b[k]
+         + \bh\bigl(1-\ah\bigr)^{2}\varepsilon_w[k] \\
+e_b[k+1] &= e_b[k]
+\end{align*}
+
+\begin{align*}
+F_e[k] = \begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\[2pt]
+0 & 0 & 1 & 0 & 0 \\[2pt]
+0 & 0 & \lambda_c + F_{dw}\,\bh\bigl(1-\ah\bigr)^{2} & 0 & -F_{dw}\,\dfrac{1-\ah}{\bh} \\[12pt]
+0 & 0 &
+  \begin{array}{l} (1-\lambda_c)\,\bh\bigl(1-\ah\bigr)^{2} \\[2pt] \quad - F_{dw}\,\bh^{2}\bigl(1-\ah\bigr)^{4} \end{array} &
+  \begin{array}{l} 1 - 2\bh\bigl(1-\ah\bigr) \\[2pt] \quad \times\bigl(\Delta\bw_d + (1-\lambda_c)\,\delta\hat{\bw}_3\bigr) \end{array} &
+  \begin{array}{l} \bigl(1-\ah\bigr)^{2} \\[2pt] \quad \times\bigl(\Delta\bw_d + (1-\lambda_c)\,\delta\hat{\bw}_3\bigr) \\[2pt] \quad + F_{dw}\bigl(1-\ah\bigr)^{3} \end{array} \\[20pt]
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\end{align*}
+
+\begin{align*}
+\mathbf{q}[k] &= \Bigl[\,0,\ 0,\ -\varepsilon_w,\ \bh\bigl(1-\ah\bigr)^{2}\varepsilon_w,\ 0\,\Bigr]^{\top}
+\end{align*}
+
+\section{Measurement}
+
+$\bigl(\nabla_d\bw_d[k] := \bw_d[k] - \bw_d[k-d]\bigr)$
+
+\begin{align*}
+y_1[k]     &= \delta\bw_1[k] + n_w[k] \\
+y_2[k]     &= \ba_w[k-d] + n_a[k], \qquad
+\ba_w[k-d]  = \ba_w[k] - b\bigl(1-\ba_w[k]\bigr)^{2}\,\nabla_d\bw_d[k] \\
+\hat y_1[k] &= \delta\hat{\bw}_1[k] \\
+\hat y_2[k] &= \ah[k] - \bh[k]\bigl(1-\ah[k]\bigr)^{2}\,\nabla_d\bw_d[k]
+\end{align*}
+
+\begin{align*}
+e_{y_2}[k] &= \frac{\partial \hat y_2[k]}{\partial \ah[k]}\,e_{\ba_w}[k] + \frac{\partial \hat y_2[k]}{\partial \bh[k]}\,e_b[k] + n_a[k] \\
+\frac{\partial \hat y_2[k]}{\partial \ah[k]} &= 1 + 2\,\bh\bigl(1-\ah\bigr)\,\nabla_d\bw_d[k], \qquad
+\frac{\partial \hat y_2[k]}{\partial \bh[k]} = -\bigl(1-\ah\bigr)^{2}\,\nabla_d\bw_d[k] \\
+e_{\ba_w}[k] &= -\bh\bigl(1-\ah\bigr)^{2}e_{\delta\bw_3}[k] + \frac{1-\ah}{\bh}\,e_b[k] \\
+e_{y_2}[k] &= -\Bigl(1 + 2\,\bh\bigl(1-\ah\bigr)\,\nabla_d\bw_d[k]\Bigr)\bh\bigl(1-\ah\bigr)^{2}e_{\delta\bw_3}[k]
+              + \Bigl(\frac{1-\ah}{\bh} + \bigl(1-\ah\bigr)^{2}\nabla_d\bw_d[k]\Bigr)e_b[k] + n_a[k]
+\end{align*}
+
+\begin{align*}
+H_{23}[k] &= -\Bigl(1 + 2\,\bh\bigl(1-\ah\bigr)\,\nabla_d\bw_d[k]\Bigr)\bh\bigl(1-\ah\bigr)^{2} \\
+H_{25}[k] &= \frac{1-\ah}{\bh} + \bigl(1-\ah\bigr)^{2}\nabla_d\bw_d[k] \\
+H[k]      &= \begin{bmatrix} 1 & 0 & 0 & 0 & 0 \\ 0 & 0 & H_{23}[k] & 0 & H_{25}[k] \end{bmatrix} \\
+\mathbf{e}_y[k] &= H[k]\,\mathbf{e}^{-}[k] + \begin{bmatrix} n_w[k] \\ n_a[k] \end{bmatrix}
+\end{align*}
+
+\section{Noise}
+
+\begin{align*}
+Q[k]    &= Q_{33}[k]\,\mathbf{g}[k]\,\mathbf{g}[k]^{\top}, \qquad
+\mathbf{g}[k] = \Bigl[\,0,\ 0,\ -1,\ \bh[k]\bigl(1-\ah[k]\bigr)^{2},\ 0\,\Bigr]^{\top}, \qquad Q_{55} = 0 \\
+Q_{33}[k] &= \kappa_T\Bigl(\ah[k] + (1-\lambda_c)^{2}\bigl(\ah[k-1] + \ah[k-2]\bigr)\Bigr) + (1-\lambda_c)^{2}\sigma^{2}_{n_w},
+\qquad \kappa_T = \frac{4k_BT\,a_o}{R} \\
+R[k]    &= \mathrm{diag}\bigl(R_1,\ R_2[k]\bigr), \qquad R_1 = \sigma^{2}_{n_w} = \frac{\sigma^{2}_{n}}{R^{2}}, \qquad
+R_2[k] = 2a_{\mathrm{cov}}^{2}\,IF_{\mathrm{var}}\bigl(\ah[k]\bigr)\bigl(\ah[k] + \xi\bigr)^{2}
+\end{align*}
+
+\end{document}
