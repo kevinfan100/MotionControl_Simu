@@ -374,6 +374,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent mean_knob_from pred_slope_scale y1_gain_leg_scale   % mean-only diagnostic knobs (2026-09-03), default off
     persistent nw_mcorr res1_km1                                  % correlated process/measurement noise correction (2026-09-03), default off
     persistent pred_mean2_e4                                      % gain-reading start-point term of the second-order mean (2026-09-04), default off
+    persistent amodel_fe                                          % green variant: e_a -> psi in the covariance model (2026-09-11), default off
+    persistent amodel_h                                           % orange variant: the same substitution in the y2 row (2026-09-12), default off
+    persistent gain_algebraic                                     % 4-state: the gain is the law value, not a state (2026-09-14), default off
     persistent lambda_f_b lfb_alpha lfb_floor lam_b_spend
     persistent p55_floor_on p55_floor_std                     % 2026-09-09: directional forgetting on slot 5 as a P55 floor (default off)
     persistent b_bins_on b_bin_edges bbin_b bbin_P bbin_cur bbin_switch   % 2026-09-09: b per HEIGHT BIN (default off)
@@ -947,6 +950,42 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         if da_slot
             assert(all(Pf_da_std > 0), 'motion_control_law_formC_b:daSlot', 'ctrl_const.da_slot needs Pf_da_std > 0 from the driver.');
         end
+        % amodel_fe (2026-09-11, default false => bit-identical; reference/eq17_analysis/derivation/0911_estb_green_variant.tex):
+        % the "green" variant. The COVARIANCE model reads the gain error through the a model with w_s known,
+        %     e_a -> psi = -a' e_3 + ((1-a)/b) e_b ,
+        % wherever the step error u carries it (F_e rows 3-4: the F_dw e_4 share) and in the second-order mean term
+        % (Cov(e_4,u) -> Cov(psi,u), u built with the green step-error vector). H, Q, R, P[0], the mean predict and the
+        % control law are untouched. Acceptance: test_script/integration/verify_formC_b_amodel_fe.m.
+        amodel_fe = logical(get_field_default(ctrl_const, 'amodel_fe', false));
+        if amodel_fe
+            assert(~jac_exact_step && ~pred_force_step && ~da_slot, 'motion_control_law_formC_b:amodelFe', ...
+                   'ctrl_const.amodel_fe is derived on the Euler row-4 Jacobian with the production step error; jac_exact_step, pred_force_step and da_slot must be off.');
+            assert(~pred_mean2 || pred_mean2_e4, 'motion_control_law_formC_b:amodelFe', ...
+                   'ctrl_const.amodel_fe replaces Cov(e_4,u) in the pred_mean2_e4 term; set pred_mean2_e4 = true when pred_mean2 is on.');
+        end
+        % amodel_h (2026-09-12, default false => bit-identical; reference/eq17_analysis/derivation/0912_estb_orange_variant.tex):
+        % the "orange" variant = green PLUS the same substitution in the y2 row, so the gain error is read through the
+        % a model everywhere in the error model: H2(4) -> 0, its share moves onto e_3 and e_b. The predicted measurement
+        % y2_pred, Q, R, P[0], the mean predict and the control law are untouched. The a slot then has a zero column in
+        % BOTH rows and F keeps it invariant, so it is formally unobservable (gate 4 rank 6 of 7) while K_4 stays nonzero
+        % through P_41, P_43, P_45. Acceptance: test_script/integration/verify_formC_b_amodel_fe.m (checks B).
+        amodel_h = logical(get_field_default(ctrl_const, 'amodel_h', false));
+        if amodel_h
+            assert(amodel_fe, 'motion_control_law_formC_b:amodelH', ...
+                   'ctrl_const.amodel_h is the measurement half of the same substitution; set amodel_fe = true as well.');
+        end
+        % gain_algebraic (2026-09-14, default false => bit-identical; reference/eq17_analysis/derivation/0914_estb_4state_core.tex):
+        % the self-consistent 4-state that the a-model substitution points at. Declaring e_a = -a' e_3 + ((1-a)/b) e_b
+        % removes the gain slot's own degree of freedom, so here the slot stops being a state: it is OVERWRITTEN every
+        % step with the law value at the estimator's own height, w_hat = w_bar_d - dw3_hat, and slot 4 joins the locked
+        % list (K(4) = 0, P row/col 4 pinned at 0). The filter is x = [dw1 dw2 dw3 b] with a derived gain output; the
+        % start gain uncertainty now lives entirely in Pf_b_std through (1-a)/b. Needs amodel_fe and amodel_h so that
+        % F_e and H carry no a_w column. Acceptance: verify_formC_b_amodel_fe.m (checks C).
+        gain_algebraic = logical(get_field_default(ctrl_const, 'gain_algebraic', false));
+        if gain_algebraic
+            assert(amodel_fe && amodel_h, 'motion_control_law_formC_b:gainAlgebraic', ...
+                   'ctrl_const.gain_algebraic is the 4-state form of the same substitution; set amodel_fe and amodel_h as well.');
+        end
         lock_mask_g  = [lock_da; ~da_slot; true];     % slot order 5, 6, 7 (6 = da when da_slot)
         lock_mask_ax = repmat(lock_mask_g, 1, 3);
         if par_law
@@ -955,6 +994,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         lock_state_idx_ax = cell(3, 1);
         for ax = 1:3
             lock_state_idx_ax{ax} = 4 + find(lock_mask_ax(:, ax));   % 5..7
+            if gain_algebraic                                        % the gain slot is a derived output, not a state
+                lock_state_idx_ax{ax} = [4; lock_state_idx_ax{ax}(:)];
+            end
         end
 
         % --- 0D. Validity clamps (numerical guards only, not tuning) ---
@@ -1590,6 +1632,17 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         if fe43_off; F_e(4, 3) = 0; end          % diagnostic, see init
         if fe44_Aa_scale ~= 1; F_e(4, 4) = F_e(4, 4) - (1 - fe44_Aa_scale) * A_a_i * M_tot; end   % see init: kappa-weighted self-sensitivity in P (kappa = 0 == fe44_Aa_off)
         if da_slot; F_e(4, 6) = 1; end                 % E2: additive disturbance enters a_bar at unit gain every step
+        if amodel_fe                                   % green variant, see init (0911 tex S4): F_dw e_4 -> F_dw psi in rows 3-4
+            assert(~has_ap_known && ~has_b_true, 'motion_control_law_formC_b:amodelFe', ...
+                   'ctrl_const.amodel_fe needs the law slope with b as the estimated constant (no ap_known / b_true arm).');
+            cb_i = (1 - a_bar_sl) / b_hat_i * double(~lm(1));   % (d a/d b) at fixed w_s; e_b = 0 when slot 5 is locked
+            F_e(3, 3) = F_e(3, 3) + F_dw * a_prime_i;
+            F_e(3, 4) = F_e(3, 4) + F_dw;                  % -F_dw -> 0: the step error no longer carries e_4
+            F_e(3, 5) = F_e(3, 5) - F_dw * cb_i;
+            F_e(4, 3) = F_e(4, 3) - F_dw * a_prime_i^2;
+            F_e(4, 4) = F_e(4, 4) - a_prime_i * F_dw;
+            F_e(4, 5) = F_e(4, 5) + F_dw * a_prime_i * cb_i;
+        end
 
         % --- EKF predict (tex S5(b)). Row 4 carries the ADDITIVE disturbance
         %     x_curr(5) outside the a_bar' bracket; row 5 is an integrator of
@@ -1719,6 +1772,23 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 cov_e4u = cov_e4u - one_minus_lc * Pc(1, 4);
                 cov_e5u = cov_e5u - one_minus_lc * Pc(1, 5);
             end
+            if amodel_fe                                 % green step error u = c'e + w_T, see init (0911 tex S5-S7)
+                cvec = zeros(n_state, 1);
+                cvec(3) = one_minus_lc - F_dw * a_prime_i;
+                cvec(5) = F_dw * cb_i;
+                if nw_mcorr; cvec(1) = -one_minus_lc; end
+                if ma2_aug
+                    cvec(8) = alpha_ma2;  cvec(9) = alpha_ma2;
+                    wvar = s2T_i + alpha_ma2^2 * s2n_i * double(~nw_mcorr);
+                else
+                    wvar = Q33 - one_minus_lc^2 * sigma2_n_nd(ax) * double(nw_mcorr);
+                end
+                Pcv     = Pc * cvec;
+                cov_e3u = Pcv(3);
+                cov_e5u = Pcv(5);
+                var_u   = cvec.' * Pcv + wvar;
+                cov_e4u = -a_prime_i * cov_e3u + cb_i * cov_e5u;   % Cov(psi, u): e_4 -> psi in the start-point term
+            end
             if pred_mean2_e4 && ~has_ap_known            % gain-reading start-point term A_a Cov(e4,u) [+ (da'/db) Cov(e_b,u), slot 5 free], see init
                 mean2_i = A_a_i * cov_e4u + 0.5 * app_i * var_u + 0.5 * (app_i - app_law) * M_pred^2;
                 if ~lm(1) && ~has_b_true; mean2_i = mean2_i + dap_db_i * cov_e5u; end   % S11 e_b line; P(:,5) = 0 when slot 5 is locked anyway
@@ -1761,6 +1831,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             Q_i(4, :) = D_jac * Q_i(4, :);               % noise enters the gain row through a'(a_pred) = D a'(a)
             Q_i(:, 4) = D_jac * Q_i(:, 4);
             if da_slot; F_e(4, 6) = 1; end               % da enters outside the law: not scaled
+        end
+        if gain_algebraic                            % 4-state: the gain slot is the law at the PREDICTED height, see init
+            w0_ga = w0_nominal;
+            if par_law && any(ax == AX_PAR); w0_ga = w0_par; end
+            x_pred(4) = min(max(local_gain_from_law(w_bar_d, w0_ga, x_pred(3), x_pred(5), gap_floor), a_bar_floor), a_bar_ceil);
         end
         P_pred = F_e * P_curr * F_e' + Q_i;
         P_pred = 0.5 * (P_pred + P_pred');
@@ -1831,6 +1906,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                              1 - Grad_wbar_d * A_a_i, ...
                              -Grad_wbar_d * dap_db_i * double(~lm(1)), ...
                              -d_delay * double(da_slot), 0, zeros(1, n_state - 7)];   % E2: y2 backs off d applications of da
+            if amodel_h                                  % orange variant, see init (0912 tex S5): e_4 -> psi in the y2 row
+                H2(3) = H2(3) - H2(4) * a_prime_i;
+                H2(5) = H2(5) + H2(4) * cb_i;
+                H2(4) = 0;
+            end
             % NONLINEAR predicted measurement (S7 innovation line); H2*x_upd
             % would be wrong here -- see the header. The echo share S of the
             % reading tracks the APPLIED gain (= the estimate), so the
@@ -1864,6 +1944,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             x_upd(4) = x_upd(4) * (1 + a_inject_frac);
         end
 
+        if gain_algebraic                            % 4-state: re-evaluate the law at the UPDATED height and b, see init
+            w0_ga = w0_nominal;
+            if par_law && any(ax == AX_PAR); w0_ga = w0_par; end
+            x_upd(4) = local_gain_from_law(w_bar_d, w0_ga, x_upd(3), x_upd(5), gap_floor);
+        end
         % --- Validity clamps (numerical guards, not tuning). Locked slots
         %     are never touched (K entries zeroed, predict identity), so
         %     they stay exactly at the seed.
@@ -2141,6 +2226,13 @@ function R2 = compute_R2_formB(a_bar, sigma2_n, IF_abc, C_dpmr, C_n, ...
     end
 end
 
+
+function a_bar = local_gain_from_law(w_bar_d, w0, dw3_hat, b_hat, gap_floor)
+%LOCAL_GAIN_FROM_LAW  a_bar = 1 - 1/(b (w_hat - w_s)) at the estimator's own height w_hat = w_bar_d - dw3_hat.
+%   Same guards as the 'act' slope branch: the gap is floored so the inversion stays finite near contact.
+    u = max(w_bar_d - w0 - dw3_hat, gap_floor / max(b_hat, eps));
+    a_bar = 1 - 1 / max(b_hat * u, gap_floor);
+end
 
 function P = freeze_locked_P(P, lock_state_idx)
 %FREEZE_LOCKED_P  Pin locked-parameter rows/cols of P at 0 (exactly known).

@@ -128,6 +128,17 @@
   **b 的可觀性讀本（09-09，C52，`0907_estb_5state_core.tex` §5–§7 ＋ 末頁圖）**：量測 H（含 H₂₄、H₂₅）、Q/R、可觀性三塊補進 5-state 核心；判準寫成純奇異值——白化 O_w = R_w^(−1/2)O、O_w v_i = σ_i u_i、沿 v_i 的誤差標準差 = 1/σ_i、v₅ → e_b 時 1/σ₅ 就是 b 的誤差棒、1/σ₅ ≶ √P₅₅[0]。canon 下坡 σ = [13526, 948, 680, 680, 241]（σ₃ = σ₄ = 1/(σ_n/R) 恆定，y₁ 直接量 δw̄₁、δw̄₂），1/σ₅ = 0.0042 對 prior 0.0389；hold σ₅ = 14.1 ⇒ 0.071 輸 1.8×。b 是五個狀態裡唯一「誤差棒 ÷ 自身 prior」會超過 1 的（其他四個全程 0.09–0.45）；資料贏的視窗 canon 7/15、Meng 2/39，對應 b̂ 實走 0.008／0.0013。σ_min/σ_max 只能抓別名不能當判準（贏輸區間重疊）。5-state 對 production 的差 = nw_mcorr 欄（LOO：下坡 0.009 → 0.116，13×；MA(2) 兩槽只差 10%）。儀器 `test_script/integration/plot_obs_b_5state_two_traj.m`（產文件末頁圖）、scratch `obs_walk_5state.m`／`plot_obs_b_walk_one_window.m`／`plot_obs_b_signature_walk.m`／`plot_obs_sigma_two_traj.m`。
   **O25 重驗（09-08 晚，R56）**：Q55／E1／E2 換弦種法後全部比純估測器差（canon 最差 −0.017 → −0.025／−0.025／−0.040，σ 2.8×／1.8×／9×）⇒ 三旗標退場，「innovation 要有家」撤。driver 每 run 印 `SEED LINE:` 檢查；規則 stacked-fix-audit B.8。
 
+## e_ā 代換這條線（2026-09-10 ～ 09-14，三個旗標全 default off）
+
+「真動態粒子列的 e_ā 能不能用 e_δw̄₃ 與 e_b 表示」的完整處理。代換式 e_ā = −ā′e₃ + ((1−â)/b̂)e_b（前提 w̄_s 已知、â 在自己的法則曲線上）。
+
+- **綠色 `amodel_fe`**（只改 F_e 列 3–4 與 pred_mean2 的二階項）：半套不自洽，閉迴路與 production 打平、Meng 配對最差 +0.0005 ± 0.0002 觸發停損 ⇒ **R60 關閉**。推導 `derivation/0911_estb_green_variant.tex`。
+- **橘色 `amodel_h`**（連 y₂ 的 H 一起換，保留 a 槽）：a 槽在 F 與兩條量測列都沒出口 ⇒ **第 4 關 rank 6/7、CRLB(a_w) = Inf**；b 連 hold 都可辨識、√P₅₅ 減半，但 b̂ 誠實比翻到 1.2–1.6、增益誤差不動 ⇒ **R61 關閉**。推導 `0912_estb_orange_variant.tex`。
+- **自洽 4-state `gain_algebraic`**（拿掉 ā_w 槽，增益每步用法則在估測器高度求值；需前兩個旗標）：秩滿、b 從最弱方向變 v₁（CRLB/prior canon 0.104 → 0.020、Meng 0.81 → 0.045）、hold 不再退化；**模型正確時與 production 逐項打平**，且增益不確定度由 b 完整重建（(1−â)/b̂ × √P₅₅ = 0.0067 對 √P₄₄ 0.0065，誠實比同為 0.63）。**模型錯時更差**（細胞 plant ＋ 平面種子：hold −0.188 對 −0.146，5.7 SEM），**且承接不了牆位不確定度**（開 Pf_w0_std 1 R：5-state hold −0.146 → −0.0065（22×），4-state −0.168） ⇒ **R62**。推導 `0914_estb_4state_core.tex`。
+- **C53（本線最有用的結論）**：未知有兩種型別 —— **位置型** w̄_s（沒有 state，經 ∂ā/∂w̄_s = −ā′ 一次性灌進 P₄₄[0]，`formC_b.m:1174–1191`）與**形狀型** b。兩者不能互換：不匹配時放寬位置型修好 22×，放寬 b 的 prior 無效。**a 槽 = 位置型不確定度的容器**，這也是 R57/R58/R59/Q₅₅/δa 全敗的共同原因（修錯旋鈕）。
+- 量到的前提檢查：r = ā(ŵ̄,b̂) − â（â 偏離自己曲線的量）運動段佔增益誤差 5–44%、hold 佔 100%（`probe_ea_offcurve_gap.m`）。
+- 驗收 `test_script/integration/verify_formC_b_amodel_fe.m`（A/B/C 三組，ALL PASS；production 回歸與 unit 16/16 全過）。假說帳 R60–R62、C53。
+
 ## 現況（2026-08-03）
 
 - 缺陷 1 已由 7a 代數式修復（descent 11.03% → 5.05%）
