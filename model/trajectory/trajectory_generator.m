@@ -57,13 +57,26 @@ function [p_d, del_pd] = trajectory_generator(t, params)
     %   rate = (h_init - h_bottom) / T_sim   (auto-fits descent end at T_sim)
     if trajectory_type > 2.5
         T_sim_local = params.common.T_sim;
-        if T_sim_local <= 0
-            rate = 0;
-        else
-            rate = (h_init - h_bottom) / T_sim_local;
-        end
         t_next = t + Ts;
-        h = max(h_init - rate * t_next, h_bottom);
+        if isfield(params.traj, 't_descend_override') && params.traj.t_descend_override > 0
+            % 2026-09-23 (observability T_d scan): hold at h_init for t_hold, then a CONSTANT-VELOCITY descent
+            % lasting t_descend_override, then hold at h_bottom. Absent / zero override keeps the original
+            % whole-T_sim ramp below, bit-identical.
+            rate   = (h_init - h_bottom) / params.traj.t_descend_override;
+            t_desc = t_next - t_hold;
+            if t_desc <= 0
+                h = h_init;
+            else
+                h = max(h_init - rate * t_desc, h_bottom);
+            end
+        else
+            if T_sim_local <= 0
+                rate = 0;
+            else
+                rate = (h_init - h_bottom) / T_sim_local;
+            end
+            h = max(h_init - rate * t_next, h_bottom);
+        end
         p_d = (pz + h) * w_hat;
 
         if isempty(p_d_prev)
@@ -110,10 +123,21 @@ function [p_d, del_pd] = trajectory_generator(t, params)
         % Phase 2: Cosine descent from h_init to h_bottom
         t_desc = t_next - t1;
         h = h_bottom + (h_init - h_bottom) * (1 + cos(pi * t_desc / t_descend)) / 2;
+        if trajectory_type < 0.5
+            % 2026-10-02 trajectory_type 'osc_linear' (= 0; default osc = 1 bit-identical): CONSTANT-VELOCITY descent,
+            % same as the ramp_descent type, so that an oscillation run and a ramp run share the approach up to the trough.
+            h = h_init - (h_init - h_bottom) * t_desc / t_descend;
+        end
     elseif t_next <= t3
         % Phase 3: Cosine oscillation with h_bottom as trough
         t_osc = t_next - t2;
         h = (h_bottom + amplitude) - amplitude * cos(2 * pi * frequency * t_osc);
+        if trajectory_type < -0.5
+            % 2026-10-02 trajectory_type 'osc_tri' (= -1): TRIANGLE wave, same trough / top / period as the cosine
+            % (constant |velocity| 4 A f, velocity sign flips at the trough and the top).
+            ph = mod(frequency * t_osc, 1);                      % fraction of the cycle, 0 at the trough
+            h  = h_bottom + 2 * amplitude * (1 - abs(2 * ph - 1));
+        end
     else
         % Phase 4: Hold at h_bottom
         h = h_bottom;

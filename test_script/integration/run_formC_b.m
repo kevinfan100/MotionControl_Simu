@@ -213,10 +213,18 @@ function out = run_formC_b(opts, test_opts)
            'run_formC_b:hMinBelowTruthDomain', ...
            'h_min = %.3f um -> h_bar_min = %.3f < %.2f: below the truth-curve validity floor, so the envelope priors would be read off an extrapolated c_perp.', ...
            cfg.h_min, cfg.h_min / pc.R, H_BAR_MIN_PRIOR);
-    assert(cfg.h_bottom / pc.R >= H_BAR_MIN_PRIOR, ...
-           'run_formC_b:troughBelowTruthDomain', ...
-           'trajectory trough h_bar = %.3f < %.2f (truth-curve validity floor).', ...
-           cfg.h_bottom / pc.R, H_BAR_MIN_PRIOR);
+    if isfield(opts, 'allow_below_floor') && opts.allow_below_floor      % 2026-09-28 deeper-bottom test (c-only line): explicit, test-only bypass
+        if cfg.h_bottom / pc.R < H_BAR_MIN_PRIOR
+            warning('run_formC_b:troughBelowTruthDomain', ...
+                    'trajectory trough h_bar = %.3f < %.2f: allowed by opts.allow_below_floor (test only; the plane c_perp is extrapolated below the floor).', ...
+                    cfg.h_bottom / pc.R, H_BAR_MIN_PRIOR);
+        end
+    else
+        assert(cfg.h_bottom / pc.R >= H_BAR_MIN_PRIOR, ...
+               'run_formC_b:troughBelowTruthDomain', ...
+               'trajectory trough h_bar = %.3f < %.2f (truth-curve validity floor).', ...
+               cfg.h_bottom / pc.R, H_BAR_MIN_PRIOR);
+    end
 
     % ------------------------------------------------------------------
     % Arm flags -> ctrl_const overrides (user ctrl_const_override wins)
@@ -263,7 +271,7 @@ function out = run_formC_b(opts, test_opts)
     % the ratio is identically 1.0000 and the test cannot fail. That is a defect
     % in the TEST's denominator, not a reason to mis-seed the filter; it is
     % recorded here rather than repaired by distorting the prior.
-    [b_mid, b_half, b_lo_e, b_hi_e] = local_envelope_b_range(env_lo, env_hi);
+    [b_mid, b_half, b_lo_e, b_hi_e, b1_sup] = local_envelope_b_range(env_lo, env_hi);   % b1_sup: prior of b1 = db/dw when ctrl_const.b1_state (2026-09-14)
     q55_per_R = (b_hi_e - b_lo_e)^2 / (env_hi - env_lo);   % 0903 tex S11 Q55 container: Delta_b^2 / W, the controller multiplies by |dw_hat| per step (used only when ctrl_const.q55_path)
 
     % Shape floor for P44[0]. P[0] is a statement about the belief AT t = 0:
@@ -348,6 +356,12 @@ function out = run_formC_b(opts, test_opts)
     fn = fieldnames(opts.ctrl_const_override);
     for idx = 1:numel(fn)
         ov.(fn{idx}) = opts.ctrl_const_override.(fn{idx});
+    end
+    % b1_state (2026-09-14): sqrt(P66[0]) = sup |db_true/dw| on the envelope unless the caller gives Pf_b1_std.
+    if isfield(ov, 'b1_state') && ov.b1_state
+        if ~isfield(opts.ctrl_const_override, 'Pf_b1_std'); ov.Pf_b1_std = (~ov.lock_b) * b1_sup; end
+        fprintf('b1_state: sqrt(P66[0]) = %.5f /R (envelope sup |db_true/dw| = %.5f), seed-line coupling %d\n', ...
+                ov.Pf_b1_std, b1_sup, ~isfield(ov, 'b1_seed_couple') || ov.b1_seed_couple);
     end
     % SEED LINE CHECK (2026-09-08, hypotheses R55/C49): the seed (a_bar_hat[0], b_hat[0]) IS a straight line in
     % u = 1/(1 - a_bar), and the exact law step carries the level along that line, so the line's zero-gain height
@@ -616,7 +630,7 @@ function fl = local_seed_floor(w_seed, w0, b_seed)
 end
 
 
-function [b_mid, b_half, b_lo, b_hi] = local_envelope_b_range(w_lo, w_hi)
+function [b_mid, b_half, b_lo, b_hi, b1_sup] = local_envelope_b_range(w_lo, w_hi)
 %LOCAL_ENVELOPE_B_RANGE  Range of the exact law factor b_true on the envelope.
 %   b_true(w) = a_true' / (1 - a_true)^2  with  a_true = 1/c_perp.
 %   MULTIPLICATIVE form: a_bar' = b (1 - a_bar)^2.
@@ -636,6 +650,9 @@ function [b_mid, b_half, b_lo, b_hi] = local_envelope_b_range(w_lo, w_hi)
     % the envelope. See the caller for why these come from different places.
     b_mid  = 8/9;
     b_half = max(abs(b - 8/9));
+    % b1 = db/dw (0914_estb_bprime_core.tex): seed 0 (both far-field and contact anchors are flat in the sense that no
+    % slope is known), width = the supremum of the true slope on the same envelope (param_prior_rules six-step chain).
+    b1_sup = max(abs(gradient(b, w)));
 end
 
 
@@ -1087,6 +1104,8 @@ if nargin < 8; plant_cperp = []; end
     lam_b_out = ones(N, 3);
     p_hat_out  = zeros(N, 3);
     ws_hat_out = zeros(N, 3);
+    c1_hat_out = zeros(N, 3);     % [2/2] Pade (pade22): slot 8 = c1, slot 9 = d2; zeros otherwise
+    d2_hat_out = zeros(N, 3);
     h_bar_out = zeros(N, 1);
     h_bar_true_out = zeros(N, 1);
     h_bar_d_out = zeros(N, 1);
@@ -1103,6 +1122,9 @@ if nargin < 8; plant_cperp = []; end
     b_bin_out    = zeros(N, 3);
     S1_out       = nan(N, 3);
     S2_out       = nan(N, 3);
+    lam_b_out    = ones(N, 3);       % slot-5 forgetting factor per step (1 = none), 2026-09-24
+    q55a_q_out    = zeros(N, 3);     % adaptive Q55 added per step (0 when off), 2026-09-29
+    q55a_stat_out = zeros(N, 3);     % its y1 statistic, 2026-09-29
     dws_y1_out = zeros(N, 3);
     dws_y2_out = zeros(N, 3);
     K_a_y2_out   = zeros(N, 3);
@@ -1268,6 +1290,7 @@ if nargin < 8; plant_cperp = []; end
         if isfield(diag_k, 'lam_b'); lam_b_out(k, :) = diag_k.lam_b(:).'; end
         p_hat_out(k, :)  = diag_k.p_hat.';
         ws_hat_out(k, :) = diag_k.ws_hat.';
+        if isfield(diag_k, 'c1_hat'); c1_hat_out(k, :) = diag_k.c1_hat(:).'; d2_hat_out(k, :) = diag_k.d2_hat(:).'; end
         h_bar_out(k)    = diag_k.h_bar;
         h_bar_true_out(k) = h_bar_true_k;
         h_bar_d_out(k)  = diag_k.h_bar_d;
@@ -1282,6 +1305,8 @@ if nargin < 8; plant_cperp = []; end
         innov_y2_out(k, :) = diag_k.innovation_y2(:).';
         innov_y1_out(k, :) = diag_k.innovation_y1(:).';
         if isfield(diag_k, 'S1'); S1_out(k, :) = diag_k.S1(:).'; S2_out(k, :) = diag_k.S2(:).'; end
+        if isfield(diag_k, 'lam_b_k'); lam_b_out(k, :) = diag_k.lam_b_k(:).'; end
+        if isfield(diag_k, 'q55a_q'); q55a_q_out(k, :) = diag_k.q55a_q(:).';  q55a_stat_out(k, :) = diag_k.q55a_stat(:).'; end
         if isfield(diag_k, 'b_bin'); b_bin_out(k, :) = diag_k.b_bin(:).'; end
         dws_y1_out(k, :) = diag_k.dws_y1(:).';
         dws_y2_out(k, :) = diag_k.dws_y2(:).';
@@ -1331,6 +1356,8 @@ if nargin < 8; plant_cperp = []; end
     simOut.lam_b_out = lam_b_out;
     simOut.p_hat_out  = p_hat_out;
     simOut.ws_hat_out = ws_hat_out;
+    simOut.c1_hat_out = c1_hat_out;
+    simOut.d2_hat_out = d2_hat_out;
     simOut.h_bar_out  = h_bar_out;
     simOut.h_bar_true_out = h_bar_true_out;
     simOut.ws_inject = ws_inject;
@@ -1348,6 +1375,9 @@ if nargin < 8; plant_cperp = []; end
     simOut.b_bin_out = b_bin_out;
     simOut.S1_out = S1_out;
     simOut.S2_out = S2_out;
+    simOut.lam_b_out = lam_b_out;
+    simOut.q55a_q_out = q55a_q_out;
+    simOut.q55a_stat_out = q55a_stat_out;
     simOut.dws_y1_out = dws_y1_out;
     simOut.dws_y2_out = dws_y2_out;
     simOut.K_a_y2_out   = K_a_y2_out;

@@ -39,6 +39,9 @@ function [is_safe, h_min_actual, t_critical] = check_trajectory_safety(params)
     if params.traj.trajectory_type > 2.5
         h_min_actual = params.traj.h_bottom;
         t_critical = T_sim;
+        if isfield(params.traj, 't_descend_override') && params.traj.t_descend_override > 0   % hold - constant-velocity descent - hold (2026-09-23)
+            t_critical = params.traj.t_hold + params.traj.t_descend_override;
+        end
         is_safe = h_min_actual >= h_min_threshold;
         return;
     end

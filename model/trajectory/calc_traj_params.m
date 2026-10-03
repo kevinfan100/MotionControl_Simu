@@ -36,6 +36,10 @@ function traj = calc_traj_params(config)
                 traj.trajectory_type = 2;
             case 'ramp_descent'
                 traj.trajectory_type = 3;
+            case 'osc_linear'
+                traj.trajectory_type = 0;  % 2026-10-02: osc with a constant-velocity descent (trajectory_generator phase 2)
+            case 'osc_tri'
+                traj.trajectory_type = -1; % 2026-10-02: constant-velocity descent + TRIANGLE oscillation (trajectory_generator phase 3)
             otherwise
                 traj.trajectory_type = 1;  % default: osc
         end
