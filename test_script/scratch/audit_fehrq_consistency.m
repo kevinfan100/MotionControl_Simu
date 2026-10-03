@@ -60,11 +60,20 @@ function out = audit_fehrq_consistency(traj, seed)
 
     % ---------- A3 / C replay variants ----------
     [pa, sp] = replay(L, Qs, lockz, n, 'both', true);
+    Qg = Qs; Qp = Qs;                                            % 09-09 split: which process noise eats b's information?
+    for k = 2:numel(L)
+        if isempty(Qs{k}); continue; end
+        A = Qs{k}; A(4,:) = 0; A(:,4) = 0; Qp{k} = A;            % Qp = position/thermal chain only (no gain-row noise)
+        B = zeros(size(Qs{k})); B(4,4) = Qs{k}(4,4); Qg{k} = B;  % Qg = gain-row noise only (the law-error container)
+    end
+    [~, spP] = replay(L, Qp, lockz, n, 'both', true);
+    [~, spG] = replay(L, Qg, lockz, n, 'both', true);
     [~, sp0] = replay(L, Qs, lockz, n, 'both', false);       % Q = 0: the CRLB assumption
     [~, sp1] = replay(L, Qs, lockz, n, 'y1', true);
     [~, sp2] = replay(L, Qs, lockz, n, 'y2', true);
     act = arrayfun(@(s) sqrt(s.P_upd(5,5)), L);  act = act(:);   % column, else the comparison below broadcasts to N x N
     fprintf('A3  replay(F,H,R,Q) vs recorded P_upd: max rel err on sqrt(P55) %.2e -> %s\n', max(abs(sp - act)./max(act,eps)), local_pf(max(abs(sp - act)./max(act,eps)) < 1e-9));
+    fprintf('C2  sqrt(P55)[end] by process-noise source: full Q %.5f | thermal/position chain only %.5f | gain-row (law container) only %.5f | Q = 0 %.5f\n', sp(end), spP(end), spG(end), sp0(end));
     fprintf('C   sqrt(P55) at the end:  filter %.5f | same recursion with Q = 0 %.5f (%.1fx tighter) | y1 only %.5f | y2 only %.5f | prior %.5f\n', ...
         act(end), sp0(end), act(end)/sp0(end), sp1(end), sp2(end), act(1));
 

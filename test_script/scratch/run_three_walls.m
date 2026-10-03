@@ -83,6 +83,9 @@ function out = run_three_walls(traj, seeds, arms, walls)
                  'btseed', struct('arm','best', 'cc', struct('b_ceil', 1.5), 'o', struct('b_true', true, 'b_true_at', 'true')), ...   % same seeds as bseed, but the law reads the PLANT's local b(w) (b_true arm): the b(w) ceiling in the user's cell
                  'bseed0',  struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0), 'o', struct()), ...                                   % bseed + P44[0] at the start truth (start FULLY known: Pf_a_floor set per traj below)
                  'bseed0_bins', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'b_bins_on', true), 'o', struct()), ...   % 09-09 user-approved: b per height bin (4 bins), chord seed, P44[0] at the start truth
+                 'bseed0_b1',   struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'b1_state', true), 'o', struct()), ...   % 09-14: slot 6 = b1 = db/dw (0914_estb_bprime_core.tex), seed-line coupling on
+                 'bseed0_b1np', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'b1_state', true, 'b1_seed_couple', false), 'o', struct()), ...   % 09-14 discriminator: b1 on, P[0] without the seed-line coupling
+                 'bseed0_b1z',  struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'b1_state', true, 'Pf_b1_std', 0), 'o', struct()), ...   % 09-14 wiring check: P66[0] = 0 must reproduce bseed0 bit for bit
                  'bloc0',       struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0), 'o', struct()), ...   % 09-09 user: a_hat[0] AND b_hat[0] at the truth (local b_true(w_0)), then ESTIMATE (P55[0] = family prior 0.039)
                  'bloc0_ptiny', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'Pf_b_std', 1e-3), 'o', struct()), ...   % 09-09 user check: b_hat[0] = LOCAL b_true(w_0) (not the chord), P55[0] tiny (b 'fully cheated')
                  'bseed0_ptiny', struct('arm','best', 'cc', struct('b_ceil', 1.5, 'Pf_w0_std', 0, 'Pf_b_std', 1e-3), 'o', struct()), ...  % chord seed with P55[0] tiny (b frozen at the chord)
@@ -108,7 +111,7 @@ function out = run_three_walls(traj, seeds, arms, walls)
     for iw = 1:size(WALLS, 1)
         for ia = 1:numel(arms)
             A = ARM.(arms{ia});  cc = ON4;  fn = fieldnames(A.cc); for i = 1:numel(fn); cc.(fn{i}) = A.cc.(fn{i}); end
-            if any(strcmp(arms{ia}, {'bseed0','btseed0','rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99','bhq5c','bhn1c','bhdc','bseed0_lf999','bseed0_lf9999','bseed0_lfa','bseed0_pf','bloc0_ptiny','bseed0_ptiny','bloc0','bseed0_bins'})); if strcmp(traj, 'meng'); cc.Pf_a_floor = 3e-4; else; cc.Pf_a_floor = 1e-5; end; end   % ladder p0 convention (09-06)
+            if any(strcmp(arms{ia}, {'bseed0','btseed0','rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99','bhq5c','bhn1c','bhdc','bseed0_lf999','bseed0_lf9999','bseed0_lfa','bseed0_pf','bloc0_ptiny','bseed0_ptiny','bloc0','bseed0_bins','bseed0_b1','bseed0_b1np','bseed0_b1z'})); if strcmp(traj, 'meng'); cc.Pf_a_floor = 3e-4; else; cc.Pf_a_floor = 1e-5; end; end   % ladder p0 convention (09-06)
             if any(strcmp(arms{ia}, {'rep_bhp0','rep_bhp0_c15','bseed0_c105','mix_b89_wc','mix_bch_w99'}))
                 pc = physical_constants(); w0bar = cfg0.h_init / pc.R; [~, cp] = calc_correction_functions(w0bar, true); a0 = 1/cp;
                 ws0_lad = 1 + w0bar - 1/((8/9)*(1 - a0));                          % the ladder's seed-at-truth line (b 8/9 through the start gain)
@@ -121,7 +124,7 @@ function out = run_three_walls(traj, seeds, arms, walls)
                 end
                 fprintf('[%s %s %s] b_init %.4f ws0_perp %.4f (b_ceil %s)\n', traj, WALLS{iw,1}, arms{ia}, cc.b_init, cc.ws0_perp, mat2str(isfield(cc,'b_ceil')));
             end
-            if any(strcmp(arms{ia}, {'bseed','btseed','bseed0','btseed0','bhq5c','bhn1c','bhdc','bseed0_lf999','bseed0_lf9999','bseed0_lfa','bseed0_pf','bloc0_ptiny','bseed0_ptiny','bloc0','bseed0_bins'}))
+            if any(strcmp(arms{ia}, {'bseed','btseed','bseed0','btseed0','bhq5c','bhn1c','bhdc','bseed0_lf999','bseed0_lf9999','bseed0_lfa','bseed0_pf','bloc0_ptiny','bseed0_ptiny','bloc0','bseed0_bins','bseed0_b1','bseed0_b1np','bseed0_b1z'}))
                 pc = physical_constants(); w0bar = cfg0.h_init / pc.R;
                 if ~isscalar(WALLS{iw,2}); pl = WALLS{iw,2}; w0p = WALLS{iw,3}; a0 = 1 - 1/local_B(w0bar - w0p, pl); w_c = w0p + fzero(@(u) local_B(u, pl) - 1, 0.9);
                 elseif isnan(WALLS{iw,2}); [~, cp] = calc_correction_functions(w0bar + WALLS{iw,4}, true); a0 = 1/cp; w_c = 1.0 - WALLS{iw,4};
@@ -140,18 +143,18 @@ function out = run_three_walls(traj, seeds, arms, walls)
             if isscalar(WALLS{iw,2}) && isnan(WALLS{iw,2}) && WALLS{iw,4} ~= 0; sh = WALLS{iw,4}; o.plant_cperp = @(hb) local_cperp_shifted(hb, sh); end
             clear run_formC_b motion_control_law_formC_b;
             evalc('R = run_formC_b(o);');
-            t = R.runs{1}.tout(:); N = numel(t); E = zeros(N,nS); AH = E; AT = E; HB = E; B = E; SP5 = E; SP = E; WW = E;
+            t = R.runs{1}.tout(:); N = numel(t); E = zeros(N,nS); AH = E; AT = E; HB = E; B = E; SP5 = E; SP = E; WW = E; B1 = E; SP6 = E;
             for q = 1:nS
                 r = R.runs{q}; ad = r.a_hat_out(1,3)/r.a_bar_hat_out(1,3);
                 AH(:,q) = r.a_bar_hat_out(:,3); AT(:,q) = r.a_true_out(:,3)/ad; E(:,q) = AH(:,q) - AT(:,q); HB(:,q) = r.h_bar_true_out(:,1);
-                B(:,q) = r.b_hat_out(:,3); SP5(:,q) = r.P_b_out(:,3); SP(:,q) = r.P_a_out(:,3)/ad;
+                B(:,q) = r.b_hat_out(:,3); SP5(:,q) = r.P_b_out(:,3); SP(:,q) = r.P_a_out(:,3)/ad; B1(:,q) = r.p_hat_out(:,3); SP6(:,q) = r.P_p_out(:,3);
                 WW(:,q) = HB(:,q) - AH(:,q) ./ (B(:,q) .* (1 - AH(:,q)));     % derived wall position from (true height, a_hat, b_hat)
             end
             hd = R.runs{1}.p_d_out(:,3)/R.runs{1}.R;  a_nom = R.runs{1}.a_hat_out(1,3)/R.runs{1}.a_bar_hat_out(1,3);  clear R;
             % truth-log check against the plant law at the true height
             if isscalar(WALLS{iw,2}) && ~isnan(WALLS{iw,2}); at_law = 1 - 1 ./ max(WALLS{iw,2} * (HB - WALLS{iw,3}), 1.05); dev = max(abs(AT - at_law), [], 'all'); else; dev = NaN; end
             key = sprintf('%s_%s', WALLS{iw,1}, arms{ia});
-            out.(key) = struct('t', t, 'E', E, 'AH', AH, 'AT', AT, 'HB', HB, 'hd', hd, 'B', B, 'sP5', SP5, 'sP', SP, 'W', WW, 'a_nom', a_nom);
+            out.(key) = struct('t', t, 'E', E, 'AH', AH, 'AT', AT, 'HB', HB, 'hd', hd, 'B', B, 'sP5', SP5, 'sP', SP, 'W', WW, 'a_nom', a_nom, 'B1', B1, 'sP6', SP6);
             md = t > t1 & t <= t2; mo = t > t2 & t <= t3; mh = t > t3; m0 = t <= t1;
             if ~any(mo); mo(end) = true; end; if ~any(mh); mh(end) = true; end; if ~any(m0); m0(1) = true; end   % nohold: keep the printf alive on empty segments (values then = last sample)
             [~, iwst] = max(abs(mean(E, 2)));
