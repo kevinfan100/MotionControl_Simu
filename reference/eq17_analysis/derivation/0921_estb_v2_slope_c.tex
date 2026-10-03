@@ -1,0 +1,240 @@
+% STATUS: ACTIVE | DERIVATION (2026-09-21) of "version 2" of the one-constant line (user 09-21): the gain a_w is a STATE (the a
+%   slot of production formC_b), the advisor slope form a' = (1 - c)/h^p written in the estimator's own HEIGHT h = w_hat - w_s
+%   serves ONLY the propagation of that state, and c is the one constant. p is fixed by the plane fit on the slope over the band
+%   [1.10, 22.2] (fit_advisor_two_layers.m: p = 2.042; p = 2 is the two-endpoint value a(1) = 0, a(inf) = 1). No value law: the
+%   level of a_w comes from the measurements (y_2 directly, y_1 through the tracking error), the law only says how much the level
+%   moves per step of height. Coordinate: h = w - w_s, w_s = the visible surface (plane: the wall, contact at 1; cell: the
+%   visible top), given, not a state (wall-test protocol). Same nine-section reading copy as 0920_estb_delta_law.tex; paper
+%   observability gates 1-3 for c in the Observability section; the numerical gates run verify_state_observability.m.
+%   Independent check of every closed form: test_script/scratch/check_estb_v2_slope_c.py (sympy, 15/15 PASS).
+%   Offline facts the seed section quotes: fit_advisor_two_layers.m (p, c per wall), probe_param_constancy_walls.m (c_eff walk).
+%   Code: production formC_b with ap_src = 'act' is this filter at p = 2 with b = 1/(1 - c); the general-p, c-state flag follows.
+% Compile: xelatex 0921_estb_v2_slope_c.tex
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{graphicx}
+\usepackage{pdflscape}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\dW}{\Delta\bw}
+\newcommand{\ap}{\ba'}
+\newcommand{\app}{\ba''}
+\newcommand{\ah}{\hat{\ba}_w}
+\newcommand{\wh}{\hat{\bw}}
+\newcommand{\hh}{\hat{h}}
+\newcommand{\ch}{\hat{c}}
+\newcommand{\ad}{\hat{\ba}_d}
+\newcommand{\Dp}{D_{\perp}}
+
+\begin{document}
+
+\section{Gain law (slope only)}
+
+(bars denote normalized quantities: lengths by $R$; $a_o := \Delta t/(\gamma_N R)$ [1/pN]; $\ba := a/a_{\mathrm{nom}}$;
+$\bar f := a_o f$, so that $\ba\,\bar f = \dW$; $\bw$ = particle centre along the wall normal; $\bw_s$ = the visible surface
+on the same axis, given (plane: the wall, contact at $h = 1$; cell: the visible top); $h := \bw - \bw_s$;
+$p$ = fixed exponent; $c$ = the one constant of the wall; the law is used on $h \ge 1.1$; $e_\theta = \theta - \hat\theta$)
+
+\begin{align*}
+\ap(h;\,c)                              &:= \frac{1 - c}{h^{p}} \\[4pt]
+\frac{\partial\ap}{\partial c}          &= -\,\frac{1}{h^{p}} = -\,\frac{\ap}{1 - c} \\[4pt]
+\frac{\partial\ap}{\partial h}          &= -\,\frac{p\,\ap}{h} \\[4pt]
+\frac{\partial\ap}{\partial\ba_w}       &= 0 \\[4pt]
+\int_{h}^{\infty}\ap(s;\,c)\,ds         &= \frac{1 - c}{(p-1)\,h^{p-1}}, \qquad
+p = 2,\ c = 0:\quad \int_{1}^{\infty}\ap\,ds = 1 \quad(\ba(1) = 0,\ \ba(\infty) = 1)
+\end{align*}
+
+(no value law is written: $\ba_w$ is a state; the law only gives its increment per step of height)
+
+\section{True dynamics}
+
+$\bigl(\delta\bw_j[k] := \delta\bw[k-d+j-1],\ j = 1,\dots,d+1,\ d = 2$; $\ap_{\mathrm{true}}$ = the plant's slope, not in the family$\bigr)$
+
+\begin{align*}
+\bw[k]           &= \bw_d[k] - \delta\bw_3[k] \\
+\bw_d[k+1]       &= \bw_d[k] + \Delta\bw_d[k] \\
+\ba_w[k+1]       &= \ba_w[k] + \ap_{\mathrm{true}}\bigl(\bw[k] - \bw_s\bigr)\,\dW[k] + O(\dW^{2}) \\
+\delta\bw_1[k+1] &= \delta\bw_2[k] \\
+\delta\bw_2[k+1] &= \delta\bw_3[k] \\
+\delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k] - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
+\dW[k]           &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k] \\
+c[k+1]           &= c[k]
+\end{align*}
+
+\begin{align*}
+F_{dw}[k]        &= \bar f_{dw}[k] + (1-\lambda_c)\sum_{i=1}^{d}\bar f_{dw}[k-i] \\
+\varepsilon_w[k] &= \ba_w[k]\,\bar f_T[k] + (1-\lambda_c)\sum_{i=1}^{d}\ba_w[k-i]\,\bar f_T[k-i] - (1-\lambda_c)\,n_w[k] \\
+r'[k]            &:= \ap_{\mathrm{true}}\bigl(\bw[k] - \bw_s\bigr) - \ap\bigl(\bw[k] - \bw_s;\,c\bigr) \\
+                 &\qquad\text{(slope residual of the family on this wall; zero only if the wall is in the family)}
+\end{align*}
+
+\section{State vector}
+
+\begin{align*}
+\mathbf{x} &= \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w,\ c\,\bigr]^{\top}
+\qquad (\text{slots } 1\text{--}3 \text{ tracking error}, 4 = \text{the } a \text{ slot}, 5 = c)
+\end{align*}
+
+\section{Estimator}
+
+$\bigl(M[k] := \Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]$ = the increment the estimator believes the particle makes$\bigr)$
+
+\begin{align*}
+\wh[k]                 &= \bw_d[k] - \delta\hat{\bw}_3[k] \\
+\hh[k]                 &= \wh[k] - \bw_s \\
+\ap[k]                 &:= \ap\bigl(\hh[k];\,\ch[k]\bigr) = \frac{1 - \ch[k]}{\hh[k]^{p}} \\
+\delta\hat{\bw}_1[k+1] &= \delta\hat{\bw}_2[k] \\
+\delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k] \\
+\delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k] \\
+\ah[k+1]               &= \ah[k] + \ap[k]\,M[k] \\
+\ch[k+1]               &= \ch[k]
+\end{align*}
+
+\section{Error dynamics}
+
+$\bigl(\mathbf{e} = [\,e_{\delta\bw_1},\ e_{\delta\bw_2},\ e_{\delta\bw_3},\ e_{\ba_w},\ e_c\,]^{\top}$; first order, coefficients at the estimate;
+$\dW[k] - M[k] = (1-\lambda_c)\,e_{\delta\bw_3}[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]$;
+$\bw[k] - \wh[k] = -\,e_{\delta\bw_3}[k]\bigr)$
+
+\begin{align*}
+\ap_{\mathrm{true}}(\bw[k]-\bw_s) - \ap[k] &= \frac{p\,\ap[k]}{\hh[k]}\,e_{\delta\bw_3}[k] - \frac{1}{\hh[k]^{p}}\,e_c[k] + r'[k] \\[6pt]
+e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k] \\
+e_{\delta\bw_2}[k+1] &= e_{\delta\bw_3}[k] \\
+e_{\delta\bw_3}[k+1] &= \lambda_c\,e_{\delta\bw_3}[k] - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
+e_{\ba_w}[k+1]       &= \Bigl(\ap[k]\,(1-\lambda_c) + \frac{p\,\ap[k]}{\hh[k]}\,M[k]\Bigr)\,e_{\delta\bw_3}[k]
+                        + \bigl(1 + \ap[k]\,F_{dw}[k]\bigr)\,e_{\ba_w}[k] \\
+                     &\quad - \frac{M[k]}{\hh[k]^{p}}\,e_c[k]
+                        + \ap[k]\,\varepsilon_w[k] + M[k]\,r'[k] \\
+e_c[k+1]             &= e_c[k]
+\end{align*}
+
+\begin{align*}
+F_e[k] &= \begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lambda_c & -F_{dw}[k] & 0 \\
+0 & 0 & \ap[k]\,(1-\lambda_c) + \dfrac{p\,\ap[k]}{\hh[k]}\,M[k] & 1 + \ap[k]\,F_{dw}[k] & -\dfrac{M[k]}{\hh[k]^{p}} \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\end{align*}
+
+\begin{align*}
+F_{e,44}[k] &= 1 + \ap[k]\,F_{dw}[k]
+\qquad\text{(no } \tfrac{\app}{\ap}M \text{ term: the slope is read at } \hh, \text{ not at } \ah\text{)} \\
+F_{e,45}[k] &= -\,\frac{M[k]}{\hh[k]^{p}}
+\qquad\text{(the only place } c \text{ acts; proportional to the step)} \\
+M[k]\,r'[k] &\quad\text{(the only entrance of the model error; zero in a hold)}
+\end{align*}
+
+\section{Measurement}
+
+$\bigl(\nabla_d\bw_d[k] := \bw_d[k] - \bw_d[k-d]$; the reading is the gain $d$ steps ago, walked back from the estimator height$\bigr)$
+
+\begin{align*}
+y_1[k]      &= \delta\bw_1[k] + n_w[k] \\
+y_2[k]      &= \ba_w[k-d] + n_a[k] \\
+\hat y_1[k] &= \delta\hat{\bw}_1[k] \\
+\hat y_2[k] &= \ah[k] - \ap[k]\,\nabla_d\bw_d[k] \\[4pt]
+H[k]        &= \begin{bmatrix} 1 & 0 & 0 & 0 & 0 \\[2pt]
+               0 & 0 & -\,\dfrac{p\,\ap[k]}{\hh[k]}\,\nabla_d\bw_d[k] & 1 & +\dfrac{\nabla_d\bw_d[k]}{\hh[k]^{p}} \end{bmatrix}
+\end{align*}
+
+\begin{align*}
+H_{24}[k] &= 1 \qquad(y_2 \text{ reads the state } \ba_w \text{ directly; the level is measured, not computed}) \\
+H_{25}[k] &= \frac{\nabla_d\bw_d[k]}{\hh[k]^{p}} \qquad(\text{walk-back only; zero in a hold; may be set to } 0 \text{ to keep } c \text{ out of } y_2 \text{ entirely}) \\
+\mathbf{e}_y[k] &= H[k]\,\mathbf{e}^{-}[k] + \begin{bmatrix} n_w[k] \\ n_a[k] \end{bmatrix}
+\end{align*}
+
+\section{Noise}
+
+\begin{align*}
+Q[k]      &= Q_{33}[k]\,\mathbf{g}\,\mathbf{g}^{\top}, \qquad \mathbf{g} = \bigl[\,0,\ 0,\ -1,\ \ap[k],\ 0\,\bigr]^{\top}, \qquad Q_{55} = 0 \\
+Q_{33}[k] &= \kappa_T\Bigl(\ah[k] + (1-\lambda_c)^{2}\bigl(\ah[k-1] + \ah[k-2]\bigr)\Bigr) + (1-\lambda_c)^{2}\sigma^{2}_{n_w},
+\qquad \kappa_T = \frac{4k_BT\,a_o}{R} \\
+R[k]      &= \mathrm{diag}\bigl(R_1,\ R_2[k]\bigr), \qquad R_1 = \frac{\sigma^{2}_{n}}{R^{2}}, \qquad
+R_2[k] = 2a_{\mathrm{cov}}^{2}\,IF_{\mathrm{var}}\bigl(\ah[k]\bigr)\bigl(\ah[k] + \xi\bigr)^{2}
+\end{align*}
+
+\clearpage
+\section{Observability}
+
+($\Phi(k,k_0) := F_e[k-1]\cdots F_e[k_0]$, $\Phi(k_0,k_0) = I$; $N$ window length)
+
+Gate 1, the two columns of $e_c$:
+\begin{align*}
+F_{e,45}[k] &= -\,\frac{M[k]}{\hh[k]^{p}} \ \ (\text{state path, through } e_{\ba_w} \text{ then } y_1, y_2) \\
+H_{25}[k]   &= \frac{\nabla_d\bw_d[k]}{\hh[k]^{p}} \ \ (\text{measurement path, walk-back only})
+\end{align*}
+
+Gate 2, time signatures of the pair $(e_{\ba_w},\ e_c)$:
+\begin{align*}
+e_c[k+1]       &= e_c[k] \qquad(\text{constant}) \\
+e_{\ba_w}[k+1] &= \bigl(1 + \ap[k]F_{dw}[k]\bigr)\,e_{\ba_w}[k] - \frac{M[k]}{\hh[k]^{p}}\,e_c[k] + \dots \\
+               &\qquad(\text{a level, drifting in proportion to the height travelled when } e_c \ne 0) \\
+y_2[k]         &= e_{\ba_w}[k-d] + \dots \qquad(\text{the level is read every step, in a hold as well})
+\end{align*}
+
+Gate 3, $\det O_2$ of the pair with coefficients frozen ($\alpha := 1 + \ap F_{dw}$, $\beta := M/\hh^{p}$, $\gamma := \nabla_d\bw_d/\hh^{p}$, $q := -F_{dw}$):
+\begin{align*}
+A_2 &= \begin{bmatrix} \alpha & -\beta \\ 0 & 1 \end{bmatrix} \\[4pt]
+\text{row } y_2\text{:}\quad C_2 &= \bigl[\,1,\ \gamma\,\bigr] \\
+\det\begin{bmatrix} C_2 \\ C_2A_2 \end{bmatrix} &= -\,\beta - \gamma\,(\alpha - 1) = -\,\frac{M + \nabla_d\bw_d\,\ap F_{dw}}{\hh^{p}} \\[4pt]
+\text{row } y_1 \text{ (through } F_{e,34} = -F_{dw}\text{):}\quad C_2 &= \bigl[\,q,\ 0\,\bigr] \\
+\det\begin{bmatrix} C_2 \\ C_2A_2 \end{bmatrix} &= -\,q^{2}\beta = -\,\frac{F_{dw}^{2}\,M}{\hh^{p}}
+\end{align*}
+
+\begin{align*}
+\det O_2 = 0 \ (y_2) \quad&\Longleftrightarrow\quad M = 0 \ \text{and}\ \nabla_d\bw_d = 0 \ \text{(hold)} \ \ \text{or}\ \ \hh \to \infty \\
+\det O_2 = 0 \ (y_1) \quad&\Longleftrightarrow\quad F_{dw} = 0 \ \text{or}\ M = 0 \ \text{(hold)} \ \ \text{or}\ \ \hh \to \infty
+\end{align*}
+
+\begin{align*}
+&\text{no interior zero: } \frac{\partial\ap}{\partial c} = -\hh^{-p} \ne 0 \text{ on the band (contrast formB, } J_b = 0 \text{ at } \bw = 1 + \hat b\text{)} \\
+&\text{no alias with } \ba_w\text{: } e_{\ba_w} \text{ is read directly } (H_{24} = 1), \ e_c \text{ only through the step } M
+\end{align*}
+
+\section*{Seed and prior}
+
+\begin{align*}
+&\text{fit of the slope on the band } h \in [1.10,\ 22.2]: \\
+&\qquad \text{plane, } c = 0 \ \Rightarrow\ p = 2.042 \\
+&\qquad\qquad(\text{sub-segments } [1.1,2]: 2.166,\ [2,5.5]: 1.982,\ [5.5,22.2]: 1.953) \\
+&\qquad p \text{ fixed: } c_{\mathrm{plane}} = +0.037,\quad c_{\mathrm{cell}} = +0.636,\quad c_{\mathrm{sphere}} = -0.062 \\
+&\qquad \text{slope residual left by the best constant, } \sup|r'| \text{ on the band:} \\
+&\qquad\qquad \text{plane } 0.024,\quad \text{cell } 0.087,\quad \text{sphere } 0.011 \\
+&\qquad \text{the constant the wall asks for along the band, } c_{\mathrm{eff}}(h) = 1 - h^{p}\ap_{\mathrm{true}}(h): \\
+&\qquad\qquad \text{plane } +0.06 \to -0.28,\quad \text{cell } +0.74 \to -0.17,\quad \text{sphere } -0.05 \to -0.01 \\[6pt]
+&\text{protocol (plane init):} \\
+\ch[0] &= c_{\mathrm{plane}} = +0.037 \\
+\sigma_{c,0} &= 0.5 \quad(\text{wall family } -0.06 \dots +0.64,\ \text{two-sided}) \\
+\ah[0] &= \Dp\!\Bigl(\frac{1}{\bw[0] - \bw_s}\Bigr) \\
+       &\qquad(\text{plane polynomial at the start height: the only value law used}) \\
+P[0]   &= \mathrm{diag}\bigl(P_{11}[0],\ P_{22}[0],\ P_{33}[0],\ P_{44}[0],\ \sigma_{c,0}^{2}\bigr) \\
+Q_{55} &= 0 \\
+P_{44}[0] &= \Bigl(\frac{\partial\ba}{\partial\bw_s}\Bigr)^{2}\sigma_{\bw_s}^{2} + P_{a,\mathrm{floor}} \\
+          &\qquad(\text{production container; } \sigma_{\bw_s} = 0 \text{ under the protocol}) \\[4pt]
+&\text{guard:} \\
+\hh[k] &\ge 1 \quad(\text{the slope is evaluated at } \max(\hh[k],\ 1)) \\
+1 - \ch[k] &\ge \text{gap floor}, \qquad \text{band } \hh \ge 1.1
+\end{align*}
+
+\begin{align*}
+&\text{pre-registered pass (wall-test protocol, canon deep, 10 seeds,} \\
+&\qquad e_{\ba} = \ba_{\mathrm{true}} - \ah \text{ absolute):} \\
+&\qquad \text{hold } |e_{\ba}| \le 0.02 \text{ on plane, cell, sphere;}\quad \text{cell descent worst } \le 0.05; \\
+&\qquad \text{plane hold within } 0.005 \text{ of production;}\quad \hat c \text{ honesty } 0.7\text{--}1.4
+\end{align*}
+
+\end{document}

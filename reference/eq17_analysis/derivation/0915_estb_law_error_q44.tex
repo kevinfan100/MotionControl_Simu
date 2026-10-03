@@ -1,0 +1,126 @@
+% STATUS: ACTIVE | DERIVATION (2026-09-15) of the law-error term of Q44: what the filter should admit about its own
+%   gain law being wrong. Paper only -- no code was touched.
+%   WHY. The gain slot is propagated by the law, a[k+1] = 1 - 1/(1/(1-a) + b dw), and its process noise currently
+%   carries ONLY the thermal share (g_T = [0, 0, -1, a', 0]). Measured 2026-09-14 (canon, seed 7, production chord-seed
+%   arm): over the descent the law moves a_hat by -0.869 while the measurements move it by -0.0002 (0.02%); Meng -0.602
+%   against +0.110 (15%). The filter integrates a curve it treats as exact, so y2 has no authority where the gain
+%   changes most.
+%   WHAT IS NEW vs the refuted attempts. R4 (law_err_q / consider-b / Q44xN) claimed the shape error CAUSED the +22%
+%   valley bias and was refuted by the b_true oracle arm (22.2% vs 23.2%); q55_path (R57 family) put a path-proportional
+%   container on slot 5, which let b_hat wander (near-wall spread doubled, sqrt P55 over-covered 2x). This term is on
+%   slot 4, leaves b alone, carries the (1-a)^2 weighting the earlier containers did not have, and its claim is only
+%   about the AUTHORITY BALANCE, not about the bias.
+%   CHECKS 2026-09-15 (sympy, residuals 0): (1) the step is linear in u = 1/(1-a); (2) d a[k+1]/d b = (1 - a[k+1])^2 dw
+%   exactly, and (1-a)^2 dw to leading order in dw; (3) that is the production F_e(4,5) entry, so the injection lies in
+%   the SAME direction as e_b, scaled by the exact-step factor ((1-a[k+1])/(1-a))^2; (4) N identical steps give a
+%   deterministic sum N x (per step) against a white-noise spread sqrt(N) x (per step): ratio sqrt(N).
+%   PRE-REGISTERED ACCEPTANCE (to be run only after this derivation is independently checked):
+%     (i)   hold is bit-identical (dw = 0 => no injection) -- wiring check;
+%     (ii)  on the descent the y2 share of the gain update must rise from the measured 0.02% (canon) / 15% (Meng);
+%     (iii) near-wall worst instant improves and the seed spread grows by no more than a pre-set factor;
+%     STOP-LOSS: (ii) does not move => the injection is too small, the derivation is wrong, not the knob;
+%                spread blows up => this is q55_path again on another slot, close it.
+%   SSOT cross-reference: the deterministic counterpart of this term is the accumulated mean of 0903 SSOT S11,
+%   mu = (1 - a_wall)^2 * integral (b_true - b_hat) dw.
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{graphicx}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\dWh}{\Delta\hat{\bw}}
+\newcommand{\ah}{\hat{\ba}_w}
+\newcommand{\bh}{\hat{b}}
+\newcommand{\E}{\mathbb{E}}
+
+\begin{document}
+
+\section{Gain law}
+
+($e_\theta = \theta - \hat\theta$; coefficients at the estimate)
+
+\begin{align*}
+\ba_{\mathrm{true}}(\bw) &= \frac{1}{c_\perp(\bw)} \\
+u(\bw) &:= \frac{1}{1 - \ba_{\mathrm{true}}(\bw)} \\
+b_{\mathrm{true}}(\bw) &:= \frac{\mathrm{d}u}{\mathrm{d}\bw} = \frac{\ba_{\mathrm{true}}'(\bw)}{\bigl(1-\ba_{\mathrm{true}}(\bw)\bigr)^{2}} \\
+\ba_{\mathrm{true}}'(\bw) &= b_{\mathrm{true}}(\bw)\bigl(1-\ba_{\mathrm{true}}(\bw)\bigr)^{2} \\
+\lim_{\bw \to \infty} b_{\mathrm{true}} &= 1, \qquad \lim_{\bw \to 1} b_{\mathrm{true}} = \frac{8}{9}
+\end{align*}
+
+\section{Model}
+
+\begin{align*}
+b_{\mathrm{true}}(\bw) &\longrightarrow \bh \quad \text{(constant)} \\
+\Delta b(\bw) &:= b_{\mathrm{true}}(\bw) - \bh
+\end{align*}
+
+\section{Step}
+
+\begin{align*}
+\frac{1}{1-\ah[k+1]} &= \frac{1}{1-\ah[k]} + \bh[k]\,\dWh[k] \\
+\frac{1}{1-\ba_{\mathrm{true}}[k+1]} &= \frac{1}{1-\ba_{\mathrm{true}}[k]}
+   + \int_{\bw[k]}^{\bw[k]+\Delta\bw[k]} b_{\mathrm{true}}(\bw)\,\mathrm{d}\bw
+\end{align*}
+
+\section{Law error of one step}
+
+\begin{align*}
+\frac{\partial\,\ah[k+1]}{\partial\,\bh[k]} &= \bigl(1-\ah[k+1]\bigr)^{2}\,\dWh[k]
+   = \Bigl(\frac{1-\ah[k+1]}{1-\ah[k]}\Bigr)^{2}\bigl(1-\ah[k]\bigr)^{2}\,\dWh[k] \\[4pt]
+\varepsilon_{\mathrm{law}}[k] &= \bigl(1-\ah[k]\bigr)^{2}\,\Delta b\bigl(\bw[k]\bigr)\,\dWh[k] + \mathcal{O}\bigl(\dWh^{2}\bigr)
+\end{align*}
+
+\section{What the covariance already carries}
+
+\begin{align*}
+F_e[k]_{4,5} &= \bigl(1-\ah[k]\bigr)^{2}\bigl(\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr) \\
+\bigl(F_e[k]\,\mathbf{e}[k]\bigr)_4 \supset\ & \bigl(1-\ah[k]\bigr)^{2}\,\dWh[k]\,e_b[k]
+\end{align*}
+
+\begin{align*}
+b_{\mathrm{true}}(\bw) &= \bh + e_b + \Delta b(\bw) - e_b \\
+\text{carried:}\quad & e_b \ \ \text{(which constant)} \\
+\text{not carried:}\quad & \Delta b(\bw) - e_b \ \ \text{(no constant fits the curve)}
+\end{align*}
+
+\section{Envelope}
+
+\begin{align*}
+\delta_b &:= \sup_{\bw \in \mathrm{env}} \bigl|\,b_{\mathrm{true}}(\bw) - \bh\,\bigr| \\
+b_{\mathrm{true}}(\bw) &\in \Bigl[\tfrac{8}{9},\ 1\Bigr] \quad\Longrightarrow\quad \delta_b \le \tfrac{1}{9} \\
+\sqrt{P_{55}[0]} &= \sup_{\bw \in \mathrm{env}} \Bigl|\,b_{\mathrm{true}}(\bw) - \tfrac{8}{9}\,\Bigr|
+\end{align*}
+
+\section{Injection}
+
+\begin{align*}
+\Delta Q_{44}[k] &= \Bigl(\bigl(1-\ah[k]\bigr)^{2}\,\delta_b\,\dWh[k]\Bigr)^{2} \\
+\Delta Q_{45}[k] = \Delta Q_{54}[k] &= 0 \\
+Q[k] &\leftarrow Q[k] + \Delta Q_{44}[k]\,\mathbf{e}_4\mathbf{e}_4^{\top} \\
+\dWh[k] = 0 &\quad\Longrightarrow\quad \Delta Q_{44}[k] = 0
+\end{align*}
+
+\section{Colour}
+
+\begin{align*}
+\sum_{k=k_0}^{k_0+N-1}\varepsilon_{\mathrm{law}}[k]
+  &= \bigl(1-\ah\bigr)^{2}\int_{\bw[k_0]}^{\bw[k_0+N]} \Delta b(\bw)\,\mathrm{d}\bw \\
+\Delta b \ \text{of one sign over the path} \quad\Longrightarrow\quad
+  \Bigl|\sum \varepsilon_{\mathrm{law}}\Bigr| &= N\,\bigl|\varepsilon_{\mathrm{law}}\bigr| \\
+\text{white injection} \quad\Longrightarrow\quad
+  \sqrt{\E\Bigl[\bigl(\textstyle\sum \varepsilon_{\mathrm{law}}\bigr)^{2}\Bigr]} &= \sqrt{N}\,\bigl|\varepsilon_{\mathrm{law}}\bigr| \\
+\frac{\text{deterministic}}{\text{white}} &= \sqrt{N}
+\end{align*}
+
+\end{document}

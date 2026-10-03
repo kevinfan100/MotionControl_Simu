@@ -1,0 +1,204 @@
+% STATUS: ACTIVE | CORE reading copy (2026-09-21) of version 2 -- the five-state estimator x = [dw1 dw2 dw3 a_w c] in which the
+%   one constant c serves ONLY the slope a' = (1 - c)/h^p (propagation of the a slot); the level a_w is a state fed by the
+%   measurements. Condensed from 0921_estb_v2_slope_c.tex (which keeps the observability gates and the seed discussion):
+%   law -> true dynamics -> estimator -> error dynamics -> measurement -> noise, rows aligned one to one so that
+%   "estimator = true dynamics minus the unknown terms" reads off by eye. sympy: test_script/scratch/check_estb_v2_slope_c.py.
+% Compile: xelatex 0921_estb_v2_core.tex
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\dW}{\Delta\bw}
+\newcommand{\ap}{\ba'}
+\newcommand{\ah}{\hat{\ba}_w}
+\newcommand{\wh}{\hat{\bw}}
+\newcommand{\hh}{\hat{h}}
+\newcommand{\ch}{\hat{c}}
+\newcommand{\Dp}{D_{\perp}}
+
+\begin{document}
+
+\section{Law: slope only}
+
+($h := \bw - \bw_s$, $\bw_s$ = visible surface, given; $p$ fixed; $c$ = the one constant; used on $h \ge 1.1$)
+
+\begin{align*}
+\ap(h;\,c)                        &= \frac{1 - c}{h^{p}} \\[2pt]
+\frac{\partial\ap}{\partial c}    &= -\,\frac{1}{h^{p}} \\[2pt]
+\frac{\partial\ap}{\partial h}    &= -\,\frac{p\,\ap}{h} \\[2pt]
+\frac{\partial\ap}{\partial\ba_w} &= 0
+\end{align*}
+
+\section{State}
+
+\begin{align*}
+\mathbf{x} &= \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w,\ c\,\bigr]^{\top}
+\end{align*}
+
+\section{True dynamics}
+
+($d = 2$; $\ap_{\mathrm{true}}$ = the plant's slope; $r' := \ap_{\mathrm{true}}(h) - \ap(h;\,c)$ the part of the slope the family cannot hold)
+
+\begin{align*}
+\bw[k]           &= \bw_d[k] - \delta\bw_3[k] \\
+\delta\bw_1[k+1] &= \delta\bw_2[k] \\
+\delta\bw_2[k+1] &= \delta\bw_3[k] \\
+\delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k] - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
+\ba_w[k+1]       &= \ba_w[k] + \ap_{\mathrm{true}}\bigl(\bw[k]-\bw_s\bigr)\,\dW[k] \\
+c[k+1]           &= c[k] \\[4pt]
+\dW[k]           &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]
+\end{align*}
+
+\section{Estimator}
+
+($\wh[k] = \bw_d[k] - \delta\hat{\bw}_3[k]$; $\hh[k] = \wh[k] - \bw_s$; $M[k] := \Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]$)
+
+\begin{align*}
+\ap[k]                 &= \frac{1 - \ch[k]}{\hh[k]^{p}} \\
+\delta\hat{\bw}_1[k+1] &= \delta\hat{\bw}_2[k] \\
+\delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k] \\
+\delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k] \\
+\ah[k+1]               &= \ah[k] + \ap[k]\,M[k] \\
+\ch[k+1]               &= \ch[k]
+\end{align*}
+
+\section{Error dynamics}
+
+($e = \text{true} - \text{estimate}$; first order at the estimate; $\dW - M = (1-\lambda_c)\,e_{\delta\bw_3} + F_{dw}\,e_{\ba_w} + \varepsilon_w$; $\bw - \wh = -e_{\delta\bw_3}$)
+
+\begin{align*}
+\ap_{\mathrm{true}} - \ap[k] &= \frac{p\,\ap[k]}{\hh[k]}\,e_{\delta\bw_3}[k] - \frac{1}{\hh[k]^{p}}\,e_c[k] + r'[k] \\[6pt]
+e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k] \\
+e_{\delta\bw_2}[k+1] &= e_{\delta\bw_3}[k] \\
+e_{\delta\bw_3}[k+1] &= \lambda_c\,e_{\delta\bw_3}[k] - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
+e_{\ba_w}[k+1]       &= \Bigl(\ap[k](1-\lambda_c) + \frac{p\,\ap[k]}{\hh[k]}M[k]\Bigr)e_{\delta\bw_3}[k]
+                        + \bigl(1 + \ap[k]F_{dw}[k]\bigr)e_{\ba_w}[k] \\
+                     &\quad - \frac{M[k]}{\hh[k]^{p}}\,e_c[k]
+                        + \ap[k]\,\varepsilon_w[k] + M[k]\,r'[k] \\
+e_c[k+1]             &= e_c[k]
+\end{align*}
+
+\begin{align*}
+F_e[k] &= \begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lambda_c & -F_{dw}[k] & 0 \\
+0 & 0 & \ap[k](1-\lambda_c) + \dfrac{p\,\ap[k]}{\hh[k]}M[k] & 1 + \ap[k]F_{dw}[k] & -\dfrac{M[k]}{\hh[k]^{p}} \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\end{align*}
+
+\newpage
+\section{Error dynamics, row 4 expanded}
+
+(all quantities at step $k$; $e = \text{true} - \text{estimate}$; $h = \hh - e_{\delta\bw_3}$; $c = \ch + e_c$)
+
+\subsection*{(a) the two increments and their difference}
+
+\begin{align*}
+\ba_w[k+1]                    &= \ba_w[k] + \ap_{\mathrm{true}}\,\dW \\
+\ah[k+1]                      &= \ah[k]   + \ap\,M \\
+e_{\ba_w}[k+1]                &= e_{\ba_w}[k] + \ap_{\mathrm{true}}\,\dW - \ap\,M
+\end{align*}
+
+\subsection*{(b) the two factors, each written as estimate plus its error}
+
+\begin{align*}
+\dW - M                       &= \bigl[\Delta\bw_d + (1-\lambda_c)\,\delta\bw_3 + F_{dw}\,e_{\ba_w} + \varepsilon_w\bigr]
+                                 - \bigl[\Delta\bw_d + (1-\lambda_c)\,\delta\hat{\bw}_3\bigr] \\
+                              &= (1-\lambda_c)\,e_{\delta\bw_3} + F_{dw}\,e_{\ba_w} + \varepsilon_w \\[6pt]
+\ap_{\mathrm{true}}(h)        &= \ap(h;\,c) + r' \\
+\ap(h;\,c) - \ap(\hh;\,\ch)   &= \frac{\partial\ap}{\partial h}\,(h - \hh) + \frac{\partial\ap}{\partial c}\,(c - \ch)
+                                 && \text{first order} \\
+                              &= \Bigl(-\frac{p\,\ap}{\hh}\Bigr)(-e_{\delta\bw_3}) + \Bigl(-\frac{1}{\hh^{p}}\Bigr)(e_c) \\
+\ap_{\mathrm{true}} - \ap     &= \frac{p\,\ap}{\hh}\,e_{\delta\bw_3} - \frac{1}{\hh^{p}}\,e_c + r'
+\end{align*}
+
+\subsection*{(c) the product difference, exact}
+
+\begin{align*}
+\ap_{\mathrm{true}}\,\dW - \ap\,M
+  &= \ap_{\mathrm{true}}\,\dW - \ap\,\dW + \ap\,\dW - \ap\,M                     && \text{add and subtract } \ap\,\dW \\
+  &= (\ap_{\mathrm{true}} - \ap)\,\dW + \ap\,(\dW - M) \\
+  &= (\ap_{\mathrm{true}} - \ap)\,M + (\ap_{\mathrm{true}} - \ap)(\dW - M) + \ap\,(\dW - M)
+                                                                                 && \dW = M + (\dW - M)
+\end{align*}
+
+\subsection*{(d) every term after substituting (b)}
+
+\begin{align*}
+(\ap_{\mathrm{true}} - \ap)\,M
+  &= \frac{p\,\ap}{\hh}\,M\,e_{\delta\bw_3}                                      && (1) \\
+  &\quad - \frac{M}{\hh^{p}}\,e_c                                                && (2) \\
+  &\quad + M\,r'                                                                 && (3) \\[6pt]
+\ap\,(\dW - M)
+  &= \ap\,(1-\lambda_c)\,e_{\delta\bw_3}                                         && (4) \\
+  &\quad + \ap\,F_{dw}\,e_{\ba_w}                                                && (5) \\
+  &\quad + \ap\,\varepsilon_w                                                    && (6) \\[6pt]
+(\ap_{\mathrm{true}} - \ap)(\dW - M)
+  &= \frac{p\,\ap}{\hh}\,(1-\lambda_c)\,e_{\delta\bw_3}\,e_{\delta\bw_3}          && (7)\ \ \text{second order} \\
+  &\quad + \frac{p\,\ap}{\hh}\,F_{dw}\,e_{\delta\bw_3}\,e_{\ba_w}                 && (8)\ \ \text{second order} \\
+  &\quad + \frac{p\,\ap}{\hh}\,e_{\delta\bw_3}\,\varepsilon_w                     && (9)\ \ \text{second order} \\
+  &\quad - \frac{1-\lambda_c}{\hh^{p}}\,e_c\,e_{\delta\bw_3}                      && (10)\ \text{second order} \\
+  &\quad - \frac{F_{dw}}{\hh^{p}}\,e_c\,e_{\ba_w}                                 && (11)\ \text{second order} \\
+  &\quad - \frac{1}{\hh^{p}}\,e_c\,\varepsilon_w                                  && (12)\ \text{second order} \\
+  &\quad + (1-\lambda_c)\,r'\,e_{\delta\bw_3}                                     && (13)\ \text{second order} \\
+  &\quad + F_{dw}\,r'\,e_{\ba_w}                                                  && (14)\ \text{second order} \\
+  &\quad + r'\,\varepsilon_w                                                      && (15)\ \text{second order}
+\end{align*}
+
+\subsection*{(e) first-order terms collected by error}
+
+\begin{align*}
+e_{\ba_w}[k+1]
+  &= e_{\ba_w}[k] + (1) + (4) + (5) + (2) + (6) + (3) \\
+  &= \Bigl(\ap\,(1-\lambda_c) + \frac{p\,\ap}{\hh}\,M\Bigr)\,e_{\delta\bw_3}      && (4) + (1) \quad \to F_e(4,3) \\
+  &\quad + \bigl(1 + \ap\,F_{dw}\bigr)\,e_{\ba_w}                                 && 1 + (5) \quad\ \to F_e(4,4) \\
+  &\quad - \frac{M}{\hh^{p}}\,e_c                                                 && (2) \qquad\quad\ \to F_e(4,5) \\
+  &\quad + \ap\,\varepsilon_w                                                     && (6) \qquad\quad\ \to Q,\ \mathbf{g}_4 = \ap \\
+  &\quad + M\,r'                                                                  && (3) \qquad\quad\ \to \text{not in } F_e,\ \text{not in } Q
+\end{align*}
+
+\newpage
+\section{Measurement}
+
+($\nabla_d\bw_d[k] := \bw_d[k] - \bw_d[k-d]$)
+
+\begin{align*}
+y_1[k]      &= \delta\bw_1[k] + n_w[k] \\
+y_2[k]      &= \ba_w[k-d] + n_a[k] \\
+\hat y_1[k] &= \delta\hat{\bw}_1[k] \\
+\hat y_2[k] &= \ah[k] - \ap[k]\,\nabla_d\bw_d[k] \\[4pt]
+H[k]        &= \begin{bmatrix} 1 & 0 & 0 & 0 & 0 \\[2pt]
+               0 & 0 & -\,\dfrac{p\,\ap[k]}{\hh[k]}\nabla_d\bw_d[k] & 1 & \dfrac{\nabla_d\bw_d[k]}{\hh[k]^{p}} \end{bmatrix}
+\end{align*}
+
+\section{Noise}
+
+\begin{align*}
+Q[k]      &= Q_{33}[k]\,\mathbf{g}\mathbf{g}^{\top}, \qquad \mathbf{g} = \bigl[\,0,\ 0,\ -1,\ \ap[k],\ 0\,\bigr]^{\top}, \qquad Q_{55} = 0 \\
+R[k]      &= \mathrm{diag}\bigl(R_1,\ R_2[k]\bigr)
+\end{align*}
+
+\section*{Seed and prior (plane init)}
+
+\begin{align*}
+p       &= 2.042 \\
+\ch[0]  &= c_{\mathrm{plane}} = +0.037 \\
+\ah[0]  &= \Dp\!\Bigl(\frac{1}{\bw[0] - \bw_s}\Bigr) \\
+P[0]    &= \mathrm{diag}\bigl(P_{11}[0],\ P_{22}[0],\ P_{33}[0],\ P_{44}[0],\ \sigma_{c,0}^{2}\bigr), \qquad \sigma_{c,0} = 0.5 \\
+P_{44}[0] &= \ap\bigl(\bw[0]-\bw_s\bigr)^{2}\,\sigma_{\bw_s}^{2} + \sigma_{a,0}^{2}
+\end{align*}
+
+\end{document}

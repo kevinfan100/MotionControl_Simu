@@ -1,0 +1,169 @@
+% STATUS: ACTIVE | reading copy (2026-09-23) of HOW the observability of the law constants is checked in this project, written as one
+%   chain of equations: the four matrices (F_e, H, Q, R) -> the innovation as a linear equation in the start error -> the stacked
+%   system -> least squares -> error covariance = CRLB -> whitening and singular values -> per-slot CRLB and the alias direction ->
+%   the prior and the ratio -> what Q does -> the five gates as formulas -> the constant-velocity descent and T_d.
+%   Instance: the two-constant slope law in the (delta, p) coordinate (0923_estb_f4_slope_dp.tex); the (delta, c) columns are
+%   listed beside it. Tools: model/diag/obs_dump.m (logs F_e, H, R per step), test_script/integration/verify_state_observability.m
+%   (gates 4-5), test_script/scratch/probe_ident_map_f2.m (whole-segment accumulation, proxy), .claude/rules/observability-workflow.md.
+%   No numbers here; the worked numbers are in the 09-23 conversation and the ledger (C75, C76).
+% Compile: xelatex 0923_obs_check_core.tex
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\ap}{\ba'}
+\newcommand{\ah}{\hat{\ba}_w}
+\newcommand{\gh}{\hat{g}}
+\newcommand{\ph}{\hat{p}}
+\newcommand{\dl}{\delta}
+\newcommand{\Phik}{\Phi(k,k_0)}
+
+\begin{document}
+
+\section{The four matrices}
+
+($e := \text{true} - \text{estimate}$, $\mathbf{e} = [e_{\delta\bw_1},\ e_{\delta\bw_2},\ e_{\delta\bw_3},\ e_{\ba_w},\ e_p,\ e_{\dl}]^{\top}$;
+$\gh = \bw_d - \delta\hat{\bw}_3 - \bw_s + \hat\dl$, $\ap = \gh^{-\ph}$; all matrices evaluated at the estimate, step $k$)
+
+\begin{align*}
+\mathbf{e}[k+1] &= F_e[k]\,\mathbf{e}[k] + \mathbf{g}[k]\,\varepsilon_w[k] \\[4pt]
+F_e[k] &= {\small\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 0 & \lambda_c & -F_{dw} & 0 & 0 \\
+0 & 0 & \ap(1-\lambda_c) + \dfrac{\ph\,\ap}{\gh}M & 1 + \ap F_{dw} & -\ap\ln\gh\,M & -\dfrac{\ph\,\ap}{\gh}M \\
+0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1
+\end{bmatrix}} \\
+&\qquad \bigl((\dl, c)\text{: } F_{e,45} = -\tfrac{M}{\gh^{2}},\ F_{e,46} = -\tfrac{2\ap}{\gh}M\bigr) \\[6pt]
+\mathbf{y}[k] - \hat{\mathbf{y}}[k] &= H[k]\,\mathbf{e}[k] + \mathbf{n}[k] \\[4pt]
+H[k] &= {\small\begin{bmatrix} 1 & 0 & 0 & 0 & 0 & 0 \\[2pt]
+        0 & 0 & -\dfrac{\ph\,\ap}{\gh}\nabla_d\bw_d & 1 & \ap\ln\gh\,\nabla_d\bw_d & \dfrac{\ph\,\ap}{\gh}\nabla_d\bw_d \end{bmatrix}} \\
+&\qquad \bigl((\dl, c)\text{: } H_{25} = \tfrac{\nabla_d\bw_d}{\gh^{2}},\ H_{26} = \tfrac{2\ap}{\gh}\nabla_d\bw_d\bigr) \\[6pt]
+Q[k] &= Q_{33}[k]\,\mathbf{g}\mathbf{g}^{\top}, \qquad \mathbf{g} = [\,0,\ 0,\ -1,\ \ap,\ 0,\ 0\,]^{\top}, \qquad Q_{33} = \kappa_T\,\ah \\
+R[k] &= \mathrm{diag}\bigl(R_1,\ R_2[k]\bigr), \qquad R_1 = \sigma_n^{2}/R^{2}
+\end{align*}
+
+\section{The innovation as a linear equation in the start error}
+
+\begin{align*}
+\Phik &:= F_e[k-1]\,F_e[k-2]\cdots F_e[k_0], \qquad \Phi(k_0,k_0) = I \\
+\mathbf{e}[k] &= \Phik\,\mathbf{e}[k_0] + \sum_{j=k_0}^{k-1}\Phi(k,j+1)\,\mathbf{g}[j]\,\varepsilon_w[j] \\
+\mathbf{y}[k] - \hat{\mathbf{y}}[k] &= \underbrace{H[k]\,\Phik}_{\text{coefficients of } \mathbf{e}[k_0]}\;\mathbf{e}[k_0]
+   \;+\; \mathbf{n}[k]
+   \;+\; \underbrace{H[k]\sum_{j}\Phi(k,j+1)\,\mathbf{g}[j]\,\varepsilon_w[j]}_{\text{the } Q \text{ term (section 7)}}
+\end{align*}
+
+(for a constant $\theta \in \{p, \dl\}$ the coefficient of $e_\theta$ in row $y_i$ at step $k$ is $h^{(i)}_{k,\theta} := [H[k]\Phik]_{i\theta}$;
+along a descent $[\Phik]_{4\theta} \approx \sum_{j} F_{e,4\theta}[j]$, the constant's error accumulated into the level)
+
+\section{Stacked system and least squares}
+
+(window $k = k_0,\dots,k_0+N$; the $Q$ term dropped here, see section 7)
+
+\begin{align*}
+\mathbf{Y} &:= \begin{bmatrix} \mathbf{y}[k_0]-\hat{\mathbf{y}}[k_0] \\ \vdots \\ \mathbf{y}[k_0+N]-\hat{\mathbf{y}}[k_0+N] \end{bmatrix},\qquad
+\mathbf{N} := \begin{bmatrix} \mathbf{n}[k_0] \\ \vdots \\ \mathbf{n}[k_0+N] \end{bmatrix} \\[4pt]
+O &:= \begin{bmatrix} H[k_0]\,\Phi(k_0,k_0) \\ \vdots \\ H[k_0+N]\,\Phi(k_0+N,k_0) \end{bmatrix} \\[4pt]
+\mathbf{Y} &= O\,\mathbf{e}[k_0] + \mathbf{N} \\
+\mathrm{Cov}(\mathbf{N}) &= \mathcal{R} := \mathrm{diag}\bigl(R[k_0],\dots,R[k_0+N]\bigr) \\[6pt]
+\hat{\mathbf{e}}[k_0] &= \bigl(O^{\top}\mathcal{R}^{-1}O\bigr)^{-1}O^{\top}\mathcal{R}^{-1}\,\mathbf{Y} \\
+                      &= \mathbf{e}[k_0] + \bigl(O^{\top}\mathcal{R}^{-1}O\bigr)^{-1}O^{\top}\mathcal{R}^{-1}\,\mathbf{N} \\[4pt]
+\mathrm{Cov}\bigl(\hat{\mathbf{e}}[k_0] - \mathbf{e}[k_0]\bigr) &= \bigl(O^{\top}\mathcal{R}^{-1}O\bigr)^{-1} =: G^{-1}
+\end{align*}
+
+(the error covariance does not depend on $\mathbf{Y}$: the check needs only $O$ and $\mathcal{R}$, i.e. the logged $F_e$, $H$, $R$)
+
+\section{Whitening, singular values, CRLB}
+
+\begin{align*}
+O_w &:= \mathcal{R}^{-1/2}\,O \qquad(\text{each row divided by its own } \sqrt{R}; \text{ every row's noise now has unit variance}) \\
+G   &= O_w^{\top}O_w = \sum_{k}\Phik^{\top}H[k]^{\top}R[k]^{-1}H[k]\,\Phik \\[4pt]
+O_w\,\mathbf{v}_i &= \sigma_i\,\mathbf{u}_i, \qquad G\,\mathbf{v}_i = \sigma_i^{2}\,\mathbf{v}_i \\
+G^{-1} &= \sum_i \frac{\mathbf{v}_i\mathbf{v}_i^{\top}}{\sigma_i^{2}} \qquad(\text{eigen-decomposition, not pinv: a } \sigma_i = 0 \text{ direction is } +\infty) \\[4pt]
+\mathrm{std}\bigl(\mathbf{v}_i^{\top}\hat{\mathbf{e}}[k_0]\bigr) &= \frac{1}{\sigma_i} \qquad(\text{error bar along the } i\text{-th direction}) \\
+\mathrm{CRLB}_\theta &:= \sqrt{[G^{-1}]_{\theta\theta}} = \sqrt{\sum_i \frac{(v_{i,\theta})^{2}}{\sigma_i^{2}}} \qquad(\text{slot } \theta)
+\end{align*}
+
+(one unknown, one sensor, constant coefficient $h$ over $N$ steps: $\sigma = \sqrt{N}\,h/\sqrt{R}$, $\mathrm{CRLB} = \sqrt{R}/(h\sqrt{N})$)
+
+\section{Two constants: the alias direction}
+
+(the $(e_p, e_{\dl})$ block of $O_w$ at one height $\gh$: every row is the same direction up to the scalar $M$ or $\nabla_d\bw_d$)
+
+\begin{align*}
+\text{row direction at } \gh &\ \propto\ \mathbf{v}(\gh) = \bigl[\,\ln\gh,\ \ph/\gh\,\bigr]
+\qquad \bigl((\dl, c)\text{: } [\,1/\gh^{2},\ 2(1-\hat c)/\gh^{3}\,]\bigr) \\
+\text{one height only} &\Rightarrow \operatorname{rank}\bigl(O_w[:, (p,\dl)]\bigr) = 1,\quad \sigma_2 = 0 \\
+                       &\qquad \text{only } \ln\gh\,e_p + \tfrac{\ph}{\gh}e_{\dl} \text{ is determined} \\
+\text{two heights} &\Rightarrow \det\begin{bmatrix}\mathbf{v}(\gh_1)\\ \mathbf{v}(\gh_2)\end{bmatrix}
+   = \frac{\ph\,(\gh_1\ln\gh_1 - \gh_2\ln\gh_2)}{\gh_1\gh_2} \ne 0 \\
+\mathbf{v}_2 &= \text{the eigenvector of the smallest } \sigma \text{ (the weakly determined combination)} \\
+   &\qquad \mathrm{CRLB}_\theta \text{ is large for the slot with the larger } |v_{2,\theta}|
+\end{align*}
+
+\section{Prior and the ratio}
+
+\begin{align*}
+\sigma_{\theta,0} &:= \sqrt{P_{\theta\theta}[0]} \qquad(\text{width believed before any data}) \\
+\frac{1}{\sigma_{\theta,\mathrm{post}}^{2}} &= \frac{1}{\sigma_{\theta,0}^{2}} + \frac{1}{\mathrm{CRLB}_\theta^{2}} \\[4pt]
+\rho_\theta &:= \frac{\mathrm{CRLB}_\theta}{\sigma_{\theta,0}} \qquad
+\begin{cases} \rho \ll 1 : & \sigma_{\mathrm{post}} \approx \mathrm{CRLB},\ \text{the data replace the belief} \\
+              \rho \gg 1 : & \sigma_{\mathrm{post}} \approx \sigma_0,\ \text{the belief stays} \\
+                           & \text{(observable in form, not identifiable in practice)} \\
+              \rho = \infty : & \text{no row of the window carries } e_\theta \end{cases}
+\end{align*}
+
+\section{What the omitted $Q$ term does}
+
+\begin{align*}
+\mathbf{Y} &= O\,\mathbf{e}[k_0] + \mathbf{N} + \mathbf{W} \\
+\mathbf{W}_k &= H[k]\sum_{j=k_0}^{k-1}\Phi(k,j+1)\,\mathbf{g}[j]\,\varepsilon_w[j], \qquad \mathrm{Cov}(\mathbf{W}) =: \mathcal{Q} \ (\text{not diagonal}) \\
+G &= O^{\top}\mathcal{R}^{-1}O \qquad\qquad\qquad\ (\text{the tool: } \mathcal{Q} \text{ dropped, structural question, optimistic}) \\
+G_{\mathrm{full}} &= O^{\top}(\mathcal{R} + \mathcal{Q})^{-1}O \qquad(\text{the same computed recursively is the filter's } P^{-} = F_e P F_e^{\top} + Q) \\[4pt]
+\text{honesty}_\theta &:= \frac{\mathrm{sd}_{\mathrm{seeds}}(\hat\theta)}{\sqrt{P_{\theta\theta}}}, \qquad
+\text{efficiency}_\theta := \frac{\sqrt{P_{\theta\theta}}}{\mathrm{CRLB}_\theta}
+\end{align*}
+
+\section{The five gates as formulas}
+
+\begin{align*}
+\text{gate 1} &: \quad F_{e,4\theta}[k] \not\equiv 0 \ \text{or}\ H_{2\theta}[k] \not\equiv 0 \\
+\text{gate 2} &: \quad h^{(i)}_{k,\theta} \not\propto h^{(i)}_{k,\theta'} \ \text{as sequences in } k \ (\theta' \text{ an existing state}) \\
+\text{gate 3} &: \quad \det\begin{bmatrix} C_2 \\ C_2A_2 \end{bmatrix} = 0 \ \text{solved for the operating condition (hold, far field, one height)} \\
+\text{gate 4} &: \quad \operatorname{rank}\bigl(O_w[:,\mathrm{free}]\bigr) = |\mathrm{free}|, \qquad
+                 \mathrm{CRLB}_{\mathrm{neg\ ctrl}} = +\infty \ \text{(a locked slot: its column of } O \text{ is zero)} \\
+\text{gate 5} &: \quad \rho_\theta < 1 \text{ in at least one window}; \quad
+                 \rho_\theta^{(y_1)},\ \rho_\theta^{(y_2)} \ (\text{rows of one sensor only});\quad \rho_\theta \text{ per segment}
+\end{align*}
+
+\section{Constant-velocity descent}
+
+($\bw_d$ from $\bw_{\mathrm{top}}$ to $\bw_{\mathrm{bot}}$ in $T_d$; $v = (\bw_{\mathrm{top}} - \bw_{\mathrm{bot}})/T_d$; $M = v\,T_s$; steps $N = T_d/T_s$; hold at both ends)
+
+\begin{align*}
+\text{hold}          &: M = 0,\ \nabla_d\bw_d = 0 \ \Rightarrow\ F_{e,4\theta} = H_{2\theta} = 0 \ \Rightarrow\ \rho_\theta = \infty \\
+\text{row directions} &: \mathbf{v}(\gh) \text{ depends on the heights visited only} \\
+                      &\quad \Rightarrow\ \text{the separation of } (p, \dl) \text{ does not depend on } T_d \\[4pt]
+y_2 \text{ rows}     &: h^{(2)}_{k,\theta} = [\Phik]_{4\theta} \ \text{(no } F_{dw}\text{)}, \qquad
+                        \sum_k \frac{(h^{(2)}_{k,\theta})^{2}}{R_2} \propto N \propto T_d \\
+y_1 \text{ rows}     &: h^{(1)}_{k,\theta} \approx \frac{-F_{dw}}{1-\lambda_c}\,[\Phik]_{4\theta}, \quad F_{dw} = \frac{M}{\ah} \propto \frac{1}{T_d} \\
+                     &\qquad \sum_k \frac{(h^{(1)}_{k,\theta})^{2}}{R_1} \propto \frac{1}{T_d^{2}}\,T_d = \frac{1}{T_d} \\[4pt]
+\sigma_\theta^{2}(T_d) &\approx \frac{A_\theta}{T_d} + B_\theta\,T_d, \qquad
+\mathrm{CRLB}_\theta(T_d) = \frac{1}{\sigma_\theta(T_d)} \ \text{ is largest at } T_d^{*} = \sqrt{A_\theta/B_\theta} \\[4pt]
+\text{forcing of a wrong slope} &: \int \bigl(\ap_{\mathrm{true}} - \ap\bigr)\,dh \quad(\text{independent of } T_d) \\
+\text{correction by } y_2 &\propto T_d
+\end{align*}
+
+\end{document}

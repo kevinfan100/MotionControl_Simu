@@ -1,0 +1,339 @@
+% STATUS: ACTIVE | derivation (2026-09-22) of the two-constant slope law a' = (1 - c)/(h + delta)^2 read at the estimator height:
+%   the gain a_w is a STATE (a slot, fed by y1 and y2), the law serves ONLY its propagation, delta (position type, the cell's
+%   shift) and c (level type, the sphere's far-field level) are the two constants; p = 2 is pinned by the far-field anchor
+%   (9/8)/h^2. It is the [1/1] slope kappa/(h + d1)^2 with kappa = 1 - c, d1 = delta, written for the a-slot estimator.
+%   Style of 0921_estb_v2_core.tex: law -> true dynamics -> estimator -> error dynamics (+ the row-4 expansion page) ->
+%   measurement -> noise -> observability gates 1-3 on paper -> seed and prior.  sympy: test_script/scratch/check_estb_f2_slope_dc.py.
+%   Offline numbers (fit_two_param_height_walls.m, chk on 09-22): plane (delta, c) = (+0.104, -0.085), cell (+1.238, -0.163),
+%   sphere (-0.039, +0.011); accumulated slope error along a descent from 22.2 R: plane 0.012, cell 0.001, sphere 0.025.
+% Compile: xelatex 0922_estb_f2_slope_dc.tex
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\dW}{\Delta\bw}
+\newcommand{\ap}{\ba'}
+\newcommand{\ah}{\hat{\ba}_w}
+\newcommand{\wh}{\hat{\bw}}
+\newcommand{\hh}{\hat{h}}
+\newcommand{\ch}{\hat{c}}
+\newcommand{\dl}{\delta}
+\newcommand{\dlh}{\hat{\delta}}
+\newcommand{\gs}{g}
+\newcommand{\gh}{\hat{g}}
+\newcommand{\Dp}{D_{\perp}}
+
+\begin{document}
+
+\section{Law: slope only}
+
+($h := \bw - \bw_s$, $\bw_s$ = visible surface, given; $\gs := h + \dl$ the shifted gap; $\dl > 0$ = effective wall below the visible surface;
+$p = 2$ pinned; $\dl$, $c$ = the two constants; used on $h \ge 1.1$)
+
+\begin{align*}
+\ap(h;\,\dl,\,c)                        &= \frac{1 - c}{(h + \dl)^{2}} \\[2pt]
+\frac{\partial\ap}{\partial h}          &= -\,\frac{2\,\ap}{h + \dl} \\[2pt]
+\frac{\partial\ap}{\partial\dl}         &= -\,\frac{2\,\ap}{h + \dl} \qquad = \frac{\partial\ap}{\partial h} \\[2pt]
+\frac{\partial\ap}{\partial c}          &= -\,\frac{1}{(h + \dl)^{2}} \\[2pt]
+\frac{\partial\ap}{\partial\ba_w}       &= 0
+\end{align*}
+
+(integrated once, for the seed container only, $\ba(\infty) = 1$)
+\begin{align*}
+\int_{h}^{\infty}\ap\,dh'               &= \frac{1 - c}{h + \dl} \\
+\ba(h;\,\dl,\,c)                        &= 1 - \frac{1 - c}{h + \dl} = \frac{h + \dl - 1 + c}{h + \dl}
+                                           \qquad\Bigl(= \frac{h + c_0}{h + d_1},\ \ c_0 = \dl - 1 + c,\ \ d_1 = \dl\Bigr) \\
+\frac{\partial\ba}{\partial\dl}         &= \frac{1 - c}{(h + \dl)^{2}} = \ap \\
+\frac{\partial\ba}{\partial c}          &= \frac{1}{h + \dl}
+\end{align*}
+
+(family residual on a wall with constants $(\dl_w, c_w)$, and the gain error it leaves along a descent from $h_0$ if never corrected)
+\begin{align*}
+r'(h)   &:= \ap_{\mathrm{true}}(h) - \ap(h;\,\dl_w,\,c_w) \\
+E(h)    &:= \int_{h}^{h_0} r'(h')\,dh'
+\end{align*}
+
+\section{State}
+
+\begin{align*}
+\mathbf{x} &= \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w,\ c,\ \dl\,\bigr]^{\top}
+\qquad(\text{code slots: } 5 = c,\ 7 = \dl,\ 6 \text{ locked})
+\end{align*}
+
+\section{True dynamics}
+
+($d = 2$; $\ap_{\mathrm{true}}$ = the plant's slope)
+
+\begin{align*}
+\bw[k]           &= \bw_d[k] - \delta\bw_3[k] \\
+\delta\bw_1[k+1] &= \delta\bw_2[k] \\
+\delta\bw_2[k+1] &= \delta\bw_3[k] \\
+\delta\bw_3[k+1] &= \lambda_c\,\delta\bw_3[k] - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
+\ba_w[k+1]       &= \ba_w[k] + \ap_{\mathrm{true}}\bigl(\bw[k]-\bw_s\bigr)\,\dW[k] \\
+c[k+1]           &= c[k] \\
+\dl[k+1]         &= \dl[k] \\[4pt]
+\dW[k]           &= \Delta\bw_d[k] + (1-\lambda_c)\,\delta\bw_3[k] + F_{dw}[k]\,e_{\ba_w}[k] + \varepsilon_w[k]
+\end{align*}
+
+\section{Estimator}
+
+($\wh[k] = \bw_d[k] - \delta\hat{\bw}_3[k]$; $\hh[k] = \wh[k] - \bw_s$; $\gh[k] = \hh[k] + \dlh[k]$; $M[k] := \Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]$)
+
+\begin{align*}
+\ap[k]                 &= \frac{1 - \ch[k]}{\gh[k]^{2}} \\
+\delta\hat{\bw}_1[k+1] &= \delta\hat{\bw}_2[k] \\
+\delta\hat{\bw}_2[k+1] &= \delta\hat{\bw}_3[k] \\
+\delta\hat{\bw}_3[k+1] &= \lambda_c\,\delta\hat{\bw}_3[k] \\
+\ah[k+1]               &= \ah[k] + \ap[k]\,M[k] \\
+\ch[k+1]               &= \ch[k] \\
+\dlh[k+1]              &= \dlh[k]
+\end{align*}
+
+(exact step over the known displacement $M$, used in code; first order in $M$ it is $\ap[k]\,M[k]$)
+\begin{align*}
+\ah[k+1]               &= \ah[k] + \bigl(1 - \ch[k]\bigr)\Bigl(\frac{1}{\gh[k]} - \frac{1}{\gh[k] + M[k]}\Bigr)
+\end{align*}
+
+\section{Error dynamics}
+
+($e = \text{true} - \text{estimate}$; first order at the estimate; $\dW - M = (1-\lambda_c)\,e_{\delta\bw_3} + F_{dw}\,e_{\ba_w} + \varepsilon_w$;
+$h - \hh = -e_{\delta\bw_3}$; $\dl - \dlh = e_{\dl}$; $\gs - \gh = e_{\dl} - e_{\delta\bw_3}$)
+
+\begin{align*}
+\ap_{\mathrm{true}} - \ap[k] &= \frac{2\,\ap[k]}{\gh[k]}\,e_{\delta\bw_3}[k] - \frac{2\,\ap[k]}{\gh[k]}\,e_{\dl}[k] - \frac{1}{\gh[k]^{2}}\,e_c[k] + r'[k] \\[6pt]
+e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k] \\
+e_{\delta\bw_2}[k+1] &= e_{\delta\bw_3}[k] \\
+e_{\delta\bw_3}[k+1] &= \lambda_c\,e_{\delta\bw_3}[k] - F_{dw}[k]\,e_{\ba_w}[k] - \varepsilon_w[k] \\
+e_{\ba_w}[k+1]       &= \Bigl(\ap[k](1-\lambda_c) + \frac{2\,\ap[k]}{\gh[k]}M[k]\Bigr)e_{\delta\bw_3}[k]
+                        + \bigl(1 + \ap[k]F_{dw}[k]\bigr)e_{\ba_w}[k] \\
+                     &\quad - \frac{M[k]}{\gh[k]^{2}}\,e_c[k]
+                        - \frac{2\,\ap[k]\,M[k]}{\gh[k]}\,e_{\dl}[k]
+                        + \ap[k]\,\varepsilon_w[k] + M[k]\,r'[k] \\
+e_c[k+1]             &= e_c[k] \\
+e_{\dl}[k+1]         &= e_{\dl}[k]
+\end{align*}
+
+\begin{align*}
+F_e[k] &= \begin{bmatrix}
+0 & 1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 0 & \lambda_c & -F_{dw}[k] & 0 & 0 \\
+0 & 0 & \ap[k](1-\lambda_c) + \dfrac{2\,\ap[k]}{\gh[k]}M[k] & 1 + \ap[k]F_{dw}[k] & -\dfrac{M[k]}{\gh[k]^{2}} & -\dfrac{2\,\ap[k]\,M[k]}{\gh[k]} \\
+0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\end{align*}
+
+\begin{align*}
+F_{e,46}[k] &= -\,\frac{2\,\ap[k]}{\gh[k]}\,M[k] \qquad = -\bigl(\text{the height share of } F_{e,43}\bigr)
+\qquad\text{(the slope sees } e_{\dl} - e_{\delta\bw_3}\text{ only)}
+\end{align*}
+
+\newpage
+\section{Error dynamics, row 4 expanded}
+
+(all quantities at step $k$; $e = \text{true} - \text{estimate}$; $h = \hh - e_{\delta\bw_3}$; $\dl = \dlh + e_{\dl}$; $c = \ch + e_c$)
+
+\subsection*{(a) the two increments and their difference}
+
+\begin{align*}
+\ba_w[k+1]                    &= \ba_w[k] + \ap_{\mathrm{true}}\,\dW \\
+\ah[k+1]                      &= \ah[k]   + \ap\,M \\
+e_{\ba_w}[k+1]                &= e_{\ba_w}[k] + \ap_{\mathrm{true}}\,\dW - \ap\,M
+\end{align*}
+
+\subsection*{(b) the two factors, each written as estimate plus its error}
+
+\begin{align*}
+\dW - M                       &= (1-\lambda_c)\,e_{\delta\bw_3} + F_{dw}\,e_{\ba_w} + \varepsilon_w \\[6pt]
+\ap_{\mathrm{true}}(h)        &= \ap(h;\,\dl,\,c) + r' \\
+\ap(h;\,\dl,\,c) - \ap(\hh;\,\dlh,\,\ch)
+                              &= \frac{\partial\ap}{\partial\gs}\,\bigl[(h + \dl) - (\hh + \dlh)\bigr] + \frac{\partial\ap}{\partial c}\,(c - \ch)
+                                 && \text{first order} \\
+                              &= \Bigl(-\frac{2\,\ap}{\gh}\Bigr)(e_{\dl} - e_{\delta\bw_3}) + \Bigl(-\frac{1}{\gh^{2}}\Bigr)(e_c) \\
+\ap_{\mathrm{true}} - \ap     &= \frac{2\,\ap}{\gh}\,e_{\delta\bw_3} - \frac{2\,\ap}{\gh}\,e_{\dl} - \frac{1}{\gh^{2}}\,e_c + r'
+\end{align*}
+
+\subsection*{(c) the product difference, exact}
+
+\begin{align*}
+\ap_{\mathrm{true}}\,\dW - \ap\,M
+  &= (\ap_{\mathrm{true}} - \ap)\,M + \ap\,(\dW - M) + (\ap_{\mathrm{true}} - \ap)(\dW - M)
+\end{align*}
+
+\subsection*{(d) every term after substituting (b)}
+
+\begin{align*}
+(\ap_{\mathrm{true}} - \ap)\,M
+  &= \frac{2\,\ap}{\gh}\,M\,e_{\delta\bw_3}                                      && (1) \\
+  &\quad - \frac{2\,\ap}{\gh}\,M\,e_{\dl}                                        && (2) \\
+  &\quad - \frac{M}{\gh^{2}}\,e_c                                                && (3) \\
+  &\quad + M\,r'                                                                 && (4) \\[6pt]
+\ap\,(\dW - M)
+  &= \ap\,(1-\lambda_c)\,e_{\delta\bw_3}                                         && (5) \\
+  &\quad + \ap\,F_{dw}\,e_{\ba_w}                                                && (6) \\
+  &\quad + \ap\,\varepsilon_w                                                    && (7) \\[6pt]
+(\ap_{\mathrm{true}} - \ap)(\dW - M)
+  &= \frac{2\,\ap}{\gh}\,(1-\lambda_c)\,e_{\delta\bw_3}\,e_{\delta\bw_3}          && (8)\ \ \text{second order} \\
+  &\quad + \frac{2\,\ap}{\gh}\,F_{dw}\,e_{\delta\bw_3}\,e_{\ba_w}                 && (9)\ \ \text{second order} \\
+  &\quad + \frac{2\,\ap}{\gh}\,e_{\delta\bw_3}\,\varepsilon_w                     && (10)\ \text{second order} \\
+  &\quad - \frac{2\,\ap}{\gh}\,(1-\lambda_c)\,e_{\dl}\,e_{\delta\bw_3}            && (11)\ \text{second order} \\
+  &\quad - \frac{2\,\ap}{\gh}\,F_{dw}\,e_{\dl}\,e_{\ba_w}                         && (12)\ \text{second order} \\
+  &\quad - \frac{2\,\ap}{\gh}\,e_{\dl}\,\varepsilon_w                             && (13)\ \text{second order} \\
+  &\quad - \frac{1-\lambda_c}{\gh^{2}}\,e_c\,e_{\delta\bw_3}                      && (14)\ \text{second order} \\
+  &\quad - \frac{F_{dw}}{\gh^{2}}\,e_c\,e_{\ba_w}                                 && (15)\ \text{second order} \\
+  &\quad - \frac{1}{\gh^{2}}\,e_c\,\varepsilon_w                                  && (16)\ \text{second order} \\
+  &\quad + (1-\lambda_c)\,r'\,e_{\delta\bw_3}                                     && (17)\ \text{second order} \\
+  &\quad + F_{dw}\,r'\,e_{\ba_w}                                                  && (18)\ \text{second order} \\
+  &\quad + r'\,\varepsilon_w                                                      && (19)\ \text{second order}
+\end{align*}
+
+\subsection*{(e) first-order terms collected by error}
+
+\begin{align*}
+e_{\ba_w}[k+1]
+  &= e_{\ba_w}[k] + (1) + (5) + (6) + (3) + (2) + (7) + (4) \\
+  &= \Bigl(\ap\,(1-\lambda_c) + \frac{2\,\ap}{\gh}\,M\Bigr)\,e_{\delta\bw_3}      && (5) + (1) \quad \to F_e(4,3) \\
+  &\quad + \bigl(1 + \ap\,F_{dw}\bigr)\,e_{\ba_w}                                 && 1 + (6) \quad\ \to F_e(4,4) \\
+  &\quad - \frac{M}{\gh^{2}}\,e_c                                                 && (3) \qquad\quad\ \to F_e(4,5) \\
+  &\quad - \frac{2\,\ap}{\gh}\,M\,e_{\dl}                                         && (2) \qquad\quad\ \to F_e(4,6) \\
+  &\quad + \ap\,\varepsilon_w                                                     && (7) \qquad\quad\ \to Q,\ \mathbf{g}_4 = \ap \\
+  &\quad + M\,r'                                                                  && (4) \qquad\quad\ \to \text{not in } F_e,\ \text{not in } Q
+\end{align*}
+
+\newpage
+\section{Measurement}
+
+($\nabla_d\bw_d[k] := \bw_d[k] - \bw_d[k-d]$)
+
+\begin{align*}
+y_1[k]      &= \delta\bw_1[k] + n_w[k] \\
+y_2[k]      &= \ba_w[k-d] + n_a[k] \\
+\hat y_1[k] &= \delta\hat{\bw}_1[k] \\
+\hat y_2[k] &= \ah[k] - \ap[k]\,\nabla_d\bw_d[k] \\[4pt]
+H[k]        &= \begin{bmatrix} 1 & 0 & 0 & 0 & 0 & 0 \\[2pt]
+               0 & 0 & -\,\dfrac{2\,\ap[k]}{\gh[k]}\nabla_d\bw_d[k] & 1 & \dfrac{\nabla_d\bw_d[k]}{\gh[k]^{2}} & \dfrac{2\,\ap[k]}{\gh[k]}\nabla_d\bw_d[k] \end{bmatrix}
+\end{align*}
+
+\begin{align*}
+H_{26}[k] &= -\,H_{23}[k] \qquad\text{(the walk-back sees } e_{\dl} - e_{\delta\bw_3}\text{ only)}
+\end{align*}
+
+\section{Noise}
+
+\begin{align*}
+Q[k]      &= Q_{33}[k]\,\mathbf{g}\mathbf{g}^{\top}, \qquad \mathbf{g} = \bigl[\,0,\ 0,\ -1,\ \ap[k],\ 0,\ 0\,\bigr]^{\top}, \qquad Q_{55} = Q_{66} = 0 \\
+R[k]      &= \mathrm{diag}\bigl(R_1,\ R_2[k]\bigr)
+\end{align*}
+
+\section{Observability}
+
+($\Phi(k,k_0) := F_e[k-1]\cdots F_e[k_0]$, $\Phi(k_0,k_0) = I$; $N$ window length)
+
+Gate 1, the two columns of each constant:
+\begin{align*}
+F_{e,45}[k] &= -\,\frac{M[k]}{\gh[k]^{2}},               & H_{25}[k] &= \frac{\nabla_d\bw_d[k]}{\gh[k]^{2}} \\
+F_{e,46}[k] &= -\,\frac{2\,\ap[k]}{\gh[k]}\,M[k],        & H_{26}[k] &= \frac{2\,\ap[k]}{\gh[k]}\,\nabla_d\bw_d[k]
+\end{align*}
+(all four proportional to a displacement: zero in a hold; all four $\to 0$ as $\gh \to \infty$)
+
+Gate 2, time signatures:
+\begin{align*}
+e_c[k+1] = e_c[k], \quad e_{\dl}[k+1] = e_{\dl}[k] &\qquad(\text{two constants}) \\
+e_{\ba_w}[k+1] &= \bigl(1 + \ap F_{dw}\bigr)e_{\ba_w} - \frac{M}{\gh^{2}}\Bigl(e_c + \frac{2(1-\ch)}{\gh}\,e_{\dl}\Bigr) + \dots \\
+               &\qquad(\text{one level, drifting with the height travelled;} \\
+               &\qquad\ \text{at one height only the combination } e_c + \tfrac{2(1-\ch)}{\gh}e_{\dl} \text{ is seen}) \\
+e_{\delta\bw_3}[k+1] &= \lambda_c\,e_{\delta\bw_3} - F_{dw}\,e_{\ba_w} - \varepsilon_w, \qquad y_1[k+2] = e_{\delta\bw_3}[k] + \dots \\
+               &\qquad(e_{\delta\bw_3} \text{ has the } \lambda_c \text{ dynamics and is read by } y_1;\ e_{\dl} \text{ is a constant:} \\
+               &\qquad\ \text{not an alias although } F_{e,46} = -\text{height share of } F_{e,43})
+\end{align*}
+
+Gate 3, $\det O_2$ with coefficients frozen ($\alpha := 1 + \ap F_{dw}$, $q := -F_{dw}$;
+$\beta_c := M/\gh^{2}$, $\gamma_c := \nabla_d\bw_d/\gh^{2}$; $\beta_{\dl} := 2\ap M/\gh$, $\gamma_{\dl} := 2\ap\nabla_d\bw_d/\gh$):
+\begin{align*}
+\text{pair } (e_{\ba_w}, e_c),\ \text{row } y_2:\quad
+\det\begin{bmatrix} 1 & \gamma_c \\ \alpha & \gamma_c - \beta_c \end{bmatrix} &= -\,\beta_c - \gamma_c(\alpha - 1) = -\,\frac{M + \nabla_d\bw_d\,\ap F_{dw}}{\gh^{2}} \\
+\text{pair } (e_{\ba_w}, e_c),\ \text{row } y_1:\quad
+\det\begin{bmatrix} q & 0 \\ q\alpha & -q\beta_c \end{bmatrix} &= -\,q^{2}\beta_c = -\,\frac{F_{dw}^{2}\,M}{\gh^{2}} \\[4pt]
+\text{pair } (e_{\ba_w}, e_{\dl}),\ \text{row } y_2:\quad
+\det\begin{bmatrix} 1 & \gamma_{\dl} \\ \alpha & \gamma_{\dl} - \beta_{\dl} \end{bmatrix} &= -\,\beta_{\dl} - \gamma_{\dl}(\alpha - 1) = -\,\frac{2\,\ap}{\gh}\,\bigl(M + \nabla_d\bw_d\,\ap F_{dw}\bigr) \\
+\text{pair } (e_{\ba_w}, e_{\dl}),\ \text{row } y_1:\quad
+\det\begin{bmatrix} q & 0 \\ q\alpha & -q\beta_{\dl} \end{bmatrix} &= -\,q^{2}\beta_{\dl} = -\,\frac{2\,\ap\,F_{dw}^{2}\,M}{\gh}
+\end{align*}
+
+\begin{align*}
+\text{triple } (e_{\ba_w}, e_c, e_{\dl}),\ \text{row } y_2,\ \text{coefficients frozen:}\quad
+A_3 &= \begin{bmatrix} \alpha & -\beta_c & -\beta_{\dl} \\ 0 & 1 & 0 \\ 0 & 0 & 1 \end{bmatrix}, \qquad
+C_3 = \bigl[\,1,\ \gamma_c,\ \gamma_{\dl}\,\bigr] \\
+\det\begin{bmatrix} C_3 \\ C_3A_3 \\ C_3A_3^{2} \end{bmatrix} &= 0 \qquad \text{identically}
+\qquad\Bigl(\frac{\beta_{\dl}}{\beta_c} = \frac{\gamma_{\dl}}{\gamma_c} = \frac{2(1-\ch)}{\gh}\Bigr)
+\end{align*}
+
+(the two constants separate only through the change of that ratio with height: visible combinations at two heights)
+\begin{align*}
+\mathbf{v}(\gh) &:= \Bigl[\,\frac{1}{\gh^{2}},\ \frac{2(1-\ch)}{\gh^{3}}\,\Bigr] \\
+\det\begin{bmatrix} \mathbf{v}(\gh_1) \\ \mathbf{v}(\gh_2) \end{bmatrix}
+                &= \frac{2(1-\ch)\,(\gh_1 - \gh_2)}{\gh_1^{3}\,\gh_2^{3}}
+\end{align*}
+
+\begin{align*}
+\det O_2 = 0 \ (\text{either pair, } y_2) \quad&\Longleftrightarrow\quad M = 0 \ \text{and}\ \nabla_d\bw_d = 0 \ \text{(hold)} \ \ \text{or}\ \ \gh \to \infty \\
+\det O_2 = 0 \ (\text{either pair, } y_1) \quad&\Longleftrightarrow\quad F_{dw} = 0 \ \text{or}\ M = 0 \ \text{(hold)} \ \ \text{or}\ \ \gh \to \infty \\
+\det[\mathbf{v}(\gh_1);\ \mathbf{v}(\gh_2)] = 0 \quad&\Longleftrightarrow\quad \gh_1 = \gh_2 \ \text{(one height)} \ \ \text{or}\ \ \ch = 1 \ \text{(flat law)} \ \ \text{or}\ \ \gh \to \infty
+\end{align*}
+
+\begin{align*}
+&\text{no interior zero: } \frac{\partial\ap}{\partial c} = -\gh^{-2} \ne 0,\quad \frac{\partial\ap}{\partial\dl} = -2\ap/\gh \ne 0 \ \text{ on the band} \\
+&\text{alias with the given surface: only } \bw_s - \dl \text{ enters } \gs;\ \bw_s \text{ is given, not a state} \\
+&\text{alias with } \delta\bw_3 \text{ in the slope: only } e_{\dl} - e_{\delta\bw_3} \text{ enters; separated by gate 2 (dynamics and } y_1\text{)}
+\end{align*}
+
+\section*{Seed and prior}
+
+\begin{align*}
+&\text{fit of the slope on the band } h \in [1.10,\ 22.2],\ \text{least squares on } \ap,\ p = 2: \\
+&\qquad (\dl,\ c)_{\mathrm{plane}} = (+0.104,\ -0.085),\quad (\dl,\ c)_{\mathrm{cell}} = (+1.238,\ -0.163) \\
+&\qquad (\dl,\ c)_{\mathrm{sphere}} = (-0.039,\ +0.011) \\
+&\qquad \sup|r'| \text{ on the band: plane } 0.025,\ \text{cell } 0.000,\ \text{sphere } 0.012 \\
+&\qquad \max_h |E(h)|,\ h_0 = 22.2: \text{ plane } 0.012,\ \text{cell } 0.001,\ \text{sphere } 0.025 \\
+&\qquad \text{segments near/mid/far: } \dl_{\mathrm{plane}}\ +0.05/+0.19/+0.13,\quad c_{\mathrm{plane}}\ -0.00/-0.17/-0.14 \\
+&\qquad\phantom{\text{segments near/mid/far: }} \dl_{\mathrm{sphere}}\ +0.03/-0.19/-0.14,\quad c_{\mathrm{sphere}}\ -0.09/+0.13/+0.14 \\[6pt]
+&\text{protocol (plane init):} \\
+\dlh[0] &= \dl_{\mathrm{plane}} = +0.104 \\
+\ch[0]  &= c_{\mathrm{plane}} = -0.085 \\
+\ah[0]  &= \Dp\!\Bigl(\frac{1}{\bw[0] - \bw_s}\Bigr) \qquad(\text{plane polynomial at the start height}) \\
+\sigma_{\dl,0} &= \tfrac{1}{2}\bigl(\dl_{\mathrm{cell}} - \dl_{\mathrm{sphere}}\bigr) = 0.64 \qquad(\text{wall family, two-sided}) \\
+\sigma_{c,0}   &= 0.10 \qquad(\text{wall family } -0.16\dots+0.01;\ \text{in-wall walk of } c_{\mathrm{eff}} \text{ on the plane } 0.16) \\
+P[0]   &= \begin{bmatrix} P_{11}[0] & & & & & \\ & P_{22}[0] & & & & \\ & & P_{33}[0] & & & \\
+          & & & P_{44}[0] & P_{45}[0] & P_{46}[0] \\ & & & P_{45}[0] & \sigma_{c,0}^{2} & \\ & & & P_{46}[0] & & \sigma_{\dl,0}^{2} \end{bmatrix} \\
+P_{44}[0] &= \Bigl(\frac{\partial\ba}{\partial\dl}\Bigr)^{2}\sigma_{\dl,0}^{2} + \Bigl(\frac{\partial\ba}{\partial c}\Bigr)^{2}\sigma_{c,0}^{2} + P_{a,\mathrm{floor}} \\
+          &= \ap(\gh[0])^{2}\,\sigma_{\dl,0}^{2} + \frac{\sigma_{c,0}^{2}}{\gh[0]^{2}} + P_{a,\mathrm{floor}} \\
+P_{46}[0] &= \frac{\partial\ba}{\partial\dl}\,\sigma_{\dl,0}^{2} = \ap(\gh[0])\,\sigma_{\dl,0}^{2} \\
+P_{45}[0] &= \frac{\partial\ba}{\partial c}\,\sigma_{c,0}^{2} = \frac{\sigma_{c,0}^{2}}{\gh[0]} \\
+          &\qquad(\text{the start value was read from the plane; the wall's } (\dl, c) \text{ move it by } \partial\ba/\partial\theta: \\
+          &\qquad\ \text{position-type container, used once, at } k = 0) \\
+Q_{55} &= Q_{66} = 0 \\[4pt]
+&\text{guard:} \\
+\gh[k] &\ge g_{\min} \quad(\text{numerical floor below the band; the slope has no singularity for } \gh > 0) \\
+1 - \ch[k] &\ge \text{gap floor}, \qquad \text{band } \hh \ge 1.1
+\end{align*}
+
+\begin{align*}
+&\text{pre-registered pass (wall-test protocol, canon deep, 10 seeds, } e_{\ba} = \ba_{\mathrm{true}} - \ah \text{ absolute):} \\
+&\qquad \text{cell descent worst } \le 0.05,\quad \text{hold } |e_{\ba}| \le 0.02 \text{ on plane, cell, sphere;} \\
+&\qquad \text{plane hold within } 0.005 \text{ of version 2;} \\
+&\qquad \dlh \text{ on the cell reaches } +1.1 \text{ within its } \sqrt{P_{66}};\quad \hat c,\ \dlh \text{ honesty } 0.7\text{--}1.4
+\end{align*}
+
+\end{document}

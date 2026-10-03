@@ -1,0 +1,336 @@
+% STATUS: ACTIVE | NOTE ON THE PREDICT LINE OF THE GAIN: EULER STEP, ITS RATCHET,
+%   THE EXACT STEP, AND WHERE THE ESTIMATE ENTERS (2026-09-02)
+%
+%   One line of the filter is the subject:  a_hat[k+1] = a_hat[k] + slope x step.
+%   S1  the constant-b law and its curvature (a'' = -2 b^2 (1-a)^3)
+%   S2  one step of the law: truth vs the Euler step; the difference is
+%       +b^2 (1-a)^3 (step)^2, same sign for either direction of travel (ratchet)
+%   S3  the ratchet summed along the two canonical trajectories (open-loop,
+%       zero-parameter): canon 1 Hz +0.0066 (measured closed-loop zero-noise
+%       +0.0058), Meng cosine descent +0.0001 (measured +0.00003)
+%   S4  the exact step: 1/(1-a) is affine in w with slope b, so the step in
+%       1/(1-a) has no truncation at any order in the step size
+%   S5  where the estimate a_hat enters the predict line, per arm and per step
+%       scheme, and the second-order mean rule E[f(x)] = f(E x) + 1/2 f'' Var x.
+%       The exact step as implemented for the exogenous-slope oracle arm
+%       (b_eff = a'_true(w_d)/(1-a_hat)^2) puts a_hat into a denominator; the
+%       Euler oracle arm has no a_hat in its increment at all. That, and only
+%       that, is the "cost" of the exact step: it exists for the oracle arm,
+%       not for production, where a_hat is in the increment under Euler too.
+%   S6  an exact step for an exogenous slope that contains no a_hat.
+%   Numbers: b = 8/9, Ts = 0.625 ms; canon deep band [1.10, 3.32], Meng
+%   descent 6.667 -> 1.111 in 10 s (cosine) + 2 s hold. Bias numbers quoted as
+%   (a_hat - a_bar), zero-noise, 2026-09-01 (run_arms_seedtruth_pair.m).
+%   Companion: 0902_formC_aptrue_4state.tex (full 4-state derivation of the
+%   oracle arm with the exact step and the second-order mean term S5/S6 there).
+% ======================================================
+% Compile: xelatex 0902_law_step_euler_vs_exact.tex
+% Path:    reference/eq17_analysis/derivation/0902_law_step_euler_vs_exact.tex
+% ======================================================
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{graphicx}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\E}{\mathbb{E}}
+
+\begin{document}
+
+\section{Gain law and its curvature}
+
+(bars denote normalized quantities: lengths by $R$, the gain by
+$a_{\mathrm{nom}} = \Delta t/\gamma_N$, $\ba = a/a_{\mathrm{nom}}$,
+$0 \le \ba \le 1$, far field $1$, contact $0$; $\bw$ is the height in units of $R$;
+$\ba' = d\ba/d\bw$, $\ba'' = d^{2}\ba/d\bw^{2}$;
+hats sit on estimates; $e_{\theta} = \theta - \hat{\theta}$ as in the SSOT,
+but every bias number below is quoted as $\hat{\ba} - \ba$;
+$\E[\cdot]$ is the mean over noise realizations)
+
+\begin{equation*}
+\ba' = b\,(1-\ba)^{2}
+\qquad\text{(the law: the slope is a function of the gain itself, } b \text{ constant)}
+\end{equation*}
+
+\begin{align*}
+\ba'' &= \frac{d\ba'}{d\bw}
+      = \frac{d\ba'}{d\ba}\,\frac{d\ba}{d\bw}
+      = \bigl[-2b\,(1-\ba)\bigr]\bigl[b\,(1-\ba)^{2}\bigr]
+      = -2\,b^{2}\,(1-\ba)^{3} \\
+\ba''' &= \frac{d\ba''}{d\bw}
+      = \bigl[-2b^{2}\cdot 3\,(1-\ba)^{2}\cdot(-1)\bigr]\bigl[b\,(1-\ba)^{2}\bigr]
+      = 6\,b^{3}\,(1-\ba)^{4}
+\end{align*}
+
+($\ba'' < 0$ everywhere: the curve bends downward, steep at the wall and flat
+far away. Values on the published $c_\perp$ curve, $b = 8/9$)
+
+\begin{center}
+\begin{tabular}{lcccc}
+$\bw$ & $\ba$ & $\ba' = b(1-\ba)^{2}$ & $\ba'' = -2b^{2}(1-\ba)^{3}$ & $(1-\ba)^{3}$ \\
+\hline
+$1.10$ (trough) & $0.087$ & $0.740$ & $-1.20$   & $0.760$ \\
+$2.00$          & $0.471$ & $0.249$ & $-0.234$  & $0.148$ \\
+$6.67$ (start)  & $0.833$ & $0.025$ & $-0.0074$ & $0.0047$
+\end{tabular}
+\end{center}
+
+\section{One step of the law: truth versus the Euler step}
+
+(the height moves from $\bw[k]$ to $\bw[k+1]$; the true gain moves along the
+curve; the Euler step moves along the tangent at $\bw[k]$. Both start from the
+same point, $\hat{\ba}[k] = \ba[k]$, so the difference is the truncation of
+this single step)
+
+\begin{align*}
+\ba[k+1] &= \ba[k]
+  + \ba'\bigl(\bw[k]\bigr)\bigl(\bw[k+1]-\bw[k]\bigr)
+  + \tfrac{1}{2}\,\ba''\bigl(\bw[k]\bigr)\bigl(\bw[k+1]-\bw[k]\bigr)^{2} \\
+  &\qquad
+  + \tfrac{1}{6}\,\ba'''\bigl(\bw[k]\bigr)\bigl(\bw[k+1]-\bw[k]\bigr)^{3}
+  + \cdots \\
+\hat{\ba}[k+1] &= \hat{\ba}[k]
+  + b\,\bigl(1-\hat{\ba}[k]\bigr)^{2}\bigl(\bw[k+1]-\bw[k]\bigr)
+\qquad\text{(Euler)}
+\end{align*}
+
+\begin{align*}
+\hat{\ba}[k+1] - \ba[k+1]
+  &= -\tfrac{1}{2}\,\ba''\bigl(\bw[k]\bigr)\bigl(\bw[k+1]-\bw[k]\bigr)^{2}
+     -\tfrac{1}{6}\,\ba'''\bigl(\bw[k]\bigr)\bigl(\bw[k+1]-\bw[k]\bigr)^{3}
+     - \cdots \\
+  &= +\,b^{2}\bigl(1-\ba[k]\bigr)^{3}\bigl(\bw[k+1]-\bw[k]\bigr)^{2}
+     -\,b^{3}\bigl(1-\ba[k]\bigr)^{4}\bigl(\bw[k+1]-\bw[k]\bigr)^{3}
+     + \cdots
+\end{align*}
+
+(the leading term is $+b^{2}(1-\ba)^{3}(\bw[k+1]-\bw[k])^{2}$: positive for a
+step toward the wall, $\bw[k+1]-\bw[k] < 0$, and positive for a step away from
+it, $\bw[k+1]-\bw[k] > 0$, because it is the square of the step. The tangent
+line lies above a downward-bending curve on both sides of the tangent point,
+so the Euler estimate lands above the truth in either direction)
+
+\begin{align*}
+\hat{\ba} - \ba &= b^{2}(1-\ba)^{3}(\bw[k+1]-\bw[k])^{2}
+                 + b^{2}(1-\ba)^{3}(\bw[k+1]-\bw[k])^{2}
+                 + \mathcal{O}\bigl((\bw[k+1]-\bw[k])^{3}\bigr) \\
+                &= 2\,b^{2}(1-\ba)^{3}(\bw[k+1]-\bw[k])^{2}
+\qquad\text{(one step toward the wall, the same step back)}
+\end{align*}
+
+(nothing cancels over a round trip; the error only accumulates. The cubic term
+$-b^{3}(1-\ba)^{4}(\bw[k+1]-\bw[k])^{3}$ changes sign with the direction and
+does cancel over a round trip; the ratchet is the even power)
+
+\section{The ratchet summed along a trajectory (open loop)}
+
+\begin{equation*}
+\hat{\ba}[N] - \ba[N]
+  = \sum_{k=0}^{N-1} b^{2}\bigl(1-\ba_{\mathrm{true}}(\bw_d[k])\bigr)^{3}
+    \bigl(\Delta\bw_d[k]\bigr)^{2}
+\qquad\text{(command path, no noise, no filter feedback)}
+\end{equation*}
+
+(two factors must be large in the same step: $(1-\ba)^{3}$ is large only near
+the wall, $(\Delta\bw_d)^{2}$ only where the command moves fast)
+
+\begin{center}\footnotesize\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccccc}
+trajectory & $\max|\Delta\bw_d|$ & steps $|\Delta\bw_d| > 10^{-3}$
+  & open-loop sum & share $\bw_d < 2$ & measured, zero noise \\
+\hline
+canon 1 Hz in $[1.10,\,3.32]$ & $2.07\times10^{-2}$ & 4278 & $+0.0066$ & $0.58$ & $+0.0058$ \\
+Meng cosine $6.67 \to 1.11$   & $5.45\times10^{-4}$ & 0    & $+0.0001$ & $0.51$ & $+0.00003$
+\end{tabular}
+\end{center}
+
+(canon: the oscillation carries the particle through $\bw < 2$ at full speed
+five times, peak step $2\pi\cdot 1\,\mathrm{Hz}\cdot 1.11\,R\cdot 0.625\,\mathrm{ms}
+= 4.4\times10^{-3}$, where $(1-\ba)^{3} \approx 0.5$. Meng: the cosine profile
+decelerates to zero at the trough, so $(\Delta\bw_d)^{2}$ is small exactly where
+$(1-\ba)^{3}$ is large, and where the command is fast, $(1-\ba)^{3} \approx 0.005$.
+The 12\% gap between the open-loop sum and the measured closed-loop value is the
+$y_1$ update pulling part of the injected error back; it does not change the sign)
+
+\section{The exact step}
+
+\begin{equation*}
+\frac{d}{d\bw}\Bigl[\frac{1}{1-\ba}\Bigr]
+  = \frac{\ba'}{(1-\ba)^{2}}
+  = \frac{b\,(1-\ba)^{2}}{(1-\ba)^{2}}
+  = b
+\qquad\text{(a constant: } 1/(1-\ba) \text{ is a straight line in } \bw\text{)}
+\end{equation*}
+
+\begin{equation*}
+\frac{1}{1-\ba[k+1]} = \frac{1}{1-\ba[k]} + b\,\bigl(\bw[k+1]-\bw[k]\bigr)
+\qquad\text{(exact for any step size, no term is dropped)}
+\end{equation*}
+
+\begin{align*}
+\ba[k+1] &= 1 - \frac{1}{\dfrac{1}{1-\ba[k]} + b\,\bigl(\bw[k+1]-\bw[k]\bigr)} \\
+         &= \ba[k]
+  + \frac{b\,(1-\ba[k])^{2}\,\bigl(\bw[k+1]-\bw[k]\bigr)}
+         {1 + b\,(1-\ba[k])\,\bigl(\bw[k+1]-\bw[k]\bigr)}
+\end{align*}
+
+(expand the exact step in the step size and compare with the Taylor series of
+the truth in Section 2, term by term)
+
+\begin{align*}
+\Delta &:= \bw[k+1]-\bw[k] \\
+\frac{b\,(1-\ba)^{2}\,\Delta}{1 + b\,(1-\ba)\,\Delta}
+  &= b\,(1-\ba)^{2}\,\Delta
+   - b^{2}(1-\ba)^{3}\,\Delta^{2}
+   + b^{3}(1-\ba)^{4}\,\Delta^{3}
+   - \cdots \\
+\ba'\,\Delta + \tfrac{1}{2}\ba''\,\Delta^{2} + \tfrac{1}{6}\ba'''\,\Delta^{3} + \cdots
+  &= b\,(1-\ba)^{2}\,\Delta
+   - b^{2}(1-\ba)^{3}\,\Delta^{2}
+   + b^{3}(1-\ba)^{4}\,\Delta^{3}
+   + \cdots
+\end{align*}
+
+(identical at every order: the exact step is the whole series of the
+constant-$b$ law, so the ratchet of Section 2 is zero at any step size.
+The Euler step is this series cut after the first term. What the exact step
+does not remove is the difference between the law and the truth,
+$b_{\mathrm{true}}(\ba) \ne b$; that is a model error, not a step-size error,
+and it is the same at every step size. Measured: canon zero-noise
+$+0.0058 \to -0.00001$, Meng $+0.00003 \to -0.00008$)
+
+\section{Where the estimate enters the predict line}
+
+(the filter's height increment is
+$\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]$:
+the commanded move plus the part of the estimated disturbance the model expects
+to relax this step. In each arm the predict line is written out in full; the
+question asked of each line is only whether it is linear in the quantities that
+fluctuate across noise realizations, $\hat{\ba}$ and $\delta\hat{\bw}_3$)
+
+\textbf{Oracle arm, slope exogenous at the commanded height, Euler}
+
+\begin{equation*}
+\hat{\ba}[k+1] = \hat{\ba}[k]
+  + \ba'_{\mathrm{true}}\bigl(\bw_d[k]\bigr)
+    \bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr]
+\end{equation*}
+
+($\ba'_{\mathrm{true}}(\bw_d[k])$ is a known number at step $k$;
+$\hat{\ba}[k]$ enters once, to the first power; $\delta\hat{\bw}_3[k]$ enters
+once, to the first power. The line is linear. Its mean is the line evaluated at
+the means, whatever the noise. Measured bias $+0.0001$, Meng, seed at truth)
+
+\textbf{Oracle arm, slope exogenous, exact step as implemented
+($b_{\mathrm{eff}} = \ba'_{\mathrm{true}}(\bw_d[k])/(1-\hat{\ba}[k])^{2}$)}
+
+\begin{align*}
+\frac{1}{1-\hat{\ba}[k+1]}
+  &= \frac{1}{1-\hat{\ba}[k]}
+   + \frac{\ba'_{\mathrm{true}}\bigl(\bw_d[k]\bigr)}{\bigl(1-\hat{\ba}[k]\bigr)^{2}}
+     \bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr] \\
+\hat{\ba}[k+1]
+  &= \hat{\ba}[k]
+   + \frac{\ba'_{\mathrm{true}}\bigl(\bw_d[k]\bigr)
+           \bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr]}
+          {1 + \dfrac{\ba'_{\mathrm{true}}\bigl(\bw_d[k]\bigr)
+           \bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr]}
+          {1-\hat{\ba}[k]}}
+\end{align*}
+
+($\hat{\ba}[k]$ now sits in a denominator and $\delta\hat{\bw}_3[k]$ in a
+ratio: the line is no longer linear in either)
+
+\textbf{Production and the $b_{\mathrm{true}}$ arm, Euler}
+
+\begin{equation*}
+\hat{\ba}[k+1] = \hat{\ba}[k]
+  + b\,\bigl(1-\hat{\ba}[k]\bigr)^{2}
+    \bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr]
+\end{equation*}
+
+(already nonlinear under Euler: $(1-\hat{\ba}[k])^{2}$ multiplies the
+increment. The exact step changes the form of this dependence; it does not
+introduce it)
+
+\textbf{The rule that turns a nonlinear line into a mean shift}
+
+\begin{align*}
+\E[x\,y] &= \E[x]\,\E[y] + \mathrm{Cov}(x,y) \\
+\E\bigl[f(x)\bigr] &= f\bigl(\E[x]\bigr) + \tfrac{1}{2}\,f''\bigl(\E[x]\bigr)\,\mathrm{Var}(x)
+  + \mathcal{O}\bigl(\E[(x-\E x)^{3}]\bigr) \\
+\E\bigl[f(x,y)\bigr] &= f\bigl(\E x,\E y\bigr)
+  + \tfrac{1}{2}\,\frac{\partial^{2}f}{\partial x^{2}}\,\mathrm{Var}(x)
+  + \frac{\partial^{2}f}{\partial x\,\partial y}\,\mathrm{Cov}(x,y)
+  + \tfrac{1}{2}\,\frac{\partial^{2}f}{\partial y^{2}}\,\mathrm{Var}(y)
+  + \cdots
+\end{align*}
+
+(for the exact-step oracle line, $x = \hat{\ba}[k]$, $y = \delta\hat{\bw}_3[k]$;
+the three second derivatives are those of the Jacobians section of
+0902\_formC\_aptrue\_4state.tex, quoted here at
+$\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k] \to 0$)
+
+\begin{align*}
+\frac{\partial^{2}\hat{\ba}[k+1]}{\partial\hat{\ba}[k]^{2}}
+  &= -\frac{2\,\ba'_{\mathrm{true}}\bigl(\bw_d[k]\bigr)^{2}
+        \bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr]^{2}}
+       {\bigl(1-\hat{\ba}[k]\bigr)^{3}} \\
+\frac{\partial^{2}\hat{\ba}[k+1]}{\partial\hat{\ba}[k]\,\partial\delta\hat{\bw}_3[k]}
+  &= -\frac{2\,(1-\lambda_c)\,\ba'_{\mathrm{true}}\bigl(\bw_d[k]\bigr)^{2}
+        \bigl[\Delta\bw_d[k] + (1-\lambda_c)\,\delta\hat{\bw}_3[k]\bigr]}
+       {\bigl(1-\hat{\ba}[k]\bigr)^{2}} \\
+\frac{\partial^{2}\hat{\ba}[k+1]}{\partial\delta\hat{\bw}_3[k]^{2}}
+  &= -\frac{2\,(1-\lambda_c)^{2}\,\ba'_{\mathrm{true}}\bigl(\bw_d[k]\bigr)^{2}}
+       {1-\hat{\ba}[k]}
+\end{align*}
+
+(all three vanish when the noise is zero, because
+$\mathrm{Var}(\hat{\ba})$, $\mathrm{Cov}(\hat{\ba},\delta\hat{\bw}_3)$ and
+$\mathrm{Var}(\delta\hat{\bw}_3)$ do; all three scale with the noise power.
+This is the whole content of the "cost" of the exact step: the oracle arm,
+which under Euler had a linear predict line and no mean shift, acquires these
+three terms. Measured on that arm, exact step, seed at truth, 30 seeds:
+Meng hold $-0.0037$, canon hold $-0.0022$, amplitude scaling $k^{1.74}$
+for $k \in \{0.5, 1, 2\}$; zero noise $-0.00008$ / $-0.00001$.
+Which of the three terms carries it, and how the $y_1$ update transforms the
+injection into the measured value, is the accounting of Sections
+Error dynamics and the probe of 0902\_formC\_aptrue\_4state.tex, not of this note)
+
+\section{An exact step for an exogenous slope that contains no estimate}
+
+(when the slope is a known function of the commanded height, the exact
+integral over the step is the difference of the known curve at the two
+commanded heights; no $\hat{\ba}$ is needed anywhere in the increment)
+
+\begin{align*}
+\hat{\ba}[k+1] &= \hat{\ba}[k]
+  + \Bigl[\ba_{\mathrm{true}}\bigl(\bw_d[k+1]\bigr) - \ba_{\mathrm{true}}\bigl(\bw_d[k]\bigr)\Bigr]
+  + \ba'_{\mathrm{true}}\bigl(\bw_d[k]\bigr)\,(1-\lambda_c)\,\delta\hat{\bw}_3[k] \\
+\ba_{\mathrm{true}}\bigl(\bw_d[k+1]\bigr) - \ba_{\mathrm{true}}\bigl(\bw_d[k]\bigr)
+  &= \ba'_{\mathrm{true}}\bigl(\bw_d[k]\bigr)\,\Delta\bw_d[k]
+   + \tfrac{1}{2}\,\ba''_{\mathrm{true}}\bigl(\bw_d[k]\bigr)\bigl(\Delta\bw_d[k]\bigr)^{2}
+   + \cdots
+\end{align*}
+
+(the commanded part of the increment is integrated exactly along the published
+curve, so the ratchet of Section 2 is gone; the disturbance part stays first
+order in $\delta\hat{\bw}_3$, which is of order $3\times10^{-4}\,R$; the
+line is linear in $\hat{\ba}[k]$ and in $\delta\hat{\bw}_3[k]$, so the mean
+rule of Section 5 adds nothing. This is the form under which the oracle arm is
+both exact and free of a mean shift, and separates the two effects that the
+implemented $b_{\mathrm{eff}}$ form mixes: it is not available to production,
+whose slope is $b(1-\hat{\ba})^{2}$ by construction)
+
+\end{document}
