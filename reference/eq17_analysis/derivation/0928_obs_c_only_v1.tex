@@ -1,0 +1,229 @@
+% STATUS: ACTIVE -- c-only slope law (p = 2): the observability matrix, what it shows, solving it (average of c_eff), Kalman filter.
+% ======================================================
+% Compile: xelatex 0928_obs_c_only_v1.tex   (from reference/eq17_analysis/derivation/)
+% Format: 0927_obs_first_order_v1.tex (Layer-1 session), one state added: c.
+% Notation: the slope-law SSOT 0921_estb_v2_slope_c.tex (all normalized: w-bar = w/R, a-bar = a/a_nom, f-bar = a_o f);
+%   code motion_control_law_formC_b.m, law 'f1p2' (slot 5 = c, p pinned to 2).
+% Teacher chain (0921_5state_noap_simple.tex, 0927_obs_first_order_v1.tex) <-> here:
+%   x = R w-bar, delta x_i = R delta w-bar_i, a_x = a_nom a-bar_w, F_dx = F_dw / a_o, Delta x_d = R Delta w-bar_d, n_x = R n_w.
+% Sections: 1 model | 2 the matrix | 3 what it shows | (4 solving: average of c_eff | 5 Kalman filter -- to follow)
+% Equations only (derivation-workflow rule 10).
+% ======================================================
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+\setlength{\abovedisplayskip}{6pt}
+\setlength{\belowdisplayskip}{6pt}
+\setlength{\abovedisplayshortskip}{6pt}
+\setlength{\belowdisplayshortskip}{6pt}
+\newcommand{\lc}{\lambda_c}
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\dW}{\Delta\bw}
+\newcommand{\ap}{\ba'}
+\newcommand{\ah}{\hat{\ba}_w}
+\newcommand{\wh}{\hat{\bw}}
+\newcommand{\hh}{\hat{h}}
+\newcommand{\ch}{\hat{c}}
+\newcommand{\hd}[1]{\par\bigskip\noindent\underline{\textbf{#1}}}
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{center}\textbf{\large c-only slope law: observability matrix}\end{center}
+
+%======================================================================
+\section{Model}
+
+\hd{Gain law (slope only)}
+\[
+\bw = \frac{w}{R}, \qquad \bw_s = \text{visible surface}, \qquad h = \bw - \bw_s, \qquad
+\wh[k] = \bw_d[k] - \delta\wh_3[k], \qquad \hh[k] = \wh[k] - \bw_s
+\]
+\[
+\ap(\hh;\,c) = \frac{1 - c}{\hh^{2}}, \qquad
+\frac{\partial\ap}{\partial c} = -\frac{1}{\hh^{2}}, \qquad
+\frac{\partial\ap}{\partial\hh} = -\frac{2\,\ap}{\hh}
+\]
+
+\hd{State equation ($M$ = the step the estimator believes the particle makes)}
+\[
+\begin{aligned}
+\delta\bw_1[k+1] &= \delta\bw_2[k] \\
+\delta\bw_2[k+1] &= \delta\bw_3[k] \\
+\delta\bw_3[k+1] &= \lc \cdot \delta\bw_3[k] - F_{dw}[k]\cdot e_{\ba_w}[k] - \varepsilon_w[k] \\
+\ba_w[k+1] &= \ba_w[k] + \ap\big(\hh[k];\,c\big)\,M[k] \\
+c[k+1] &= c[k]
+\end{aligned}
+\qquad
+M[k] = \dW_d[k] + (1-\lc)\,\delta\wh_3[k]
+\]
+\[
+F_{dw}[k] \approx \big(1 + (1-\lc)d\big)\,\dfrac{\dW_d[k]}{\ah[k]} \qquad (\text{constant velocity})
+\]
+
+\hd{Output equation ($\nabla_d\bw_d[k] = \bw_d[k] - \bw_d[k-d]$: the reading is the gain $d$ steps ago)}
+\[
+\begin{aligned}
+y_1[k] &= \delta\bw_1[k] + n_w[k], & R_1 &= \mathrm{Var}(n_w) \\
+y_2[k] &= \ba_w[k-d] + n_a[k], & R_2 &= \mathrm{Var}(n_a), \qquad
+\hat y_2[k] = \ah[k] - \ap\big(\hh[k];\,\ch[k]\big)\,\nabla_d\bw_d[k]
+\end{aligned}
+\]
+
+\hd{Estimation error and output error}
+\[
+\mathbf{e}[k] = \begin{bmatrix} e_{\delta\bw_1}[k] \\ e_{\delta\bw_2}[k] \\ e_{\delta\bw_3}[k] \\ e_{\ba_w}[k] \\ e_c[k] \end{bmatrix}
+= \begin{bmatrix} \delta\bw_1 - \delta\wh_1 \\ \delta\bw_2 - \delta\wh_2 \\ \delta\bw_3 - \delta\wh_3 \\ \ba_w - \ah \\ c - \ch \end{bmatrix},
+\qquad
+\begin{aligned}
+e_{y_1}[k] &= y_1[k] - \delta\wh_1[k] \\
+e_{y_2}[k] &= y_2[k] - \hat y_2[k]
+\end{aligned}
+\]
+
+\hd{Error propagation (no noise, coefficients at the estimate)}
+\[
+\mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k], \qquad
+\mathbf{e}[k_0+j] = \bm{\Phi}(k_0+j,k_0)\,\mathbf{e}[k_0], \quad \bm{\Phi}(k_0+j,k_0) = \mathbf{F}_e[k_0+j-1]\cdots\mathbf{F}_e[k_0]
+\]
+\[
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lc & -F_{dw}[k] & 0 \\
+0 & 0 & \;\ap(1-\lc) + \dfrac{2\ap M[k]}{\hh[k]}\; & 1 + \ap F_{dw}[k] & -\dfrac{M[k]}{\hh[k]^{2}} \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\]
+\[
+\begin{bmatrix} e_{y_1}[k] \\ e_{y_2}[k] \end{bmatrix} = \mathbf{H}[k]\,\mathbf{e}[k], \qquad
+\mathbf{H}[k] =
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\
+0 & 0 & -\dfrac{2\ap\,\nabla_d\bw_d[k]}{\hh[k]} & 1 & \dfrac{\nabla_d\bw_d[k]}{\hh[k]^{2}}
+\end{bmatrix}
+\]
+
+%======================================================================
+\clearpage
+\section{Observability matrix}
+
+\hd{Leading order used from here on: first order in $\ap F_{dw}$ and in $\ap\nabla_d\bw_d/\hh$}
+\[
+\beta_k := \frac{M[k]}{\hh[k]^{2}}, \qquad
+\gamma_k := \frac{\nabla_d\bw_d[k]}{\hh[k]^{2}}, \qquad
+\mathbf{F}_e[k] \to
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lc & -F_{dw}[k] & 0 \\
+0 & 0 & 0 & 1 & -\beta_k \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}, \qquad
+\mathbf{H}[k] \to
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 & \gamma_k
+\end{bmatrix}
+\]
+\[
+\begin{aligned}
+\text{dropped:}\quad & F_{e,44} - 1 = \ap F_{dw}, \qquad F_{e,43} = \ap(1-\lc) + \frac{2\ap M}{\hh}, \qquad H_{23} = -\frac{2\ap\,\nabla_d\bw_d}{\hh} \\
+\text{steady state of the } e_{\delta\bw_3} \text{ loop:}\quad & (F_{e,44} - 1) + F_{e,43}\Big(-\frac{F_{dw}}{1-\lc}\Big) = -\frac{2\ap M F_{dw}}{\hh\,(1-\lc)}
+\end{aligned}
+\]
+
+\hd{Errors at step $k_0$, output errors $j$ steps later}
+\[
+\begin{bmatrix} e_{y_1}[k_0+j] \\ e_{y_2}[k_0+j] \end{bmatrix}
+= \mathbf{H}[k_0+j]\,\bm{\Phi}(k_0+j,k_0)\,\mathbf{e}[k_0],
+\qquad \beta_i := \beta_{k_0+i}, \;\; \gamma_j := \gamma_{k_0+j}, \;\; F_i := F_{dw}[k_0+i]
+\]
+
+\hd{The matrix}
+{\small
+\[
+\begin{bmatrix} e_{y_1}[k_0] \\ e_{y_2}[k_0] \\[0.3ex] e_{y_1}[k_0+1] \\ e_{y_2}[k_0+1] \\[0.3ex] e_{y_1}[k_0+2] \\ e_{y_2}[k_0+2] \\[0.3ex] e_{y_1}[k_0+3] \\ e_{y_2}[k_0+3] \\[0.3ex] e_{y_1}[k_0+4] \\ e_{y_2}[k_0+4] \\ \vdots \\ e_{y_1}[k_0+j] \\ e_{y_2}[k_0+j] \end{bmatrix}
+=
+\underbrace{\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 & \gamma_0 \\[0.3ex]
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 & -\beta_0 + \gamma_1 \\[0.3ex]
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & 0 & 1 & -(\beta_0 + \beta_1) + \gamma_2 \\[0.3ex]
+0 & 0 & \lc & -F_0 & 0 \\
+0 & 0 & 0 & 1 & -(\beta_0 + \beta_1 + \beta_2) + \gamma_3 \\[0.3ex]
+0 & 0 & \lc^2 & -\lc F_0 - F_1 & F_1\,\beta_0 \\
+0 & 0 & 0 & 1 & -(\beta_0 + \beta_1 + \beta_2 + \beta_3) + \gamma_4 \\
+\vdots & \vdots & \vdots & \vdots & \vdots \\
+0 & 0 & \lc^{\,j-2} & -\textstyle\sum_{i=0}^{j-3}\lc^{\,j-3-i}F_i & \textstyle\sum_{i=0}^{j-3}\lc^{\,j-3-i}F_i \sum_{l=0}^{i-1}\beta_l \\
+0 & 0 & 0 & 1 & -\textstyle\sum_{i=0}^{j-1}\beta_i + \gamma_j
+\end{bmatrix}}_{\mathbf{O}(k_0)}
+\begin{bmatrix} e_{\delta\bw_1}[k_0] \\ e_{\delta\bw_2}[k_0] \\ e_{\delta\bw_3}[k_0] \\ e_{\ba_w}[k_0] \\ e_c[k_0] \end{bmatrix}
+\]
+}
+
+\hd{The five columns ($F_{dw}$, $\beta$, $\gamma$ constant)}
+{\small
+\[
+\begin{array}{c|l|l}
+ & y_1 \text{ rows } (j = 0, 1, 2, \dots) & y_2 \text{ rows } (j = 0, 1, 2, \dots) \\ \hline
+e_{\delta\bw_1} & 1,\; 0,\; 0,\; 0,\; \dots & 0,\; 0,\; 0,\; \dots \\
+e_{\delta\bw_2} & 0,\; 1,\; 0,\; 0,\; \dots & 0,\; 0,\; 0,\; \dots \\
+e_{\delta\bw_3} & 0,\; 0,\; 1,\; \lc,\; \lc^2,\; \dots \to 0 & 0,\; 0,\; 0,\; \dots \\
+e_{\ba_w} & 0,\; 0,\; 0,\; -F_{dw},\; -F_{dw}(1+\lc),\; \dots \to -\dfrac{F_{dw}}{1-\lc} & 1,\; 1,\; 1,\; \dots \\[1.2ex]
+e_c & 0,\; 0,\; 0,\; 0,\; F_{dw}\beta,\; F_{dw}\beta(2+\lc),\; \dots \approx \dfrac{F_{dw}}{1-\lc}(j-3)\beta & \gamma,\; -\beta+\gamma,\; -2\beta+\gamma,\; \dots,\; -j\beta+\gamma
+\end{array}
+\]
+}
+
+%======================================================================
+\clearpage
+\section{What the matrix shows}
+
+\hd{$e_{\ba_w}$ and $e_c$ in the $y_2$ rows}
+\[
+e_{\ba_w}:\;\; 1,\; 1,\; 1,\; \dots \qquad\qquad
+e_c:\;\; s_0,\; s_1,\; s_2,\; \dots, \qquad s_j := -\sum_{i=0}^{j-1}\beta_i + \gamma_j
+\]
+\[
+\det\begin{bmatrix} 1 & s_j \\ 1 & s_{j+1} \end{bmatrix} = s_{j+1} - s_j = -\beta_j
+\]
+\[
+\bar s = \frac{\sum_j w_j\, s_j}{\sum_j w_j}, \qquad
+\sum_j w_j\,(s_j - \bar s)^2, \qquad
+w_j = \frac{1}{R_2} + \frac{1}{R_1}\Big(\frac{F_{dw}}{1-\lc}\Big)^{2}
+\]
+
+\hd{Hold}
+\[
+\dW_d = 0:\qquad \gamma_j = 0, \qquad M = (1-\lc)\,\delta\wh_3, \qquad
+s_j = -\sum_{i<j}\beta_i \approx 0, \qquad s_j - \bar s \approx 0
+\]
+
+\hd{Height}
+\[
+\beta = \frac{M}{\hh^{2}}, \qquad \hh = 22.2 \to 1.1:\;\; \frac{1}{\hh^{2}} = 0.002 \to 0.83
+\]
+
+\hd{Constant velocity, $\dW_d = (h_0 - h_b)\,T_s/T_d$}
+\[
+\sum_{i=0}^{j-1}\beta_i \approx -\int_{\hh_0}^{\hh_j}\frac{dh}{h^{2}} = -\Big(\frac{1}{\hh_j} - \frac{1}{\hh_0}\Big), \qquad
+s_j \approx \frac{1}{\hh_j} - \frac{1}{\hh_0}:\quad 22.2 \to 3\,R:\; 0.29, \qquad 22.2 \to 1.1\,R:\; 0.86
+\]
+\[
+\gamma_j = \frac{d\,\dW_d}{\hh_j^{2}} \;\propto\; \frac{1}{T_d}, \qquad
+\frac{F_{dw}}{1-\lc} \;\propto\; \frac{1}{T_d\,\ah}
+\]
+
+\end{document}

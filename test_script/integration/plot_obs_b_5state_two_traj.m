@@ -11,10 +11,9 @@ function out = plot_obs_b_5state_two_traj(seed, win)
 %   worst-determined direction, and G = O_w' O_w, so CRLB_j = sqrt([G^-1]_jj) needs no new object.
 %   Rows: (1) w_bar_d  (2) sigma_min/sigma_max, the structural check (a value like 1e-6 = the weakest direction is
 %   an alias; it has NO threshold for grading -- measured on canon, windows that win and windows that lose overlap
-%   between 1.2e-2 and 1.5e-2)  (3) b's error bar from that window alone, 1/sigma_min, against sqrt(P55[0]). Below the red
-%   line = the data is sharper than the seed. Reading 1/sigma_min as b's own error bar is valid only while the
-%   weakest combination IS b: |V_55| goes to the console (>= 0.97 on both trajectories). House style =
-%   plot_ladder_tw_abs.m.
+%   between 1.2e-2 and 1.5e-2). 2026-09-10: the third row (b's error bar from one window, 1/sigma_min, against
+%   sqrt(P55[0])) was removed from the figure at the user's request; the same numbers (CRLB_b, CRLB_b/prior and
+%   |V_55|, >= 0.97 on both trajectories) still go to the console. House style = plot_ladder_tw_abs.m.
 %   The 5-state core drops production's correlated-noise column and MA(2) slots, so shapes carry over, absolute
 %   numbers do not: grade b on the production dump (verify_obs_b_of_w.m).
 %   Output test_results/apd_acov_meng/obs_b_5state_two_traj.png
@@ -30,8 +29,8 @@ function out = plot_obs_b_5state_two_traj(seed, win)
     COL_TRUE = [0.8 0 0]; COL_HAT = [0 0.2 0.9];            % house colours (plot_ladder_tw_abs.m)
     FS = 15; LFS = 11; AXLW = 1.8; K_INIT = 4;              % log rows 1..3 are the init call
     COL_SEED = [0.55 0.74 0.96];
-    fig = figure('Units','inches','Position',[0 0 10 12.6], 'Color','w', 'Visible','off');
-    tiledlayout(3, 2, 'TileSpacing','compact', 'Padding','compact');
+    fig = figure('Units','inches','Position',[0 0 10 8.6], 'Color','w', 'Visible','off');
+    tiledlayout(2, 2, 'TileSpacing','compact', 'Padding','compact');
     out = struct();
     for c = 1:2
         [S, cfg, SEG] = local_run(TR{c}, seed, root);
@@ -78,23 +77,8 @@ function out = plot_obs_b_5state_two_traj(seed, win)
                'FontSize',LFS,'FontWeight','bold','Box','on');
         if c == 1; ylabel('\sigma_{min} / \sigma_{max}   [-]', 'FontSize', FS, 'FontWeight','bold'); end
         set(gca,'FontSize',FS,'FontWeight','bold','LineWidth',AXLW,'Box','on'); grid off; xlim([0 t(end)]);
-        ax3 = nexttile(4 + c); hold on;
-        h1 = semilogy(tw, cb, '-o', 'Color', COL_HAT, 'LineWidth', 1.8, 'MarkerSize', 5, 'MarkerFaceColor', COL_HAT);
-        set(gca, 'YScale', 'log');
-        h0 = yline(prior_b, '--', 'Color', COL_TRUE, 'LineWidth', 1.4);
-        hh = [h1 h0];  ll = {'1/\sigma_{min}', '\surd P_{55}[0]'};
-        bad = rk < 5;
-        if any(bad)
-            h2 = plot(tw(bad), 1e3*ones(nnz(bad),1), 'x', 'Color', COL_TRUE, 'MarkerSize', 10, 'LineWidth', 1.6);
-            hh = [hh h2]; ll = [ll, {'rank < 5'}];
-        end
-        ylim([1e-3 1e3]); set(gca, 'YTick', [1e-3 1e-2 1e-1 1 1e1 1e2 1e3]);
-        for i = 1:numel(tb); plot([tb(i) tb(i)], [1e-3 1e3], '--', 'Color', [0.5 0.5 0.5], 'LineWidth', 1.0, 'HandleVisibility','off'); end
-        legend(hh, ll, 'Location','northoutside','Orientation','horizontal','FontSize',LFS,'FontWeight','bold','Box','on');
-        if c == 1; ylabel('b uncertainty   [-]', 'FontSize', FS, 'FontWeight','bold'); end
-        set(gca,'FontSize',FS,'FontWeight','bold','LineWidth',AXLW,'Box','on'); grid off; xlim([0 t(end)]);
         xlabel(sprintf('time [s]   window start k_0, N = %d steps', win), 'FontSize', FS, 'FontWeight','bold');
-        linkaxes([ax1 ax2 ax3], 'x');
+        linkaxes([ax1 ax2], 'x');
         fprintf('\n[%s] seed %d | window %d steps = %.2f s | b_hat %.4f -> %.4f | sqrt(P55[0]) %.4f | 1/sqrt(P55[0]) %.1f\n', ...
                 TR{c}, seed, win, win*Ts, bh(K_INIT), bh(end), prior_b, 1/prior_b);
         fprintf('   %6s %-9s %5s %11s %11s %10s %11s %11s\n', 't0','segment','rank','sigma_max','sigma_min','|v_min,5|','CRLB_b','CRLB_b/prior');

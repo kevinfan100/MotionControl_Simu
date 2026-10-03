@@ -1,0 +1,209 @@
+% STATUS: SUPERSEDED-BY 0928_obs_c_only_v1.tex (2026-09-28: the c-only line is written in the v1 format) -- was: observability matrix and Kalman filter from the start, one page per concept, written rolling with the user
+%   (2026-09-27). Equations only; the explanation lives in the conversation. Notation: teacher chain (0921_5state_noap_simple.tex)
+%   with delta a removed = first-order 4-state gain model, the same base as 0927_kf_obs_stepwise.tex (Layer-1 session).
+% Compile: xelatex 0927_obs_kf_minimal.tex   (from reference/eq17_analysis/derivation/)
+% Pages: 1 the observability matrix | 2 the a_x column in y_1 and y_2 | 3 c-only: model and the c column (symbols in 0921_estb_v2_slope_c.tex:
+%        x = w-bar, F_dx = F_dw, h-hat = estimator gap, M = step the estimator believes, nabla_d x_d = walk-back displacement)
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.3em}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\newcommand{\lc}{\lambda_c}
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{center}\textbf{\large Observability matrix and Kalman filter, from the start (first-order gain model)}\end{center}
+
+\section{The observability matrix}
+
+\textbf{1.1}
+\[
+\mathbf{x} = \begin{bmatrix}\delta x_1\\ \delta x_2\\ \delta x_3\\ a_x\end{bmatrix}, \qquad
+\mathbf{e} = \mathbf{x} - \hat{\mathbf{x}} = \begin{bmatrix} e_{\delta x_1}\\ e_{\delta x_2}\\ e_{\delta x_3}\\ e_{a_x}\end{bmatrix}, \qquad
+\mathbf{y} - \hat{\mathbf{y}} = \mathbf{H}\,\mathbf{e} + \mathbf{n}, \qquad
+\mathbf{H} = \begin{bmatrix} \mathbf{H}_1 \\ \mathbf{H}_2 \end{bmatrix} = \begin{bmatrix} 1 & 0 & 0 & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix}
+\]
+
+\textbf{1.2}
+\[
+\mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k], \qquad
+\mathbf{F}_e[k] = \begin{bmatrix} 0 & 1 & 0 & 0 \\ 0 & 0 & 1 & 0 \\ 0 & 0 & \lc & -F_{dx}[k] \\ 0 & 0 & 0 & 1 \end{bmatrix}, \qquad
+\mathbf{e}[k_0 + j] = \bm{\Phi}(k_0 + j, k_0)\,\mathbf{e}[k_0]
+\]
+\[
+\bm{\Phi}(k_0 + j, k_0) = \mathbf{F}_e[k_0+j-1]\cdots\mathbf{F}_e[k_0], \qquad \bm{\Phi}(k_0, k_0) = \mathbf{I}
+\]
+
+\textbf{1.3}
+\[
+\begin{bmatrix} \mathbf{y}[k_0] - \hat{\mathbf{y}}[k_0] \\ \mathbf{y}[k_0+1] - \hat{\mathbf{y}}[k_0+1] \\ \vdots \\ \mathbf{y}[k_0+N] - \hat{\mathbf{y}}[k_0+N] \end{bmatrix}
+=
+\underbrace{\begin{bmatrix} \mathbf{H} \\ \mathbf{H}\,\bm{\Phi}(k_0+1,k_0) \\ \vdots \\ \mathbf{H}\,\bm{\Phi}(k_0+N,k_0) \end{bmatrix}}_{\mathbf{O}(k_0)}
+\mathbf{e}[k_0] + \mathbf{n}
+\]
+
+\textbf{1.4}
+\[
+\mathbf{O}\,\mathbf{e}[k_0] = \mathbf{o}_{\delta x_1}\, e_{\delta x_1}[k_0] + \mathbf{o}_{\delta x_2}\, e_{\delta x_2}[k_0] + \mathbf{o}_{\delta x_3}\, e_{\delta x_3}[k_0] + \mathbf{o}_{a_x}\, e_{a_x}[k_0],
+\qquad \mathbf{o}_j = \mathbf{O}\,\hat{\mathbf{e}}_j
+\]
+
+\textbf{1.5}
+\[
+\mathbf{O}\,\mathbf{e} = \mathbf{O}\,\mathbf{e}' \;\Rightarrow\; \mathbf{e} = \mathbf{e}' \quad\Leftrightarrow\quad \operatorname{rank}\mathbf{O} = 4,
+\qquad\qquad
+\text{weight of column } j:\;\; \mathbf{o}_j^{\top}\mathbf{R}^{-1}\mathbf{o}_j \quad (\text{page } 3)
+\]
+
+\clearpage
+\section{The $a_x$ column in $y_1$ and $y_2$}
+
+\textbf{2.1}\quad $\mathbf{e}[k_0] = [\,0\;\;0\;\;0\;\;1\,]^{\top}$
+\[
+\begin{aligned}
+\mathbf{e}[k_0]   &= [\,0,\;\; 0,\;\; 0,\;\; 1\,]^{\top} \\
+\mathbf{e}[k_0+1] &= [\,0,\;\; 0,\;\; -F_{dx}[k_0],\;\; 1\,]^{\top} \\
+\mathbf{e}[k_0+2] &= [\,0,\;\; -F_{dx}[k_0],\;\; -\lc F_{dx}[k_0] - F_{dx}[k_0+1],\;\; 1\,]^{\top} \\
+\mathbf{e}[k_0+3] &= [\,-F_{dx}[k_0],\;\; -\lc F_{dx}[k_0] - F_{dx}[k_0+1],\;\; -\lc^2 F_{dx}[k_0] - \lc F_{dx}[k_0+1] - F_{dx}[k_0+2],\;\; 1\,]^{\top}
+\end{aligned}
+\]
+
+\textbf{2.2}
+\[
+\begin{aligned}
+e_{a_x}[k_0+j] &= 1 \\
+e_{\delta x_3}[k_0+j] &= -\sum_{i=0}^{j-1} \lc^{\,j-1-i}\,F_{dx}[k_0+i] \\
+e_{\delta x_2}[k_0+j] &= e_{\delta x_3}[k_0+j-1], \qquad e_{\delta x_1}[k_0+j] = e_{\delta x_3}[k_0+j-2]
+\end{aligned}
+\]
+
+\textbf{2.3}\quad $\mathbf{o}_{a_x}$, row by row
+\[
+\begin{aligned}
+y_2[k_0+j] - \hat y_2[k_0+j] &= \mathbf{H}_2\,\mathbf{e}[k_0+j] = 1 & &(j \ge 0) \\
+y_1[k_0+j] - \hat y_1[k_0+j] &= \mathbf{H}_1\,\mathbf{e}[k_0+j] = 0 & &(j = 0, 1, 2) \\
+&= -\sum_{i=0}^{j-3} \lc^{\,j-3-i}\,F_{dx}[k_0+i] & &(j \ge 3)
+\end{aligned}
+\]
+
+\textbf{2.4}\quad $F_{dx}$ constant
+\[
+y_1[k_0+j] - \hat y_1[k_0+j] = -F_{dx}\,\frac{1 - \lc^{\,j-2}}{1 - \lc} \;\xrightarrow{\;j \to \infty\;}\; -\frac{F_{dx}}{1 - \lc},
+\qquad
+F_{dx} = \big(1 + (1-\lc)\,d\big)\,\frac{\Delta x_d}{\hat a_x}, \qquad \Delta x_d = v\,T_s
+\]
+
+\textbf{2.5}\quad the first rows of $\mathbf{O}$ ($F_{dx}$ constant)
+\[
+\mathbf{O} =
+\begin{array}{c|cccc}
+ & e_{\delta x_1} & e_{\delta x_2} & e_{\delta x_3} & e_{a_x} \\ \hline
+y_1[k_0]   & 1 & 0 & 0 & 0 \\
+y_2[k_0]   & 0 & 0 & 0 & 1 \\
+y_1[k_0+1] & 0 & 1 & 0 & 0 \\
+y_2[k_0+1] & 0 & 0 & 0 & 1 \\
+y_1[k_0+2] & 0 & 0 & 1 & 0 \\
+y_2[k_0+2] & 0 & 0 & 0 & 1 \\
+y_1[k_0+3] & 0 & 0 & \lc & -F_{dx} \\
+y_2[k_0+3] & 0 & 0 & 0 & 1 \\
+y_1[k_0+4] & 0 & 0 & \lc^2 & -F_{dx}(1+\lc) \\
+y_2[k_0+4] & 0 & 0 & 0 & 1 \\
+\vdots & & & & \vdots
+\end{array}
+\]
+
+\textbf{2.6}\quad hold ($\Delta x_d = 0 \Rightarrow F_{dx} = 0$)
+\[
+\mathbf{o}_{a_x} = [\,0,\;1,\;0,\;1,\;0,\;1,\;\dots\,]^{\top} \qquad (y_1 \text{ rows } 0,\; y_2 \text{ rows } 1)
+\]
+
+
+\clearpage
+\section{c-only: the model and the $c$ column}
+\small
+
+\textbf{3.1}\quad $\hat h[k] = x_d[k] - \delta\hat x_3[k] - x_s$, \quad $M[k] = \Delta x_d[k] + (1-\lc)\,\delta\hat x_3[k]$, \quad $\nabla_d x_d[k] = x_d[k] - x_d[k-d]$
+\[
+\begin{aligned}
+a'(\hat h;\,c) &= \frac{1-c}{\hat h^{2}}, \qquad
+\frac{\partial a'}{\partial c} = -\frac{1}{\hat h^{2}}, \qquad
+\frac{\partial a'}{\partial \hat h} = -\frac{2a'}{\hat h} \\
+\hat a_x[k+1] &= \hat a_x[k] + a'\big(\hat h[k];\,\hat c[k]\big)\,M[k], \qquad \hat c[k+1] = \hat c[k] \\
+y_1[k] &= \delta x_1[k] + n_x[k], \qquad
+y_2[k] = a_x[k-d] + n_a[k], \qquad
+\hat y_2[k] = \hat a_x[k] - a'[k]\,\nabla_d x_d[k]
+\end{aligned}
+\]
+
+\textbf{3.2}\quad $\mathbf{e} = [\,e_{\delta x_1}\;\; e_{\delta x_2}\;\; e_{\delta x_3}\;\; e_{a_x}\;\; e_c\,]^{\top}$;\quad
+$\alpha := 1 + a' F_{dx}$, \; $\beta := \dfrac{M}{\hat h^{2}}$, \; $\gamma := \dfrac{\nabla_d x_d}{\hat h^{2}}$, \;
+$\eta := a'(1-\lc) + \dfrac{2a'M}{\hat h}$, \; $\mu := \dfrac{2a'\,\nabla_d x_d}{\hat h}$, \; $q := F_{dx}$
+\[
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lc & -q & 0 \\
+0 & 0 & \eta & \alpha & -\beta \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}, \qquad
+\mathbf{H}[k] =
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\
+0 & 0 & -\mu & 1 & \gamma
+\end{bmatrix}
+\]
+
+\textbf{3.3}\quad $\mathbf{e}[k_0] = [\,0\;\;0\;\;0\;\;0\;\;1\,]^{\top}$, coefficients frozen
+\[
+\begin{aligned}
+\mathbf{e}[k_0]   &= [\,0,\;\; 0,\;\; 0,\;\; 0,\;\; 1\,]^{\top} \\
+\mathbf{e}[k_0+1] &= [\,0,\;\; 0,\;\; 0,\;\; -\beta,\;\; 1\,]^{\top} \\
+\mathbf{e}[k_0+2] &= [\,0,\;\; 0,\;\; q\beta,\;\; -\beta(1+\alpha),\;\; 1\,]^{\top} \\
+\mathbf{e}[k_0+3] &= [\,0,\;\; q\beta,\;\; q\beta(\lc + 1 + \alpha),\;\; -\beta(1+\alpha+\alpha^{2}) + \eta q\beta,\;\; 1\,]^{\top} \\
+\end{aligned}
+\]
+\[
+\begin{aligned}
+y_2 = \mathbf{H}_2\mathbf{e}:&\quad \gamma,\;\; -\beta+\gamma,\;\; -\beta(1+\alpha) - \mu q\beta + \gamma, \\
+&\quad -\beta(1+\alpha+\alpha^{2}) + \eta q\beta - \mu q\beta(\lc+1+\alpha) + \gamma,\;\; \dots \\
+y_1 = \mathbf{H}_1\mathbf{e}:&\quad 0,\;\; 0,\;\; 0,\;\; 0,\;\; q\beta,\;\; q\beta(\lc+1+\alpha),\;\; \dots
+\end{aligned}
+\]
+
+\textbf{3.4}\quad leading order: $\alpha \to 1$, $\eta \to 0$, $\mu \to 0$ (coefficients per step $\beta_i, \gamma_i, q_i$)
+\[
+\begin{aligned}
+e_{a_x}[k_0+j] &= -\sum_{i=0}^{j-1} \beta_i \\
+y_2[k_0+j] - \hat y_2[k_0+j] &= -\sum_{i=0}^{j-1} \beta_i \;+\; \gamma_j \\
+y_1[k_0+j] - \hat y_1[k_0+j] &= \sum_{i=0}^{j-3} \lc^{\,j-3-i}\, q_i \sum_{l=0}^{i-1} \beta_l \qquad (j \ge 4;\;\; 0 \text{ for } j \le 3)
+\end{aligned}
+\]
+
+\textbf{3.5}\quad the pair $(e_{a_x}, e_c)$, coefficients frozen
+\[
+\begin{aligned}
+A_2 &= \begin{bmatrix} \alpha & -\beta \\ 0 & 1 \end{bmatrix} \\
+y_2:\quad C_2 &= [\,1,\;\gamma\,], & \det\begin{bmatrix} C_2 \\ C_2 A_2\end{bmatrix} &= -\beta - \gamma(\alpha - 1) = -\frac{M + \nabla_d x_d\,a' F_{dx}}{\hat h^{2}} \\
+y_1:\quad C_2 &= [\,-q,\;0\,], & \det\begin{bmatrix} C_2 \\ C_2 A_2\end{bmatrix} &= -q^{2}\beta = -\frac{F_{dx}^{2}\,M}{\hat h^{2}}
+\end{aligned}
+\]
+
+\textbf{3.6}
+\[
+\begin{aligned}
+\det &= 0 \quad\Longleftrightarrow\quad M = 0 \;\text{and}\; \nabla_d x_d = 0 \;\;(\text{hold}) \quad\text{or}\quad \hat h \to \infty \\
+\text{hold:}\quad \beta &= \gamma = 0 \;\Rightarrow\; \mathbf{o}_c \equiv \mathbf{0} \;\;\text{at every } \hat h
+\end{aligned}
+\]
+
+\end{document}
