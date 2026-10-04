@@ -27,3 +27,11 @@
        "command": "powershell -c \"(New-Object Media.SoundPlayer 'C:\\Windows\\Media\\chimes.wav').PlaySync()\"" } ] }
    ]
    ```
+
+9. **共用工作樹（同一台機器、同一個 checkout 上的兩個 session）**(2026-10-04,來源:c-only 與 Layer-1 兩個 session 共用 motion-test 19 天沒 commit):
+   - 各 session **只 commit 自己的檔**,用明確路徑加檔(`git add --pathspec-from-file=<清單>`),**不用 `git add -A` / `git add .`**;
+     commit 前讀 `git log -1`、確認 staging 是空的;**不 amend**。
+   - 兩邊都寫的檔(例:`0924_report.tex`)要兩邊同意才 commit;一方先動要留言給另一方。
+   - 收工時把「留給對方的檔案清單」傳給另一個 session(SendMessage),並記進 memory 的 commit 狀態。
+   - **push 等兩邊都 commit 完再做**(遠端快照才不會引用到未進版控的檔);push 前問使用者。
+   - 收工前跑 `check_tree_hygiene('exclude', '<對方路徑 regexp>')`(`matlab-conventions.md`「收工檢查」)。

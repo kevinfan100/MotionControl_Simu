@@ -45,3 +45,7 @@ codegen/
 
 # XeLaTeX 中介檔
 *.xdv
+
+# 第三方原檔（論文 PDF、網頁截圖）不進 repo；data/ 只放自己的數位化資料（CSV）—— 2026-10-04，matlab-conventions「圖與第三方檔案」
+reference/**/data/*.pdf
+reference/**/data/*.gif
