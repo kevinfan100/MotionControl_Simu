@@ -896,7 +896,9 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
     w_desc = t >= w.descent(1) & t <= w.descent(2);
     w_osc  = t >  w.osc(1)     & t <= w.osc(2);
     w_hold = t >  w.hold(1);
-    assert(any(w_desc) && any(w_osc) && any(w_hold), ...
+    % Only the DESCENT window must exist (as in run_formC_b): 'ramp_tri' (2026-10-04) has no trailing hold, and a
+    % NaN for a phase that does not exist is more honest than a phase invented to keep the guard quiet.
+    assert(any(w_desc), ...
            'run_formB_ws:emptyMetricWindow', ...
            'A metric window is empty -- check trajectory timing overrides.');
 

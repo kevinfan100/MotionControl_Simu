@@ -18,7 +18,7 @@ function out = run_plaw_walls(opts)
     if ~isfield(opts, 'plants'); opts.plants = {'plane', 'cell', 'sphere'}; end
     if ~isfield(opts, 'arms');   opts.arms   = {'PI'}; end
     if ~isfield(opts, 'tag_suffix'); opts.tag_suffix = ''; end
-    if ~isfield(opts, 'traj'); opts.traj = 'canon'; end
+    if ~isfield(opts, 'traj'); opts.traj = 'ramp_tri'; end              % 10-04 user: default test trajectory = canonical_scenario 'ramp_tri' (1 s ramp to 1.10, triangle 1.10-2.0, no holds); 'canon' = the old deep
     if ~isfield(opts, 'p'); opts.p = 1.9666; end                        % plane band fit on [1.10, 22.2], uniform in h (fit_advisor_law_walls.m)
     user_sig = isfield(opts, 'sig');
     if ~user_sig; opts.sig = 0.5; end                                   % prior sqrt(P) on c, two-sided (same family width as the delta prior); f2 default 0.10 below
@@ -73,7 +73,13 @@ function out = run_plaw_walls(opts)
         P0 = 2;  if ~user_sig; SIG = 0.6; end;  SIG_D = 1e-6;                %   c prior = wall-family width (plane 0.05 .. cell 0.64); pass opts.sig 0.10 for the narrow arm
         PFX = [opts.law '_'];
     end
-    SEG = [0.5, 1.5, 3.5];  OV = struct();
+    SEG = [0.5, 1.5, 3.5];  OV = struct();  scen = 'deep';
+    if strcmp(opts.traj, 'ramp_tri') && ~strcmp(opts.kind, 'fixed')       % 10-04 (user): the shared first-order / c-only test trajectory, defined in canonical_scenario (fixed-height runs keep their own positioning config)
+        if ~isfield(opts, 'f_osc'); opts.f_osc = 1; end                   % triangle frequency [Hz], the only knob; 2 s of triangle at any f
+        scen = 'ramp_tri';  OV.frequency = opts.f_osc;  OV.n_cycles = 2 * opts.f_osc;
+        SEG = [0, 1, 3];                                                  % descent 0-1 s, triangle 1-3 s, no hold
+        opts.tag_suffix = [opts.tag_suffix strrep(sprintf('_rtri_f%g', opts.f_osc), '.', 'p')];
+    end
     if strcmp(opts.traj, 'meng')
         OV  = struct('trajectory_type', 'osc', 'h_init', 15, 'h_bottom', 2.5, 'amplitude', 0, 'frequency', 1, 'n_cycles', 1, ...
                      't_hold', 0.5, 't_descend_override', 10, 'T_sim', 12.5, 'h_min', 2.475);
@@ -151,7 +157,7 @@ function out = run_plaw_walls(opts)
                     OV = struct('trajectory_type', 'positioning', 'h_init', h * R, 'T_sim', opts.T_hold, ...
                                 'h_bottom', h * R, 'amplitude', 0, 't_hold', 0, 't_descend_override', 0);
                     tag = sprintf('%sfixed_%s_%s_h%s%s', PFX, pl, arm, strrep(sprintf('%.2f', h), '.', 'p'), opts.tag_suffix);
-                    o = struct('arm', 'best', 'ctrl_const_override', cc, 'config_override', OV, 'scenario', 'deep', 'verbose', false, ...
+                    o = struct('arm', 'best', 'ctrl_const_override', cc, 'config_override', OV, 'scenario', scen, 'verbose', false, ...
                                'seeds', opts.seeds, 'log_P_full', false);
                     if ~isempty(plant_cperp); o.plant_cperp = plant_cperp; end
                     fprintf('\n=== %s | hold at w = %.2f R (a_true %.4f) | law %s, seed c = %+.3f (band fit %+.3f), prior %.2f | %d seeds ===\n', ...
@@ -170,7 +176,7 @@ function out = run_plaw_walls(opts)
                 continue
             end
             tag = sprintf('%s%s_%s%s', PFX, pl, arm, opts.tag_suffix);
-            o = struct('arm', 'best', 'ctrl_const_override', cc, 'config_override', OV, 'scenario', 'deep', 'verbose', false, ...
+            o = struct('arm', 'best', 'ctrl_const_override', cc, 'config_override', OV, 'scenario', scen, 'verbose', false, ...
                        'seeds', opts.seeds, 'log_P_full', false);
             if ~isempty(plant_cperp); o.plant_cperp = plant_cperp; end
             if isfield(opts, 'h_bottom') && ~isempty(opts.h_bottom) && opts.h_bottom < 1.1; o.allow_below_floor = true; end   % 09-28 deeper-bottom test

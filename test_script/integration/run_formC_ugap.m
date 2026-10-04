@@ -618,7 +618,9 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
     w_desc = t >= w.descent(1) & t <= w.descent(2);
     w_osc  = t >  w.osc(1)     & t <= w.osc(2);
     w_hold = t >  w.hold(1);
-    assert(any(w_desc) && any(w_osc) && any(w_hold), ...
+    % Only the DESCENT window must exist (as in run_formC_b): 'ramp_tri' (2026-10-04) has no trailing hold, and a
+    % NaN for a phase that does not exist is more honest than a phase invented to keep the guard quiet.
+    assert(any(w_desc), ...
            'run_formC_ugap:emptyMetricWindow', ...
            'A metric window is empty -- check trajectory timing overrides.');
 
@@ -652,15 +654,19 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
         m.da_frac_by_descend_end = NaN;      % locked arm
     end
 
-    t_h  = t(w_hold);
-    e_h  = e_pct(w_hold);
-    pfit = polyfit(t_h - t_h(1), e_h, 1);
-    m.hold_drift_pct_per_s = pfit(1);
-    m.hold_delta_pct       = e_h(end) - e_h(1);
-    m.hold_span_s          = t_h(end) - t_h(1);
-    n_hold = numel(t_h);
-    a_true_hold = mean(aT(w_hold)) / s.a_nom;      % normalized true gain
-    m.hold_unopposed_pct = 100 * n_hold * da_hat(end) / a_true_hold;
+    if any(w_hold)                                % 'ramp_tri' (2026-10-04) has no final hold: report NaN, not a fabricated window
+        t_h  = t(w_hold);
+        e_h  = e_pct(w_hold);
+        pfit = polyfit(t_h - t_h(1), e_h, 1);
+        m.hold_drift_pct_per_s = pfit(1);
+        m.hold_delta_pct       = e_h(end) - e_h(1);
+        m.hold_span_s          = t_h(end) - t_h(1);
+        n_hold = numel(t_h);
+        a_true_hold = mean(aT(w_hold)) / s.a_nom;      % normalized true gain
+        m.hold_unopposed_pct = 100 * n_hold * da_hat(end) / a_true_hold;
+    else
+        [m.hold_drift_pct_per_s, m.hold_delta_pct, m.hold_span_s, m.hold_unopposed_pct] = deal(NaN);
+    end
 
     trav2_b    = (s.b_hat_out(end, ax) - s.b_hat_out(1, ax))^2;
     budget_b   = s.P_b_out(1, ax)^2 - s.P_b_out(end, ax)^2;

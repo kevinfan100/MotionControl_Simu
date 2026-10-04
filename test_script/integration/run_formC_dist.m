@@ -703,7 +703,9 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
     w_desc = t >= w.descent(1) & t <= w.descent(2);
     w_osc  = t >  w.osc(1)     & t <= w.osc(2);
     w_hold = t >  w.hold(1);
-    assert(any(w_desc) && any(w_osc) && any(w_hold), ...
+    % Only the DESCENT window must exist (as in run_formC_b): 'ramp_tri' (2026-10-04) has no trailing hold, and a
+    % NaN for a phase that does not exist is more honest than a phase invented to keep the guard quiet.
+    assert(any(w_desc), ...
            'run_formC_dist:emptyMetricWindow', ...
            'A metric window is empty -- check trajectory timing overrides.');
 
@@ -756,17 +758,21 @@ function m = local_run_metrics(s, cfg, ax, osc_settle_s, hold_settle_s)
     % a spurious ramp in the gain error, of order (steps)*(da_hat) unless y2
     % opposes it. Reported as the least-squares slope of e_a over the hold
     % window and the end-minus-start change across it.
-    t_h  = t(w_hold);
-    e_h  = e_pct(w_hold);
-    pfit = polyfit(t_h - t_h(1), e_h, 1);
-    m.hold_drift_pct_per_s = pfit(1);
-    m.hold_delta_pct       = e_h(end) - e_h(1);
-    m.hold_span_s          = t_h(end) - t_h(1);
-    % what an UNOPPOSED injection of the converged da_hat would give over the
-    % same window, in the same percent units (a_bar per step * steps / a_true)
-    n_hold = numel(t_h);
-    a_true_hold = mean(aT(w_hold)) / s.a_nom;      % normalized true gain
-    m.hold_unopposed_pct = 100 * n_hold * da_hat(end) / a_true_hold;
+    if any(w_hold)                                % 'ramp_tri' (2026-10-04) has no final hold: report NaN, not a fabricated window
+        t_h  = t(w_hold);
+        e_h  = e_pct(w_hold);
+        pfit = polyfit(t_h - t_h(1), e_h, 1);
+        m.hold_drift_pct_per_s = pfit(1);
+        m.hold_delta_pct       = e_h(end) - e_h(1);
+        m.hold_span_s          = t_h(end) - t_h(1);
+        % what an UNOPPOSED injection of the converged da_hat would give over the
+        % same window, in the same percent units (a_bar per step * steps / a_true)
+        n_hold = numel(t_h);
+        a_true_hold = mean(aT(w_hold)) / s.a_nom;      % normalized true gain
+        m.hold_unopposed_pct = 100 * n_hold * da_hat(end) / a_true_hold;
+    else
+        [m.hold_drift_pct_per_s, m.hold_delta_pct, m.hold_span_s, m.hold_unopposed_pct] = deal(NaN);
+    end
 
     % P_*_out store sqrt(P); square back for the budget. Row 1 is the
     % controller's init call, which must report the prior widths (contract).

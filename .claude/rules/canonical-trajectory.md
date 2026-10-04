@@ -10,10 +10,20 @@
 
 | name | 谷底 | 帶 | 谷底拖曳 | 狀態 |
 |---|---|---|---|---|
-| `deep` | w̄ = 1.10 | [1.10, 3.32] | 11.45× | **預設** |
+| `deep` | w̄ = 1.10 | [1.10, 3.32] | 11.45× | drivers 的預設（未改） |
 | `shallow` | w̄ = 2.00 | [2.00, 4.22] | 2.12× | 2026-08-19 之前 |
+| `ramp_tri` | w̄ = 1.10 | [1.10, 2.00] | 11.45× | **一階線與 c-only 線的測試預設（2026-10-04）** |
 
-形狀都是 hold → descend → oscillate → hold，**帶寬都是 2.22**：
+`ramp_tri`（使用者 10-04 裁示）：**沒有 hold**；22.2 → 1.10 等速下坡 1 s；接三角波 1.10 ↔ 2.00、
+從谷底往上、固定 2 s；T_sim = 3 s。唯一旋鈕 = 三角波頻率 f：`canonical_scenario(a_cov, h_min, 'ramp_tri', f)`，
+或只吃名字的 driver 用 `config_override` 設 `frequency = f`、`n_cycles = 2f`。軌跡型 `osc_tri`（`trajectory_generator`
+phase 2 等速、phase 3 三角）。起點與谷底同 deep ⇒ 包絡導出的 prior 全部不變。判準逐點：谷底（1、2、3 s）、
+頂端（1.5、2.5 s）、三角段 |e_ā| 均值；沒有 hold 窗（driver 回 NaN，不捏造）。
+落地時四件事（10-04）：deep 逐位相同（`run_formC_b` 1 seed 改前改後 `isequaln`）、shallow 可重複；五支 driver 都跑得動
+（`run_formB_ws`／`_dist`／`_ugap`／`_state` 原本斷言 hold 窗非空，改成只斷言下坡窗，`_dist`／`_ugap` 的 hold 漂移量在無 hold 時給 NaN）；
+健康（c-only plane／cell min h 1.088／1.067、NaN 0）；包絡不變的理由如上。一階線 `run_pure_simulation`（5state_noap）也跑得動。
+
+`deep`／`shallow` 的形狀都是 hold → descend → oscillate → hold，**帶寬都是 2.22**：
 深度是唯一的變數，帶是**平移**不是拉伸。
 
 任何 driver 都吃 `opts.scenario`。要重現 2026-08-19 之前量的數字，

@@ -1,8 +1,20 @@
-function cfg = canonical_scenario(a_cov, h_bar_min_prior, name)
+function cfg = canonical_scenario(a_cov, h_bar_min_prior, name, f_tri)
 %CANONICAL_SCENARIO  The one trajectory every gain-law driver runs on.
 %
 %   cfg = canonical_scenario(a_cov, h_bar_min_prior)          % 'deep'
 %   cfg = canonical_scenario(a_cov, h_bar_min_prior, 'shallow')
+%   cfg = canonical_scenario(a_cov, h_bar_min_prior, 'ramp_tri')        % 1 Hz
+%   cfg = canonical_scenario(a_cov, h_bar_min_prior, 'ramp_tri', f_tri) % triangle frequency f_tri [Hz]
+%
+%   'ramp_tri' (2026-10-04, user: the test trajectory for the first-order and the
+%   c-only lines from now on): NO holds; a constant-velocity descent 22.2 -> 1.10
+%   in 1 s; then a TRIANGLE wave between 1.10 and 2.00 for 2 s, starting at the
+%   trough and going up; T_sim = 3 s. The triangle frequency is the only knob:
+%   n_cycles = 2 f, so the oscillation is always 2 s long (1 Hz = 2 cycles,
+%   5 Hz = 10). Triangle speed = 4 x 0.45 R x f = 1.8 f R/s; descent 21.1 R/s.
+%   A driver that only takes the name changes f through its config override:
+%   frequency = f and n_cycles = 2 f (T_sim unchanged). Same h_init and trough
+%   as 'deep', so every envelope-derived prior is unchanged.
 %
 %   Shape is always hold -> descend -> oscillate -> hold. Only the DEPTH of the
 %   band changes between the two names, and the band is TRANSLATED, never
@@ -43,9 +55,11 @@ function cfg = canonical_scenario(a_cov, h_bar_min_prior, name)
 %   See .claude/rules/canonical-trajectory.md.
 
     if nargin < 3 || isempty(name); name = 'deep'; end
+    if nargin < 4 || isempty(f_tri); f_tri = 1; end
     name = lower(name);
-    assert(any(strcmp(name, {'deep','shallow'})), ...
-           'canonical_scenario:name', 'name must be deep|shallow.');
+    assert(any(strcmp(name, {'deep','shallow','ramp_tri'})), ...
+           'canonical_scenario:name', 'name must be deep|shallow|ramp_tri.');
+    assert(isscalar(f_tri) && f_tri > 0, 'canonical_scenario:fTri', 'f_tri must be a positive scalar [Hz].');
 
     pc  = physical_constants();
     cfg = user_config();
@@ -67,6 +81,16 @@ function cfg = canonical_scenario(a_cov, h_bar_min_prior, name)
         case 'shallow'
             cfg.h_bottom   = 4.5;            % [um] trough w_bar = 2.00
             cfg.h_bar_safe = 1.50;           % house value, kept for reproducibility
+        case 'ramp_tri'
+            cfg.trajectory_type = 'osc_tri'; % constant-velocity descent + triangle (trajectory_generator phases 2-3)
+            cfg.h_bottom   = 1.10 * pc.R;    % [um] trough w_bar = 1.10 (same as deep)
+            cfg.amplitude  = 0.45 * pc.R;    % [um] half-amplitude: top w_bar = 1.10 + 2 x 0.45 = 2.00
+            cfg.frequency  = f_tri;          % [Hz] the one knob
+            cfg.n_cycles   = 2 * f_tri;      % 2 s of triangle at any frequency
+            cfg.t_hold     = 0;              % no initial hold
+            cfg.t_descend_override = 1.0;    % [s] 22.2 -> 1.10
+            cfg.T_sim      = 3.0;            % [s] descent + triangle, no final hold
+            cfg.h_bar_safe = 1.00;           % as deep
     end
 
     cfg.ctrl_enable       = true;
