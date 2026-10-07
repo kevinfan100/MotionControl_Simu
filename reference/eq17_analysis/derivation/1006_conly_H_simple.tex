@@ -1,0 +1,179 @@
+% STATUS: ACTIVE -- c-only slope law (p = 2): derivation of the output matrix H from a nonlinear output (first-order Taylor at the estimate).
+% ======================================================
+% Compile: xelatex 1006_conly_H_simple.tex   (from reference/eq17_analysis/derivation/)
+% Same model and notation as 0928_obs_c_only_v1.tex S1 and motion_ctrl/part2_conly.tex S2.1, with the wall surface at w-bar = 0
+%   (w_s = 0 in every c-only run: ctrl_const.ws0_perp = 0, plane init), so h = w-bar_d - delta w-bar_3.
+% Code: motion_control_law_formC_b.m:2505-2513 (H2), law 'f1p2'.
+% Equations only (derivation-workflow rule 10).
+% ======================================================
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\ap}{\ba'}
+\newcommand{\ah}{\hat{\ba}_w}
+\newcommand{\wh}{\hat{\bw}}
+\newcommand{\hh}{\hat{h}}
+\newcommand{\ch}{\hat{c}}
+\newcommand{\hd}[1]{\par\bigskip\noindent\underline{\textbf{#1}}}
+\pagestyle{plain}
+
+\begin{document}
+\begin{center}\textbf{\large c-only slope law: the output matrix $\mathbf{H}$}\end{center}
+
+%======================================================================
+\section{From the state-space model to $\mathbf{F}_e$ and $\mathbf{H}$}
+
+\hd{Linear}
+\[
+\begin{aligned}
+\mathbf{x}[k+1] &= \mathbf{A}\,\mathbf{x}[k] + \mathbf{B}\,u[k] + \mathbf{w}[k] \\
+\mathbf{y}[k] &= \mathbf{C}\,\mathbf{x}[k] + \mathbf{D}\,u[k] + \mathbf{v}[k]
+\end{aligned}
+\qquad
+\begin{aligned}
+\hat{\mathbf{x}}[k+1] &= \mathbf{A}\,\hat{\mathbf{x}}[k] + \mathbf{B}\,u[k] \\
+\hat{\mathbf{y}}[k] &= \mathbf{C}\,\hat{\mathbf{x}}[k] + \mathbf{D}\,u[k]
+\end{aligned}
+\]
+\[
+\begin{aligned}
+\mathbf{e}[k+1] &= \mathbf{A}\,\mathbf{e}[k] + \mathbf{w}[k] \\
+\mathbf{e}_y[k] &= \mathbf{C}\,\mathbf{e}[k] + \mathbf{v}[k]
+\end{aligned}
+\qquad\Longrightarrow\qquad
+\mathbf{F}_e = \mathbf{A}, \qquad \mathbf{H} = \mathbf{C}
+\]
+
+\hd{Nonlinear}
+\[
+\begin{aligned}
+\mathbf{x}[k+1] &= \mathbf{f}\big(\mathbf{x}[k],\,u[k]\big) + \mathbf{w}[k] \\
+\mathbf{y}[k] &= \mathbf{g}\big(\mathbf{x}[k],\,u[k]\big) + \mathbf{v}[k]
+\end{aligned}
+\qquad
+\begin{aligned}
+\hat{\mathbf{x}}[k+1] &= \mathbf{f}\big(\hat{\mathbf{x}}[k],\,u[k]\big) \\
+\hat{\mathbf{y}}[k] &= \mathbf{g}\big(\hat{\mathbf{x}}[k],\,u[k]\big)
+\end{aligned}
+\]
+\[
+\begin{aligned}
+\mathbf{e}[k+1] &\approx \frac{\partial\mathbf{f}}{\partial\mathbf{x}}\bigg|_{\hat{\mathbf{x}}[k],\,u[k]}\mathbf{e}[k] + \mathbf{w}[k] \\
+\mathbf{e}_y[k] &\approx \frac{\partial\mathbf{g}}{\partial\mathbf{x}}\bigg|_{\hat{\mathbf{x}}[k],\,u[k]}\mathbf{e}[k] + \mathbf{v}[k]
+\end{aligned}
+\qquad\Longrightarrow\qquad
+\mathbf{F}_e[k] = \frac{\partial\mathbf{f}}{\partial\mathbf{x}}\bigg|_{\hat{\mathbf{x}}[k],\,u[k]}, \qquad
+\mathbf{H}[k] = \frac{\partial\mathbf{g}}{\partial\mathbf{x}}\bigg|_{\hat{\mathbf{x}}[k],\,u[k]}
+\]
+
+\hd{c-only: input $u[k] = \Delta\bw_d[k]$, $\nabla_d\bw_d[k] = \sum_{i=0}^{d-1} \Delta\bw_d[k-i]$}
+\[
+\begin{aligned}
+f_4(\mathbf{x},u) &= \ba_w + \frac{1-c}{h^{2}}\,M, \qquad M = \Delta\bw_d + (1-\lambda_c)\,\delta\bw_3 \\
+g_2(\mathbf{x},u) &= \ba_w - \frac{1-c}{h^{2}}\,\nabla_d\bw_d, \qquad h = \bw_d - \delta\bw_3
+\end{aligned}
+\]
+
+%======================================================================
+\section{State and output}
+\[
+\mathbf{x}[k] = \begin{bmatrix} \delta\bw_1[k] \\ \delta\bw_2[k] \\ \delta\bw_3[k] \\ \ba_w[k] \\ c[k] \end{bmatrix},
+\qquad
+\begin{aligned}
+y_1[k] &= \delta\bw_1[k] + n_w[k] \\
+y_2[k] &= \ba_w[k-d] + n_a[k]
+\end{aligned}
+\]
+
+%======================================================================
+\section{$y_2$ as a function of the current state}
+\[
+\begin{aligned}
+\ba_w[k-d] &\approx \ba_w[k] - \ap\big(h[k];\,c[k]\big)\,\nabla_d\bw_d[k] \\
+\ap(h;\,c) &= \frac{1-c}{h^{2}} \\
+h[k] &= \bw_d[k] - \delta\bw_3[k] \\
+\nabla_d\bw_d[k] &= \bw_d[k] - \bw_d[k-d]
+\end{aligned}
+\]
+\[
+y_2[k] = g\big(\mathbf{x}[k]\big) + n_a[k], \qquad
+g(\mathbf{x}) = \ba_w - \frac{1-c}{\big(\bw_d - \delta\bw_3\big)^{2}}\,\nabla_d\bw_d
+\]
+
+%======================================================================
+\section{Predicted output and output error}
+\[
+\begin{aligned}
+\hat y_1[k] &= \delta\wh_1[k] \\
+\hat y_2[k] &= g\big(\hat{\mathbf{x}}[k]\big) = \ah[k] - \frac{1-\ch[k]}{\hh[k]^{2}}\,\nabla_d\bw_d[k], \qquad \hh[k] = \bw_d[k] - \delta\wh_3[k]
+\end{aligned}
+\]
+\[
+\begin{aligned}
+e_{y_1}[k] &= y_1[k] - \hat y_1[k] = e_{\delta\bw_1}[k] + n_w[k] \\
+e_{y_2}[k] &= y_2[k] - \hat y_2[k] = g\big(\mathbf{x}[k]\big) - g\big(\hat{\mathbf{x}}[k]\big) + n_a[k]
+\end{aligned}
+\]
+
+%======================================================================
+\section{First-order Taylor of $g$ at the estimate}
+\[
+\begin{aligned}
+g(\mathbf{x}) - g(\hat{\mathbf{x}}) &\approx \sum_{j=1}^{5} \frac{\partial g}{\partial x_j}\bigg|_{\hat{\mathbf{x}}} \big(x_j - \hat x_j\big)
+= \frac{\partial g}{\partial \mathbf{x}}\bigg|_{\hat{\mathbf{x}}}\,\mathbf{e} \\
+\mathbf{e} &= \mathbf{x} - \hat{\mathbf{x}} = \big[\,e_{\delta\bw_1},\ e_{\delta\bw_2},\ e_{\delta\bw_3},\ e_{\ba_w},\ e_c\,\big]^{T}
+\end{aligned}
+\]
+
+%======================================================================
+\section{The partial derivatives}
+\[
+\begin{aligned}
+\frac{\partial g}{\partial\,\delta\bw_1} &= 0 \\
+\frac{\partial g}{\partial\,\delta\bw_2} &= 0 \\
+\frac{\partial g}{\partial\,\delta\bw_3} &= -\nabla_d\bw_d\,\frac{\partial\ap}{\partial h}\,\frac{\partial h}{\partial\,\delta\bw_3}
+ = -\nabla_d\bw_d\Big(-\frac{2(1-c)}{h^{3}}\Big)(-1) = -\frac{2\ap}{h}\,\nabla_d\bw_d \\
+\frac{\partial g}{\partial\ba_w} &= 1 \\
+\frac{\partial g}{\partial c} &= -\nabla_d\bw_d\,\frac{\partial\ap}{\partial c} = -\nabla_d\bw_d\Big(-\frac{1}{h^{2}}\Big) = \frac{\nabla_d\bw_d}{h^{2}}
+\end{aligned}
+\]
+
+%======================================================================
+\section{Output matrix}
+\[
+\mathbf{H}[k] =
+\begin{bmatrix} \dfrac{\partial \hat y_1}{\partial\mathbf{x}} \\[1.5ex] \dfrac{\partial g}{\partial\mathbf{x}}\Big|_{\hat{\mathbf{x}}[k]} \end{bmatrix}
+=
+\begin{bmatrix} 1 & 0 & 0 & 0 & 0 \\[0.5ex] 0 & 0 & -\dfrac{2\ap[k]}{\hh[k]}\,\nabla_d\bw_d[k] & 1 & \dfrac{\nabla_d\bw_d[k]}{\hh[k]^{2}} \end{bmatrix},
+\qquad \ap[k] = \frac{1-\ch[k]}{\hh[k]^{2}}
+\]
+\[
+\begin{bmatrix} e_{y_1}[k] \\ e_{y_2}[k] \end{bmatrix} = \mathbf{H}[k]\,\mathbf{e}[k] + \begin{bmatrix} n_w[k] \\ n_a[k] \end{bmatrix}
+\]
+
+\hd{Hold ($\nabla_d\bw_d = 0$)}
+\[
+\mathbf{H}[k] = \begin{bmatrix} 1 & 0 & 0 & 0 & 0 \\ 0 & 0 & 0 & 1 & 0 \end{bmatrix}
+\]
+
+%======================================================================
+\section{As implemented ($y_2$ whitened, echo factor)}
+\[
+\begin{aligned}
+y_2[k] &= a_{cov}\,u[k] \qquad (\text{whitened reading, } s = a_{cov}) \\
+\hat y_2[k] &= s\Big(\ah[k] - (1-S[k])\,\ap[k]\,\nabla_d\bw_d[k]\Big) \\
+\mathbf{H}_2[k] &= s\,(1-S[k])\,\Big[\,0,\ 0,\ -\frac{2\ap[k]}{\hh[k]}\,\nabla_d\bw_d[k],\ 1,\ \frac{\nabla_d\bw_d[k]}{\hh[k]^{2}}\,\Big]
+\end{aligned}
+\]
+\[
+\frac{\partial\hat y_2}{\partial\ba_w} - H_{24} = s\,S[k]
+\]
+
+\end{document}
