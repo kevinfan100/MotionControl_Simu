@@ -41,6 +41,7 @@ function out = check_formB_echo_S_measure(opts)
     if ~isfield(opts, 'verbose');  opts.verbose  = true;              end
     if ~isfield(opts, 'arms_sel'); opts.arms_sel = {'T','N','M22','M2'}; end
     if ~isfield(opts, 'prev');     opts.prev     = [];                end
+    if ~isfield(opts, 'lambda_c'); opts.lambda_c = 0.7;               end   % 10-06: closed-loop pole (default = the 08-01 value)
 
     [script_dir, ~, ~] = fileparts(mfilename('fullpath'));
     project_root = fileparts(fileparts(script_dir));
@@ -53,7 +54,7 @@ function out = check_formB_echo_S_measure(opts)
 
     % model-side reference (recomputed here, not copied)
     S_T_MODEL = -0.243727; %#ok<NASGU>  placeholder overwritten below
-    [S_T_MODEL, S_n_MODEL] = local_model_S(0.7, 0.05);
+    [S_T_MODEL, S_n_MODEL] = local_model_S(opts.lambda_c, 0.05);
 
     arms = struct( ...
         'tag',     {'T',       'N',       'M22',    'M2'}, ...
@@ -69,7 +70,7 @@ function out = check_formB_echo_S_measure(opts)
     end
 
     for ia = 1:numel(arms)
-        A = arms(ia);
+        A = arms(ia);  A.lambda_c = opts.lambda_c;
         if ~any(strcmp(A.tag, opts.arms_sel)); continue; end
         res = struct('tag', A.tag, 'eps', A.eps, 'h_init', A.h_init, ...
                      'S', [], 'S_sem', [], 'S_read', [], 'S_read_sem', [], ...
@@ -178,6 +179,7 @@ function cfg = local_hold_cfg(A, T_sim)
     cfg.meas_noise_enable = A.noise;
     cfg.meas_noise_std    = [0.00062; 0.00057; 0.00331];   % [um] per axis
     cfg.lambda_c          = 0.7;
+    if isfield(A, 'lambda_c'); cfg.lambda_c = A.lambda_c; end
     cfg.a_pd              = 0.05;
     cfg.a_cov             = 0.05;
     cfg.h_min             = 1.1 * 2.25;
