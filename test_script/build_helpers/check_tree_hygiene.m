@@ -126,7 +126,7 @@ function [incs, gpath] = local_includes(f)
 end
 
 function c = local_candidates(d, g, gpath)
-    dirs = [{''}, {'figures/'}, gpath];
+    dirs = [{''}, {'figures/'}, {'../figures/'}, gpath];                % ../figures/: tex \input from a subfolder (motion_ctrl/*.tex) resolves against the parent's figures/ (10-07)
     base = cellfun(@(p) [d '/' p g], dirs, 'UniformOutput', false);
     [~, ~, ext] = fileparts(g);
     if isempty(ext); base = [strcat(base, '.png'), strcat(base, '.pdf'), strcat(base, '.jpg')]; end
