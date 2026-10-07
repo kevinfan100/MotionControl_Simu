@@ -1,0 +1,63 @@
+% Section 1 of motion_ctrl.tex (Layer-1 session, 2026-10-07): discrete-time motion model and control law, normalized.
+%   Paper: Meng, Long & Menq, IEEE TIE 2025, Sec. II-D, (5)-(8); thesis Ch. 3 law (3.6) with the d-step delay compensation.
+%   Code: motion_control_law_formC_b.m:1758-1776 (law), F_dx = F_dw (:1782-1785); plant run_formC_b.m.
+%   Error dynamics derived 10-07 by substituting the law into the model; the e_a F_dx form matches F_e(3,4) = -F_dw in the code.
+\ifdefined\mcshare\else\clearpage\fi
+\section{Discrete-time motion model and control law}
+
+\hd{Normalized variables}
+\[
+\begin{aligned}
+\bx &= \frac{x}{R}, \qquad \ba = \frac{a_x}{a_{\mathrm{nom}}}, \qquad \bar f = a_o\, f \\
+a_{\mathrm{nom}} &= \frac{\Delta t}{\gamma_N}\ \ [\mu\mathrm{m/pN}], \qquad a_o = \frac{a_{\mathrm{nom}}}{R}\ \ [1/\mathrm{pN}] \\
+\Delta x &= a_x\, f \quad\Longrightarrow\quad \Delta\bx = \frac{a_{\mathrm{nom}}}{R}\,\ba\, f = a_o\,\ba\, f = \ba\,\bar f
+\end{aligned}
+\]
+
+\hd{Assumptions}
+\[
+\begin{aligned}
+&\text{wall surface at } \bx = 0 \ \text{(position known)} \\
+&\text{no disturbed motion} \\
+&\text{each axis: the same one-dimensional equations with its own } \ba \ \ (x, y \parallel \text{wall},\ z \perp \text{wall})
+\end{aligned}
+\]
+
+\hd{Motion model}
+\[
+\bx[k+1] = \bx[k] + \ba[k]\,\big(\bar f_d[k] + \bar f_T[k]\big)
+\]
+
+\hd{Tracking error, control objective, measured tracking error}
+\[
+\begin{aligned}
+\delta\bx[k] &= \bx_d[k] - \bx[k] \\
+\delta\bx[k+1] &= \lc\, \delta\bx[k] \\
+\bx_m[k] &= \bx[k-d] + n_{\bx}[k] \\
+\delta\bx_m[k] &= \bx_d[k-d] - \bx_m[k]
+\end{aligned}
+\]
+
+\hd{Motion control law}
+\[
+\begin{aligned}
+\hat{\bx}[k] &= \bx_m[k] + \sum_{i=1}^{d} \hat{\ba}[k-i]\,\bar f_d[k-i] \\
+\bar f_d[k] &= \hat{\ba}^{-1}[k]\,\Big\{\bx_d[k+1] - \hat{\bx}[k] - \lc\,\big(\bx_d[k] - \hat{\bx}[k]\big)\Big\}
+\end{aligned}
+\]
+
+\hd{Dynamics of tracking error}
+\[
+\begin{aligned}
+\delta\bx[k+1] &= \lc\,\delta\bx[k] - \varepsilon[k] \\
+\varepsilon[k] &= e_{\ba}[k]\,\bar f_d[k] + (1-\lc)\sum_{i=1}^{d} e_{\ba}[k-i]\,\bar f_d[k-i] + \varepsilon_x[k] \\
+\varepsilon_x[k] &= \ba[k]\,\bar f_T[k] + (1-\lc)\sum_{i=1}^{d} \ba[k-i]\,\bar f_T[k-i] - (1-\lc)\, n_{\bx}[k] \\
+e_{\ba}[k] &= \ba[k] - \hat{\ba}[k]
+\end{aligned}
+\]
+
+\hd{$e_{\ba}$ constant over $d$ steps}
+\[
+\varepsilon[k] = e_{\ba}[k]\,F_{dx}[k] + \varepsilon_x[k], \qquad
+F_{dx}[k] = \bar f_d[k] + (1-\lc)\sum_{i=1}^{d} \bar f_d[k-i]
+\]

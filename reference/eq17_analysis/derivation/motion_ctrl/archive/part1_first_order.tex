@@ -1,0 +1,71 @@
+% Part 1 of motion_ctrl.tex: Simple -- first-order gain model. Model and Kalman filter copied from 0929_kf_two_tracks.tex S1 and S2.3
+%   (notation from 0927_obs_first_order_v1.tex); Q44 = eps R2 (Layer-1 first-order line, eps = 1e-5, memory project_first_order_q44_story).
+%   Controller: motion_control_law_eq17_5state_noap.m, gain_order 1, q44_r2_frac = eps.
+\clearpage   % 10-07: S1-S2 now precede this part
+\section{Simple: first-order gain model}
+
+\hd{State equation}
+\[
+\begin{aligned}
+\delta x_1[k+1] &= \delta x_2[k] \\
+\delta x_2[k+1] &= \delta x_3[k] \\
+\delta x_3[k+1] &= \lc \cdot \delta x_3[k] - F_{dx}[k]\cdot e_{a_x}[k] - \varepsilon[k] \\
+a_x[k+1] &= a_x[k]
+\end{aligned}
+\]
+\[
+F_{dx}[k] = f_{dx}[k] + (1-\lc)\textstyle\sum_{i=1}^{d} f_{dx}[k-i]
+\]
+
+\hd{Output equation}
+\[
+\begin{aligned}
+y_1[k] &= \delta x_1[k] + n_x[k], \qquad R_1 = \mathrm{Var}(n_x) \\
+y_2[k] &= a_x[k] + n_a[k], \qquad\;\; R_2[k] = \mathrm{Var}(n_a[k])
+\end{aligned}
+\]
+
+\hd{Matrices}
+\[
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 \\
+0 & 0 & 1 & 0 \\
+0 & 0 & \lc & -F_{dx}[k] \\
+0 & 0 & 0 & 1
+\end{bmatrix},
+\qquad
+\mathbf{H} =
+\begin{bmatrix}
+1 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1
+\end{bmatrix}
+\]
+\[
+\mathbf{Q}[k] = \mathrm{diag}\big(0,\, 0,\, Q_{33},\, Q_{44}[k]\big),
+\qquad
+\mathbf{R}[k] = \mathrm{diag}\big(R_1,\, R_2[k]\big),
+\qquad
+Q_{44}[k] = \epsilon\, R_2[k]
+\]
+
+\hd{Kalman filter}
+\[
+\begin{aligned}
+\mathbf{L}[k] &= \mathbf{P}^f[k]\,\mathbf{H}^T\big(\mathbf{H}\,\mathbf{P}^f[k]\,\mathbf{H}^T + \mathbf{R}[k]\big)^{-1} \\
+\mathbf{P}[k] &= \big(\mathbf{I} - \mathbf{L}[k]\,\mathbf{H}\big)\,\mathbf{P}^f[k] \\
+\mathbf{P}^f[k+1] &= \mathbf{F}_e[k]\,\mathbf{P}[k]\,\mathbf{F}_e^T[k] + \mathbf{Q}[k] \\
+\hat a_x[k+1] &= \hat a_x[k] + \ell_{41}[k]\,e_{y_1}[k] + \ell_{42}[k]\,e_{y_2}[k]
+\end{aligned}
+\]
+
+\hd{Plotted quantities}
+\[
+\ba = \frac{a_x}{a_{nom}}, \qquad e_{\ba} = \ba_{true} - \hat{\ba}, \qquad \delta x_m[k] = p_d[k-d] - p_m[k] \;\; (= y_1, \text{ µm})
+\]
+
+\figpage{Fig.~4.1\quad Positioning, $\epsilon = 0$}{fixed height 2.00 R $|$ 1.10 R, plane, 2.5 s, seed 1}{fig_noap_eps0_fixed_plane_s1.png}
+\figpage{Fig.~4.2\quad $Q_{44} = \epsilon R_2$: $\epsilon = 0$ vs $10^{-5}$}{descent only, $T_d = 2$ s, plane, seed 1}{fig_noap_eps0_vs_eps1e5_ramp_td2_plane_s1.png}
+\figpage{Fig.~4.3\quad First order, descent only}{$T_d = 2$ s, $\epsilon = 10^{-5}$, seed 1}{fig_noap_rtri_td2_f0_s1.png}
+\figpage{Fig.~4.4\quad First order, triangle 0.5 Hz}{0.5 s descent + triangle 1.10--2.00 R at 0.5 Hz, $\epsilon = 10^{-5}$, seed 1}{fig_noap_rtri_td0p5_f0p5_s1.png}
+\figpage{Fig.~4.5\quad First order, triangle 5 Hz}{0.5 s descent + triangle 1.10--2.00 R at 5 Hz, $\epsilon = 10^{-5}$, seed 1}{fig_noap_rtri_td0p5_f5_s1.png}

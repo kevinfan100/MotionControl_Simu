@@ -1,0 +1,79 @@
+% Section 6 of motion_ctrl.tex (Layer-1 session, 2026-10-07): unknown wall type, process noise of c (q55 = P_fix^2 I).
+%   Replaces part2_conly.tex (kept on disk). The estimator of Section 5 unchanged; the wall type is given to the plant only and
+%   the estimator starts from the plane values on every wall (.claude/rules/wall-test-protocol.md). c-hat is not shown here
+%   (user 10-07, revised: c-hat shown in Section 6 with the wall's c(h_d) = 1 - h_d^2 a'(h_d) as the true value).
+%   Seed of c = 0 on every wall (user 10-07; before: the plane band fit 0.0533); sqrt(p55[0]) = 0.1 (opts.sig). With P_fix the
+%   results did not change at 3 decimals (the start value is forgotten before the near-wall band); q55 = 0 changed < 0.003. a_hat[0] = plane polynomial at the start height
+%   (formC_b plaw_c_slope seed, local_law_delta).
+%   Fig. 6.5 (user 10-07): ramp T_d then hold 0.2 T_d (run_mc_s5_conly 'rh050', P_fix; plot_mc_s6_walltype.m). T_d sweep, 5 seeds,
+%   end-of-hold c-hat plane / cell: 0.5 s 0.12+-0.07 / 0.66+-0.10 (5.4 sd apart), 1 s 0.08 / 0.62 (4.1), 2 s 0.18 / 0.67 (2.9);
+%   q55 = 0 separates 18 / 11 / 8 sd but cell sits at 0.36 (true c(1.10) = 0.74). T_d = 0.5 s chosen.
+%   KF steps for c (user 10-07: as in the old part2, with the Section 5 H, which has no c column): l51, l52 through
+%   p^f_51, p^f_54; p55 update; I[k]; forecast. Then the P_fix choice.
+%   Plants: plane = production polynomial (calc_correction_functions.m, c_perp = 1/D_perp); cell = the same polynomial slid by
+%   1.05 R (test_script/scratch/cell_cperp_delta.m, ledger C62).
+%   Code: formC_b via run_plaw_walls law 'f1p2', q55_adapt 'ratio' (q55 = P_fix^2 I, single sqrt(P_fix) = 0.15; user 10-06:
+%   one P_fix, no new/revisit split), production refinements ON and not shown. Runs: run_mc_s5_conly.m tags _mcs5_tri and
+%   _mcs5_tri_ratio, plants plane and cell; figures plot_mc_s5.m 's6_plane' / 's6_cell', plot_mc_s6_a_of_h.m (Fig. 6.1), plot_mc_s6_c_of_h.m (Fig. 6.2).
+%   Measured 10-07 (5 seeds, triangle 1.10 <-> 10 R at 2 Hz, e_a = a_true - a_hat): plane q55 = 0 troughs +0.022 tops +0.054,
+%   P_fix troughs +0.005 tops +0.004 (mean |e_a| 0.039 -> 0.015); cell q55 = 0 troughs +0.075 tops +0.024, P_fix troughs +0.014
+%   tops +0.012 (mean |e_a| 0.021 -> 0.019); dz_m rms plane 0.0292 -> 0.0271, cell 0.0269 -> 0.0265 um.
+\clearpage
+\section{Unknown wall type: process noise of $c$}
+
+\hd{Motion gain of the two walls (plant only)}
+\[
+\begin{aligned}
+D_\perp(u) &= 1 - \tfrac{9}{8}\,u + \tfrac{1}{2}\,u^{3} - \tfrac{57}{100}\,u^{4} + \tfrac{1}{5}\,u^{5} + \tfrac{7}{200}\,u^{11} - \tfrac{1}{25}\,u^{12} \\
+\ba_{\mathrm{plane}}(h) &= D_\perp\Big(\frac{1}{h}\Big) \\
+\ba_{\mathrm{cell}}(h) &= D_\perp\Big(\frac{1}{h + 1.05}\Big)
+\end{aligned}
+\]
+
+\hd{Value of $c$ that makes the motion-gain slope exact at $h$}
+\[
+\ba'(h) = \frac{1 - c(h)}{h^{2}} \quad\Longrightarrow\quad c(h) = 1 - h^{2}\,\ba'(h)
+\]
+
+\hd{Feedback gain on $c$ (row 5 of $\mathbf{L}[k]$, $\mathbf{H}$ of Section 5)}
+\[
+\big[\,\ell_{51}[k],\ \ell_{52}[k]\,\big] = \big[\,p^f_{51}[k],\ p^f_{54}[k]\,\big]\,\big(\mathbf{H}\,\mathbf{P}^f[k]\,\mathbf{H}^T + \mathbf{R}[k]\big)^{-1}
+\]
+
+\hd{Update of $\hat{c}$ and of its variance}
+\[
+\begin{aligned}
+\ch[k+1] &= \ch[k] + \ell_{51}[k]\,e_{x_1}[k] + \ell_{52}[k]\,e_{a_m}[k] \\
+p_{55}[k] &= p^f_{55}[k] - \ell_{51}[k]\,p^f_{15}[k] - \ell_{52}[k]\,p^f_{45}[k]
+\end{aligned}
+\]
+
+\hd{Information gained on $c$ at step $k$}
+\[
+I[k] = \frac{1}{p_{55}[k]} - \frac{1}{p^f_{55}[k]} \;\ge\; 0
+\]
+
+\hd{Forecast of the variance}
+\[
+p^f_{55}[k+1] = p_{55}[k] + q_{55}[k]
+\]
+
+\hd{Choice of $q_{55}$: constant variance $p^f_{55} = P_{\mathrm{fix}}$}
+\[
+\begin{aligned}
+p^f_{55}[k+1] &= p^f_{55}[k] = P_{\mathrm{fix}} \\
+q_{55}[k] &= P_{\mathrm{fix}} - p_{55}[k] \\
+\frac{1}{p_{55}[k]} &= \frac{1}{P_{\mathrm{fix}}} + I[k] \\
+q_{55}[k] &= \frac{P_{\mathrm{fix}}^{2}\, I[k]}{1 + P_{\mathrm{fix}}\, I[k]}
+\end{aligned}
+\]
+\[
+P_{\mathrm{fix}}\, I[k] \ll 1 \quad\Longrightarrow\quad \boxed{\,q_{55}[k] = P_{\mathrm{fix}}^{2}\, I[k]\,}
+\]
+
+\figpage{Fig.~6.1\quad Motion gain of the two walls}{$\ba_{\mathrm{plane}}(h)$ and $\ba_{\mathrm{cell}}(h)$; $h$ from 1.10 to 22.2 R}{fig_mc_s6_a_of_h.png}
+\figpage{Fig.~6.2\quad Value of $c$ that makes the slope exact, $c(h) = 1 - h^{2}\,\ba'(h)$}{plane and cell; $h$ from 1.10 to 22.2 R}{fig_mc_s6_c_of_h.png}
+\figpage{Fig.~6.3\quad Plane wall: $q_{55} = 0$ vs $q_{55} = P_{\mathrm{fix}}^{2} I$}{z axis; trajectory of Fig.~4.3; left: $q_{55} = 0$ (Section 5); right: $\sqrt{P_{\mathrm{fix}}} = 0.15$; $\lc = 0.4$, seed 1}{fig_mc_s6_plane_s1.png}
+\figpage{Fig.~6.4\quad Cell wall: $q_{55} = 0$ vs $q_{55} = P_{\mathrm{fix}}^{2} I$}{z axis; trajectory of Fig.~4.3; left: $q_{55} = 0$; right: $\sqrt{P_{\mathrm{fix}}} = 0.15$; $\lc = 0.4$, seed 1}{fig_mc_s6_cell_s1.png}
+
+\figpage{Fig.~6.5\quad Wall type read from $\hat{c}$ at the end of the descent}{z axis; 22.2 $\to$ 1.10 R in 0.5 s, then hold 0.1 s; $\sqrt{P_{\mathrm{fix}}} = 0.15$; left: plane wall; right: cell wall; $\lc = 0.4$, seed 1}{fig_mc_s6_walltype_rh050_s1.png}

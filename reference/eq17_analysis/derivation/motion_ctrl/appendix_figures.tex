@@ -1,0 +1,32 @@
+% Appendix of motion_ctrl.tex: where each figure comes from. Regenerate all: test_script/scratch/make_motion_ctrl_figs.m
+%   (runs are cached in test_results/temp_5state_noap and test_results/temp_plaw_walls; a missing cache file is re-run).
+\clearpage
+\section*{Appendix: figure provenance}
+
+{\small
+\begin{tabular}{@{}L{6.4cm}L{4.8cm}L{4.4cm}@{}}
+\toprule
+figure & plot script (\texttt{test\_\allowbreak{}script/scratch/}) & runs \\
+\midrule
+2.1 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}s2\_\allowbreak{}traj} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}s2\_\allowbreak{}traj} & trajectory definition (no run) \\
+2.2 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}s2\_\allowbreak{}xyz} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}s2\_\allowbreak{}xyz} & \texttt{run\_\allowbreak{}mc\_\allowbreak{}s2\_\allowbreak{}xyz}: law with $\hat{\ba} = \ba$ or 1, $\lc = 0.4$, seed 1 \\
+3.1 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}s3\_\allowbreak{}am} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}s3\_\allowbreak{}am} & Section 2 run, $\hat{\ba} = \ba$, z axis \\
+4.1 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}s4\_\allowbreak{}eps\_\allowbreak{}s1} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}s4(1, 'eps')} & \texttt{run\_\allowbreak{}mc\_\allowbreak{}s4\_\allowbreak{}first\_\allowbreak{}order}, $\epsilon = 0$ vs $10^{-5}$, $\lc = 0.4$ \\
+4.2 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}s4\_\allowbreak{}nominal\_\allowbreak{}s1} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}s4(1, 'nominal')} & same runner, law with $\hat{\ba} = 1$ vs the estimate, three axes \\
+4.3 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}s4\_\allowbreak{}tri\_\allowbreak{}s1} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}s4(1, 'tri')} & same runner, \texttt{plain\_\allowbreak{}tri10}: 1 s descent, triangle 1.10--10 R, 2 Hz \\
+5.1 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}s5\_\allowbreak{}desc\_\allowbreak{}s1} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}s5(1, 'desc')} & \texttt{run\_\allowbreak{}mc\_\allowbreak{}s5\_\allowbreak{}conly} + Section 4 \texttt{prod\_\allowbreak{}xyz}, $q_{55} = 0$ \\
+5.2 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}s5\_\allowbreak{}split\_\allowbreak{}s1} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}s5\_\allowbreak{}split} & Fig.~5.1 runs; split as \texttt{probe\_\allowbreak{}mc\_\allowbreak{}s5\_\allowbreak{}update\_\allowbreak{}split} \\
+5.3 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}s5\_\allowbreak{}tri\_\allowbreak{}s1} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}s5(1, 'tri')} & same, triangle 1.10--10 R, 2 Hz \\
+6.1 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}s6\_\allowbreak{}a\_\allowbreak{}of\_\allowbreak{}h} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}s6\_\allowbreak{}a\_\allowbreak{}of\_\allowbreak{}h} & plant laws only (no run) \\
+6.2 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}s6\_\allowbreak{}c\_\allowbreak{}of\_\allowbreak{}h} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}s6\_\allowbreak{}c\_\allowbreak{}of\_\allowbreak{}h} & plant laws only (no run) \\
+6.3 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}s6\_\allowbreak{}plane\_\allowbreak{}s1} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}s5(1, 's6\_\allowbreak{}plane')} & \texttt{run\_\allowbreak{}mc\_\allowbreak{}s5\_\allowbreak{}conly}, q55 none / ratio 0.15, plane \\
+6.4 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}s6\_\allowbreak{}cell\_\allowbreak{}s1} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}s5(1, 's6\_\allowbreak{}cell')} & same, cell, plane init \\
+6.5 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}s6\_\allowbreak{}walltype\_\allowbreak{}rh050\_\allowbreak{}s1} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}s6\_\allowbreak{}walltype} & \texttt{run\_\allowbreak{}mc\_\allowbreak{}s5\_\allowbreak{}conly('rh050', P\_fix)}, plane + cell \\
+7.1 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}raster\_\allowbreak{}traj\_\allowbreak{}s1} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}raster\_\allowbreak{}ref('traj')} & run\_plaw\_walls tag \_mcs5\_raster110\_ratio\_parwk \\
+7.2 \texttt{fig\_\allowbreak{}mc\_\allowbreak{}raster\_\allowbreak{}gain\_\allowbreak{}s1} & \texttt{plot\_\allowbreak{}mc\_\allowbreak{}raster\_\allowbreak{}ref('gain')} & same run \\
+\bottomrule
+\end{tabular}
+}
+
+\smallskip
+{\small all runs: \texttt{run\_plaw\_walls} law \texttt{f1p2}, \texttt{sig} 0.10, plane init; plants plane and cell (\texttt{cell\_cperp\_delta}).}

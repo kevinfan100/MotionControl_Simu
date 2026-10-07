@@ -1,0 +1,76 @@
+% STATUS: SSOT -- motion control gain estimation, running record (started 2026-10-05 from motion_ctrl.pptx + 1004_q55_ratio_from_kf.tex).
+% ======================================================
+% Compile: xelatex motion_ctrl.tex (our version) and xelatex motion_ctrl_share.tex (for others)   (from reference/eq17_analysis/derivation/)
+% Parts (one \input file each, so the two sessions on this work tree edit different files):
+%   motion_ctrl/part0_status.tex        settings in force, change log, open items        (main editor: ap model session)
+%   motion_ctrl/sec1_model.tex          S1 discrete-time motion model and control law (normalized; paper II-D)   (Layer-1, 10-07)
+%   motion_ctrl/sec2_gain.tex           S2 effect of the motion gain on tracking (paper Fig. 5, three axes)    (Layer-1, 10-07)
+%   motion_ctrl/sec3_am.tex             S3 measured input gain (paper II-E)                                    (Layer-1, 10-07)
+%   motion_ctrl/sec4_estimator.tex      S4 augmented estimator, first order (paper II-F)                       (Layer-1, 10-07)
+%   (motion_ctrl/archive/part1_first_order.tex = the old S4, lambda_c 0.7, no longer input)
+%   motion_ctrl/sec5_conly.tex          S5 position-dependent motion gain, c-only, q55 = 0, plane      (Layer-1, 10-07)
+%   motion_ctrl/sec6_wall.tex           S6 unknown wall type (plane, cell), q55 = P_fix^2 I               (Layer-1, 10-07)
+%   motion_ctrl/sec7_raster.tex         S7 reference result: raster scan parallel to the wall              (Layer-1, 10-07)
+%   (motion_ctrl/archive/part2_conly.tex = the old c-only part, w notation, no longer input)
+% Restructure in progress (user 10-07): outline and notation in motion_ctrl/PLAN_notation_outline.md.
+%   motion_ctrl/appendix_figures.tex    figure provenance: figure <- plot script <- runs
+% Rules: equations, section titles, one setting line per figure page; no readings (derivation-workflow rule 10, 0924 report convention).
+%   Every figure page = one trajectory, seed 1, rows a_bar | e_a | delta_x_m [um] (| c). Regenerate all figures:
+%   test_script/scratch/make_motion_ctrl_figs.m. Tex and the figures it includes go in the same commit (matlab-conventions).
+% Preamble copied from 1004_q55_ratio_from_kf.tex.
+% ======================================================
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\graphicspath{{figures/}}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+\setlength{\abovedisplayskip}{6pt}
+\setlength{\belowdisplayskip}{6pt}
+\setlength{\abovedisplayshortskip}{6pt}
+\setlength{\belowdisplayshortskip}{6pt}
+\newcommand{\lc}{\lambda_c}
+\newcommand{\bx}{\bar{x}}
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\ap}{\ba'}
+\newcommand{\wh}{\hat{\bw}}
+\newcommand{\hh}{\hat{h}}
+\newcommand{\ch}{\hat{c}}
+\newcommand{\Pf}{p^{f}_{55}}
+\newcommand{\Pu}{p_{55}}
+\newcommand{\Pfix}{p_{\mathrm{fix}}}
+\newcommand{\hd}[1]{\par\bigskip\noindent\underline{\textbf{#1}}}
+% one figure page: title, one setting line, the figure
+\newcommand{\figpage}[3]{\clearpage\subsection*{#1}\noindent{\small\textcolor[gray]{0.35}{#2}}\par\smallskip
+  \begin{center}\includegraphics[width=\textwidth,height=0.82\textheight,keepaspectratio]{#3}\end{center}}
+\usepackage{xcolor}
+\pagestyle{plain}
+
+\begin{document}
+
+% Two versions (user 10-05): this file = our version (status page + appendix); motion_ctrl_share.tex sets \mcshare
+% and gives the version for others (body only, no status page, no appendix).
+\begin{center}
+{\Large\textbf{Motion control: gain estimation}}
+\ifdefined\mcshare\else\\[0.4em]{\small running record, started 2026-10-05}\fi
+\end{center}
+
+\ifdefined\mcshare\else\input{motion_ctrl/part0_status}\fi
+\input{motion_ctrl/sec1_model}
+\input{motion_ctrl/sec2_gain}
+\input{motion_ctrl/sec3_am}
+\input{motion_ctrl/sec4_estimator}
+\input{motion_ctrl/sec5_conly}
+\input{motion_ctrl/sec6_wall}
+\input{motion_ctrl/sec7_raster}
+\ifdefined\mcshare\else\input{motion_ctrl/appendix_figures}\fi
+
+\end{document}

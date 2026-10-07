@@ -79,6 +79,19 @@ function out = run_plaw_walls(opts)
         scen = 'ramp_tri';  OV.frequency = opts.f_osc;  OV.n_cycles = 2 * opts.f_osc;
         SEG = [0, 1, 3];                                                  % descent 0-1 s, triangle 1-3 s, no hold
         opts.tag_suffix = [opts.tag_suffix strrep(sprintf('_rtri_f%g', opts.f_osc), '.', 'p')];
+        if isfield(opts, 'Td') && opts.Td ~= 1                            % 10-05 (user, figure style): descent time knob; triangle stays 2 s
+            OV.t_descend_override = opts.Td;  OV.T_sim = opts.Td + 2;  SEG = [0, opts.Td, opts.Td + 2];
+            opts.tag_suffix = [opts.tag_suffix strrep(sprintf('_td%g', opts.Td), '.', 'p')];
+        end
+        if isfield(opts, 'h_top_tri') && abs(opts.h_top_tri - 2.0) > 1e-9   % 10-05 (user): triangle top [R] (bottom stays 1.10); amplitude = half the band
+            OV.amplitude = 0.5 * (opts.h_top_tri - 1.10) * R;
+            opts.tag_suffix = [opts.tag_suffix sprintf('_top%03d', round(100 * opts.h_top_tri))];
+        end
+        if isfield(opts, 'T_tri') && opts.T_tri ~= 2                      % 10-05 (user: "does it keep accumulating?"): triangle length [s], diagnostic only
+            Tdv = 1;  if isfield(opts, 'Td'); Tdv = opts.Td; end
+            OV.t_descend_override = Tdv;  OV.n_cycles = opts.T_tri * opts.f_osc;  OV.T_sim = Tdv + opts.T_tri;  SEG = [0, Tdv, Tdv + opts.T_tri];
+            opts.tag_suffix = [opts.tag_suffix sprintf('_tri%g', opts.T_tri)];
+        end
     end
     if strcmp(opts.traj, 'meng')
         OV  = struct('trajectory_type', 'osc', 'h_init', 15, 'h_bottom', 2.5, 'amplitude', 0, 'frequency', 1, 'n_cycles', 1, ...
@@ -119,6 +132,8 @@ function out = run_plaw_walls(opts)
         end
     end
     out = struct();
+    if isfield(opts, 'ov_extra'); fe = fieldnames(opts.ov_extra); for ie = 1:numel(fe); OV.(fe{ie}) = opts.ov_extra.(fe{ie}); end; end   % 10-07 (Layer-1 session): raw trajectory/config override on top of the traj branch (caller sets tag_suffix)
+    if isfield(opts, 'lambda_c'); OV.lambda_c = opts.lambda_c; opts.tag_suffix = [opts.tag_suffix sprintf('_lc%03d', round(100 * opts.lambda_c))]; end   % 10-06 (Layer-1 session): closed-loop pole override (default = canonical 0.7); not passed to the fixed-height branch
     for ip = 1:numel(opts.plants)
         pl = opts.plants{ip};
         switch pl
@@ -137,17 +152,22 @@ function out = run_plaw_walls(opts)
                 case 'T';  c_seed = CFIT.(pl);  d_seed = DFIT.(pl);      % the wall's own band fit (reference)
                 otherwise; error('unknown arm %s', arm);
             end
+            if isfield(opts, 'c_seed') && isfield(opts.c_seed, pl); c_seed = opts.c_seed.(pl); end   % 10-05 (user): diagnostic c seed per wall (lock arms)
             cc = local_ctrl_const(c_seed, SIG, W_S, P0, opts.law, d_seed, SIG_D);
             if isfield(cc, 'plaw_dc_slope') || isfield(cc, 'plaw_dp_slope') || isfield(cc, 'plaw_cp_slope'); cc.plaw_seed_cross = opts.seed_cross; end
             if isfield(opts, 'Pf_a_floor'); cc.Pf_a_floor = opts.Pf_a_floor; end   % 09-23 lock control: constants pinned (sig ~ 0) with P44[0] kept at the free arm's value
             if isfield(opts, 'lambda_f_b'); cc.lambda_f_b = opts.lambda_f_b; end   % 09-23 user: fixed forgetting on slot 5 (= c here), R57's knob, reported as a sweep not a chosen value
             if isfield(opts, 'r2_scale'); cc.r2_scale = opts.r2_scale; end         % 09-23 user: whole-R2 scale (y2 weight sweep), diagnostic
+            for fq = {'nw_mcorr', 'ma2_aug'}; if isfield(opts, fq{1}); cc.(fq{1}) = opts.(fq{1}); end; end   % 10-05 (user): the law-independent production patches on any law
             if isfield(opts, 'q55_per_R'); cc.q55_path = true; cc.q55_per_R = opts.q55_per_R; end       % 09-29 layer 1: random-walk container on slot 5 (= c), Q55 = q55_per_R |M| per step; Delta_c^2 / W
             if isfield(opts, 'law_err_db'); cc.law_err_q44 = true; cc.law_err_db = opts.law_err_db; end  % 09-29 layer 1: Q44 += ((da'/dc) delta_c M)^2, the a slot admits the law's c error (0915 tex S7)
             if isfield(opts, 'q55_adapt')                                                                   % 09-29 layer 2 (exploratory): innovation-adaptive Q55 from the y1 residual
                 cc.q55_adapt = opts.q55_adapt;
-                for fq = {'q55_adapt_N', 'q55_adapt_thr', 'q55_adapt_gain', 'q55_adapt_kcu', 'q55_adapt_P0', 'q55_adapt_rho', 'q55_adapt_Imin', 'q55_adapt_hgate'}; if isfield(opts, fq{1}); cc.(fq{1}) = opts.(fq{1}); end; end
+                for fq = {'q55_adapt_N', 'q55_adapt_thr', 'q55_adapt_gain', 'q55_adapt_kcu', 'q55_adapt_P0', 'q55_adapt_rho', 'q55_adapt_Imin', 'q55_adapt_hgate', 'q55_adapt_wI', 'q55_adapt_gfun', 'q55_adapt_dc', 'q55_adapt_cmf', 'q55_adapt_Prev'}; if isfield(opts, fq{1}); cc.(fq{1}) = opts.(fq{1}); end; end
             end
+            if isfield(opts, 'h2_walk_cols_off'); cc.h2_walk_cols_off = opts.h2_walk_cols_off; end   % 10-06 (Layer-1 session): H23 = H25 = 0 test, default off
+            if isfield(opts, 'y2_delay_off'); cc.y2_delay_off = opts.y2_delay_off; end   % 10-07 (Layer-1 session): ignore the y2 delay (H and y2_pred), default off
+            if isfield(opts, 'par_wall_known'); cc.par_wall_known = opts.par_wall_known; end   % 10-07 (Layer-1 session): wall-parallel axes follow the plane parallel law, default off
             for fld = {'lambda_f_b_alpha', 'lambda_f_b_floor', 'lambda_f_b_chan', 'lambda_f_b_info'}   % 09-24: conditional forgetting on slot 5 (Meng (6.11) / information-driven)
                 if isfield(opts, fld{1}); cc.(fld{1}) = opts.(fld{1}); end
             end
@@ -179,6 +199,7 @@ function out = run_plaw_walls(opts)
             o = struct('arm', 'best', 'ctrl_const_override', cc, 'config_override', OV, 'scenario', scen, 'verbose', false, ...
                        'seeds', opts.seeds, 'log_P_full', false);
             if ~isempty(plant_cperp); o.plant_cperp = plant_cperp; end
+            if isfield(opts, 'a_ctrl_override'); o.a_ctrl_override = opts.a_ctrl_override; end   % 10-07 (Layer-1 session): gain used by the control law ([um/pN] 3x1, or 'true'); the estimator still runs
             if isfield(opts, 'h_bottom') && ~isempty(opts.h_bottom) && opts.h_bottom < 1.1; o.allow_below_floor = true; end   % 09-28 deeper-bottom test
             a11 = local_a_plant(1.1, plant_cperp);  a11_seed = local_law(1.1, P0, c_seed);
             if strcmp(opts.law, 'p11d1'); a11_seed = (1.1 + c_seed) / (1.1 + 1); end
@@ -281,6 +302,10 @@ function res = local_collect(Rr, plant_cperp, Ts, p, law)
         if isfield(S, 'S1_out'); res.S1(:, q) = S.S1_out(:, 3);  res.S2(:, q) = S.S2_out(:, 3); end
         if isfield(S, 'lam_b_out'); res.lam_b(:, q) = S.lam_b_out(:, 3); end   % 09-24: per-step slot-5 forgetting factor
         if isfield(S, 'a_xm_out'); res.a_m(:, q) = S.a_xm_out(:, 3) / S.a_nom; end   % 09-29: the measured gain a_m (y2 reading) in a/a_nom units
+        if isfield(S, 'dh_m_out'); res.dxm(:, q) = S.dh_m_out(:, 3); end   % 10-05: y1 = delta_x_m, the measured motion error [um]
+        if isfield(S, 'dh_m_out'); res.dxm_xyz(:, :, q) = S.dh_m_out; end   % 10-07 (Layer-1 session): all three axes (u, v, w) of the measured motion error [um]
+        res.a_hat_xyz(:, :, q) = S.a_bar_hat_out;                           % 10-07 (Layer-1 session): gain estimate of all three axes (raster diagnosis)
+        if isfield(S, 'K_a_y1_out'); res.K_a_y1(:, q) = S.K_a_y1_out(:, 3); end   % 10-05: y1 gain on the a slot (update-share decomposition of a_hat)
         if isfield(S, 'q55a_q_out'); res.q55a_q(:, q) = S.q55a_q_out(:, 3);  res.q55a_stat(:, q) = S.q55a_stat_out(:, 3); end   % 09-29: adaptive Q55 added per step and its y1 statistic
     end
     hd = max(res.wd, 1.0);  dh = 1e-4;                                       % c_eff at the commanded height: 1 - h^p a'_plant(h)
@@ -318,7 +343,7 @@ function local_report(res, SEG)
             lab5, res.c_seed, res.c_fit, mean(x(end, :)), std(x(end, :)), res.c_eff_d(end), res.c_eff_d(find(t < SEG(2), 1, 'last')), ...
             mean(sp(end, :)), std(x(end, :)) / max(mean(sp(end, :)), eps));
     dt = t(2) - t(1);  hs = find(hold);
-    fprintf('  hold   : %s_hat slope %+.5f /s (seed mean)\n', lab5, mean((x(hs(end), :) - x(hs(1), :)) / (numel(hs) * dt)));
+    if ~isempty(hs); fprintf('  hold   : %s_hat slope %+.5f /s (seed mean)\n', lab5, mean((x(hs(end), :) - x(hs(1), :)) / (numel(hs) * dt))); end   % 10-07: no hold window when T_sim ends with the descent
     if isfield(res, 'd_seed') && (startsWith(res.law, 'f2') || startsWith(res.law, 'f4') || startsWith(res.law, 'f1'))
         d = res.d_hat;  sd = res.sP_d;  ie = find(t < SEG(2), 1, 'last');  lab7 = 'delta';  if startsWith(res.law, 'f1'); lab7 = 'p'; end
         fprintf('  %-6s : seed %+.3f band fit %+.3f | descent end %+.3f +- %.3f | end %+.3f +- %.3f (seed sd) | sqrtP end %.3f | sd/sqrtP %.2f | range [%.3f, %.3f]\n', ...

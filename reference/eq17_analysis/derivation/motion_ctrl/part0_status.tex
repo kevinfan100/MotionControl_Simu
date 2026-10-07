@@ -1,0 +1,59 @@
+% Part 0 of motion_ctrl.tex: settings in force, change log, open items. Settings only (no readings).
+\section*{Status}
+
+\hd{Settings in force}
+
+\smallskip
+{\small
+\begin{tabular}{@{}L{2.0cm}L{8.6cm}L{5.0cm}@{}}
+\toprule
+item & setting & where \\
+\midrule
+notation & normalized: $\bx = x/R$, $\ba = a_x/a_{nom}$, $\bar f = a_o f$; wall surface at $\bx = 0$; paper wording (Meng TIE 2025) & \texttt{motion\_ctrl/PLAN\_notation\_outline.md} \\
+$\lc$ & 0.4 for every figure (the paper's value; all sections rerun 10-07) & \texttt{run\_plaw\_walls} \texttt{opts.lambda\_c} \\
+Section 2 & three axes; $x_d = y_d = 9\sin(2\pi t)$ \textmu m, $z_d$: 50 $\to$ 2.475 \textmu m (22.2 $\to$ 1.10 R) in 5 s, the z height of the later sections; law with $\hat{\ba} = \ba$ or $1$ & \texttt{run\_mc\_s2\_xyz.m} \\
+trajectory & $\bw$: $22.2 \to 1.10$ constant-velocity descent in $T_d$, then triangle $1.10 \leftrightarrow 2.00$ for 2 s at $f$; no hold & \texttt{canonical\_scenario 'ramp\_tri'} \\
+\quad defaults & $T_d = 1$ s, $f = 1$ Hz (canonical); figures: $T_d = 0.5$ s with the triangle, $T_d = 2$ s descent only & \texttt{run\_plaw\_walls} \texttt{opts.Td}, \texttt{opts.f\_osc} \\
+walls & plane (estimator init), cell = plane slid down 1.05 R (plant only) & \texttt{cell\_cperp\_delta.m} \\
+figures & seed 1; rows $\ba$ $|$ $e_{\ba}$ $|$ $\delta x_m$ [µm] ($|$ $c$) & \texttt{plot\_5state\_noap\_rtri}, \texttt{plot\_conly\_rtri\_final} \\
+first order & $Q_{44}[k] = \epsilon\, R_2[k]$, $\epsilon = 10^{-5}$ & \texttt{5state\_noap}, \texttt{q44\_r2\_frac} \\
+c-only & $\ap = (1-\ch)/\hh^{2}$; $\sqrt{P_0} = 0.1$; $q_{55} = \Pfix^{2} I$ & \texttt{formC\_b} law \texttt{f1p2}, \texttt{q55\_adapt 'rationew'}, \texttt{\_P0} 0.15, \texttt{\_Prev} 0.05 \\
+\bottomrule
+\end{tabular}
+}
+
+\hd{Change log}
+
+\smallskip
+{\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+date & change \\
+\midrule
+2026-10-07 & Sections 4--6 rewritten in the paper's form (first order; c-only $q_{55}=0$; unknown wall, $P_{\mathrm{fix}}$); code runs with production refinements (not shown); x/y desired = 1 Hz triangles; old part1/part2 no longer input \\
+2026-10-07 & Section 3 measured input gain (paper II-E); old parts become Sections 4--5 \\
+2026-10-07 & restructure started: Section 1 (model, control law), Section 2 (motion gain, three axes); old parts become Sections 3--4 \\
+2026-10-07 & tangential sines (x, y) ported to \texttt{trajectory\_generator} (default off, bit-identical) \\
+2026-10-04 & test trajectory \texttt{ramp\_tri}; $q_{55} = \Pfix^{2} I[k]$ derivation (1004) \\
+2026-10-05 & figure style fixed (seed 1, rows $\ba$ $|$ $e_{\ba}$ $|$ $\delta x_m$, $\delta x_m$ in µm) \\
+2026-10-05 & first-order pages; c-only pages with the $c$ row; triangle top raised to 10 R (one page) \\
+2026-10-05 & this document started from \texttt{motion\_ctrl.pptx} and \texttt{1004\_q55\_ratio\_from\_kf.tex} \\
+2026-10-05 & \texttt{1004\_q55\_ratio\_from\_kf.tex} marked superseded by this document \\
+\bottomrule
+\end{tabular}
+}
+
+\hd{Open items}
+
+\smallskip
+{\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+item & note \\
+\midrule
+name clash & resolved: $\epsilon = q_{44}/r_2$, random component $\varepsilon_x[k]$ (all sections) \\
+per-wall $\epsilon$ page & $\epsilon$ chosen per wall knows the wall: reference only, not a design \\
+frequency & figures use 0.5, 1, 5 Hz; default of \texttt{ramp\_tri} is 1 Hz \\
+\bottomrule
+\end{tabular}
+}

@@ -1,0 +1,103 @@
+% Section 4 of motion_ctrl.tex (Layer-1 session, 2026-10-07): real-time estimation of motion gain and motion error with a
+%   first-order motion-gain process (paper Sec. II-F, (14)-(21), written in the paper's notation only; user 10-07: no symbol
+%   the paper does not have). Normalized, plane wall, z axis. Replaces part1_first_order.tex (kept on disk).
+%   Code: motion_control_law_eq17_5state_noap.m, gain_order 1, lf_mode const (lambda_f 1), q44_r2_frac = epsilon 1e-5,
+%   seed_mode true_h0, with the production refinements ON (y2 whitening, y2 echo factor, MA(2) thermal memory, correlated n_x,
+%   exact past-input bookkeeping). User 10-07: the refinements stay in the code and are NOT shown in this document; the text
+%   writes the paper-form estimator with y2 = a_m, delay not modelled. Runs: test_script/scratch/run_mc_s4_first_order.m
+%   ('prod_xyz', 'prod_eps0_xyz', 'prod_nominal_xyz' on the Section 2 trajectory; 'prod_tri10' for Fig. 4.3); epsilon 1e-5 fixed.
+%   Measured 10-07 (5 seeds, plane): descent end e_a -0.099 +- 0.019; Fig. 4.3 troughs -0.06 to -0.11, triangle mean |e_a|
+%   0.06; with all refinements off ('plain') the troughs are -0.31 to -0.40.
+%   Time index: written as the paper's (16), x_hat[k+1] = x_hat[k] (propagated) + L[k] e[k]. The code runs predict/update:
+%   the gain row is identical; rows 1-3 of the code carry (state map)*L; the control law at step k uses the gain after the
+%   update with y[k] (= a_hat[k+1] in this labelling), and Q33 uses that same updated gain. Not modelled (as in the paper):
+%   the d-step delay of a_m, and the correlation of n_x[k] in eps_x[k] and in y1[k]. Q33 = Var(eps_x) of Section 1.
+\clearpage
+\section{Real-time estimation of motion gain and motion error: first-order process}
+
+\hd{State of the process}
+\[
+\delta\bx_1[k] = \delta\bx[k-2], \qquad \delta\bx_2[k] = \delta\bx[k-1], \qquad \delta\bx_3[k] = \delta\bx[k] \qquad (d = 2)
+\]
+\[
+\begin{aligned}
+\delta\bx_1[k+1] &= \delta\bx_2[k] \\
+\delta\bx_2[k+1] &= \delta\bx_3[k] \\
+\delta\bx_3[k+1] &= \lc\,\delta\bx_3[k] - F_{dx}[k]\,e_{\ba}[k] - \varepsilon_x[k] \\
+\ba[k+1] &= \ba[k] + w_{\ba}[k]
+\end{aligned}
+\]
+
+\hd{Measurement and output matrix}
+\[
+\mathbf{y}[k] = \begin{bmatrix} \delta\bx_m[k] \\ \ba_m[k] \end{bmatrix},
+\qquad
+\hat{\mathbf{y}}[k] = \begin{bmatrix} \delta\hat{\bx}_1[k] \\ \hat{\ba}[k] \end{bmatrix},
+\qquad
+\mathbf{H} =
+\begin{bmatrix}
+1 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1
+\end{bmatrix}
+\]
+
+\hd{Estimator}
+\[
+\begin{aligned}
+e_{x_1}[k] &= \delta\bx_m[k] - \delta\hat{\bx}_1[k] \\
+e_{a_m}[k] &= \ba_m[k] - \hat{\ba}[k]
+\end{aligned}
+\]
+\[
+\begin{aligned}
+\delta\hat{\bx}_1[k+1] &= \delta\hat{\bx}_2[k] + \big\{\ell_{11}[k]\,e_{x_1}[k] + \ell_{12}[k]\,e_{a_m}[k]\big\} \\
+\delta\hat{\bx}_2[k+1] &= \delta\hat{\bx}_3[k] + \big\{\ell_{21}[k]\,e_{x_1}[k] + \ell_{22}[k]\,e_{a_m}[k]\big\} \\
+\delta\hat{\bx}_3[k+1] &= \lc\,\delta\hat{\bx}_3[k] + \big\{\ell_{31}[k]\,e_{x_1}[k] + \ell_{32}[k]\,e_{a_m}[k]\big\} \\
+\hat{\ba}[k+1] &= \hat{\ba}[k] + \big\{\ell_{41}[k]\,e_{x_1}[k] + \ell_{42}[k]\,e_{a_m}[k]\big\}
+\end{aligned}
+\]
+
+\hd{Dynamics of estimation errors}
+\[
+\mathbf{e}[k] = \begin{bmatrix} e_{\delta\bx_1}[k] \\ e_{\delta\bx_2}[k] \\ e_{\delta\bx_3}[k] \\ e_{\ba}[k] \end{bmatrix}
+= \begin{bmatrix} \delta\bx_1[k] - \delta\hat{\bx}_1[k] \\ \delta\bx_2[k] - \delta\hat{\bx}_2[k] \\ \delta\bx_3[k] - \delta\hat{\bx}_3[k] \\ \ba[k] - \hat{\ba}[k] \end{bmatrix}
+\]
+\[
+\mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k] - \mathbf{L}[k]\,\mathbf{H}\,\mathbf{e}[k] + \mathbf{q}[k]
+\]
+\[
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 \\
+0 & 0 & 1 & 0 \\
+0 & 0 & \lc & -F_{dx}[k] \\
+0 & 0 & 0 & 1
+\end{bmatrix},
+\qquad
+\mathbf{q}[k] = \begin{bmatrix} 0 \\ 0 \\ -\varepsilon_x[k] \\ w_{\ba}[k] \end{bmatrix}
+\]
+
+\hd{Estimator feedback matrix and error covariance}
+\[
+\begin{aligned}
+\mathbf{L}[k] &= \mathbf{P}^f[k]\,\mathbf{H}^T\big(\mathbf{H}\,\mathbf{P}^f[k]\,\mathbf{H}^T + \mathbf{R}[k]\big)^{-1} \\
+\mathbf{P}[k] &= \big(\mathbf{I} - \mathbf{L}[k]\,\mathbf{H}\big)\,\mathbf{P}^f[k] \\
+\mathbf{P}^f[k+1] &= \mathbf{F}_e[k]\,\mathbf{P}[k]\,\mathbf{F}_e^T[k] + \mathbf{Q}[k]
+\end{aligned}
+\]
+
+\hd{Process noise and measurement noise}
+\[
+\begin{aligned}
+\mathbf{Q}[k] &= \mathrm{diag}\big(0,\ 0,\ q_{33}[k],\ q_{44}[k]\big) \\
+q_{33}[k] &= \kappa_T\,\Big(\hat{\ba}[k] + (1-\lc)^2\sum_{i=1}^{d}\hat{\ba}[k-i]\Big) + (1-\lc)^2\,\sigma^2_n \\
+q_{44}[k] &= \varepsilon\, r_2[k] \\
+\mathbf{R}[k] &= \mathrm{diag}\big(r_1,\ r_2[k]\big) \\
+r_1 &= \sigma^2_n \\
+r_2[k] &= K_{\mathrm{var}}\,\mathrm{IF}[k]\,\big(\hat{\ba}[k] + \xi\big)^2, \qquad K_{\mathrm{var}} = \frac{2\,a_{\mathrm{cov}}}{2-a_{\mathrm{cov}}}
+\end{aligned}
+\]
+
+\figpage{Fig.~4.1\quad Process noise of the motion gain: $\varepsilon = 0$ vs $10^{-5}$}{z axis; Section 2 trajectory; plane wall, $\lc = 0.4$, seed 1; $q_{44} = \varepsilon r_2$}{fig_mc_s4_eps_s1.png}
+\figpage{Fig.~4.2\quad Measured tracking error: nominal vs estimated motion gain}{Section 2 trajectory, three axes; left: $\hat{\ba} = 1$; right: first-order estimator, $\varepsilon = 10^{-5}$; plane wall, $\lc = 0.4$, seed 1}{fig_mc_s4_nominal_s1.png}
+\figpage{Fig.~4.3\quad First-order estimator on an oscillating trajectory}{z axis; top: $z_d$ (solid) and $z$ (dashed), 22.2 $\to$ 1.10 R in 1 s, then triangle 1.10 $\leftrightarrow$ 10 R at 2 Hz for 2 s; plane wall, $\lc = 0.4$, $\varepsilon = 10^{-5}$, seed 1}{fig_mc_s4_tri_s1.png}

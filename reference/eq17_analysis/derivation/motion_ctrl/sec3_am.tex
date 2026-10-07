@@ -1,0 +1,49 @@
+% Section 3 of motion_ctrl.tex (Layer-1 session, 2026-10-07): measured input gain (paper Sec. II-E, (9)-(13)), normalized.
+%   Code: motion_control_law_formC_b.m:1744-1756 (IIR mean, residual, variance EWMA, a_bar_wm); constants
+%   build_eq17_6state_constants.m (C_dpmr, C_n; a_pd -> 0 limits checked numerically 10-07); R2 depth B (plan Section 4):
+%   10-07: the process outputs and R2 moved to Section 4 (the estimator uses the single-sample reading, not a_m). The code feeds y2 whitened; the main text writes y2 = a_m.
+%   Time index (user 10-07, second pass): everything labelled [k] as in the paper's (10)-(13); the recursions are
+%   written [k] <- [k-1] (paper (9) writes [k+1] <- [k]). Faithful to the code (formC_b.m:1747-1750), where the mean,
+%   residual, variance and a_m are all updated in step k with delta x_m[k] included. New sample first, (1-a) term last.
+%   Differences from the paper: (i) the residual subtracts the mean that already contains delta x_m[k] (paper: the
+%   mean before it); (ii) the variance is an EWMA of delta x_r^2 with its own a_cov (paper: mean square minus squared
+%   mean, a_var); both absorbed in the full C_dpmr, C_n. (iii) paper y[k] = [overline delta x_m[k], a_xm[k]];
+%   here y1 = delta x_m[k] (raw).
+%   Notation (user 10-07): C_T in the text = C_dpmr in the code (build_eq17_6state_constants.m); C_T multiplies the thermal
+%   term kappa_T a, C_n the sensor term sigma_n^2. The xi definition appears once (variance block).
+%   Figure: plot_mc_s3_am.m on the Section 2 run with the true motion gain.
+\clearpage
+\section{Real-time calculation of process outputs}
+
+\hd{Deterministic and random components of the measured tracking error}
+\[
+\begin{aligned}
+\overline{\delta\bx_m}[k] &= a_{\mathrm{pd}}\cdot\delta\bx_m[k] + (1 - a_{\mathrm{pd}})\,\overline{\delta\bx_m}[k-1] \\
+\delta\bx_r[k] &= \delta\bx_m[k] - \overline{\delta\bx_m}[k]
+\end{aligned}
+\]
+
+\hd{Variance of the random component}
+\[
+\begin{aligned}
+\hat\sigma^2_{\delta\bx_r}[k] &= a_{\mathrm{cov}}\cdot\delta\bx_r^2[k] + (1 - a_{\mathrm{cov}})\,\hat\sigma^2_{\delta\bx_r}[k-1] \\
+\sigma^2_{\delta\bx_T}[k] &= \kappa_T\,\ba[k], \qquad \kappa_T = \frac{4 k_B T\, a_o}{R} \\
+\sigma^2_{\delta\bx_r}[k] &= C_T\,\sigma^2_{\delta\bx_T}[k] + C_n\,\sigma^2_{n} \\
+\sigma^2_{\delta\bx_r}[k] &= C_T\,\kappa_T\,\big(\ba[k] + \xi\big), \qquad \xi = \frac{C_n}{C_T}\,\frac{\sigma^2_n}{\kappa_T}
+\end{aligned}
+\]
+
+\hd{Coefficients}
+\[
+\begin{aligned}
+C_T &= (1-a_{\mathrm{pd}})^2\left[\frac{2\,(1-a_{\mathrm{pd}})(1-\lc)}{1-(1-a_{\mathrm{pd}})\lc} + \frac{2}{(2-a_{\mathrm{pd}})(1+\lc)\big(1-(1-a_{\mathrm{pd}})\lc\big)}\right] \\
+C_n &= \frac{2\,(1-a_{\mathrm{pd}})^2}{2-a_{\mathrm{pd}}}\left[1 + \frac{(1-a_{\mathrm{pd}})^2\,a_{\mathrm{pd}}\,(1-\lc)}{1-(1-a_{\mathrm{pd}})\lc} + \frac{(1-\lc)^2}{(1+\lc)\big(1-(1-a_{\mathrm{pd}})\lc\big)}\right]
+\end{aligned}
+\]
+
+\hd{Measured input gain}
+\[
+\ba_m[k] = \frac{\hat\sigma^2_{\delta\bx_r}[k] - C_n\,\sigma^2_{n}}{C_T\,\kappa_T}
+\]
+
+\figpage{Fig.~3.1\quad Measured input gain}{z axis; Section 2 run with $\hat{\ba} = \ba$; plane wall, $\lc = 0.4$, seed 1}{fig_mc_s3_am.png}

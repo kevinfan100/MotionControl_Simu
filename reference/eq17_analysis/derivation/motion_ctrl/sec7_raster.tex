@@ -1,0 +1,17 @@
+% Section 7 of motion_ctrl.tex (Layer-1 session, 2026-10-07): reference result, raster scan parallel to the wall (user 10-07,
+%   from a trajectory sketch: x 4 Hz triangle +-20 um = 320 um/s, y +1 um at every x turnaround, z held at 1.10 R).
+%   Estimator: Section 6 on z (c-only, q55 = P_fix^2 I, sqrt(P_fix) 0.15, c[0] = 0); on x, y the flag par_wall_known of
+%   motion_control_law_formC_b.m (10-07): the gain follows the plane's parallel law driven by the commanded wall-normal step only,
+%   seeded at the plane's parallel gain. Without it the perpendicular slope times the axis's own tracking error was fed as a
+%   gain step and a_hat_x hit the floor/ceiling (x tracking rms 1.05 um, offset +0.9 um; with it 0.020 um, offset 0.000 um;
+%   flag off is bit-identical, verify_formC_b_production_defaults ALL PASS). Before/after: plot_mc_raster_x.m (not in the text).
+%   Trajectory: trajectory_generator tan_shape = 1 (triangle) and tan_v_stair = 1 (staircase), amp_u = amp_v-step sign -1
+%   because u_hat = -x, v_hat = -y in this frame. Run: run_plaw_walls tag _mcs5_raster110_ratio_parwk (5 seeds);
+%   figures plot_mc_raster_ref.m ('traj', 'gain'). Seed 1: tracking rms x 0.020, y 0.019, z 0.0095 um; gains x 0.423 / 0.423,
+%   y 0.423 / 0.426, z 0.087 / 0.091 (true / estimate, t > 0.5 s).
+\clearpage
+\section{Reference result: raster scan parallel to the wall}
+
+\subsection*{Fig.~7.1\quad Raster scan: scan pattern and desired trajectory}\noindent{\small\textcolor[gray]{0.35}{left: $y$ vs $x$, actual (red) and desired (blue dashed); right: $x_d$ (4 Hz triangle, $\pm 20$ \textmu m), $y_d$ (+1 \textmu m at every $x$ turnaround), $z_d$ (held at 1.10 R); plane wall, $\lc = 0.4$, seed 1}}\par\smallskip
+\begin{center}\includegraphics[width=\textwidth,height=0.72\textheight,keepaspectratio]{fig_mc_raster_traj_s1.png}\end{center}
+\figpage{Fig.~7.2\quad Raster scan: motion gain and measured tracking error, three axes}{left: true (red) and estimated (blue) motion gain; right: measured tracking error; $z$: Section 6 estimator; $x$, $y$: plane parallel law driven by the wall-normal step; plane wall, $\lc = 0.4$, seed 1}{fig_mc_raster_gain_s1.png}

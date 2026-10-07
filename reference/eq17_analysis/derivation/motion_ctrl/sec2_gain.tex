@@ -1,0 +1,28 @@
+% Section 2 of motion_ctrl.tex (Layer-1 session, 2026-10-07): effect of the motion gain on tracking.
+%   Paper: Fig. 5 (Scenario A; left with real-time estimation, right with the nominal drag coefficient) and thesis Ch. 3
+%   (gain from the wall model at a known height). Here: three axes, Scenario A shape compressed to 5 s, the control law
+%   with the true motion gain (left) vs the nominal motion gain (right); no estimator in the law.
+%   Runs: test_script/scratch/run_mc_s2_xyz.m; figures: plot_mc_s2_traj.m, plot_mc_s2_xyz.m.
+\clearpage
+\section{Effect of the motion gain on tracking}
+
+\hd{Control law with the nominal motion gain}
+\[
+\hat{\ba}[k] = 1 \quad\Longrightarrow\quad \varepsilon[k] = \big(\ba[k] - 1\big)\,F_{dx}[k] + \varepsilon_x[k]
+\]
+
+\hd{Control law with the true motion gain}
+\[
+\hat{\ba}[k] = \ba[k] \quad\Longrightarrow\quad \varepsilon[k] = \varepsilon_x[k]
+\]
+
+\hd{Desired trajectory}
+\[
+\begin{aligned}
+x_d(t) &= y_d(t) = 9\cdot\frac{2}{\pi}\arcsin\big(\sin(2\pi t)\big)\ \ \mu\mathrm{m} \\
+z_d(t) &= 50 - 9.505\,t\ \ \mu\mathrm{m}, \qquad 0 \le t \le 5\ \mathrm{s} \qquad \big(z_d/R:\ 22.2 \to 1.10\big)
+\end{aligned}
+\]
+
+\figpage{Fig.~2.1\quad Desired trajectory}{x, y: 1 Hz triangles, amplitude 9 \textmu m; z: distance from the wall, constant velocity}{fig_mc_s2_traj.png}
+\figpage{Fig.~2.2\quad Measured tracking error}{left: $\hat{\ba} = \ba$ (true motion gain); right: $\hat{\ba} = 1$ (nominal motion gain); plane wall, $\lc = 0.4$, seed 1}{fig_mc_s2_xyz.png}

@@ -1,0 +1,168 @@
+% Part 2 of motion_ctrl.tex: Advance -- c-only slope law (p = 2), process noise q55 of the constant c.
+%   2.1-2.5 copied verbatim from 1004_q55_ratio_from_kf.tex S1-S5 (Layer-1 session, 2026-10-04/05; sections demoted to subsections).
+%   2.6 adds the two q55 choices shown on the figure pages: q55 = eps r2 (code q55_adapt 'r2ratio', q55_adapt_rho = eps) and
+%   q55 = P_fix^2 I[k]. User 10-05: the document shows P_fix only (no case split); the runs use q55_adapt 'rationew'
+%   (q55_adapt_P0 0.15, q55_adapt_Prev 0.05), recorded in part0 and make_motion_ctrl_figs.m.
+\clearpage
+\section{Advance: c-only slope law, process noise of $c$}
+
+%======================================================================
+\subsection{$\mathbf{F}_e$ and $\mathbf{H}$}
+
+\[
+\mathbf{e}[k] = \begin{bmatrix} e_{\delta\bw_1}[k] \\ e_{\delta\bw_2}[k] \\ e_{\delta\bw_3}[k] \\ e_{\ba_w}[k] \\ e_c[k] \end{bmatrix},
+\qquad
+\begin{aligned}
+\hh[k] &= \bw_d[k] - \delta\wh_3[k] - \bw_s \\
+\ap[k] &= \frac{1 - \ch[k]}{\hh[k]^{2}} \\
+M[k] &= \Delta\bw_d[k] + (1-\lc)\,\delta\wh_3[k] \\
+\nabla_d\bw_d[k] &= \bw_d[k] - \bw_d[k-d]
+\end{aligned}
+\]
+\[
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lc & -F_{dw}[k] & 0 \\
+0 & 0 & \;\ap[k]\,(1-\lc) + \dfrac{2\,\ap[k]}{\hh[k]}\,M[k]\; & 1 + \ap[k]\,F_{dw}[k] & -\dfrac{M[k]}{\hh[k]^{2}} \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\]
+\[
+\mathbf{H}[k] =
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\
+0 & 0 & -\dfrac{2\,\ap[k]}{\hh[k]}\,\nabla_d\bw_d[k] & 1 & \dfrac{\nabla_d\bw_d[k]}{\hh[k]^{2}}
+\end{bmatrix}
+\]
+
+\hd{Where $c$ appears in $\mathbf{F}_e$ and $\mathbf{H}$}
+\[
+\begin{aligned}
+\mathbf{F}_e[k](5,:) &= \big[\,0,\ 0,\ 0,\ 0,\ 1\,\big] \\
+f_{e,45}[k] &= -\frac{M[k]}{\hh[k]^{2}} \\
+h_{15}[k] &= 0 \\
+h_{25}[k] &= \frac{\nabla_d\bw_d[k]}{\hh[k]^{2}}
+\end{aligned}
+\]
+
+\hd{At hold ($\Delta\bw_d = 0$ for $d$ steps)}
+\[
+\begin{aligned}
+f_{e,45}[k] &= -\frac{(1-\lc)\,\delta\wh_3[k]}{\hh[k]^{2}} \\
+h_{25}[k] &= 0
+\end{aligned}
+\]
+
+%======================================================================
+\subsection{Kalman filter}
+
+\[
+\begin{aligned}
+\mathbf{L}[k] &= \mathbf{P}^{f}[k]\,\mathbf{H}^{T}[k]\big(\mathbf{H}[k]\,\mathbf{P}^{f}[k]\,\mathbf{H}^{T}[k] + \mathbf{R}[k]\big)^{-1} \\
+\mathbf{P}[k] &= \big(\mathbf{I} - \mathbf{L}[k]\,\mathbf{H}[k]\big)\,\mathbf{P}^{f}[k] \\
+\mathbf{P}^{f}[k+1] &= \mathbf{F}_e[k]\,\mathbf{P}[k]\,\mathbf{F}_e^{T}[k] + \mathbf{Q}[k]
+\end{aligned}
+\]
+
+%======================================================================
+\subsection{Variance of $c$ in the filter}
+
+\hd{Gain on $c$ (row 5 of $\mathbf{L}[k]$)}
+\[
+\big[\,\ell_{51}[k],\ \ell_{52}[k]\,\big]
+= \Big[\,p^{f}_{51}[k],\ \ h_{23}[k]\,p^{f}_{53}[k] + p^{f}_{54}[k] + h_{25}[k]\,\Pf[k]\,\Big]
+\big(\mathbf{H}[k]\,\mathbf{P}^{f}[k]\,\mathbf{H}^{T}[k] + \mathbf{R}[k]\big)^{-1}
+\]
+
+\hd{Update}
+\[
+\begin{aligned}
+\ch[k+1] &= \ch[k] + \ell_{51}[k]\,e_{y_1}[k] + \ell_{52}[k]\,e_{y_2}[k] \\
+\Pu[k] &= \Pf[k] - \ell_{51}[k]\,p^{f}_{15}[k] - \ell_{52}[k]\,\Big(h_{23}[k]\,p^{f}_{35}[k] + p^{f}_{45}[k] + h_{25}[k]\,\Pf[k]\Big)
+\end{aligned}
+\]
+
+\hd{Information gain on $c$ at step $k$ (computed from the update)}
+\[
+\begin{aligned}
+I[k] &= \frac{1}{\Pu[k]} - \frac{1}{\Pf[k]} \;\ge\; 0 \\
+\Pf[k] - \Pu[k] &= \Pf[k]\,\Pu[k]\; I[k]
+\end{aligned}
+\]
+
+\hd{Prediction ($\mathbf{F}_e[k](5,:) = [\,0,\ 0,\ 0,\ 0,\ 1\,]$)}
+\[
+\Pf[k+1] = \Pu[k] + q_{55}[k], \qquad \Pf[0] = P_0
+\]
+
+%======================================================================
+\subsection{Choice of $q_{55}$: constant variance $\Pf = \Pfix$}
+
+\hd{Condition}
+\[
+\Pf[k+1] = \Pf[k] = \Pfix
+\]
+
+\hd{Prediction and information gain under the condition}
+\[
+\begin{aligned}
+q_{55}[k] &= \Pfix - \Pu[k] \\
+\frac{1}{\Pu[k]} &= \frac{1}{\Pfix} + I[k] \\
+q_{55}[k] &= \frac{\Pfix^{2}\, I[k]}{1 + \Pfix\, I[k]}
+\end{aligned}
+\]
+
+\hd{$\Pfix\, I[k] \ll 1$}
+\[
+\boxed{\,q_{55}[k] = \Pfix^{2}\, I[k]\,}
+\]
+
+%======================================================================
+\subsection{Meaning of $I[k]$ (scalar case: $c$ alone, measurement $y_2$ only)}
+
+\hd{Output error caused by $e_c$}
+\[
+e_{y_2}[k] = h_{25}[k]\, e_c[k] + n_a[k], \qquad \mathrm{Var}\big(n_a[k]\big) = r_2[k]
+\]
+
+\hd{$c$ read from this step alone}
+\[
+\begin{aligned}
+\frac{e_{y_2}[k]}{h_{25}[k]} &= e_c[k] + \frac{n_a[k]}{h_{25}[k]} \\
+\mathrm{Var}\Big(\frac{n_a[k]}{h_{25}[k]}\Big) &= \frac{r_2[k]}{h_{25}[k]^{2}} = \frac{1}{I[k]}
+\end{aligned}
+\]
+
+\hd{Update = combination of $\ch$ (variance $\Pf$) and this reading of $c$ (variance $1/I$)}
+\[
+\begin{aligned}
+\frac{1}{\Pu[k]} &= \frac{1}{\Pf[k]} + I[k] \\
+\ell_{52}[k]\, h_{25}[k] &= \frac{\Pf[k]\, I[k]}{1 + \Pf[k]\, I[k]} \;\simeq\; \Pf[k]\, I[k]
+\end{aligned}
+\]
+
+
+%======================================================================
+\subsection{Two choices of $q_{55}$ in the figures}
+
+\hd{Ratio to $r_2$}
+\[
+q_{55}[k] = \epsilon\, r_2[k]
+\]
+
+\hd{Constant variance}
+\[
+q_{55}[k] = \Pfix^{2}\, I[k]
+\]
+
+\hd{Plotted quantities}
+\[
+e_{\ba} = \ba_{true} - \hat{\ba}, \qquad c_{\mathrm{eff}}(h_d) = 1 - h_d^{2}\,\ba'_{true}(h_d)
+\]
+
+\figpage{Fig.~6.1\quad $I[k]$ along \texttt{ramp\_tri}}{1 s descent + triangle 1.10--2.00 R at 1 Hz, $\sqrt{P_0} = 0.1$, $\sqrt{\Pfix} = 0.15$, 10 seeds}{fig_conly_I_rtri.png}
+\figpage{Fig.~6.2\quad $q_{55} = \Pfix^{2} I$}{0.5 s descent + triangle 1.10--2.00 R at 1 Hz, seed 1}{fig_conly_final_slide7_pfix_f1_s1.png}
+\figpage{Fig.~6.3\quad $q_{55} = \Pfix^{2} I$, triangle top 10 R}{0.5 s descent + triangle 1.10--10.0 R at 1 Hz, seed 1}{fig_conly_final_slide7b_pfix_f1_top10_s1.png}
+\figpage{Fig.~6.4\quad $q_{55} = \Pfix^{2} I$, triangle 5 Hz}{0.5 s descent + triangle 1.10--2.00 R at 5 Hz, seed 1}{fig_conly_final_slide8_pfix_f5_s1.png}
