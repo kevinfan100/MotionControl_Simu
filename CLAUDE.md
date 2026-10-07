@@ -114,6 +114,7 @@ Scope: wall-effect, simulation, control, analysis, etc.
 - @agent_docs/shared/math-model.md — 座標系統、單位、系統方程、Gamma_inv
 
 ### 需要時才讀
+- agent_docs/eq17/mainline-history.md — 主線快照移出的已結案舊線（a′_true 作弊臂、未知牆面、e_ā 代換、08-03 現況、[1/1]／δ／版本二細節）
 - agent_docs/shared/simulink-architecture.md — Simulink 方塊圖、Block 模式、Solver、ToWorkspace
 - agent_docs/shared/analysis-guide.md — GUI 分析 Tabs、建議測試參數
 - agent_docs/shared/dual-track-simulation-design.md — 雙 track 設計決策（已實作）
