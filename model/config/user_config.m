@@ -77,6 +77,12 @@ function config = user_config()
     config.frequency = 1;
     config.n_cycles = 3;
     config.trajectory_type = 'osc';    % 'osc' or 'positioning'
+    config.amp_u  = 0;             % Tangential sine half-amplitude along u_hat [um] (0 = off)
+    config.freq_u = 0;             % Tangential sine frequency along u_hat [Hz]
+    config.amp_v  = 0;             % Tangential sine half-amplitude along v_hat [um] (0 = off)
+    config.freq_v = 0;             % Tangential sine frequency along v_hat [Hz]
+    config.tan_shape = 0;          % Tangential waveform: 0 sine, 1 triangle (same amplitude and phase)
+    config.tan_v_stair = 0;        % 1 = v_hat staircase: +amp_v at every turnaround of a freq_v triangle (raster scan)
 
     % Controller
     config.ctrl_enable = true;

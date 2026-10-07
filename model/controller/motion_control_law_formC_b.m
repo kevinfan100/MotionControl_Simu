@@ -389,16 +389,18 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent plaw_dc_slope plaw_g_min plaw_delta_lim                % two-constant slope law (1-c)/(h+delta)^2 (0922_estb_f2_slope_dc.tex): plaw_c_slope + slot 7 = delta (2026-09-22), default off
     persistent plaw_dp_slope plaw_p_lim                               % same family in the other coordinate, 1/(h+delta)^p (0923_estb_f4_slope_dp.tex): slot 5 = p, contact slope pinned at 1 (2026-09-23), default off
     persistent plaw_cp_slope pcp_seed Pf_pcp_std                      % the advisor's slope law (1-c)/h^p with BOTH constants as states, no shift: slot 5 = c, slot 7 = p (2026-09-23 evening), default off
+    persistent par_wall_known                                          % 10-07 (Layer-1): wall-parallel axes follow the plane's parallel law driven by the wall-normal step only, default off
     persistent plaw_seed_cross                                        % O40 discriminator (2026-09-23): keep (true, default) or zero the seed cross terms P45[0], P47[0] of the dc/dp laws; P44[0] unchanged
     persistent delta_slin                                             % offset law: Jacobians and predicted reading as Gaussian expectations over the delta uncertainty (2026-09-20), default off
     persistent lambda_f_b lfb_alpha lfb_floor lam_b_spend
     persistent lfb_chan lfb_info lam_b_v                   % 2026-09-24: residual channel for the adaptive slot-5 forgetting ('y2' | 'y1'), information-driven variant (beta), per-axis lambda of this step
-    persistent q55a_mode q55a_N q55a_thr q55a_gain q55a_kcu q55a_buf q55a_ptr q55a_g q55a_stat q55a_q q55a_P0 q55a_P0s q55a_rho q55a_Imin q55a_hgate q55a_I   % 2026-09-29 exploratory: innovation-adaptive Q55 on slot 5 from the y1 residual (default off); 'ratio' (09-30) = Q/R-ratio design, q55a_P0 = P55[0]
+    persistent q55a_mode q55a_N q55a_thr q55a_gain q55a_kcu q55a_buf q55a_ptr q55a_g q55a_stat q55a_q q55a_P0 q55a_P0s q55a_rho q55a_Imin q55a_hgate q55a_I q55a_bufI q55a_wI q55a_gfun q55a_dc q55a_cmf q55a_cmD q55a_cmR q55a_Prev q55a_hmin   % 2026-09-29 exploratory: innovation-adaptive Q55 on slot 5 from the y1 residual (default off); 'ratio' (09-30) = Q/R-ratio design, q55a_P0 = P55[0]
     persistent p55_floor_on p55_floor_std                     % 2026-09-09: directional forgetting on slot 5 as a P55 floor (default off)
     persistent b_bins_on b_bin_edges bbin_b bbin_P bbin_cur bbin_switch   % 2026-09-09: b per HEIGHT BIN (default off)
     persistent ap_src ap_ewma_a a_bar_slope_v law_b_formC
     persistent q33_dc_match q33_dc_fac
     persistent y2_echo_corr S_echo_T S_echo_n
+    persistent h2_walk_cols_off y2_delay_off   % 2026-10-06 (Layer-1 session, user test): zero the walk-back columns H2(3), H2(5); prediction unchanged (default off)
     persistent ma2_aug alpha_ma2 n_state    % MA(2) noise-memory augmentation
     persistent predict_quad                 % Stage B diagnostic: row-4 predict quadrature rule
     persistent lock_mask_g lock_mask_ax lock_state_idx_ax
@@ -605,6 +607,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % paired-forcing measurement 0.323 +- 0.043). Per-step blend by the
         % thermal/noise variance shares, S = (S_T*a_bar + S_n*xi)/(a_bar+xi).
         y2_echo_corr = logical(get_field_default(ctrl_const, 'y2_echo_corr', true));
+        h2_walk_cols_off = logical(get_field_default(ctrl_const, 'h2_walk_cols_off', false));   % 1006_conly_H_simple.tex: H23 = H25 = 0 test
+        y2_delay_off = logical(get_field_default(ctrl_const, 'y2_delay_off', false));   % 10-07 test: ignore the y2 delay entirely (H23 = H25 = 0 AND y2_pred without the walk-back)
         S_echo_T = 0; S_echo_n = 0;
         if y2_echo_corr
             assert(d_delay == 2, 'motion_control_law_formC_b:echoDelay', ...
@@ -955,7 +959,23 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         %   'prop'   Q55 += gain mean(nu1)^2 |M|                       'nis'    Q55 += gain max(0, mean(nu1^2) - 1) |M|
         % Path-proportional (|M|) so a hold adds nothing. Tuned sweeps, not derived values (user 09-29: find the mechanism first).
         q55a_mode = get_field_default(ctrl_const, 'q55_adapt', 'off');
-        assert(any(strcmp(q55a_mode, {'off', 'wmean', 'cusum', 'prop', 'nis', 'ratio', 'rhoconst', 'r2ratio', 'ratiogate'})), 'motion_control_law_formC_b:q55Adapt', 'q55_adapt must be off | wmean | cusum | prop | nis | ratio | rhoconst | r2ratio | ratiogate.');
+        assert(any(strcmp(q55a_mode, {'off', 'wmean', 'cusum', 'prop', 'nis', 'ratio', 'rhoconst', 'r2ratio', 'ratiogate', 'ratioinnov', 'ratiodrift', 'covmatch', 'rationew', 'drift', 'driftsq'})), 'motion_control_law_formC_b:q55Adapt', 'q55_adapt must be off | wmean | cusum | prop | nis | ratio | rhoconst | r2ratio | ratiogate | ratioinnov | ratiodrift | covmatch | rationew | drift | driftsq.');
+        % 'drift' / 'driftsq' (2026-10-06, Layer-1 session, user-approved test of O50): Q55 from how much c may change, no P_fix, no I.
+        %   'drift'   Q55 = dc^2 |Delta w_d| / h_hat^2       (random walk in 1/h: one approach accumulates ~dc^2, every revisit adds it again)
+        %   'driftsq' Q55 = (dc |Delta w_d| / h_hat^2)^2     (the step's deterministic change squared: right size per step, total over a pass ~0)
+        %   dc = q55_adapt_dc (wall-family change of c_eff over one approach). Needs plaw_c_slope (h_v2).
+        % 'rationew' (2026-10-04, Layer-1 session, user-approved): memory follows HEIGHT visited, not time. Q55 = P_fix^2 I_k with P_fix = P_new
+        % (q55_adapt_P0) while the commanded gap h_d = w_d - w_s goes below the lowest h_d reached so far (new ground: c may be new), else
+        % P_rev (q55_adapt_Prev; revisit: c already learned there, long memory). Ratio form, so no windup; P relaxes to P_rev only with evidence.
+        % 'covmatch' (2026-10-04, Layer-1 session; covariance matching, Mehra 1970 / Mohamed & Schwarz 1999): the data's own push on c, dc_k = c_upd - c_pred
+        % (both channels). If the model is right, E[dc_k^2] = P55_pred - P55_upd. EWMA (alpha = 1/q55_adapt_N) of D = dc^2 and Rm = P55_pred - P55_upd.
+        % q55_adapt_cmf 'pure': Q55 = D (no P_fix)  |  'ratio': Q55 = P_fix^2 I_k * D/Rm (ratio scaled by observed / model-predicted correction power).
+        % 'ratiodrift' (2026-10-04, Layer-1 session, user-approved; = O50 'placement C'): Q55 = P_fix^2 I_k + dc^2 |Delta w_d| / h_hat^2. Second term = c drifts with
+        % HEIGHT: |Delta w_d|/h_hat^2 = the commanded step in 1/h, summing to ~0.86 from 22.2 R to contact, so one approach adds dc^2; dc = change of c_eff over one approach
+        % (wall family: plane ~0.2, cell ~0.76). Additive, not multiplied on I: c_eff depends on height, I on speed^2. Needs plaw_c_slope (h_v2).
+        % 'ratioinnov' (2026-10-04, Layer-1 session, user: "P_fix as a function of the innovation, no threshold"): Q55 = P_0^2 I_k (mean nu1 / sigma)^2,
+        % sigma = 1/sqrt(q55_adapt_N) = the noise size of the windowed mean when c is right (so the factor has mean 1 there). I_k = the model says
+        % c can be learned this step (P track); (mean nu1/sigma)^2 = the data says how wrong c is (data track). Notation 1004_q55_ratio_from_kf.tex.
         % 'ratio' (2026-09-30, Q/R-ratio design): R_k = 1/I_k, I_k = 1/P55_upd - 1/P55_pred (this step's information on slot 5, both
         % channels); rho_k = (P55[0]/R_k)^2; Q55 at the next predict = R_k * rho_k = P55[0]^2 * I_k. Holds the steady-state P55 at the
         % prior P55[0] wherever data flows and adds nothing where it does not (hold, far field). One constant, the prior itself.
@@ -968,6 +988,15 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         q55a_hgate = get_field_default(ctrl_const, 'q55_adapt_hgate', Inf);   % 10-02 (oscillation test): any q55_adapt mode adds Q only while the estimator height h_hat < hgate [R] (Inf = no gate)
         q55a_P0s  = get_field_default(ctrl_const, 'q55_adapt_P0', 0);   % 'ratio': sqrt(P_0) override (0 = the slot-5 prior std, the design default); the ONLY constant of the ratio design
         assert(isscalar(q55a_P0s) && q55a_P0s >= 0, 'motion_control_law_formC_b:q55AdaptP0', 'q55_adapt_P0 must be a non-negative scalar (sqrt of P_0).');
+        q55a_wI   = logical(get_field_default(ctrl_const, 'q55_adapt_wI', false));   % 'ratioinnov' (10-04): I-weighted window, statistic = sum(I nu1)/sqrt(sum I^2) (= mean/sigma, weighted by learnability)
+        q55a_gfun = get_field_default(ctrl_const, 'q55_adapt_gfun', 'lin');        % 'ratioinnov' (10-04): factor g(x), x = (mean nu1/sigma)^2: 'lin' g = x | 'max1' g = max(1, x) (P_low is the floor)
+        assert(any(strcmp(q55a_gfun, {'lin', 'max1'})), 'motion_control_law_formC_b:q55AdaptGfun', 'q55_adapt_gfun must be lin | max1.');
+        q55a_cmf  = get_field_default(ctrl_const, 'q55_adapt_cmf', 'ratio');       % 'covmatch' form, see above
+        assert(any(strcmp(q55a_cmf, {'pure', 'ratio'})), 'motion_control_law_formC_b:q55AdaptCmf', 'q55_adapt_cmf must be pure | ratio.');
+        q55a_Prev = get_field_default(ctrl_const, 'q55_adapt_Prev', 0);            % 'rationew': sqrt(P_rev) (0 = same as P_new, i.e. plain ratio)
+        assert(isscalar(q55a_Prev) && q55a_Prev >= 0, 'motion_control_law_formC_b:q55AdaptPrev', 'q55_adapt_Prev must be a non-negative scalar (sqrt of P_rev).');
+        q55a_dc   = get_field_default(ctrl_const, 'q55_adapt_dc', 0);              % 'ratiodrift': dc, change of c_eff over one approach [-]
+        assert(isscalar(q55a_dc) && q55a_dc >= 0, 'motion_control_law_formC_b:q55AdaptDc', 'q55_adapt_dc must be a non-negative scalar.');
         assert(~(lfb_info > 0 && (lfb_alpha > 0 || lambda_f_b < 1)), 'motion_control_law_formC_b:lambdaFbInfo', ...
                'lambda_f_b_info is an alternative to lambda_f_b_alpha and a fixed lambda_f_b, not a stack.');
         assert(isscalar(lfb_alpha) && lfb_alpha >= 0, ...
@@ -1227,6 +1256,16 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             plaw_seed_cross = logical(get_field_default(ctrl_const, 'plaw_seed_cross', true));
             assert(all(pcp_seed > plaw_p_lim(1) & pcp_seed < plaw_p_lim(2)), 'motion_control_law_formC_b:plawCpSlope', 'ctrl_const.p_init must lie inside plaw_p_lim.');
         end
+        % par_wall_known (10-07, Layer-1; default false => bit-identical): on the wall-PARALLEL axes (AX_PAR) the slope law and c
+        % are perpendicular-axis objects. Moving parallel to the wall does not change the gain, and the axis's own tracking error is
+        % not a wall-normal step. With the flag, axes 1-2 propagate the gain by the plane's parallel law a'_par(h) times the
+        % commanded wall-normal step only (h = w_d - w_s, no own dw3), carry no c column, no thermal gain noise (Q row/col 4 = 0),
+        % and seed a_hat[0] = a_par,plane(h0). Found by the raster scan (x 320 um/s at 1.10 R): without it a_hat_x hits the
+        % floor/ceiling because the x tracking error (~1 um) times the perpendicular slope (~0.8) is fed as a gain step.
+        par_wall_known = logical(get_field_default(ctrl_const, 'par_wall_known', false));
+        if par_wall_known
+            assert(plaw_c_slope, 'motion_control_law_formC_b:parWallKnown', 'ctrl_const.par_wall_known is wired for the plaw_c_slope family only.');
+        end
         if plaw_c_slope
             assert(~gain_algebraic && ~amodel_fe && ~amodel_h, 'motion_control_law_formC_b:plawCSlope', ...
                    'ctrl_const.plaw_c_slope keeps the a slot: gain_algebraic, amodel_fe and amodel_h must be off.');
@@ -1427,6 +1466,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             if plaw_c_slope                               % version 2: the plane polynomial at the start height is the only value law used (0921 tex, Seed)
                 [a_bar_seed, ap_seed_v2] = local_law_delta(w_bar_seed - ws_11);
                 dA_dw0 = -ap_seed_v2;                     % d a/d w_s = -a': the production wall-position container stays available (Pf_w0_std)
+                if par_wall_known && any(ax == AX_PAR)    % parallel axes: the plane's PARALLEL gain at the start height
+                    a_bar_seed = local_par_plane(w_bar_seed - ws_11);  dA_dw0 = 0;
+                end
             end
             a_bar_seed = min(max(a_bar_seed, a_bar_floor), a_bar_ceil);
             a_bar_seed_v(ax) = a_bar_seed;
@@ -1531,6 +1573,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                     P7(4, 7) = da7_cp * P7(7, 7);  P7(7, 4) = P7(4, 7);
                     if ~plaw_seed_cross; P7(4, 5) = 0;  P7(5, 4) = 0;  P7(4, 7) = 0;  P7(7, 4) = 0; end
                 end
+                if par_wall_known && any(ax == AX_PAR)    % parallel axes: the seed does not depend on c or p (known parallel law)
+                    P7(4, 4) = Pf_a_floor(ax)^2;  P7(4, [5 7]) = 0;  P7([5 7], 4) = 0;
+                end
             end
             if b_bins_on && ax == 1
                 nb = numel(b_bin_edges) + 1;                       % every bin starts at the SAME seed pair (b_init, Pf_b_std)
@@ -1600,7 +1645,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         fbar_det_km1 = zeros(3, 1);
         fbar_det_km2 = zeros(3, 1);
         lam_b_v = ones(3, 1);        % this step's slot-5 forgetting factor per axis (1 = none), logged as diag.lam_b_k
-        q55a_buf = zeros(q55a_N, 3);  q55a_ptr = 0;  q55a_g = zeros(2, 3);  q55a_stat = zeros(3, 1);  q55a_q = zeros(3, 1);   % q55_adapt buffers, see init
+        q55a_buf = zeros(q55a_N, 3);  q55a_bufI = zeros(q55a_N, 3);  q55a_cmD = zeros(3, 1);  q55a_cmR = zeros(3, 1);  q55a_hmin = inf(3, 1);  q55a_ptr = 0;  q55a_g = zeros(2, 3);  q55a_stat = zeros(3, 1);  q55a_q = zeros(3, 1);   % q55_adapt buffers, see init
         q55a_I = zeros(3, 1);         % q55_adapt ratio modes: I_{k-1}, this step's information on slot 5 (10-02: kept apart from the innovation statistic)
         q55a_P0  = P_bb0_v;           % q55_adapt 'ratio': the slot-5 prior variance P55[0] per axis
         if q55a_P0s > 0; q55a_P0 = q55a_P0s^2 * ones(3, 1); end   % override: P_0 = q55_adapt_P0^2
@@ -1941,6 +1986,12 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 dap_dd3_i = p_v2 * a_prime_i / h_v2;    % d a'/d dw3_hat = +p a'/h
                 dap_ddl_i = -a_prime_i * log(h_v2);     % d a'/d p (slot 7) = -a' ln h
             end
+            is_par_wk = par_wall_known && any(ax == AX_PAR);
+            if is_par_wk                                % parallel axis: plane parallel slope at the commanded height, no c, no own dw3
+                h_v2 = max(w_bar_d - ws_11, 1);
+                [~, a_prime_i] = local_par_plane(h_v2);
+                dap_db_i = 0;  dap_dd3_i = 0;  dap_ddl_i = 0;
+            end
         end
         % F_e(4,5). d(a_bar')/db = -a_bar'/b exactly, so the column is
         % -a_bar' * M / b_hat, where M is the SAME row-4 increment a_bar'
@@ -2031,6 +2082,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 Q_i(4 + j, 4 + j) = Q_i(4 + j, 4 + j) + Q_theta_floor;   % conditioning only, default 0 (added: b1_state puts b1^2 Q33 in slot 5)
             end
         end
+        if par_wall_known && any(ax == AX_PAR); Q_i(4, :) = 0;  Q_i(:, 4) = 0; end   % parallel axis: the thermal kick does not move the gain
         Q44_v(ax) = Q_i(4, 4);
         Q33_v(ax) = Q_i(3, 3);
         a_barQ_v(ax) = a_bar_i;      % the a_bar actually used to build Q33
@@ -2072,6 +2124,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         else
             M_tot = M_row4;
         end
+        if par_wall_known && any(ax == AX_PAR); M_tot = Delta_wbar_d_km1; end   % parallel axis: only the wall-normal commanded step changes the gain
         F_dw = F_dw_km1(ax);
         if t2_pure_prop; F_dw = 0; Q_i = zeros(n_state); end
         if q55_path && ~lm(1); Q_i(5, 5) = Q_i(5, 5) + q55_per_R * abs(M_tot); end   % path-proportional container of the b'_true dw line, see init
@@ -2087,6 +2140,29 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 case 'rhoconst'; qadd = q55a_rho / max(q55a_I(ax), q55a_Imin); % constant ratio: Q55 = R_k * rho = rho / I_{k-1} (floored)
                 case 'ratiogate'; qadd = q55a_P0(ax)^2 * q55a_I(ax) * double(abs(st) > q55a_thr);   % 10-02: ratio, opened only while the windowed mean of the whitened y1 innovation exceeds thr (model-error evidence)
                 case 'r2ratio';  qadd = q55a_rho * R2_i;  q55a_stat(ax) = R2_i;  % literal R2 ratio (09-30 user question): Q55 = rho * R2[k], no H (R2 in a-bar^2 units)
+                case 'ratioinnov'                                                  % 10-04: ratio scaled by g(x), x = (mean nu1 / sigma)^2, see init
+                    if q55a_wI; xr = st^2; else; xr = st^2 * q55a_N; end           %   wI: st is already mean/sigma (I-weighted); else sigma^2 = 1/N
+                    if strcmp(q55a_gfun, 'max1'); xr = max(1, xr); end
+                    qadd = q55a_P0(ax)^2 * q55a_I(ax) * xr;
+                case 'rationew'                                                    % 10-04: P_fix by new ground / revisit, see init
+                    assert(plaw_c_slope, 'motion_control_law_formC_b:q55AdaptNew', 'q55_adapt rationew needs a plaw slope law (ws_11).');
+                    hd_new = w_bar_d - ws_11;  Pn = q55a_P0(ax);
+                    if hd_new < q55a_hmin(ax) - 1e-4; q55a_hmin(ax) = hd_new;          % new ground: short memory
+                    elseif q55a_Prev > 0; Pn = q55a_Prev^2; end                       % revisit: long memory
+                    qadd = Pn^2 * q55a_I(ax);
+                case 'covmatch'                                                    % 10-04: covariance matching, see init
+                    if strcmp(q55a_cmf, 'pure'); qadd = q55a_cmD(ax);
+                    else; rho_cm = 1; if q55a_cmR(ax) > 0; rho_cm = q55a_cmD(ax) / q55a_cmR(ax); end
+                        qadd = q55a_P0(ax)^2 * q55a_I(ax) * rho_cm; end
+                case 'ratiodrift'                                                  % 10-04: ratio + height drift dc^2 |M| / h_hat^2, see init
+                    assert(plaw_c_slope, 'motion_control_law_formC_b:q55AdaptDrift', 'q55_adapt ratiodrift needs a plaw slope law (h_v2).');
+                    qadd = q55a_P0(ax)^2 * q55a_I(ax) + q55a_dc^2 * abs(Delta_wbar_d_km1) / h_v2^2;   % commanded step only: deterministic, 0 in a hold (M_tot's dw3 jitter would not cancel under |.|)
+                case 'drift'                                                       % 10-06: O50 alone, see init
+                    assert(plaw_c_slope, 'motion_control_law_formC_b:q55AdaptDrift', 'q55_adapt drift needs a plaw slope law (h_v2).');
+                    qadd = q55a_dc^2 * abs(Delta_wbar_d_km1) / h_v2^2;
+                case 'driftsq'                                                     % 10-06: deterministic step change squared, see init
+                    assert(plaw_c_slope, 'motion_control_law_formC_b:q55AdaptDrift', 'q55_adapt driftsq needs a plaw slope law (h_v2).');
+                    qadd = (q55a_dc * Delta_wbar_d_km1 / h_v2^2)^2;
             end
             if ~isinf(q55a_hgate) && plaw_c_slope && h_v2 > q55a_hgate; qadd = 0; end   % height gate (oscillation test): no Q above hgate
             Q_i(5, 5) = Q_i(5, 5) + qadd;  q55a_q(ax) = qadd;
@@ -2380,6 +2456,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 x_pred(4) = min(max(local_gain_from_law(w_bar_d, w0_ga, x_pred(3), x_pred(5), gap_floor), a_bar_floor), a_bar_ceil);
             end
         end
+        if par_wall_known && any(ax == AX_PAR)        % parallel axis: gain row = itself only (no own-dw3, no c, no memory columns)
+            F_e(4, :) = 0;  F_e(4, 4) = 1;
+            x_pred(4) = x_curr(4) + a_prime_i * Delta_wbar_d_km1;   % known parallel law times the wall-normal commanded step
+        end
         P_pred = F_e * P_curr * F_e' + Q_i;
         P_pred = 0.5 * (P_pred + P_pred');
         P_pred = freeze_locked_P(P_pred, lock_state_idx_ax{ax});
@@ -2403,7 +2483,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             if ax == 1; q55a_ptr = mod(q55a_ptr, q55a_N) + 1; end
             q55a_buf(q55a_ptr, ax) = nu1;
             switch q55a_mode
-                case {'wmean', 'prop', 'ratiogate'}; q55a_stat(ax) = mean(q55a_buf(:, ax));
+                case {'wmean', 'prop', 'ratiogate', 'ratioinnov'}; q55a_stat(ax) = mean(q55a_buf(:, ax));
                 case 'nis';             q55a_stat(ax) = mean(q55a_buf(:, ax).^2);
                 case 'cusum'
                     q55a_g(1, ax) = max(0, q55a_g(1, ax) + nu1 - q55a_kcu);
@@ -2482,6 +2562,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 end
                 H2(4) = 0;
             end
+            if h2_walk_cols_off || y2_delay_off; H2(3) = 0; H2(5) = 0; end   % 10-06 test: drop the walk-back Jacobian columns (dw3, slot 5); y2_pred keeps the walk-back term
             % NONLINEAR predicted measurement (S7 innovation line); H2*x_upd
             % would be wrong here -- see the header. The echo share S of the
             % reading tracks the APPLIED gain (= the estimate), so the
@@ -2523,7 +2604,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 P_upd  = 0.5 * (P_upd + P_upd');
             else
             y2_pred = H2_scale * (x_upd(4) ...
-                        - echo_fac * a_prime_i * Grad_wbar_d ...
+                        - double(~y2_delay_off) * echo_fac * a_prime_i * Grad_wbar_d ...
                         - echo_fac * d_delay * x_upd(6) * double(da_slot));   % E2: d applications of da_hat, scaled like its Jacobian
             H2_log = H2;
             S2  = H2 * P_upd * H2' + R2_i;
@@ -2617,9 +2698,19 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             lam_b_spend(ax) = lam_b_spend(ax) + (1 - lam_b_k);
         end
         lam_b_v(ax) = lam_b_k;
-        if any(strcmp(q55a_mode, {'ratio', 'rhoconst', 'ratiogate'})) && ~lm(1) && P_pred(5, 5) > 0 && P_upd(5, 5) > 0
+        if any(strcmp(q55a_mode, {'ratio', 'rhoconst', 'ratiogate', 'ratioinnov', 'ratiodrift', 'covmatch', 'rationew', 'drift', 'driftsq'})) && ~lm(1) && P_pred(5, 5) > 0 && P_upd(5, 5) > 0
             q55a_I(ax) = max(0, 1 / P_upd(5, 5) - 1 / P_pred(5, 5));      % I_k = this step's information on slot 5 (both channels), consumed at the next predict
-            if ~strcmp(q55a_mode, 'ratiogate'); q55a_stat(ax) = q55a_I(ax); end   % logged as q55a_stat for ratio / rhoconst (plot_rho_diag); ratiogate logs the gate statistic instead
+            if ~any(strcmp(q55a_mode, {'ratiogate', 'ratioinnov'})); q55a_stat(ax) = q55a_I(ax); end
+            if strcmp(q55a_mode, 'ratioinnov') && q55a_wI && q55a_ptr > 0         % I-weighted statistic over the same window as nu1 (overrides the plain mean)
+                q55a_bufI(q55a_ptr, ax) = q55a_I(ax);  sI2 = sum(q55a_bufI(:, ax).^2);
+                if sI2 > 0; q55a_stat(ax) = sum(q55a_bufI(:, ax) .* q55a_buf(:, ax)) / sqrt(sI2); else; q55a_stat(ax) = 0; end
+            end   % logged as q55a_stat for ratio / rhoconst (plot_rho_diag); ratiogate logs the gate statistic instead
+            if strcmp(q55a_mode, 'covmatch')                                       % EWMA of the observed and the model-predicted correction power on c
+                al_cm = 1 / q55a_N;  dc_k = x_upd(5) - x_pred(5);
+                q55a_cmD(ax) = (1 - al_cm) * q55a_cmD(ax) + al_cm * dc_k^2;
+                q55a_cmR(ax) = (1 - al_cm) * q55a_cmR(ax) + al_cm * max(0, P_pred(5, 5) - P_upd(5, 5));
+                if q55a_cmR(ax) > 0; q55a_stat(ax) = q55a_cmD(ax) / q55a_cmR(ax); end   % logged: observed / predicted (1 when the model is right)
+            end
         end
         if p55_floor_on && ~lm(1) && P_upd(5, 5) < p55_floor_std(ax)^2 && P_upd(5, 5) > 0
             lam_b_k = P_upd(5, 5) / p55_floor_std(ax)^2;   % < 1: the congruence below lifts P55 exactly to the floor
@@ -3108,4 +3199,13 @@ function v = local_da_inject(has_known, J_da, da)
     else
         v = J_da * da;
     end
+end
+
+
+function [a, ap] = local_par_plane(h)
+%LOCAL_PAR_PLANE  Plane wall-PARALLEL gain a_par = 1/c_par(h) and its slope d a_par/dh at height h [R] (par_wall_known, 10-07).
+%   The plane is the known wall (wall-test protocol: estimator starts from the plane); central difference, step 1e-5 R.
+    h = max(h, 1.0);  dh = 1e-5;
+    [cp0, ~] = calc_correction_functions(h);  [cpp, ~] = calc_correction_functions(h + dh);  [cpm, ~] = calc_correction_functions(max(h - dh, 1.0));
+    a = 1 / cp0;  ap = (1 / cpp - 1 / cpm) / (h + dh - max(h - dh, 1.0));
 end

@@ -79,6 +79,10 @@ function simOut = run_pure_simulation(config, opts)
     % TEMP (chat 2026-07-06, fixed-g probe; remove after use): scale factor c on
     % the true-gain override, a_ctrl = c*a_true => mismatch g := a_true/a_ctrl = 1/c.
     if ~isfield(opts, 'true_gain_scale'); opts.true_gain_scale = 1;          end
+    if ~isfield(opts, 'a_ctrl_const');    opts.a_ctrl_const = [];             end   % 3x1 [um/pN]; [] = off (default)
+    % Plant-side boundary override (2026-09-21): opts.plant_cperp = @(h_bar) c_perp, e.g. cell_cperp_delta. The
+    % controller keeps P (plane); the plant (step_dynamics, calc_thermal_force) and the logged a_true use P_plant.
+    if ~isfield(opts, 'plant_cperp');  opts.plant_cperp  = [];                 end
 
     % ------------------------------------------------------------------
     % 1. RNG seeding — MUST precede calc_simulation_params.
@@ -97,6 +101,8 @@ function simOut = run_pure_simulation(config, opts)
     % ------------------------------------------------------------------
     params = calc_simulation_params(config);
     P = params.Value;   % unwrap to plain struct (used by all .m functions)
+    P_plant = P;
+    if isa(opts.plant_cperp, 'function_handle'); P_plant.wall.plant_cperp = opts.plant_cperp; end
 
     % ------------------------------------------------------------------
     % 3. Clear controller / trajectory persistent state
@@ -105,7 +111,7 @@ function simOut = run_pure_simulation(config, opts)
     clear motion_control_law motion_control_law_23state ...
           motion_control_law_eq6 motion_control_law_eq17 motion_control_law_eq17_core ...
           motion_control_law_eq17_6state motion_control_law_eq17_5state ...
-          motion_control_law_eq17_4state ...
+          motion_control_law_eq17_4state motion_control_law_eq17_5state_noap ...
           trajectory_generator calc_thermal_force;
 
     % ------------------------------------------------------------------
@@ -202,10 +208,11 @@ function simOut = run_pure_simulation(config, opts)
     is_6state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '6state');
     is_5state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '5state');
     is_4state = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '4state');
-    is_vpersonal = is_6state || is_5state || is_4state;   % share prefill defaults + constants builder
+    is_noap   = isfield(config, 'eq17_variant') && strcmpi(config.eq17_variant, '5state_noap');   % no-a' layer-1 (2026-09-20)
+    is_vpersonal = is_6state || is_5state || is_4state || is_noap;   % share prefill defaults + constants builder
     if isfield(config, 'eq17_variant') && ~isempty(config.eq17_variant) && ~is_vpersonal
         error('run_pure_simulation:unknownVariant', ...
-              ['Unknown config.eq17_variant ''%s''. Supported: ''4state''|''5state''|''6state''.\n' ...
+              ['Unknown config.eq17_variant ''%s''. Supported: ''4state''|''5state''|''6state''|''5state_noap''.\n' ...
                'Archived variants (5state_aprime, gscalar, TEMP forks) were retired 2026-07-28 -- ' ...
                'see reference/eq17_analysis/archive/MOVED.md.'], config.eq17_variant);
     end
@@ -227,6 +234,14 @@ function simOut = run_pure_simulation(config, opts)
         ctrl_const = build_eq17_6state_constants(eq17_opts);
     else
         ctrl_const = build_eq17_constants(eq17_opts);
+    end
+    % Generic controller-constant override (2026-09-20): fields merged LAST, so a
+    % scratch driver can set controller flags without a config field per knob.
+    if isfield(opts, 'ctrl_const_override') && isstruct(opts.ctrl_const_override)
+        fn_ov = fieldnames(opts.ctrl_const_override);
+        for i_ov = 1:numel(fn_ov)
+            ctrl_const.(fn_ov{i_ov}) = opts.ctrl_const_override.(fn_ov{i_ov});
+        end
     end
 
     % Phase 9 R(2,2) validation: optional a_hat freeze (locks state(6) per axis)
@@ -467,6 +482,7 @@ function simOut = run_pure_simulation(config, opts)
         diag_log.K_kf_dx_y1        = zeros(N, 3);
         diag_log.innovation_y1     = zeros(N, 3);   % v-budget diag (4state taylor)
         diag_log.K_kf_a_y1         = zeros(N, 3);   % L(4,1)
+        diag_log.w_y2              = zeros(N, 3);   % y2 information per step H2(4)^2/R22 (5state_noap, logging only)
         diag_log.K_kf_dx_y2        = zeros(N, 3);   % L(3,2)
         diag_log.P_a               = zeros(N, 3);
         diag_log.P_dx              = zeros(N, 3);
@@ -493,6 +509,11 @@ function simOut = run_pure_simulation(config, opts)
         diag_log.delta_x_hat_3     = zeros(N, 3);   % current tracking-error estimate (slot 3)
         diag_log.P_dx1             = zeros(N, 3);
         diag_log.a_ctrl_used       = zeros(N, 3);
+        diag_log.P_da              = zeros(N, 3);   % 5state_noap: P55 (gain-rate variance)
+        diag_log.S_y1              = zeros(N, 3);   % 5state_noap: believed prior innovation variance of y1
+        diag_log.S_y2              = zeros(N, 3);   % 5state_noap: believed innovation variance of y2 (0 when gated)
+        diag_log.y2_fed            = zeros(N, 3);   % 5state_noap: value fed to the y2 row (whitened or raw)
+        diag_log.lambda_f_used     = ones(N, 3);    % 5state_noap: per-step forgetting factor (lf_mode ljung)
     end
 
     % ------------------------------------------------------------------
@@ -519,6 +540,7 @@ function simOut = run_pure_simulation(config, opts)
         if wall_on_drv
             h_bar_true_k = max((dot(p_curr, P.wall.w_hat) - P.wall.pz) / P.common.R, h_bar_floor_drv);
             [c_para_k, c_perp_k] = calc_correction_functions(h_bar_true_k);
+            if isa(opts.plant_cperp, 'function_handle'); c_perp_k = opts.plant_cperp(h_bar_true_k); end
             a_true_k = [a_nom_drv / c_para_k; a_nom_drv / c_para_k; a_nom_drv / c_perp_k];
         else
             a_true_k = a_nom_drv * ones(3, 1);
@@ -528,6 +550,7 @@ function simOut = run_pure_simulation(config, opts)
         else
             a_override_k = [];
         end
+        if ~isempty(opts.a_ctrl_const); a_override_k = opts.a_ctrl_const(:); end   % 10-07 (Layer-1): constant gain in the law, e.g. a_nom (estimator still runs)
 
         % --- (d) Controller + EKF  (dispatch A1: 4-state / 5-state / 6-state vs 7-state)
         if is_4state
@@ -537,6 +560,28 @@ function simOut = run_pure_simulation(config, opts)
             else
                 [f_d_k, ekf_k] = motion_control_law_eq17_4state( ...
                                     del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k, a_true_k);
+            end
+        elseif is_noap
+            % ground-truth slope da/dx per axis at the true height (consumed only by ctrl_const.q_aprime_true, 2026-09-28)
+            aprime_true_k = zeros(3, 1);
+            if wall_on_drv
+                dh_fd = 1e-4;
+                [c_pa_p, c_pe_p] = calc_correction_functions(h_bar_true_k + dh_fd);
+                [c_pa_m, c_pe_m] = calc_correction_functions(max(h_bar_true_k - dh_fd, 1.0));
+                if isa(opts.plant_cperp, 'function_handle')
+                    c_pe_p = opts.plant_cperp(h_bar_true_k + dh_fd);  c_pe_m = opts.plant_cperp(max(h_bar_true_k - dh_fd, 1.0));
+                end
+                dh_span = (h_bar_true_k + dh_fd) - max(h_bar_true_k - dh_fd, 1.0);
+                da_dh = [a_nom_drv / c_pa_p - a_nom_drv / c_pa_m; a_nom_drv / c_pa_p - a_nom_drv / c_pa_m; ...
+                         a_nom_drv / c_pe_p - a_nom_drv / c_pe_m] / dh_span;          % per unit h_bar
+                aprime_true_k = da_dh .* P.wall.w_hat(:) / P.common.R;                 % per um along each axis
+            end
+            if opts.collect_diag
+                [f_d_k, ekf_k, diag_k] = motion_control_law_eq17_5state_noap( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k, a_true_k, aprime_true_k);
+            else
+                [f_d_k, ekf_k] = motion_control_law_eq17_5state_noap( ...
+                                    del_pd_k, pd_k, p_m_delayed, P, ctrl_const, a_override_k, a_true_k, aprime_true_k);
             end
         elseif is_5state
             if opts.collect_diag
@@ -568,7 +613,7 @@ function simOut = run_pure_simulation(config, opts)
         %   NOTE: calc_thermal_force does NOT check P.thermal.enable internally;
         %   gate is at driver level (matches Simulink block-level enable).
         if P.thermal.enable > 0.5
-            f_th_k = calc_thermal_force(p_curr, P);
+            f_th_k = calc_thermal_force(p_curr, P_plant);
         else
             f_th_k = zeros(3, 1);
         end
@@ -577,7 +622,7 @@ function simOut = run_pure_simulation(config, opts)
         F_total = f_d_k + f_th_k;
 
         % --- (g) Continuous dynamics: integrate one Ts using ode4 substeps
-        p_curr = step_dynamics(p_curr, F_total, P, Ts);
+        p_curr = step_dynamics(p_curr, F_total, P_plant, Ts);
 
         % --- (h) Measurement noise injection (matches Simulink Measurement_Noise)
         if config.meas_noise_enable
@@ -614,9 +659,15 @@ function simOut = run_pure_simulation(config, opts)
             diag_log.innovation_y2(k, :)     = diag_k.innovation_y2.';
             diag_log.K_kf_a_y2(k, :)         = diag_k.K_kf_a_y2.';
             diag_log.K_kf_dx_y1(k, :)        = diag_k.K_kf_dx_y1.';
+            if isfield(diag_k, 'w_y2'); diag_log.w_y2(k, :) = diag_k.w_y2.'; end
             if isfield(diag_k, 'innovation_y1'); diag_log.innovation_y1(k, :) = diag_k.innovation_y1.'; end
             if isfield(diag_k, 'K_kf_a_y1');     diag_log.K_kf_a_y1(k, :)     = diag_k.K_kf_a_y1.';     end
             if isfield(diag_k, 'K_kf_dx_y2');    diag_log.K_kf_dx_y2(k, :)    = diag_k.K_kf_dx_y2.';    end
+            if isfield(diag_k, 'P_da');   diag_log.P_da(k, :)   = diag_k.P_da.';   end
+            if isfield(diag_k, 'S_y1');   diag_log.S_y1(k, :)   = diag_k.S_y1.';   end
+            if isfield(diag_k, 'S_y2');   diag_log.S_y2(k, :)   = diag_k.S_y2.';   end
+            if isfield(diag_k, 'y2_fed'); diag_log.y2_fed(k, :) = diag_k.y2_fed.'; end
+            if isfield(diag_k, 'lambda_f_used'); diag_log.lambda_f_used(k, :) = diag_k.lambda_f_used.'; end
             diag_log.P_a(k, :)               = diag_k.P_a.';
             diag_log.P_dx(k, :)              = diag_k.P_dx.';
             diag_log.P77(k, :)               = diag_k.P77.';
