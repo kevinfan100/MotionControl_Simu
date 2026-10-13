@@ -1,0 +1,151 @@
+% Section 8 of motion_ctrl.tex (c-only / wall session, 2026-10-13, user): slope with unit numerator 1/(h - w_s)^2 (user 10-13: numerator 1
+%   is the chosen setting; the 9/8 arm B was tried and is kept only in the header readings), the wall position
+%   w_s estimated instead of c (Section 5 with c removed and w_s added), q55 = 0 (w_s constant). Same text as 1009_conly_wall_position.tex
+%   Section 4. Code: formC_b plaw_dc_slope with c pinned at 0 (c_init 0, Pf_c_std 1e-6, no q55_adapt), slot 7 = delta = -w_s,
+%   delta_init = -w_s-hat[0], Pf_delta_std 1.0, plaw_delta_lim widened to [-5, 5]; not shown in the text.
+%   Runs: test_script/scratch/run_1009_wsonly.m (plane, cell; w_s-hat[0] = -2, -1, -0.5, 0, +0.5; 10 seeds; 22.2 -> 1.10 R in 1 s,
+%   parked 0.2 s; lambda_c 0.4). Figures: plot_mc_s8_b('main', '', 1) -> fig_mc_s8_n1_s1.png (start 0 only); plot_mc_s8_b('aperr1', '', 1) -> fig_mc_s8_n1_aperr.png.
+%   Measured 10-13 (10 seeds): end w_s-hat plane +0.06..+0.08, cell -0.71..-0.79 from every start; |a'-hat - a'| >6R / 6-2R / 2-1.1R plane 0.0014 / 0.030 / 0.135,
+%   cell 0.0009 / 0.020 / 0.067. Arm B (numerator 9/8, c pinned at -1/8) reduced the near-wall |e_a| by 0.014-0.017 (plane) and 0.007-0.008 (cell). Options q77_adapt_P0 / ws_gate_info exist in formC_b, not used here.
+%   Only this file and one \input line in motion_ctrl.tex were added; sec5-sec7 belong to the Layer-1 session.
+\clearpage
+\section{Slope with unit numerator, the wall position as the state}
+
+\hd{Motion gain as a function of the distance from the wall}
+\[
+\begin{aligned}
+h[k] &= \bx_d[k] - \delta\bx_3[k] - \bw_s \\
+\ba'[k] &= \frac{1}{h[k]^{2}} \\
+M[k] &= \Delta\bx_d[k] + (1-\lc)\,\delta\bx_3[k]
+\end{aligned}
+\]
+
+\hd{State of the process}
+\[
+\begin{aligned}
+\delta\bx_1[k+1] &= \delta\bx_2[k] \\
+\delta\bx_2[k+1] &= \delta\bx_3[k] \\
+\delta\bx_3[k+1] &= \lc\,\delta\bx_3[k] - F_{dx}[k]\,e_{\ba}[k] - \varepsilon_x[k] \\
+\ba[k+1] &= \ba[k] + \ba'[k]\,\big(M[k] + F_{dx}[k]\,e_{\ba}[k] + \varepsilon_x[k]\big) \\
+\bw_s[k+1] &= \bw_s[k]
+\end{aligned}
+\]
+
+\hd{Measurement and output matrix}
+\[
+\mathbf{y}[k] = \begin{bmatrix} \delta\bx_m[k] \\ \ba_m[k] \end{bmatrix},
+\qquad
+\hat{\mathbf{y}}[k] = \begin{bmatrix} \delta\hat{\bx}_1[k] \\ \hat{\ba}[k] \end{bmatrix},
+\qquad
+\mathbf{H} =
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 & 0
+\end{bmatrix}
+\]
+
+\hd{Estimator}
+\[
+\begin{aligned}
+\hh[k] &= \bx_d[k] - \delta\hat{\bx}_3[k] - \hat{\bw}_s[k] \\
+\hat{\ba}'[k] &= \frac{1}{\hh[k]^{2}} \\
+\hat{M}[k] &= \Delta\bx_d[k] + (1-\lc)\,\delta\hat{\bx}_3[k]
+\end{aligned}
+\]
+\[
+\begin{aligned}
+\delta\hat{\bx}_1[k+1] &= \delta\hat{\bx}_2[k] + \big\{\ell_{11}[k]\,e_{x_1}[k] + \ell_{12}[k]\,e_{a_m}[k]\big\} \\
+\delta\hat{\bx}_2[k+1] &= \delta\hat{\bx}_3[k] + \big\{\ell_{21}[k]\,e_{x_1}[k] + \ell_{22}[k]\,e_{a_m}[k]\big\} \\
+\delta\hat{\bx}_3[k+1] &= \lc\,\delta\hat{\bx}_3[k] + \big\{\ell_{31}[k]\,e_{x_1}[k] + \ell_{32}[k]\,e_{a_m}[k]\big\} \\
+\hat{\ba}[k+1] &= \hat{\ba}[k] + \hat{\ba}'[k]\,\hat{M}[k] + \big\{\ell_{41}[k]\,e_{x_1}[k] + \ell_{42}[k]\,e_{a_m}[k]\big\} \\
+\hat{\bw}_s[k+1] &= \hat{\bw}_s[k] + \big\{\ell_{51}[k]\,e_{x_1}[k] + \ell_{52}[k]\,e_{a_m}[k]\big\}
+\end{aligned}
+\]
+
+\hd{Dynamics of estimation errors}
+\[
+\mathbf{e}[k] = \begin{bmatrix} e_{\delta\bx_1}[k] \\ e_{\delta\bx_2}[k] \\ e_{\delta\bx_3}[k] \\ e_{\ba}[k] \\ e_{\bw_s}[k] \end{bmatrix},
+\qquad
+\mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k] - \mathbf{L}[k]\,\mathbf{H}\,\mathbf{e}[k] + \mathbf{q}[k]
+\]
+\[
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & \lc & -F_{dx}[k] & 0 \\
+0 & 0 & \;\hat{\ba}'[k]\,(1-\lc) + \dfrac{2\,\hat{\ba}'[k]}{\hh[k]}\,\hat{M}[k]\; & 1 + \hat{\ba}'[k]\,F_{dx}[k] & \dfrac{2\,\hat{\ba}'[k]}{\hh[k]}\,\hat{M}[k] \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix},
+\qquad
+\mathbf{q}[k] = \begin{bmatrix} 0 \\ 0 \\ -\varepsilon_x[k] \\ \hat{\ba}'[k]\,\varepsilon_x[k] \\ 0 \end{bmatrix}
+\]
+
+\clearpage
+\hd{Row 4 of $\mathbf{F}_e$, expanded}
+
+\noindent (a) the two gain steps and their difference
+\[
+\begin{aligned}
+\ba[k+1] - \ba[k] &= \ba'[k]\,\big(M[k] + F_{dx}[k]\,e_{\ba}[k] + \varepsilon_x[k]\big) \\
+\hat{\ba}[k+1] - \hat{\ba}[k] &= \hat{\ba}'[k]\,\hat{M}[k] \\
+e_{\ba}[k+1] - e_{\ba}[k] &= \ba'[k]\,M[k] - \hat{\ba}'[k]\,\hat{M}[k] + \ba'[k]\,F_{dx}[k]\,e_{\ba}[k] + \ba'[k]\,\varepsilon_x[k]
+\end{aligned}
+\]
+
+\noindent (b) each factor written as its estimate plus its error
+\[
+\begin{aligned}
+h[k] &= \hh[k] - e_{\delta\bx_3}[k] - e_{\bw_s}[k] \\
+\ba'[k] &= \frac{1}{\big(\hh[k] - e_{\delta\bx_3}[k] - e_{\bw_s}[k]\big)^{2}}
+= \hat{\ba}'[k] + \frac{2\,\hat{\ba}'[k]}{\hh[k]}\,\big(e_{\delta\bx_3}[k] + e_{\bw_s}[k]\big) + O(e^{2}) \\
+M[k] &= \hat{M}[k] + (1-\lc)\,e_{\delta\bx_3}[k]
+\end{aligned}
+\]
+
+\noindent (c) the product difference, exact
+\[
+\ba'[k]\,M[k] - \hat{\ba}'[k]\,\hat{M}[k]
+= \hat{\ba}'[k]\,\big(M[k] - \hat{M}[k]\big) + \big(\ba'[k] - \hat{\ba}'[k]\big)\,\hat{M}[k] + \big(\ba'[k] - \hat{\ba}'[k]\big)\big(M[k] - \hat{M}[k]\big)
+\]
+
+\noindent (d) every term after substituting (b)
+\[
+\begin{aligned}
+e_{\ba}[k+1] - e_{\ba}[k]
+&= \hat{\ba}'[k]\,(1-\lc)\,e_{\delta\bx_3}[k] \\
+&\quad + \frac{2\,\hat{\ba}'[k]}{\hh[k]}\,\hat{M}[k]\,e_{\delta\bx_3}[k] + \frac{2\,\hat{\ba}'[k]}{\hh[k]}\,\hat{M}[k]\,e_{\bw_s}[k] \\
+&\quad + \hat{\ba}'[k]\,F_{dx}[k]\,e_{\ba}[k] + \hat{\ba}'[k]\,\varepsilon_x[k] \\
+&\quad + \frac{2\,\hat{\ba}'[k]}{\hh[k]}\,\big(e_{\delta\bx_3}[k] + e_{\bw_s}[k]\big)\Big((1-\lc)\,e_{\delta\bx_3}[k] + F_{dx}[k]\,e_{\ba}[k] + \varepsilon_x[k]\Big) + O(e^{2})
+\end{aligned}
+\]
+
+\noindent (e) first-order terms collected by error
+\[
+\begin{aligned}
+e_{\ba}[k+1] &= \Big(\hat{\ba}'[k]\,(1-\lc) + \frac{2\,\hat{\ba}'[k]}{\hh[k]}\,\hat{M}[k]\Big)\,e_{\delta\bx_3}[k] \\
+&\quad + \big(1 + \hat{\ba}'[k]\,F_{dx}[k]\big)\,e_{\ba}[k] \\
+&\quad + \frac{2\,\hat{\ba}'[k]}{\hh[k]}\,\hat{M}[k]\,e_{\bw_s}[k] \\
+&\quad + \hat{\ba}'[k]\,\varepsilon_x[k]
+\end{aligned}
+\]
+
+\hd{Process noise and measurement noise}
+\[
+\begin{aligned}
+\mathbf{Q}[k] &=
+\begin{bmatrix}
+0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 \\
+0 & 0 & q_{33}[k] & -\hat{\ba}'[k]\,q_{33}[k] & 0 \\
+0 & 0 & -\hat{\ba}'[k]\,q_{33}[k] & \hat{\ba}'[k]^{2}\,q_{33}[k] & 0 \\
+0 & 0 & 0 & 0 & q_{55}
+\end{bmatrix},
+\qquad q_{55} = 0 \\
+\mathbf{R}[k] &= \mathrm{diag}\big(r_1,\ r_2[k]\big)
+\end{aligned}
+\]
+($q_{33}$, $r_1$, $r_2$, $\mathbf{L}$, $\mathbf{P}$, $\mathbf{P}^f$ as in Section 4.)
+
+\IfFileExists{figures/fig_mc_s8_n1_s1.png}{\figpage{Fig.~8.1\quad Estimator started from the plane: plane and cell walls}{z axis; 22.2 $\to$ 1.10 R in 1 s, then hold 0.2 s; $\hat{\bw}_s[0] = 0$, $\sqrt{p_{55}[0]} = 1.0$ R, $q_{55} = 0$; left: plane wall; right: cell wall (plane polynomial slid by 1.05 R, plant only); $\bw_s$ row: red = wall position set in the plant (0), dashed = $\bw_s$ that makes $1/(h - \bw_s)^2$ equal the true slope at the true height, band = $\pm\sqrt{p_{55}}$; $\lc = 0.4$, seed 1}{fig_mc_s8_n1_s1.png}}{}
+\IfFileExists{figures/fig_mc_s8_n1_aperr.png}{\figpage{Fig.~8.2\quad Error of the slope along the descent}{run of Fig.~8.1, 10 seeds (light: each seed, dark: mean); $|\hat{\ba}' - \ba'|$ with $\hat{\ba}' = 1/(h_d - \hat{\bw}_s)^2$ and $\ba'$ the slope of the plant at the true height (red); left: plane wall; right: cell wall; descent only}{fig_mc_s8_n1_aperr.png}}{}

@@ -1,0 +1,355 @@
+% STATUS: ACTIVE -- c-only slope law with the wall position as a state: true process, estimator, error dynamics, observability matrix.
+% ======================================================
+% Compile: xelatex 1009_conly_wall_position.tex   (from reference/eq17_analysis/derivation/)
+% Layout: Sections 1 = motion_ctrl/sec5_conly.tex (true process -> output matrix -> estimator -> error dynamics -> row 4 expanded
+%   -> Q, R), one state added; Sections 2-3 = 0928_obs_c_only_v1.tex (leading order, matrix, columns, what it shows), with the
+%   delay-free H of motion_ctrl S5 (no gamma terms). Preamble copied from motion_ctrl.tex.
+% Choices (user 2026-10-09): slope law kept at (1 - c)/h^2; wall position written w_s (in the x-bar coordinate of motion_ctrl,
+%   whose origin is the visible surface; w_s = 0 for the plane, the cell's hydrodynamic wall is at w_s = -1.05); separate file.
+%   The estimator starts from the plane: c-hat[0] = 0, w_s-hat[0] = 0 (.claude/rules/wall-test-protocol.md).
+% Code: the same law is formC_b flag plaw_dc_slope (0922_estb_f2_slope_dc.tex, runner law 'f2'), written there as (1-c)/(h + delta)^2
+%   with delta = -w_s in slot 7 (slot 6 pinned); that code walks y2 back d steps (H2(7) = -H2(3)), this document does not (C92).
+% Check: python3 test_script/scratch/check_1009_conly_wall_position.py (sympy 33/33: row 4 of F_e, the leading-order O rows
+%   j = 0..6, the frozen-coefficient proportionality of the e_c and e_ws columns, the walked columns and the three-row determinant).
+% Sections: 1 model and estimator | 2 observability matrix | 3 what the matrix shows. Equations only (derivation-workflow rule 10).
+% ======================================================
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+\setlength{\abovedisplayskip}{6pt}
+\setlength{\belowdisplayskip}{6pt}
+\setlength{\abovedisplayshortskip}{6pt}
+\setlength{\belowdisplayshortskip}{6pt}
+\newcommand{\lc}{\lambda_c}
+\newcommand{\bx}{\bar{x}}
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\hh}{\hat{h}}
+\newcommand{\ch}{\hat{c}}
+\newcommand{\hd}[1]{\par\bigskip\noindent\underline{\textbf{#1}}}
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{center}\textbf{\large Position-dependent motion gain with an unknown wall position}\end{center}
+
+%======================================================================
+\section{Model and estimator}
+
+\hd{Motion gain as a function of the distance from the wall}
+\[
+\begin{aligned}
+h[k] &= \bx_d[k] - \delta\bx_3[k] - \bw_s \\
+\ba'[k] &= \frac{1 - c}{h[k]^{2}} \\
+M[k] &= \Delta\bx_d[k] + (1-\lc)\,\delta\bx_3[k]
+\end{aligned}
+\]
+
+\hd{State of the process}
+\[
+\begin{aligned}
+\delta\bx_1[k+1] &= \delta\bx_2[k] \\
+\delta\bx_2[k+1] &= \delta\bx_3[k] \\
+\delta\bx_3[k+1] &= \lc\,\delta\bx_3[k] - F_{dx}[k]\,e_{\ba}[k] - \varepsilon_x[k] \\
+\ba[k+1] &= \ba[k] + \ba'[k]\,\big(M[k] + F_{dx}[k]\,e_{\ba}[k] + \varepsilon_x[k]\big) \\
+c[k+1] &= c[k] \\
+\bw_s[k+1] &= \bw_s[k]
+\end{aligned}
+\]
+
+\hd{Measurement and output matrix}
+\[
+\mathbf{y}[k] = \begin{bmatrix} \delta\bx_m[k] \\ \ba_m[k] \end{bmatrix},
+\qquad
+\hat{\mathbf{y}}[k] = \begin{bmatrix} \delta\hat{\bx}_1[k] \\ \hat{\ba}[k] \end{bmatrix},
+\qquad
+\mathbf{H} =
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 & 0 & 0
+\end{bmatrix}
+\]
+
+\hd{Estimator}
+\[
+\begin{aligned}
+\hh[k] &= \bx_d[k] - \delta\hat{\bx}_3[k] - \hat{\bw}_s[k] \\
+\hat{\ba}'[k] &= \frac{1 - \ch[k]}{\hh[k]^{2}} \\
+\hat{M}[k] &= \Delta\bx_d[k] + (1-\lc)\,\delta\hat{\bx}_3[k]
+\end{aligned}
+\]
+\[
+\begin{aligned}
+\delta\hat{\bx}_1[k+1] &= \delta\hat{\bx}_2[k] + \big\{\ell_{11}[k]\,e_{x_1}[k] + \ell_{12}[k]\,e_{a_m}[k]\big\} \\
+\delta\hat{\bx}_2[k+1] &= \delta\hat{\bx}_3[k] + \big\{\ell_{21}[k]\,e_{x_1}[k] + \ell_{22}[k]\,e_{a_m}[k]\big\} \\
+\delta\hat{\bx}_3[k+1] &= \lc\,\delta\hat{\bx}_3[k] + \big\{\ell_{31}[k]\,e_{x_1}[k] + \ell_{32}[k]\,e_{a_m}[k]\big\} \\
+\hat{\ba}[k+1] &= \hat{\ba}[k] + \hat{\ba}'[k]\,\hat{M}[k] + \big\{\ell_{41}[k]\,e_{x_1}[k] + \ell_{42}[k]\,e_{a_m}[k]\big\} \\
+\ch[k+1] &= \ch[k] + \big\{\ell_{51}[k]\,e_{x_1}[k] + \ell_{52}[k]\,e_{a_m}[k]\big\} \\
+\hat{\bw}_s[k+1] &= \hat{\bw}_s[k] + \big\{\ell_{61}[k]\,e_{x_1}[k] + \ell_{62}[k]\,e_{a_m}[k]\big\}
+\end{aligned}
+\]
+
+\hd{Dynamics of estimation errors}
+\[
+\mathbf{e}[k] = \begin{bmatrix} e_{\delta\bx_1}[k] \\ e_{\delta\bx_2}[k] \\ e_{\delta\bx_3}[k] \\ e_{\ba}[k] \\ e_c[k] \\ e_{\bw_s}[k] \end{bmatrix},
+\qquad
+\mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k] - \mathbf{L}[k]\,\mathbf{H}\,\mathbf{e}[k] + \mathbf{q}[k]
+\]
+{\small
+\[
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 0 & \lc & -F_{dx}[k] & 0 & 0 \\
+0 & 0 & \;\hat{\ba}'[k]\,(1-\lc) + \dfrac{2\,\hat{\ba}'[k]}{\hh[k]}\,\hat{M}[k]\; & 1 + \hat{\ba}'[k]\,F_{dx}[k] & -\dfrac{\hat{M}[k]}{\hh[k]^{2}} & \dfrac{2\,\hat{\ba}'[k]}{\hh[k]}\,\hat{M}[k] \\
+0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\]
+}
+\[
+\mathbf{q}[k] = \begin{bmatrix} 0 \\ 0 \\ -\varepsilon_x[k] \\ \hat{\ba}'[k]\,\varepsilon_x[k] \\ 0 \\ 0 \end{bmatrix}
+\]
+
+\clearpage
+\hd{Row 4 of $\mathbf{F}_e$, expanded}
+
+\noindent (a) the two gain steps and their difference
+\[
+\begin{aligned}
+\ba[k+1] - \ba[k] &= \ba'[k]\,\big(M[k] + F_{dx}[k]\,e_{\ba}[k] + \varepsilon_x[k]\big) \\
+\hat{\ba}[k+1] - \hat{\ba}[k] &= \hat{\ba}'[k]\,\hat{M}[k] \\
+e_{\ba}[k+1] - e_{\ba}[k] &= \ba'[k]\,M[k] - \hat{\ba}'[k]\,\hat{M}[k] + \ba'[k]\,F_{dx}[k]\,e_{\ba}[k] + \ba'[k]\,\varepsilon_x[k]
+\end{aligned}
+\]
+
+\noindent (b) each factor written as its estimate plus its error
+\[
+\begin{aligned}
+h[k] &= \hh[k] - e_{\delta\bx_3}[k] - e_{\bw_s}[k], \qquad c = \ch[k] + e_c[k] \\
+\ba'[k] &= \frac{1 - \ch[k] - e_c[k]}{\big(\hh[k] - e_{\delta\bx_3}[k] - e_{\bw_s}[k]\big)^{2}}
+= \hat{\ba}'[k] + \frac{2\,\hat{\ba}'[k]}{\hh[k]}\,\big(e_{\delta\bx_3}[k] + e_{\bw_s}[k]\big) - \frac{1}{\hh[k]^{2}}\,e_c[k] + O(e^{2}) \\
+M[k] &= \hat{M}[k] + (1-\lc)\,e_{\delta\bx_3}[k]
+\end{aligned}
+\]
+
+\noindent (c) the product difference, exact
+\[
+\ba'[k]\,M[k] - \hat{\ba}'[k]\,\hat{M}[k]
+= \hat{\ba}'[k]\,\big(M[k] - \hat{M}[k]\big) + \big(\ba'[k] - \hat{\ba}'[k]\big)\,\hat{M}[k] + \big(\ba'[k] - \hat{\ba}'[k]\big)\big(M[k] - \hat{M}[k]\big)
+\]
+
+\noindent (d) every term after substituting (b)
+\[
+\begin{aligned}
+e_{\ba}[k+1] - e_{\ba}[k]
+&= \hat{\ba}'[k]\,(1-\lc)\,e_{\delta\bx_3}[k] \\
+&\quad + \frac{2\,\hat{\ba}'[k]}{\hh[k]}\,\hat{M}[k]\,e_{\delta\bx_3}[k] - \frac{\hat{M}[k]}{\hh[k]^{2}}\,e_c[k] + \frac{2\,\hat{\ba}'[k]}{\hh[k]}\,\hat{M}[k]\,e_{\bw_s}[k] \\
+&\quad + \hat{\ba}'[k]\,F_{dx}[k]\,e_{\ba}[k] + \hat{\ba}'[k]\,\varepsilon_x[k] \\
+&\quad + \Big(\frac{2\,\hat{\ba}'[k]}{\hh[k]}\,\big(e_{\delta\bx_3}[k] + e_{\bw_s}[k]\big) - \frac{e_c[k]}{\hh[k]^{2}}\Big) \\
+&\qquad\quad \times\Big((1-\lc)\,e_{\delta\bx_3}[k] + F_{dx}[k]\,e_{\ba}[k] + \varepsilon_x[k]\Big) + O(e^{2})
+\end{aligned}
+\]
+
+\noindent (e) first-order terms collected by error
+\[
+\begin{aligned}
+e_{\ba}[k+1] &= \Big(\hat{\ba}'[k]\,(1-\lc) + \frac{2\,\hat{\ba}'[k]}{\hh[k]}\,\hat{M}[k]\Big)\,e_{\delta\bx_3}[k] \\
+&\quad + \big(1 + \hat{\ba}'[k]\,F_{dx}[k]\big)\,e_{\ba}[k] \\
+&\quad - \frac{\hat{M}[k]}{\hh[k]^{2}}\,e_c[k] \\
+&\quad + \frac{2\,\hat{\ba}'[k]}{\hh[k]}\,\hat{M}[k]\,e_{\bw_s}[k] \\
+&\quad + \hat{\ba}'[k]\,\varepsilon_x[k]
+\end{aligned}
+\]
+
+\hd{Process noise and measurement noise}
+\[
+\begin{aligned}
+\mathbf{Q}[k] &=
+\begin{bmatrix}
+0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & q_{33}[k] & -\hat{\ba}'[k]\,q_{33}[k] & 0 & 0 \\
+0 & 0 & -\hat{\ba}'[k]\,q_{33}[k] & \hat{\ba}'[k]^{2}\,q_{33}[k] & 0 & 0 \\
+0 & 0 & 0 & 0 & q_{55} & 0 \\
+0 & 0 & 0 & 0 & 0 & q_{66}
+\end{bmatrix},
+\qquad q_{55} = 0, \quad q_{66} = 0 \\
+\mathbf{R}[k] &= \mathrm{diag}\big(r_1,\ r_2[k]\big)
+\end{aligned}
+\]
+
+%======================================================================
+\clearpage
+\section{Observability matrix}
+
+\hd{Leading order used from here on: first order in $\hat{\ba}'F_{dx}$}
+\[
+\beta_k := \frac{\hat{M}[k]}{\hh[k]^{2}}, \qquad
+\mathbf{F}_e[k] \to
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 0 & \lc & -F_{dx}[k] & 0 & 0 \\
+0 & 0 & 0 & 1 & -\beta_k & \dfrac{2\,(1-\ch)\,\beta_k}{\hh[k]} \\
+0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1
+\end{bmatrix}, \qquad
+\mathbf{H} =
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 & 0 & 0
+\end{bmatrix}
+\]
+\[
+\begin{aligned}
+\text{kept:}\quad & F_{e,46} = \frac{2\,\hat{\ba}'\hat{M}}{\hh} = \frac{2\,(1-\ch)\,\beta_k}{\hh} \\
+\text{dropped:}\quad & F_{e,44} - 1 = \hat{\ba}'F_{dx}, \qquad F_{e,43} = \hat{\ba}'(1-\lc) + \frac{2\,\hat{\ba}'\hat{M}}{\hh} \\
+\text{steady state of the } e_{\delta\bx_3} \text{ loop:}\quad & (F_{e,44} - 1) + F_{e,43}\Big(-\frac{F_{dx}}{1-\lc}\Big) = -\frac{2\,\hat{\ba}'\hat{M}F_{dx}}{\hh\,(1-\lc)}
+\end{aligned}
+\]
+
+\hd{Errors at step $k_0$, output errors $j$ steps later}
+\[
+\begin{bmatrix} e_{x_1}[k_0+j] \\ e_{a_m}[k_0+j] \end{bmatrix}
+= \mathbf{H}\,\bm{\Phi}(k_0+j,k_0)\,\mathbf{e}[k_0],
+\qquad \beta_i := \beta_{k_0+i}, \;\; \hh_i := \hh[k_0+i], \;\; F_i := F_{dx}[k_0+i]
+\]
+
+\hd{The matrix}
+{\scriptsize\setlength{\arraycolsep}{3pt}
+\[
+\begin{bmatrix} e_{x_1}[k_0] \\ e_{a_m}[k_0] \\[0.3ex] e_{x_1}[k_0+1] \\ e_{a_m}[k_0+1] \\[0.3ex] e_{x_1}[k_0+2] \\ e_{a_m}[k_0+2] \\[0.3ex] e_{x_1}[k_0+3] \\ e_{a_m}[k_0+3] \\[0.3ex] e_{x_1}[k_0+4] \\ e_{a_m}[k_0+4] \\ \vdots \\ e_{x_1}[k_0+j] \\ e_{a_m}[k_0+j] \end{bmatrix}
+=
+\underbrace{\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 & 0 & 0 \\[0.3ex]
+0 & 1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 & -\beta_0 & \dfrac{2(1-\ch)\beta_0}{\hh_0} \\[0.8ex]
+0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 & -(\beta_0 + \beta_1) & \dfrac{2(1-\ch)\beta_0}{\hh_0} + \dfrac{2(1-\ch)\beta_1}{\hh_1} \\[0.8ex]
+0 & 0 & \lc & -F_0 & 0 & 0 \\
+0 & 0 & 0 & 1 & -(\beta_0 + \beta_1 + \beta_2) & \textstyle\sum_{i=0}^{2}\dfrac{2(1-\ch)\beta_i}{\hh_i} \\[0.8ex]
+0 & 0 & \lc^2 & -\lc F_0 - F_1 & F_1\,\beta_0 & -F_1\,\dfrac{2(1-\ch)\beta_0}{\hh_0} \\
+0 & 0 & 0 & 1 & -(\beta_0 + \beta_1 + \beta_2 + \beta_3) & \textstyle\sum_{i=0}^{3}\dfrac{2(1-\ch)\beta_i}{\hh_i} \\
+\vdots & \vdots & \vdots & \vdots & \vdots & \vdots \\
+0 & 0 & \lc^{\,j-2} & -\textstyle\sum_{i=0}^{j-3}\lc^{\,j-3-i}F_i & \textstyle\sum_{i=0}^{j-3}\lc^{\,j-3-i}F_i \sum_{l=0}^{i-1}\beta_l & -\textstyle\sum_{i=0}^{j-3}\lc^{\,j-3-i}F_i \sum_{l=0}^{i-1}\dfrac{2(1-\ch)\beta_l}{\hh_l} \\
+0 & 0 & 0 & 1 & -\textstyle\sum_{i=0}^{j-1}\beta_i & \textstyle\sum_{i=0}^{j-1}\dfrac{2(1-\ch)\beta_i}{\hh_i}
+\end{bmatrix}}_{\mathbf{O}(k_0)}
+\begin{bmatrix} e_{\delta\bx_1}[k_0] \\ e_{\delta\bx_2}[k_0] \\ e_{\delta\bx_3}[k_0] \\ e_{\ba}[k_0] \\ e_c[k_0] \\ e_{\bw_s}[k_0] \end{bmatrix}
+\]
+}
+
+\hd{The six columns ($F_{dx}$, $\beta$, $\hh$ constant): $e_{x_1}$ rows, $j = 0, 1, 2, \dots$}
+{\small
+\[
+\begin{array}{c|l}
+e_{\delta\bx_1} & 1,\; 0,\; 0,\; 0,\; \dots \\
+e_{\delta\bx_2} & 0,\; 1,\; 0,\; 0,\; \dots \\
+e_{\delta\bx_3} & 0,\; 0,\; 1,\; \lc,\; \lc^2,\; \dots \to 0 \\
+e_{\ba} & 0,\; 0,\; 0,\; -F_{dx},\; -F_{dx}(1+\lc),\; \dots \to -\dfrac{F_{dx}}{1-\lc} \\[1.2ex]
+e_c & 0,\; 0,\; 0,\; 0,\; F_{dx}\beta,\; F_{dx}\beta(2+\lc),\; \dots \approx \dfrac{F_{dx}}{1-\lc}(j-3)\,\beta \\[1.6ex]
+e_{\bw_s} & 0,\; 0,\; 0,\; 0,\; -F_{dx}\dfrac{2(1-\ch)\beta}{\hh},\; -F_{dx}\dfrac{2(1-\ch)\beta}{\hh}(2+\lc),\; \dots \approx -\dfrac{F_{dx}}{1-\lc}(j-3)\,\dfrac{2(1-\ch)\beta}{\hh}
+\end{array}
+\]
+}
+
+\hd{The six columns ($F_{dx}$, $\beta$, $\hh$ constant): $e_{a_m}$ rows, $j = 0, 1, 2, \dots$}
+{\small
+\[
+\begin{array}{c|l}
+e_{\delta\bx_1} & 0,\; 0,\; 0,\; \dots \\
+e_{\delta\bx_2} & 0,\; 0,\; 0,\; \dots \\
+e_{\delta\bx_3} & 0,\; 0,\; 0,\; \dots \\
+e_{\ba} & 1,\; 1,\; 1,\; \dots \\
+e_c & 0,\; -\beta,\; -2\beta,\; \dots,\; -j\beta \\[1.2ex]
+e_{\bw_s} & 0,\; \dfrac{2(1-\ch)\beta}{\hh},\; 2\,\dfrac{2(1-\ch)\beta}{\hh},\; \dots,\; j\,\dfrac{2(1-\ch)\beta}{\hh}
+\end{array}
+\]
+}
+
+%======================================================================
+\clearpage
+\section{What the matrix shows}
+
+\hd{One height ($\beta$, $\hh$ constant): the $e_{\bw_s}$ column is a multiple of the $e_c$ column}
+\[
+\mathbf{O}_{:,6} = -\frac{2\,(1-\ch)}{\hh}\,\mathbf{O}_{:,5}
+\]
+\[
+-\beta\,e_c + \frac{2\,(1-\ch)\,\beta}{\hh}\,e_{\bw_s} = -\beta\,\Big(e_c - \frac{2\,(1-\ch)}{\hh}\,e_{\bw_s}\Big)
+\]
+
+\hd{$e_{\ba}$, $e_c$, $e_{\bw_s}$ in the $e_{a_m}$ rows}
+\[
+e_{\ba}:\;\; 1,\; 1,\; 1,\; \dots \qquad
+e_c:\;\; -\sum_{i=0}^{j-1}\beta_i \qquad
+e_{\bw_s}:\;\; \sum_{i=0}^{j-1}\frac{2\,(1-\ch)\,\beta_i}{\hh_i}
+\]
+
+\hd{Constant velocity: the two columns are what the probe has walked}
+\[
+\begin{aligned}
+-\sum_{i=0}^{j-1}\beta_i &\approx -\int_{\hh_0}^{\hh_j}\frac{dh}{h^{2}} = \frac{1}{\hh_j} - \frac{1}{\hh_0} \\
+\sum_{i=0}^{j-1}\frac{2\,(1-\ch)\,\beta_i}{\hh_i} &\approx \int_{\hh_0}^{\hh_j}\frac{2\,(1-\ch)}{h^{3}}\,dh = (1-\ch)\Big(\frac{1}{\hh_0^{2}} - \frac{1}{\hh_j^{2}}\Big)
+\end{aligned}
+\]
+
+\hd{The same two columns from the law: $\ba(h_j) - \ba(h_0)$ and its derivatives}
+\[
+\begin{aligned}
+\ba(h_j) - \ba(h_0) &= (1-c)\Big(\frac{1}{\bx_0 - \bw_s} - \frac{1}{\bx_j - \bw_s}\Big) \\
+\frac{\partial\,\big(\ba(h_j) - \ba(h_0)\big)}{\partial c} &= \frac{1}{h_j} - \frac{1}{h_0} \\
+\frac{\partial\,\big(\ba(h_j) - \ba(h_0)\big)}{\partial \bw_s} &= (1-c)\Big(\frac{1}{h_0^{2}} - \frac{1}{h_j^{2}}\Big)
+\end{aligned}
+\]
+
+\hd{Three heights $\hh_{j_1}$, $\hh_{j_2}$, $\hh_{j_3}$ ($e_{a_m}$ rows, constant velocity)}
+\[
+\det\begin{bmatrix}
+1 & \dfrac{1}{\hh_{j_1}} - \dfrac{1}{\hh_0} & (1-\ch)\Big(\dfrac{1}{\hh_0^{2}} - \dfrac{1}{\hh_{j_1}^{2}}\Big) \\[1.6ex]
+1 & \dfrac{1}{\hh_{j_2}} - \dfrac{1}{\hh_0} & (1-\ch)\Big(\dfrac{1}{\hh_0^{2}} - \dfrac{1}{\hh_{j_2}^{2}}\Big) \\[1.6ex]
+1 & \dfrac{1}{\hh_{j_3}} - \dfrac{1}{\hh_0} & (1-\ch)\Big(\dfrac{1}{\hh_0^{2}} - \dfrac{1}{\hh_{j_3}^{2}}\Big)
+\end{bmatrix}
+\]
+\[
+= -(1-\ch)\Big(\frac{1}{\hh_{j_2}} - \frac{1}{\hh_{j_1}}\Big)\Big(\frac{1}{\hh_{j_3}} - \frac{1}{\hh_{j_1}}\Big)\Big(\frac{1}{\hh_{j_3}} - \frac{1}{\hh_{j_2}}\Big)
+\]
+\[
+\text{c-only (0928):}\quad
+\det\begin{bmatrix}
+1 & \dfrac{1}{\hh_{j_1}} - \dfrac{1}{\hh_0} \\[1.6ex]
+1 & \dfrac{1}{\hh_{j_2}} - \dfrac{1}{\hh_0}
+\end{bmatrix}
+= \frac{1}{\hh_{j_2}} - \frac{1}{\hh_{j_1}}
+\]
+
+\hd{Weight of a row pair and the part of the $e_{\bw_s}$ column left after $e_{\ba}$ and $e_c$}
+\[
+w_j = \frac{1}{r_2} + \frac{1}{r_1}\Big(\frac{F_{dx}}{1-\lc}\Big)^{2}, \qquad
+\min_{\alpha_0,\,\alpha_1}\;\sum_j w_j\,\Big((1-\ch)\Big(\frac{1}{\hh_0^{2}} - \frac{1}{\hh_j^{2}}\Big) - \alpha_0 - \alpha_1\Big(\frac{1}{\hh_j} - \frac{1}{\hh_0}\Big)\Big)^{2}
+\]
+
+\hd{Hold}
+\[
+\Delta\bx_d = 0:\qquad \hat{M} = (1-\lc)\,\delta\hat{\bx}_3, \qquad \hh_j \approx \hh_0, \qquad
+\frac{1}{\hh_{j_2}} - \frac{1}{\hh_{j_1}} \approx 0
+\]
+
+\hd{Height}
+\[
+\begin{aligned}
+\hh = 22.2 \to 1.10:&\quad \frac{1}{\hh} = 0.045 \to 0.909, \qquad \frac{1}{\hh^{2}} = 0.002 \to 0.83 \\
+\hh = 2.0 \to 1.10:&\quad \frac{1}{\hh} = 0.50 \to 0.909, \qquad \frac{1}{\hh^{2}} = 0.25 \to 0.83
+\end{aligned}
+\]
+
+\end{document}

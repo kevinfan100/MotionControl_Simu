@@ -11,6 +11,7 @@
 %   motion_ctrl/sec5_conly.tex          S5 position-dependent motion gain, c-only, q55 = 0, plane      (Layer-1, 10-07)
 %   motion_ctrl/sec6_wall.tex           S6 unknown wall type (plane, cell), q55 = P_fix^2 I               (Layer-1, 10-07)
 %   motion_ctrl/sec7_raster.tex         S7 reference result: raster scan parallel to the wall              (Layer-1, 10-07)
+%   motion_ctrl/sec8_wsonly.tex         S8 unit-numerator slope, wall position w_s as the state            (c-only/wall session, 10-13)
 %   (motion_ctrl/archive/part2_conly.tex = the old c-only part, w notation, no longer input)
 % Restructure in progress (user 10-07): outline and notation in motion_ctrl/PLAN_notation_outline.md.
 %   motion_ctrl/appendix_figures.tex    figure provenance: figure <- plot script <- runs
@@ -71,6 +72,7 @@
 \input{motion_ctrl/sec5_conly}
 \input{motion_ctrl/sec6_wall}
 \input{motion_ctrl/sec7_raster}
+\input{motion_ctrl/sec8_wsonly}
 \ifdefined\mcshare\else\input{motion_ctrl/appendix_figures}\fi
 
 \end{document}
