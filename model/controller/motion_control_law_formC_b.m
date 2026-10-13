@@ -395,6 +395,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent lambda_f_b lfb_alpha lfb_floor lam_b_spend
     persistent lfb_chan lfb_info lam_b_v                   % 2026-09-24: residual channel for the adaptive slot-5 forgetting ('y2' | 'y1'), information-driven variant (beta), per-axis lambda of this step
     persistent q55a_mode q55a_N q55a_thr q55a_gain q55a_kcu q55a_buf q55a_ptr q55a_g q55a_stat q55a_q q55a_P0 q55a_P0s q55a_rho q55a_Imin q55a_hgate q55a_I q55a_bufI q55a_wI q55a_gfun q55a_dc q55a_cmf q55a_cmD q55a_cmR q55a_Prev q55a_hmin   % 2026-09-29 exploratory: innovation-adaptive Q55 on slot 5 from the y1 residual (default off); 'ratio' (09-30) = Q/R-ratio design, q55a_P0 = P55[0]
+    persistent q77a_P0s q77a_I     % 2026-10-13 (user-approved): P_fix ratio Q on slot 7 (= delta = -w_s under plaw_dc_slope), Q77 = P_fix^2 I7; default off (0) => bit-identical
+    persistent wsg_on wsg_ratio wsg_Iacc wsg_open wsg_P0   % 2026-10-13 (user-approved): information gate on slot 7 (w_s) -- K(7) = 0 until the data information I_acc >= ratio / P77[0]; default off => bit-identical
     persistent p55_floor_on p55_floor_std                     % 2026-09-09: directional forgetting on slot 5 as a P55 floor (default off)
     persistent b_bins_on b_bin_edges bbin_b bbin_P bbin_cur bbin_switch   % 2026-09-09: b per HEIGHT BIN (default off)
     persistent ap_src ap_ewma_a a_bar_slope_v law_b_formC
@@ -988,6 +990,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         q55a_hgate = get_field_default(ctrl_const, 'q55_adapt_hgate', Inf);   % 10-02 (oscillation test): any q55_adapt mode adds Q only while the estimator height h_hat < hgate [R] (Inf = no gate)
         q55a_P0s  = get_field_default(ctrl_const, 'q55_adapt_P0', 0);   % 'ratio': sqrt(P_0) override (0 = the slot-5 prior std, the design default); the ONLY constant of the ratio design
         assert(isscalar(q55a_P0s) && q55a_P0s >= 0, 'motion_control_law_formC_b:q55AdaptP0', 'q55_adapt_P0 must be a non-negative scalar (sqrt of P_0).');
+        q77a_P0s  = get_field_default(ctrl_const, 'q77_adapt_P0', 0);   % 10-13: sqrt(P_fix) of the slot-7 ratio Q (0 = off); Q77 = P_fix^2 I7, I7 = 1/P77+ - 1/P77-
+        assert(isscalar(q77a_P0s) && q77a_P0s >= 0, 'motion_control_law_formC_b:q77AdaptP0', 'q77_adapt_P0 must be a non-negative scalar (sqrt of P_fix).');
+        wsg_on    = logical(get_field_default(ctrl_const, 'ws_gate_info', false));   % 10-13: slot-7 information gate (Schmidt-style: gain zeroed, P77 kept, others updated)
+        wsg_ratio = get_field_default(ctrl_const, 'ws_gate_ratio', 1);           %   opens when sum (P H')_7^2 / (S P77^2) >= ratio / P77[0] (data information = prior information at 1)
         q55a_wI   = logical(get_field_default(ctrl_const, 'q55_adapt_wI', false));   % 'ratioinnov' (10-04): I-weighted window, statistic = sum(I nu1)/sqrt(sum I^2) (= mean/sigma, weighted by learnability)
         q55a_gfun = get_field_default(ctrl_const, 'q55_adapt_gfun', 'lin');        % 'ratioinnov' (10-04): factor g(x), x = (mean nu1/sigma)^2: 'lin' g = x | 'max1' g = max(1, x) (P_low is the floor)
         assert(any(strcmp(q55a_gfun, {'lin', 'max1'})), 'motion_control_law_formC_b:q55AdaptGfun', 'q55_adapt_gfun must be lin | max1.');
@@ -1646,6 +1652,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         fbar_det_km2 = zeros(3, 1);
         lam_b_v = ones(3, 1);        % this step's slot-5 forgetting factor per axis (1 = none), logged as diag.lam_b_k
         q55a_buf = zeros(q55a_N, 3);  q55a_bufI = zeros(q55a_N, 3);  q55a_cmD = zeros(3, 1);  q55a_cmR = zeros(3, 1);  q55a_hmin = inf(3, 1);  q55a_ptr = 0;  q55a_g = zeros(2, 3);  q55a_stat = zeros(3, 1);  q55a_q = zeros(3, 1);   % q55_adapt buffers, see init
+        q77a_I = zeros(3, 1);         % q77_adapt_P0 (10-13): I7_{k-1}, last step's information on slot 7
+        wsg_Iacc = zeros(3, 1);  wsg_open = false(3, 1);  wsg_P0 = nan(3, 1);   % ws_gate_info (10-13): accumulated would-be information on slot 7, gate state, P77 at the first update
         q55a_I = zeros(3, 1);         % q55_adapt ratio modes: I_{k-1}, this step's information on slot 5 (10-02: kept apart from the innovation statistic)
         q55a_P0  = P_bb0_v;           % q55_adapt 'ratio': the slot-5 prior variance P55[0] per axis
         if q55a_P0s > 0; q55a_P0 = q55a_P0s^2 * ones(3, 1); end   % override: P_0 = q55_adapt_P0^2
@@ -2167,6 +2175,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             if ~isinf(q55a_hgate) && plaw_c_slope && h_v2 > q55a_hgate; qadd = 0; end   % height gate (oscillation test): no Q above hgate
             Q_i(5, 5) = Q_i(5, 5) + qadd;  q55a_q(ax) = qadd;
         end
+        if q77a_P0s > 0 && plaw_dc_slope; Q_i(7, 7) = Q_i(7, 7) + (q77a_P0s^2)^2 * q77a_I(ax); end   % 10-13: slot-7 ratio Q (w_s), Q77 = P_fix^2 I7 with P_fix = q77_adapt_P0^2 (variance; same as q55 'ratio'), I7 from the last update
         F_e = local_build_F_e_formC(lambda_c, F_dw, a_prime_i, A_a_i, ...
                                     J_b_fac_i * M_tot, M_tot, dap_dd3_i);
         if plaw_dc_slope || plaw_cp_slope; F_e(4, 7) = dap_ddl_i * M_tot; end   % 0922 tex S5: F_e(4,7) = -(2 a'/g) M = -(height share of F_e(4,3)); (c, p) law: -(a' ln h) M
@@ -2475,6 +2484,12 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         if freeze_gain || y1_gain_off || (y1_gain_off_from > 0 && k_step >= y1_gain_off_from); K1(4:7) = 0; end
         K1(lock_state_idx_ax{ax}) = 0;
         if l51_off; K1(5) = 0; end                     % E1 diagnostic, see init
+        if wsg_on && plaw_dc_slope && ~wsg_open(ax)                       % 10-13 information gate on slot 7, see init
+            if isnan(wsg_P0(ax)); wsg_P0(ax) = P_pred(7, 7); end
+            wsg_Iacc(ax) = wsg_Iacc(ax) + K1(7)^2 * S1 / P_pred(7, 7)^2;   %   (P H1')_7^2 / (S1 P77^2): what y1 would have given slot 7
+            K1(7) = 0;
+            if wsg_Iacc(ax) >= wsg_ratio / wsg_P0(ax); wsg_open(ax) = true; end   % also checked here in case the y2 leg is gated off
+        end
         innov1 = delta_w_m(ax) - H1 * x_pred;
         innov_y1_v(ax) = innov1;          % logging only (whiteness diagnostic)
         S1_v(ax)       = S1;              % logging only
@@ -2611,6 +2626,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             K2  = (P_upd * H2') / S2;
             if freeze_gain; K2(4:7) = 0; end
             K2(lock_state_idx_ax{ax}) = 0;
+            if wsg_on && plaw_dc_slope && ~wsg_open(ax)                   % 10-13 information gate on slot 7 (y2 leg), see init
+                wsg_Iacc(ax) = wsg_Iacc(ax) + K2(7)^2 * S2 / P_upd(7, 7)^2;
+                K2(7) = 0;
+                if wsg_Iacc(ax) >= wsg_ratio / wsg_P0(ax); wsg_open(ax) = true; end   % opens for the next step and stays open
+            end
             innov2 = y2(ax) - y2_pred;
             x_upd  = x_upd + K2 * innov2;
             ImKH2  = I7 - K2 * H2;
@@ -2698,6 +2718,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             lam_b_spend(ax) = lam_b_spend(ax) + (1 - lam_b_k);
         end
         lam_b_v(ax) = lam_b_k;
+        if q77a_P0s > 0 && plaw_dc_slope && P_pred(7, 7) > 0 && P_upd(7, 7) > 0; q77a_I(ax) = max(0, 1 / P_upd(7, 7) - 1 / P_pred(7, 7)); end   % 10-13: I7 = this step's information on slot 7
         if any(strcmp(q55a_mode, {'ratio', 'rhoconst', 'ratiogate', 'ratioinnov', 'ratiodrift', 'covmatch', 'rationew', 'drift', 'driftsq'})) && ~lm(1) && P_pred(5, 5) > 0 && P_upd(5, 5) > 0
             q55a_I(ax) = max(0, 1 / P_upd(5, 5) - 1 / P_pred(5, 5));      % I_k = this step's information on slot 5 (both channels), consumed at the next predict
             if ~any(strcmp(q55a_mode, {'ratiogate', 'ratioinnov'})); q55a_stat(ax) = q55a_I(ax); end
