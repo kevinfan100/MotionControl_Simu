@@ -407,6 +407,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent predict_quad                 % Stage B diagnostic: row-4 predict quadrature rule
     persistent lock_mask_g lock_mask_ax lock_state_idx_ax
     persistent par_law w0_par w0_nominal
+    persistent fefrz_part fefrz_v fe_cmd_eval apslot_on
+    persistent kfrz_from fefrz_from fefrz_mode kfrz_K1 kfrz_K2 fefrz_F fefrz_Q   % 10-14 hold-drift diagnostics (user-approved): freeze K / (F_e, Q) from a step; default 0 = off
 
     % Axis roles (world frame; the wall normal is the z axis by convention)
     AX_PAR = [1, 2];    % wall-parallel axes
@@ -781,6 +783,15 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % segments (paired against the untouched run it measures the mean y1
         % innovation offset through the gain row: d(a_hat) = -l41 * iota * N).
         y1_gain_off_from = get_field_default(ctrl_const, 'y1_gain_off_from', 0);
+        % kfrz_from / fefrz_from (2026-10-14, diagnostic, default 0 = never => bit-identical): from controller step k_step >= value,
+        % kfrz_from replaces the y1 and y2 gain vectors K1, K2 by the ones of the first frozen step (per axis); fefrz_from replaces
+        % F_e and Q_i of the covariance predict by the ones of the first frozen step (the state predict is untouched).
+        kfrz_from  = get_field_default(ctrl_const, 'kfrz_from', 0);   kfrz_K1 = cell(1, 3);  kfrz_K2 = cell(1, 3);
+        fefrz_from = get_field_default(ctrl_const, 'fefrz_from', 0);  fefrz_F = cell(1, 3);  fefrz_Q = cell(1, 3);
+        fefrz_mode = get_field_default(ctrl_const, 'fefrz_mode', 0);   % 0 = freeze F_e and Q, 1 = F_e only, 2 = Q only
+        fe_cmd_eval = logical(get_field_default(ctrl_const, 'fe_cmd_eval', false));   % 10-14: F_e (P predict only) at the commanded point, see the F_e build
+        fefrz_part = get_field_default(ctrl_const, 'fefrz_part', 0);   % > 0: instead of the whole F_e, freeze one input of it: 1 = F_dw, 2 = M_tot, 3 = slope, 4 = M-terms set to 0, 5 = 4 + slope frozen; fefrz_v = frozen [F_dw a' M dap_dd3 dap_ddl]
+        fefrz_v = cell(1, 3);
         % mean-only diagnostic knobs (2026-09-03, default off => bit-identical). From
         % k_step >= mean_knob_from: (i) the slope used in the row-4 KNOWN-STEP increment
         % (exact law step, ap_known branch) is multiplied by pred_slope_scale -- P, F_e
@@ -1226,6 +1237,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % guards, reporting) is plaw_dc_slope's with the value sensitivities of this law: d a/d delta = a', d a/d p =
         % (1/(p-1) + ln g)/((p-1) g^(p-1)). diag.b_hat = p_hat here.
         plaw_dp_slope = logical(get_field_default(ctrl_const, 'plaw_dp_slope', false));
+        assert(~fe_cmd_eval || ~plaw_dp_slope, 'motion_control_law_formC_b:feCmdEval', 'fe_cmd_eval is written for the (c, delta) slope family only.');
+        % ap_slot (2026-10-14, user-approved test, default false => bit-identical): slot 7 holds the slope a' ITSELF (a value, no law),
+        % riding on the plaw_dc_slope wiring (slot 7 free, its prior Pf_delta_std, seed delta_init, Q77 by q77_adapt_P0, clamp plaw_delta_lim):
+        % a[k+1] = a[k] + x7 M,  F_e(4,7) = M,  F_e(4,3) = (1-lc) x7,  H2(7) = -Grad (the y2 delay back-off),  no height law anywhere.
+        apslot_on = logical(get_field_default(ctrl_const, 'ap_slot', false));
         if plaw_dp_slope
             plaw_p_lim = get_field_default(ctrl_const, 'plaw_p_lim', [1.2, 4]);
             assert(numel(plaw_p_lim) == 2 && plaw_p_lim(1) > 1 && plaw_p_lim(1) < plaw_p_lim(2), 'motion_control_law_formC_b:plawDpSlope', ...
@@ -1272,6 +1288,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         if par_wall_known
             assert(plaw_c_slope, 'motion_control_law_formC_b:parWallKnown', 'ctrl_const.par_wall_known is wired for the plaw_c_slope family only.');
         end
+        assert(~apslot_on || (plaw_dc_slope && ~plaw_dp_slope && ~plaw_cp_slope), 'motion_control_law_formC_b:apState', 'ap_slot rides on plaw_dc_slope (set it, keep dp/cp off).');
         if plaw_c_slope
             assert(~gain_algebraic && ~amodel_fe && ~amodel_h, 'motion_control_law_formC_b:plawCSlope', ...
                    'ctrl_const.plaw_c_slope keeps the a slot: gain_algebraic, amodel_fe and amodel_h must be off.');
@@ -1568,6 +1585,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                     P7(7, 7) = Pf_delta_std(ax)^2;
                     P7(4, 7) = ap0_dc * P7(7, 7);  P7(7, 4) = P7(4, 7);
                     if ~plaw_seed_cross; P7(4, 5) = 0;  P7(5, 4) = 0;  P7(4, 7) = 0;  P7(7, 4) = 0; end   % O40 discriminator: level uncertainty kept, its attribution to the constants removed
+                end
+                if apslot_on                               % 10-14: slot 7 = a' value; the level prior is the a slot's own, no law-based cross terms
+                    P7(4, 4) = dA_dw0^2 * Pf_w0_std(ax)^2 + Pf_a_floor(ax)^2;  P7(4, [5 7]) = 0;  P7([5 7], 4) = 0;
+                    P7(7, 7) = Pf_delta_std(ax)^2;
                 end
                 if plaw_cp_slope                          % (c, p) both states, no shift: value law a = 1 - (1-c) h^(1-p)/(p-1) at the seed height (used once here)
                     h0_cp = max(w_bar_seed - ws_11, 1);  p0_cp = pcp_seed(ax);  c0_cp = c_seed(ax);
@@ -2000,6 +2021,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 [~, a_prime_i] = local_par_plane(h_v2);
                 dap_db_i = 0;  dap_dd3_i = 0;  dap_ddl_i = 0;
             end
+            if apslot_on && ~is_par_wk                   % 10-14: the slope is slot 7 itself
+                a_prime_i = x_curr(7);  dap_db_i = 0;  dap_dd3_i = 0;  dap_ddl_i = 1;
+            end
         end
         % F_e(4,5). d(a_bar')/db = -a_bar'/b exactly, so the column is
         % -a_bar' * M / b_hat, where M is the SAME row-4 increment a_bar'
@@ -2176,9 +2200,29 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             Q_i(5, 5) = Q_i(5, 5) + qadd;  q55a_q(ax) = qadd;
         end
         if q77a_P0s > 0 && plaw_dc_slope; Q_i(7, 7) = Q_i(7, 7) + (q77a_P0s^2)^2 * q77a_I(ax); end   % 10-13: slot-7 ratio Q (w_s), Q77 = P_fix^2 I7 with P_fix = q77_adapt_P0^2 (variance; same as q55 'ratio'), I7 from the last update
-        F_e = local_build_F_e_formC(lambda_c, F_dw, a_prime_i, A_a_i, ...
-                                    J_b_fac_i * M_tot, M_tot, dap_dd3_i);
-        if plaw_dc_slope || plaw_cp_slope; F_e(4, 7) = dap_ddl_i * M_tot; end   % 0922 tex S5: F_e(4,7) = -(2 a'/g) M = -(height share of F_e(4,3)); (c, p) law: -(a' ln h) M
+        Fdw_F = F_dw;  ap_F = a_prime_i;  M_F = M_tot;  dd3_F = dap_dd3_i;  ddl_F = dap_ddl_i;   % 10-14 diagnostic copies (fefrz_part), = live values when off
+        if fe_cmd_eval                                  % 10-14 (user-approved test): the COVARIANCE Jacobian does not read the just-updated dw3_hat;
+            M_F = Delta_wbar_d_km1;                       %   M-terms keep only the known commanded step (0 in a hold) ...
+            if plaw_c_slope && ~apslot_on                  %   ... and the slope inside F_e is read at the commanded height h_d (state predict unchanged)
+                h_cmd = max(w_bar_d - ws_11, 1);
+                if plaw_dc_slope; h_cmd = max(w_bar_d - ws_11 + x_curr(7), plaw_g_min); end
+                ap_F  = (1 - x_curr(5)) / h_cmd^plaw_p;
+                dd3_F = plaw_p * ap_F / h_cmd;
+                if plaw_dc_slope; ddl_F = -dd3_F; end
+            end
+        end
+        if fefrz_part > 0 && fefrz_from > 0 && k_step >= fefrz_from
+            if isempty(fefrz_v{ax}); fefrz_v{ax} = [F_dw, a_prime_i, M_tot, dap_dd3_i, dap_ddl_i]; end
+            v = fefrz_v{ax};
+            if fefrz_part == 1; Fdw_F = v(1); end                                    % force only
+            if fefrz_part == 2; M_F = v(3); end                                      % step M only
+            if fefrz_part == 3; ap_F = v(2);  dd3_F = v(4);  ddl_F = v(5); end       % slope (and its derivatives) only
+            if fefrz_part == 4; M_F = 0; end                                         % drop the M-proportional entries (dap_dd3 M, dap_ddl M, J_b M)
+            if fefrz_part == 5; M_F = 0;  ap_F = v(2);  dd3_F = v(4);  ddl_F = v(5); end   % 4 + slope frozen: F_e no longer reads dw3_hat at all
+        end
+        F_e = local_build_F_e_formC(lambda_c, Fdw_F, ap_F, A_a_i, ...
+                                    J_b_fac_i * M_F, M_F, dd3_F);
+        if plaw_dc_slope || plaw_cp_slope; F_e(4, 7) = ddl_F * M_F; end   % 0922 tex S5: F_e(4,7) = -(2 a'/g) M = -(height share of F_e(4,3)); (c, p) law: -(a' ln h) M
         if fe43_off; F_e(4, 3) = 0; end          % diagnostic, see init
         if fe44_Aa_scale ~= 1; F_e(4, 4) = F_e(4, 4) - (1 - fe44_Aa_scale) * A_a_i * M_tot; end   % see init: kappa-weighted self-sensitivity in P (kappa = 0 == fe44_Aa_off)
         if da_slot; F_e(4, 6) = 1; end                 % E2: additive disturbance enters a_bar at unit gain every step
@@ -2326,6 +2370,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 h0_v2 = max(w_bar_d - x_curr(3) - ws_11 + x_curr(7), plaw_g_min);  h1_v2 = max(h0_v2 + M_pred, plaw_g_min);
             end
             x_pred(4) = x_curr(4) + (1 - x_curr(5)) * (h0_v2^(1 - plaw_p) - h1_v2^(1 - plaw_p)) / (plaw_p - 1);   % = a + int a' dh; first order a + a' M
+            if apslot_on; x_pred(4) = x_curr(4) + x_curr(7) * M_pred; end   % 10-14: slope value times the step (no law to integrate)
             if plaw_dp_slope                         % 0923 tex S4: exponent is the state, level 1: (g0^(1-p) - g1^(1-p))/(p-1)
                 p_v2 = x_curr(5);
                 x_pred(4) = x_curr(4) + (h0_v2^(1 - p_v2) - h1_v2^(1 - p_v2)) / (p_v2 - 1);
@@ -2469,6 +2514,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             F_e(4, :) = 0;  F_e(4, 4) = 1;
             x_pred(4) = x_curr(4) + a_prime_i * Delta_wbar_d_km1;   % known parallel law times the wall-normal commanded step
         end
+        if fefrz_from > 0 && fefrz_part == 0 && k_step >= fefrz_from   % 10-14 diagnostic, see init
+            if isempty(fefrz_F{ax}); fefrz_F{ax} = F_e;  fefrz_Q{ax} = Q_i; end
+            if fefrz_mode ~= 2; F_e = fefrz_F{ax}; end          % fefrz_mode: 0 = both, 1 = F_e only, 2 = Q only
+            if fefrz_mode ~= 1; Q_i = fefrz_Q{ax}; end
+        end
         P_pred = F_e * P_curr * F_e' + Q_i;
         P_pred = 0.5 * (P_pred + P_pred');
         P_pred = freeze_locked_P(P_pred, lock_state_idx_ax{ax});
@@ -2489,6 +2539,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             wsg_Iacc(ax) = wsg_Iacc(ax) + K1(7)^2 * S1 / P_pred(7, 7)^2;   %   (P H1')_7^2 / (S1 P77^2): what y1 would have given slot 7
             K1(7) = 0;
             if wsg_Iacc(ax) >= wsg_ratio / wsg_P0(ax); wsg_open(ax) = true; end   % also checked here in case the y2 leg is gated off
+        end
+        if kfrz_from > 0 && k_step >= kfrz_from                       % 10-14 diagnostic, see init
+            if isempty(kfrz_K1{ax}); kfrz_K1{ax} = K1; end
+            K1 = kfrz_K1{ax};
         end
         innov1 = delta_w_m(ax) - H1 * x_pred;
         innov_y1_v(ax) = innov1;          % logging only (whiteness diagnostic)
@@ -2626,6 +2680,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             K2  = (P_upd * H2') / S2;
             if freeze_gain; K2(4:7) = 0; end
             K2(lock_state_idx_ax{ax}) = 0;
+            if kfrz_from > 0 && k_step >= kfrz_from                   % 10-14 diagnostic, see init
+                if isempty(kfrz_K2{ax}); kfrz_K2{ax} = K2; end
+                K2 = kfrz_K2{ax};
+            end
             if wsg_on && plaw_dc_slope && ~wsg_open(ax)                   % 10-13 information gate on slot 7 (y2 leg), see init
                 wsg_Iacc(ax) = wsg_Iacc(ax) + K2(7)^2 * S2 / P_upd(7, 7)^2;
                 K2(7) = 0;

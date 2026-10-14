@@ -167,6 +167,8 @@ function out = run_formC_b(opts, test_opts)
     if ~isfield(opts, 'config_override');     opts.config_override     = struct(); end
     if ~isfield(opts, 'ctrl_const_override'); opts.ctrl_const_override = struct(); end
     if ~isfield(opts, 'a_ctrl_override');     opts.a_ctrl_override     = [];       end
+    if ~isfield(opts, 'gain_reg');            opts.gain_reg            = [];       end   % 2026-10-13 (user): z-axis gain regulation, struct(a_d, lambda_a); [] = off (the trajectory generator drives pd)
+    if ~isfield(opts, 'cmd_dither');          opts.cmd_dither          = [];       end   % 2026-10-14 (diagnostic): struct(amp_R, freq, t_on), known sine added to the command; [] = off
 
     % ------------------------------------------------------------------
     % Named constants (every number is derived or a house convention)
@@ -442,6 +444,8 @@ function out = run_formC_b(opts, test_opts)
         plant_cperp = opts.plant_cperp;
         fprintf('PLANT WALL OVERRIDE: c_perp from a user function handle (estimator b_init = %.5f)\n', ov.b_init);
     end
+    cfg.gain_reg = opts.gain_reg;                     % read by local_run_once (gain regulation, default off)
+    cfg.cmd_dither = opts.cmd_dither;                 % read by local_run_once (command dither, default off)
     n_seeds = numel(seeds);
     runs  = cell(n_seeds, 1);
     Mrows = zeros(n_seeds, 7);   % desc | osc | hold | rms_all | bud_b | bud_p | nan
@@ -1052,6 +1056,9 @@ if nargin < 8; plant_cperp = []; end
     d_delay = ctrl_const.d;
     p_m_buffer = repmat(p0, 1, d_delay + 1);   % d+1 slots -> true d-step delay
     pd_for_ctrl = p0;
+    greg = [];  if isfield(config, 'gain_reg'); greg = config.gain_reg; end   % 2026-10-13 gain regulation (default off)
+    cdith = [];  if isfield(config, 'cmd_dither'); cdith = config.cmd_dither; end   % 2026-10-14 command dither (default off)
+    diag_prev = [];
 
     R_drv       = P.common.R;
     a_nom_drv   = P.common.Ts / P.common.gamma_N;      % [um/pN] far-field
@@ -1152,6 +1159,24 @@ if nargin < 8; plant_cperp = []; end
 
         [pd_kp1, del_pd_k] = trajectory_generator(t_now, P);
         pd_k = pd_for_ctrl;
+        if ~isempty(greg)                                % gain regulation (motion_ctrl S9): Delta x_d = (1-lambda_a)(a_d - a_hat)/a_hat' on z, from the previous step
+            dwr = 0;
+            if k > 1 && isfield(diag_prev, 'a_prime_bar') && isfinite(diag_prev.a_prime_bar(3)) && diag_prev.a_prime_bar(3) > 0   % the first call (initialisation) has no a_hat' yet: no step
+                dwr = (1 - greg.lambda_a) * (greg.a_d - diag_prev.a_bar_hat(3)) / diag_prev.a_prime_bar(3);
+            end
+            del_pd_k = dwr * R_drv * P.wall.w_hat(:);
+            pd_kp1   = pd_k + del_pd_k;
+        end
+        if ~isempty(cdith) && t_now + Ts >= cdith.t_on   % command dither (10-14, diagnostic): known sine amp_R [R] at freq [Hz] on the wall normal from t_on
+            g1 = cdith.amp_R * sin(2 * pi * cdith.freq * (t_now + Ts - cdith.t_on));
+            if isempty(greg)                         % trajectory gives the absolute command: add the dither offset
+                pd_kp1 = pd_kp1 + g1 * R_drv * P.wall.w_hat(:);
+            else                                     % gain regulation accumulates pd_k (which already holds the last offset): add its increment
+                g0 = 0;  if t_now >= cdith.t_on; g0 = cdith.amp_R * sin(2 * pi * cdith.freq * (t_now - cdith.t_on)); end
+                pd_kp1 = pd_kp1 + (g1 - g0) * R_drv * P.wall.w_hat(:);
+            end
+            del_pd_k = pd_kp1 - pd_k;
+        end
         p_m_delayed = p_m_buffer(:, 1);
 
         if wall_on_drv
@@ -1256,6 +1281,7 @@ if nargin < 8; plant_cperp = []; end
 
         [f_d_k, ekf_k, diag_k] = motion_control_law_formC_b(del_pd_k, pd_k, ...
                                      p_m_delayed, P, ctrl_const, a_ov_k, da_known_k, ap_known_k, b_true_k, app_known_k);
+        diag_prev = diag_k;                              % gain regulation reads this step's a_hat, a_hat' at the next step
         dx3_prev = diag_k.delta_x_hat_3(3) / R_drv;   % this step's posterior -> next step's 'est' evaluation point
         hd_prev = max((dot(pd_k, P.wall.w_hat) - pz_plant) / R_drv, h_bar_floor_drv);   % this step's command -> next step's 'cmd' evaluation point
 
