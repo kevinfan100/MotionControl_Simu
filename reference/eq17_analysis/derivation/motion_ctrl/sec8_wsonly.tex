@@ -2,9 +2,9 @@
 %   is the chosen setting; the 9/8 arm B was tried and is kept only in the header readings), the wall position
 %   w_s estimated instead of c (Section 5 with c removed and w_s added), q55 = 0 (w_s constant). Same text as 1009_conly_wall_position.tex
 %   Section 4. Code: formC_b plaw_dc_slope with c pinned at 0 (c_init 0, Pf_c_std 1e-6, no q55_adapt), slot 7 = delta = -w_s,
-%   delta_init = -w_s-hat[0], Pf_delta_std 1.0, plaw_delta_lim widened to [-5, 5]; not shown in the text.
+%   delta_init = -w_s-hat[0], Pf_delta_std 0.3 (10-13; was 1.0), plaw_delta_lim widened to [-5, 5]; not shown in the text.
 %   Runs: test_script/scratch/run_1009_wsonly.m (plane, cell; w_s-hat[0] = -2, -1, -0.5, 0, +0.5; 10 seeds; 22.2 -> 1.10 R in 1 s,
-%   parked 0.2 s; lambda_c 0.4). Figures: plot_mc_s8_b('main', '', 1) -> fig_mc_s8_n1_s1.png (start 0 only); plot_mc_s8_b('aperr1', '', 1) -> fig_mc_s8_n1_aperr.png.
+%   parked 0.2 s; lambda_c 0.4). Figures (user 10-13: wrong start w_s-hat[0] = -1): plot_mc_s8_b('main', '', 1, 'm1') -> fig_mc_s8_n1_sw030_m1_s1.png; plot_mc_s8_b('aperr1', '', 1, 'm1') -> fig_mc_s8_n1_sw030_m1_aperr.png.
 %   Measured 10-13 (10 seeds): end w_s-hat plane +0.06..+0.08, cell -0.71..-0.79 from every start; |a'-hat - a'| >6R / 6-2R / 2-1.1R plane 0.0014 / 0.030 / 0.135,
 %   cell 0.0009 / 0.020 / 0.067. Arm B (numerator 9/8, c pinned at -1/8) reduced the near-wall |e_a| by 0.014-0.017 (plane) and 0.007-0.008 (cell). Options q77_adapt_P0 / ws_gate_info exist in formC_b, not used here.
 %   Only this file and one \input line in motion_ctrl.tex were added; sec5-sec7 belong to the Layer-1 session.
@@ -147,5 +147,5 @@ e_{\ba}[k+1] &= \Big(\hat{\ba}'[k]\,(1-\lc) + \frac{2\,\hat{\ba}'[k]}{\hh[k]}\,\
 \]
 ($q_{33}$, $r_1$, $r_2$, $\mathbf{L}$, $\mathbf{P}$, $\mathbf{P}^f$ as in Section 4.)
 
-\IfFileExists{figures/fig_mc_s8_n1_s1.png}{\figpage{Fig.~8.1\quad Estimator started from the plane: plane and cell walls}{z axis; 22.2 $\to$ 1.10 R in 1 s, then hold 0.2 s; $\hat{\bw}_s[0] = 0$, $\sqrt{p_{55}[0]} = 1.0$ R, $q_{55} = 0$; left: plane wall; right: cell wall (plane polynomial slid by 1.05 R, plant only); $\bw_s$ row: red = wall position set in the plant (0), dashed = $\bw_s$ that makes $1/(h - \bw_s)^2$ equal the true slope at the true height, band = $\pm\sqrt{p_{55}}$; $\lc = 0.4$, seed 1}{fig_mc_s8_n1_s1.png}}{}
-\IfFileExists{figures/fig_mc_s8_n1_aperr.png}{\figpage{Fig.~8.2\quad Error of the slope along the descent}{run of Fig.~8.1, 10 seeds (light: each seed, dark: mean); $|\hat{\ba}' - \ba'|$ with $\hat{\ba}' = 1/(h_d - \hat{\bw}_s)^2$ and $\ba'$ the slope of the plant at the true height (red); left: plane wall; right: cell wall; descent only}{fig_mc_s8_n1_aperr.png}}{}
+\IfFileExists{figures/fig_mc_s8_n1_sw030_m1_s1.png}{\figpage{Fig.~8.1\quad Estimator started from a wrong wall position: plane and cell walls}{z axis; 22.2 $\to$ 1.10 R in 1 s, then hold 0.2 s; $\hat{\bw}_s[0] = -1$ R, $\sqrt{p_{55}[0]} = 0.3$ R, $q_{55} = 0$; left: plane wall; right: cell wall (plane polynomial slid by 1.05 R, plant only); $\bw_s$ row: red = wall position set in the plant (0), dashed = $\bw_s$ that makes $1/(h - \bw_s)^2$ equal the true slope at the true height, band = $\pm\sqrt{p_{55}}$; $\lc = 0.4$, seed 1}{fig_mc_s8_n1_sw030_m1_s1.png}}{}
+\IfFileExists{figures/fig_mc_s8_n1_sw030_m1_aperr.png}{\figpage{Fig.~8.2\quad Error of the slope along the descent}{run of Fig.~8.1, 10 seeds (light: each seed, dark: mean); $|\hat{\ba}' - \ba'|$ with $\hat{\ba}' = 1/(h_d - \hat{\bw}_s)^2$ and $\ba'$ the slope of the plant at the true height (red); left: plane wall; right: cell wall; descent only}{fig_mc_s8_n1_sw030_m1_aperr.png}}{}

@@ -1,0 +1,29 @@
+% Section 9 of motion_ctrl.tex (c-only / wall session, 2026-10-13, user): regulation of the motion gain on the z axis to a constant a_d.
+%   The commanded step Delta x_d[k] is no longer a given trajectory: an outer law computes it from the estimator of Section 8
+%   (a-hat, a-hat' at the previous step) and hands Delta p_d = R Delta x_d w_hat to the controller of Section 1, unchanged.
+%   First case (user 10-13): S8 estimator (numerator 1, w_s-hat[0] = 0, sqrt p55[0] = 0.3 R), plane wall, a_d = 0.1 (10-14: plane 0.07 -- 0.05 sits on the estimator gain floor a_bar_floor = 0.05 -- and cell 0.50; runs with formC_b fe_cmd_eval), no saturation,
+%   no height floor; lambda_a the only constant. Code: run_formC_b opts.gain_reg (default off); runs and figure listed in the header
+%   of the figure page once produced.
+\clearpage
+\section{Regulation of the motion gain}
+
+\hd{Gain step of the probe (Section 8)}
+\[
+\ba[k+1] - \ba[k] = \ba'[k]\,\big(\Delta\bx_d[k] + (1-\lc)\,\delta\bx_3[k] + F_{dx}[k]\,e_{\ba}[k] + \varepsilon_x[k]\big)
+\]
+
+\hd{Regulation objective and law}
+\[
+\begin{aligned}
+\ba_d - \ba[k+1] &= \lambda_a\,\big(\ba_d - \ba[k]\big) \\
+\Delta\bx_d[k] &= (1-\lambda_a)\,\frac{\ba_d - \hat{\ba}[k]}{\hat{\ba}'[k]} \\
+\bx_d[k+1] &= \bx_d[k] + \Delta\bx_d[k] \\
+\lambda_a &= 1 - T_s/\tau_a, \qquad \tau_a = 0.1\,\mathrm{s}
+\end{aligned}
+\]
+
+\IfFileExists{figures/fig_mc_s9_plane_tau100_T6_fc_s1.png}{\figpage{Fig.~9.1\quad Gain regulation to $\ba_d = 0.07$ on the plane wall}{z axis; start parked at 22.2 R, run 6 s; $\tau_a = 0.1\,\mathrm{s}$, $\hat{\bw}_s[0] = 0$; estimator of Section 8 ($\sqrt{p_{55}[0]} = 0.3$ R, $q_{55} = 0$); rows: height (log scale), gain (red true, blue estimate, dashed $\ba_d$), wall position (red plant setting 0, dashed = $\bw_s$ that makes $1/(h - \bw_s)^2$ equal the true slope at the true height), $\delta z_m$; plant gain $\ba_d = 0.07$ at $h = 1.078$ R (gap 176 nm); $\lc = 0.4$, seed 1}{fig_mc_s9_plane_tau100_T6_fc_s1.png}}{}
+\IfFileExists{figures/fig_mc_s9_wsinit_T6_fc_s1.png}{\figpage{Fig.~9.2\quad Wrong start of the wall position: plane wall, $\ba_d = 0.07$}{z axis; start parked at 22.2 R, run 6 s; $\tau_a = 0.1\,\mathrm{s}$; columns: $\hat{\bw}_s[0] = -3$, $0$, $+3$ R; estimator of Section 8 ($\sqrt{p_{55}[0]} = 0.3$ R, $q_{55} = 0$); rows: gain (log scale; red true, blue estimate, dashed $\ba_d$), wall position (red plant setting 0, blue estimate, dashed = $\bw_s$ that makes $1/(h - \bw_s)^2$ equal the true slope at the true height); plant gain $\ba_d = 0.07$ at $h = 1.078$ R (gap 176 nm); $\lc = 0.4$, seed 1}{fig_mc_s9_wsinit_T6_fc_s1.png}}{}
+\IfFileExists{figures/fig_mc_s9_plane_tau100_T6_ad500_fc_s1.png}{\figpage{Fig.~9.3\quad Gain regulation to $\ba_d = 0.5$ on the plane wall}{z axis; start parked at 22.2 R, run 6 s; $\tau_a = 0.1\,\mathrm{s}$, $\hat{\bw}_s[0] = 0$; estimator of Section 8 ($\sqrt{p_{55}[0]} = 0.3$ R, $q_{55} = 0$); rows: height (log scale), gain (red true, blue estimate, dashed $\ba_d$), wall position (red plant setting 0, dashed = $\bw_s$ that makes $1/(h - \bw_s)^2$ equal the true slope at the true height), $\delta z_m$; plant gain $\ba_d = 0.5$ at $h = 2.128$ R (gap 2538 nm); $\lc = 0.4$, seed 1}{fig_mc_s9_plane_tau100_T6_ad500_fc_s1.png}}{}
+\IfFileExists{figures/fig_mc_s9_cell_tau100_T6_fc_s1.png}{\figpage{Fig.~9.4\quad Gain regulation to $\ba_d = 0.50$ on the cell wall}{z axis; start parked at 22.2 R, run 6 s; $\tau_a = 0.1\,\mathrm{s}$, $\hat{\bw}_s[0] = 0$ (estimator started from the plane); cell wall = plane polynomial slid by 1.05 R, plant only; estimator of Section 8 ($\sqrt{p_{55}[0]} = 0.3$ R, $q_{55} = 0$); rows: height (log scale), gain (red true, blue estimate, dashed $\ba_d$), wall position (red plant setting 0, dashed = $\bw_s$ that makes $1/(h - \bw_s)^2$ equal the true slope at the true height), $\delta z_m$; plant gain $\ba_d = 0.50$ at $h = 1.078$ R (gap 175 nm from the visible surface); $\lc = 0.4$, seed 1}{fig_mc_s9_cell_tau100_T6_fc_s1.png}}{}
+\IfFileExists{figures/fig_mc_s9_wsinit_cell_T6_ad520_fc_s1.png}{\figpage{Fig.~9.5\quad Wrong start of the wall position: cell wall, $\ba_d = 0.52$}{z axis; start parked at 22.2 R, run 6 s; $\tau_a = 0.1\,\mathrm{s}$; columns: $\hat{\bw}_s[0] = -3$, $0$, $+3$ R; cell wall = plane polynomial slid by 1.05 R, plant only; estimator of Section 8 ($\sqrt{p_{55}[0]} = 0.3$ R, $q_{55} = 0$); rows: gain (log scale; red true, blue estimate, dashed $\ba_d$), wall position (red plant setting 0, blue estimate, dashed = $\bw_s$ that makes $1/(h - \bw_s)^2$ equal the true slope at the true height); plant gain $\ba_d = 0.52$ at $h = 1.174$ R (gap 392 nm from the visible surface); $\lc = 0.4$, seed 1}{fig_mc_s9_wsinit_cell_T6_ad520_fc_s1.png}}{}
