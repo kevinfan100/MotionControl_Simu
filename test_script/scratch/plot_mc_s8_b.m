@@ -4,11 +4,14 @@
 %   which = 'aperr': |a-bar'_hat - a-bar'_true| along the descent, 10-seed mean, columns plane | cell, lines c-only (S6), S8 numerator 1,
 %                    B numerator 9/8; a-bar'_hat = num / (h_d - w_s-hat)^2 (c-only: (1 - c-hat) / h_d^2), the estimator height taken as
 %                    h_d (delta x-hat_3 ~ 0.01 R is not logged); a-bar'_true = slope of the plant at the true height -> test_results/temp_1009_ws.
-function plot_mc_s8_b(which, suffix, num)
+function plot_mc_s8_b(which, suffix, num, st)
     if nargin < 1; which = 'main'; end
     if nargin < 2; suffix = '_n98'; end       % 10-13 (user): '' = S8 numerator 1 (the chosen setting), '_n98' = B numerator 9/8
     if nargin < 3; num = 9/8; end
-    tagf = 'b';  if isempty(suffix); tagf = 'n1'; end
+    if nargin < 4; st = 'p0'; end               % 10-13 (user): start tag, 'm1' = w_s-hat[0] = -1 (wrong start)
+    tagf = 'n1';  if contains(suffix, 'n98'); tagf = 'b'; end
+    if contains(suffix, 'sw030'); tagf = [tagf '_sw030']; end   % 10-13 (user): prior sqrt P_w[0] = 0.3
+    if ~strcmp(st, 'p0'); tagf = [tagf '_' st]; end
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));  addpath(genpath(fullfile(root, 'model')));  addpath(here);
     od = fullfile(root, 'test_results', 'temp_1009_ws');  fd = fullfile(root, 'reference', 'eq17_analysis', 'derivation', 'figures');
     WL = {'plane', 'cell'};  PC = {[], @cell_cperp_delta};
@@ -18,7 +21,7 @@ function plot_mc_s8_b(which, suffix, num)
         f = figure('Position', [40 40 1600 2000], 'Color', 'w', 'NumberTitle', 'off', 'Visible', 'off');
         tl = tiledlayout(4, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
         for ic = 1:2
-            S = load(fullfile(od, sprintf('wsonly_%s_p0%s.mat', WL{ic}, suffix)));  q = 1;  t = S.t;  wd = S.wd;  wd(1) = wd(2);
+            S = load(fullfile(od, sprintf('wsonly_%s_%s%s.mat', WL{ic}, st, suffix)));  q = 1;  t = S.t;  wd = S.wd;  wd(1) = wd(2);
             ht = max(S.h_true(:, q), 1.001);  apt = local_ap(ht, PC{ic});  wneed = ht - sqrt(num ./ apt);
             ax = gobjects(4, 1);
             ax(1) = nexttile(tl, ic);  hold on; box on;
@@ -52,7 +55,7 @@ function plot_mc_s8_b(which, suffix, num)
         tl = tiledlayout(1, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
         for ic = 1:2
             ax = nexttile(tl);  hold on; box on;
-            S = load(fullfile(od, sprintf('wsonly_%s_p0%s.mat', WL{ic}, suffix)));  t = S.t;  wd = S.wd;  wd(1) = wd(2);  dsc = t <= 1;
+            S = load(fullfile(od, sprintf('wsonly_%s_%s%s.mat', WL{ic}, st, suffix)));  t = S.t;  wd = S.wd;  wd(1) = wd(2);  dsc = t <= 1;
             E = abs(num ./ (wd - S.w_hat).^2 - local_ap(max(S.h_true, 1.001), PC{ic}));
             plot(ax, t(dsc), E(dsc, :), '-', 'Color', [0.6 0.78 1], 'LineWidth', 0.8, 'HandleVisibility', 'off');
             plot(ax, t(dsc), local_ap(max(wd(dsc), 1.001), PC{ic}), '-', 'Color', cT, 'LineWidth', 4, 'DisplayName', [AB '''  (true)']);

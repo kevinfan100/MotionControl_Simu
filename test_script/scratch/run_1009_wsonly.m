@@ -33,6 +33,7 @@ function run_1009_wsonly(inits, plants, seeds, opt)
                         'delta_init', -w0, 'Pf_delta_std', opt.sigw, 'plaw_g_min', 0.5, 'plaw_delta_lim', [-5, 5]);
             if opt.q77 > 0; cc.q77_adapt_P0 = opt.q77; end
             if opt.gate; cc.ws_gate_info = true;  cc.ws_gate_ratio = 1; end
+            if isfield(opt, 'fecmd') && opt.fecmd; cc.fe_cmd_eval = true; end   % 10-14: formC_b fe_cmd_eval (P-predict Jacobian at the commanded point)
             o = struct('arm', 'best', 'ctrl_const_override', cc, 'config_override', OV, 'scenario', 'deep', 'verbose', false, ...
                        'seeds', seeds, 'log_P_full', false);
             if ~isempty(pcp); o.plant_cperp = pcp; end
