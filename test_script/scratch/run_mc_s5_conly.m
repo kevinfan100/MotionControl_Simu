@@ -1,5 +1,5 @@
 % STATUS: SCRATCH -- 2026-10-07, motion_ctrl Section 5 (position-dependent motion gain, c-only slope law, q55 = 0), plane wall,
-%   lambda_c 0.4, production refinements on (formC_b defaults; not shown in the document). Same two trajectories as Section 4:
+%   lambda_c 0.4, y2 whitening and echo factor ON; MA(2) (ma2_aug) and correlated n_x (nw_mcorr) OFF (run_plaw_walls law 'f1p2' default, found 10-08). Same two trajectories as Section 4:
 %     traj 'desc' : the Section 2 trajectory (z 22.2 -> 1.10 R in 5 s, x/y 1 Hz 9 um sines)        -> tag _mcs5_desc
 %     traj 'tri'  : 22.2 -> 1.10 R in 1 s, then triangle 1.10 <-> 10 R, 2 Hz, 2 s                 -> tag _mcs5_tri
 %   c seeded at 0 on every wall (user 10-07; before: the plane's band fit 0.0533), sqrt(P_cc[0]) = 0.1 (opts.sig).
@@ -20,7 +20,7 @@ function run_mc_s5_conly(trajs, seeds, q55, plants)
             case 'desc'
                 o.traj = 'ramp';  o.Td = 5;
                 o.ov_extra = struct('trajectory_type', 'ramp_descent', 'h_init', 50, 'h_bottom', 1.1 * 2.25, 't_hold', 0, ...
-                                    't_descend_override', 5, 'T_sim', 5, 'amp_u', -9, 'freq_u', 1, 'amp_v', -9, 'freq_v', 1, 'tan_shape', 1);
+                                    't_descend_override', 5, 'T_sim', 5, 'amp_u', 9, 'freq_u', 1, 'amp_v', 9, 'freq_v', 1, 'tan_shape', 1);
                 o.tag_suffix = '_mcs5_desc';
             case {'rh050', 'rh100', 'rh200'}               % 10-07 (user): wall-type trajectory, 22.2 -> 1.10 R in T_d, then hold 0.2 T_d
                 Td = str2double(trajs{it}(3:end)) / 100;
@@ -37,7 +37,7 @@ function run_mc_s5_conly(trajs, seeds, q55, plants)
                 hf = str2double(trajs{it}(7:end)) / 100 * 2.25;
                 o.traj = 'ramp';  o.Td = 2;
                 o.ov_extra = struct('trajectory_type', 'ramp_descent', 'h_init', hf, 'h_bottom', hf, 't_hold', 0, 't_descend_override', 2, 'T_sim', 2, ...
-                                    'amp_u', -20, 'freq_u', 4, 'tan_shape', 1, 'amp_v', -1, 'freq_v', 4, 'tan_v_stair', 1);   % u_hat = -x, v_hat = -y
+                                    'amp_u', 20, 'freq_u', 4, 'tan_shape', 1, 'amp_v', 1, 'freq_v', 4, 'tan_v_stair', 1);   % u_hat = +x, v_hat = +y (since 10-15; was -x/-y with amp -20/-1)
                 o.tag_suffix = ['_mcs5_' trajs{it}];
             case 'tri'
                 o.traj = 'ramp_tri';  o.f_osc = 2;  o.h_top_tri = 10;

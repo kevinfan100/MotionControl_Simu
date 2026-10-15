@@ -7,7 +7,7 @@ addpath(fullfile(root, 'test_script', 'scratch'));  addpath(genpath(fullfile(roo
 cfg = canonical_scenario(0.05, 1.1, 'deep');
 P = calc_simulation_params(cfg);  a_nom = P.Value.common.Ts / P.Value.common.gamma_N;
 ov = struct('trajectory_type', 'ramp_descent', 'h_init', 50, 'h_bottom', 1.1 * 2.25, 't_hold', 0, 't_descend_override', 5, 'T_sim', 5, ...
-            'amp_u', -9, 'freq_u', 1, 'amp_v', -9, 'freq_v', 1, 'tan_shape', 1);
+            'amp_u', 9, 'freq_u', 1, 'amp_v', 9, 'freq_v', 1, 'tan_shape', 1);
 base = struct('law', 'f1p2', 'traj', 'ramp', 'Td', 5, 'seeds', 1, 'q55_adapt', 'ratio', 'q55_adapt_P0', 0.15, 'sig', 0.1, ...
               'plants', {{'plane'}}, 'lambda_c', 0.4, 'ov_extra', ov);
 o = base;  o.a_ctrl_override = 'true';              o.tag_suffix = '_s1_ctrltrue_xyzA';  run_plaw_walls(o);

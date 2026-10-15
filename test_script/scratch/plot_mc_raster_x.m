@@ -12,7 +12,7 @@ function plot_mc_raster_x(seed)
                'c_seed', struct('plane', 0, 'cell', 0, 'sphere', 0, 'sphere_pt', 0), 'traj', 'ramp', 'Td', 2, 'a_ctrl_override', 'true', ...
                'tag_suffix', '_mcs5_raster110_ctrltrue');
     o.ov_extra = struct('trajectory_type', 'ramp_descent', 'h_init', 1.1 * 2.25, 'h_bottom', 1.1 * 2.25, 't_hold', 0, 't_descend_override', 2, ...
-                        'T_sim', 2, 'amp_u', -20, 'freq_u', 4, 'tan_shape', 1, 'amp_v', -1, 'freq_v', 4, 'tan_v_stair', 1);
+                        'T_sim', 2, 'amp_u', 20, 'freq_u', 4, 'tan_shape', 1, 'amp_v', 1, 'freq_v', 4, 'tan_v_stair', 1);
     T = load(ft);  if ~isfield(T, 'a_hat_xyz'); evalc('run_plaw_walls(o);'); end
     D = {load(fullfile(id, 'f1p2_plane_PI_mcs5_raster110_ratio_ramp2_lc040.mat')), load(fullfile(id, 'f1p2_plane_PI_mcs5_raster110_ratio_parwk_ramp2_lc040.mat'))};   % before | after par_wall_known
     [cpa, ~] = calc_correction_functions(1.10);  a_par = 1 / cpa;

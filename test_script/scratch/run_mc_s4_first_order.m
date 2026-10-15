@@ -6,7 +6,8 @@
 %     'plain' : all five off -- exactly the equations written in motion_ctrl Section 4 (state dx1 dx2 dx3 a, H = [1 0 0 0;
 %               0 0 0 1], Q33 = Var(eps_x), Q44 = eps R2, R2 = K_var IF (a_hat + xi)^2);
 %     'plain_<flag>...' : plain with only the named refinements on (leave-one-in check); suffix '_eps0' = Q44 0,
-%                         '_nominal' = the control law uses a_nom (the estimator runs but is not used).
+%                         '_nominal' = the control law uses a_nom (the estimator runs but is not used);
+%                         '_anom' = far-field seed a_nom (P44[0] 0.5); '_lc70' = lambda_c 0.7 (10-08 history ladder).
 %   Cached in test_results/temp_5state_noap/mc_s4_<form>_<wall>_s<seed>.mat.
 function R = run_mc_s4_first_order(forms, seeds, walls)
     if nargin < 1 || isempty(forms); forms = {'plain', 'prod'}; end
@@ -38,12 +39,21 @@ function R = run_mc_s4_first_order(forms, seeds, walls)
                     end
                     if contains(forms{i_f}, '_xyz')                    % '<form>_xyz': the Section 2 trajectory (run_mc_s2_xyz.m), x/y 1 Hz 9 um sines
                         ov = struct('trajectory_type', 'ramp_descent', 'h_init', 50, 'h_bottom', 1.1 * pc.R, 't_hold', 0, ...
-                                    't_descend_override', T_D, 'T_sim', T_D, 'amp_u', -9, 'freq_u', 1, 'amp_v', -9, 'freq_v', 1, 'tan_shape', 1);
+                                    't_descend_override', T_D, 'T_sim', T_D, 'amp_u', 9, 'freq_u', 1, 'amp_v', 9, 'freq_v', 1, 'tan_shape', 1);
                         fo = fieldnames(ov);  for q = 1:numel(fo); cfg.(fo{q}) = ov.(fo{q}); end
                     end
                     eps_k = EPS;  tk = regexp(forms{i_f}, '_eps([0-9.]+(e-[0-9]+)?)', 'tokens', 'once');   % '<form>_eps<val>': Q44 = val R2
                     if ~isempty(tk); eps_k = str2double(tk{1}); end
                     cc = struct('lf_mode', 'const', 'lambda_f', 1, 'gain_order', 1, 'seed_mode', 'true_h0', 'q44_r2_frac', eps_k);
+                    if contains(forms{i_f}, '_anom'); cc.seed_mode = 'anom'; end      % '<form>_anom' (10-08): far-field seed a_nom, P44[0] default 0.5
+                    if contains(forms{i_f}, '_lc70'); cfg.lambda_c = 0.7; end         % '<form>_lc70' (10-08): the earlier closed-loop pole
+                    % 10-08 history ladder (first / second order): '_go2' = second-order gain (level + rate, Meng's structure);
+                    % '_lf098' = constant forgetting lambda_f 0.98 on the gain block (Meng dissertation); '_ljung' = Layer-1 schedule;
+                    % '_oldorder' = law before update, predict with f_d[k] (fe_km1 = upd_before_law = false, the pre-09-20 timing)
+                    if contains(forms{i_f}, '_go2'); cc.gain_order = 2; end
+                    if contains(forms{i_f}, '_lf098'); cc.lambda_f = 0.98; end
+                    if contains(forms{i_f}, '_ljung'); cc.lf_mode = 'ljung'; end
+                    if contains(forms{i_f}, '_oldorder'); cc.fe_km1 = false;  cc.upd_before_law = false; end
                     FL = {'y2_whiten', 'y2_mirror', 'ma2_aug', 'nw_mcorr', 'corr_input'};
                     if ~startsWith(forms{i_f}, 'prod')                 % 'prod...' = code defaults (all on); 'plain' = all off; 'plain_<flag>[_<flag>]' = only those on
                         for q = 1:numel(FL); cc.(FL{q}) = contains(forms{i_f}, ['_' FL{q}]); end
