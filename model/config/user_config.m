@@ -9,8 +9,8 @@ function config = user_config()
 %
 %   Fields:
 %       % Wall
-%       theta       = 0         % Azimuth angle [deg]
-%       phi         = 0         % Elevation angle [deg]
+%       theta_x     = 0         % Wall rotation about x [deg] (first)
+%       theta_y     = 0         % Wall rotation about y [deg] (second); V = R_y R_x, u = x, v = y, w = z at 0
 %       pz          = 0         % Wall displacement along w_hat [um]
 %       h_min       = 3.375     % Minimum safe distance [um] (1.5 * R)
 %       enable_wall_effect = true  % Enable wall effect (false = isotropic Stokes)
@@ -63,8 +63,8 @@ function config = user_config()
 %       measured sensor noise is available.
 
     % Wall (angles in degrees)
-    config.theta = 0;              % Azimuth angle [deg]
-    config.phi = 0;                % Elevation angle [deg]
+    config.theta_x = 0;            % Wall rotation about x [deg] (2026-10-15, replaces azimuth theta / polar phi)
+    config.theta_y = 0;            % Wall rotation about y [deg]; V = R_y(theta_y) R_x(theta_x), see calc_wall_params
     config.pz = 0;
     config.h_min = 1.5 * 2.25;     % 1.5 * R [um]
     config.enable_wall_effect = true;  % Enable wall effect (false = isotropic Stokes)
@@ -77,7 +77,7 @@ function config = user_config()
     config.frequency = 1;
     config.n_cycles = 3;
     config.trajectory_type = 'osc';    % 'osc' or 'positioning'
-    config.amp_u  = 0;             % Tangential sine half-amplitude along u_hat [um] (0 = off)
+    config.amp_u  = 0;             % Tangential sine half-amplitude along u_hat [um] (0 = off); u_hat = +x at zero angles since 2026-10-15
     config.freq_u = 0;             % Tangential sine frequency along u_hat [Hz]
     config.amp_v  = 0;             % Tangential sine half-amplitude along v_hat [um] (0 = off)
     config.freq_v = 0;             % Tangential sine frequency along v_hat [Hz]

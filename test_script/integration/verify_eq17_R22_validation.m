@@ -36,7 +36,7 @@ function results = run_R22_validation(scenario, seed)
 %       meas_noise_std    = [0.62e-3; 0.057e-3; 3.31e-3] um (Phase 6 §3.2)
 %       thermal_enable    = true
 %       sigma2_w_fA = 0, sigma2_w_fD = 0
-%       theta = 0, phi = 0
+%       theta_x = 0, theta_y = 0
 %       lambda_c = 0.7, controller_type = 23
 %       a_pd = a_cov            (Phase 0 §6 lock — explicitly enforced)
 %       ctrl_const.a_hat_freeze = a_true_per_axis (3x1)
@@ -75,8 +75,8 @@ function results = run_R22_validation(scenario, seed)
     config = user_config();
 
     % Geometry
-    config.theta = 0;
-    config.phi   = 0;
+    config.theta_x = 0;
+    config.theta_y = 0;
 
     % Trajectory: positioning hold at h_init
     config.trajectory_type = 'positioning';

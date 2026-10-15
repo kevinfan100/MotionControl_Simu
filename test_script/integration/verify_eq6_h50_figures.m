@@ -17,7 +17,7 @@ addpath('model/trajectory');
 
 %% Setup config (matches verify_qr_positioning_run variants_all(7))
 config = user_config();
-config.theta = 0; config.phi = 0; config.pz = 0;
+config.theta_x = 0; config.theta_y = 0; config.pz = 0;
 config.h_min = 1.1 * 2.25;
 config.enable_wall_effect = true;
 config.h_init = 50;

@@ -17,6 +17,7 @@ function f_th = calc_thermal_force(p, params)
 %       params.wall.w_hat      - Wall normal vector [3x1]
 %       params.wall.u_hat      - Wall parallel vector 1 [3x1]
 %       params.wall.v_hat      - Wall parallel vector 2 [3x1]
+%       params.wall.V          - [u_hat v_hat w_hat], local -> measurement (calc_wall_params, 2026-10-15)
 %       params.wall.pz         - Wall displacement [um]
 %       params.common.R        - Particle radius [um]
 %       params.common.gamma_N  - Stokes drag coefficient [pN*sec/um]
@@ -62,20 +63,25 @@ function f_th = calc_thermal_force(p, params)
             c_perp = params.wall.plant_cperp(h_bar);
         end
 
-        % C = c_para * (u_hat + v_hat) + c_perp * w_hat
-        C = c_para * (u_hat + v_hat) + c_perp * w_hat;
+        % Correction coefficients in the local coordinate (u, v along the wall, w along the normal)
+        c_local = [c_para; c_para; c_perp];
     else
         % Wall effect OFF: isotropic variance (c_para = c_perp = 1)
-        C = u_hat + v_hat + w_hat;
+        c_local = [1; 1; 1];
     end
 
-    % Calculate variance for each direction
-    % Variance = (4 * k_B * T * gamma_N / Ts) * C 
+    % 2026-10-15: draw in the local coordinate, then turn to the measurement coordinate with V = [u_hat v_hat w_hat].
+    % Covariance of f_th = variance_coeff * V * diag(c_local) * V' (fluctuation-dissipation with the same drag matrix
+    % as calc_gamma_inv). The earlier form, independent draws with variance coeff * abs(c_para (u+v) + c_perp w), is
+    % the same only when the wall is aligned with x, y, z; for a tilted wall it had no cross-covariance and the wrong
+    % variances. With V = I this form is bit-identical to the earlier one (same randn draws, same products).
     variance_coeff = 4 * k_B * T * gamma_N / Ts;
-    Variance = variance_coeff * abs(C);
-
-    % Generate random thermal force
-    % f_th ~ N(0, Variance) => f_th = sqrt(Variance) .* randn(3,1)
-    f_th = sqrt(Variance) .* randn(3, 1);
+    f_local = sqrt(variance_coeff * c_local) .* randn(3, 1);
+    if isfield(params.wall, 'V')
+        V = params.wall.V;
+    else
+        V = [u_hat, v_hat, w_hat];
+    end
+    f_th = V * f_local;
 
 end

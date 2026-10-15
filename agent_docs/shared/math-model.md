@@ -1,10 +1,22 @@
 # 座標系統與數學模型
 
-## 壁面座標
-- 壁面方向由 theta (方位角) 和 phi (仰角) 定義，**使用者設定單位為 deg**
-- 內部自動轉 rad 計算
-- w_hat = 壁面法向量，u_hat/v_hat = 壁面切向量
-- 預設 theta=0, phi=0 時：w_hat = [0;0;1]（世界 Z 軸）
+## 壁面座標（2026-10-15 起，與 Estimator_and_Control__.pdf p.6 同一套）
+- 兩個座標：measurement coordinate（x, y, z）與 local coordinate（u, v 沿牆、w 法向）
+- 壁面方向由 `config.theta_x`、`config.theta_y` 定義（**deg**）：先繞 x 轉 θ_x、再繞 y 轉 θ_y，
+  V = R_y(θ_y)·R_x(θ_x) = [û v̂ ŵ]（`params.wall.V`）
+- V 把 local 轉到 measurement：δp = V·ᵛδp；Vᵀ 把 measurement 轉到 local：ᵛδp = Vᵀ·δp
+- 角度為 0 時 V = I：u = x、v = y、w = z。θ_y > 0：法向往 +x 傾（牆往 +x 降低）；θ_x > 0：法向往 −y 傾
+- ŵ = (sinθ_y cosθ_x, −sinθ_x, cosθ_y cosθ_x)；增益在 local 座標為 Λ = diag(ā_T, ā_T, ā_N)，
+  在 measurement 座標為 A = V·Λ·Vᵀ（T = tangential，N = normal）
+- 舊參數（方位角 theta、極角 phi；角度 0 時 û = −x、v̂ = −y）已移除，設非零值會被 `calc_wall_params` 擋下並給換算：
+  θ_x = −asin(sinθ·sinφ)，θ_y = atan2(cosθ·sinφ, cosφ)；切向正弦 amp_u、amp_v 的正負號因此翻轉（同一條路徑）
+- 熱力（2026-10-15）：在 local 座標抽 √(係數·[c∥ c∥ c⊥])·randn，再乘 V 轉回量測座標，
+  共變異 = 係數·V·diag(c∥, c∥, c⊥)·Vᵀ（與 Γ⁻¹ 同一個阻力矩陣）；舊寫法在斜牆時沒有共變異數
+- 真值紀錄（`run_pure_simulation`）：a_true_out = 量測座標增益矩陣 A = V·diag(ā_T, ā_T, ā_N)·Vᵀ 的對角項（角度 0 時不變）；
+  新增 a_true_mat_out（N×9，完整 A）、a_local_out（N×2，[a_T a_N]）
+- 只對角度 0 有效、尚未改：現役逐軸控制器、use_true_gain／a_ctrl_override 的真值餵入、自己算 z 軸真值的 driver
+- 回歸：`test_script/scratch/verify_wall_angle_xy.m`（z 軸與 x/y 正弦逐位相同、斜牆 ŵ 與舊定義一致、
+  斜牆熱力共變異與一步熱位移主方向、A_true = Ts·Γ⁻¹）
 
 ## 距離單位
 - 使用者設定（h_init, amplitude, h_min）：**um（微米）**

@@ -21,8 +21,8 @@ addpath(fullfile(project_root, 'model', 'controller'));
 config = user_config();
 
 % --- Wall Geometry ---
-config.theta = 0;                    % Wall azimuth angle [deg]
-config.phi   = 0;                    % Wall elevation angle [deg]
+config.theta_x = 0;                  % Wall rotation about x [deg] (2026-10-15: replaces azimuth theta)
+config.theta_y = 0;                  % Wall rotation about y [deg] (replaces polar phi)
 config.pz    = 0;                    % Wall displacement along w_hat [um]
 config.h_min = 1.1 * 2.25;           % Minimum safe distance [um]
 config.enable_wall_effect = true;    % Wall effect (false = no wall)

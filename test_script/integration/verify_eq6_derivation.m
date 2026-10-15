@@ -27,8 +27,8 @@ fprintf('===== verify_qr_derivation (3-way A str Simulink comparison) =====\n\n'
 
 %% Shared configuration (same for both runs)
 base_config = user_config();
-base_config.theta = 0;
-base_config.phi   = 0;
+base_config.theta_x = 0;
+base_config.theta_y = 0;
 base_config.pz    = 0;
 base_config.h_min = 1.1 * 2.25;
 base_config.enable_wall_effect = true;

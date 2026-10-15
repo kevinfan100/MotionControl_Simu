@@ -48,7 +48,9 @@ function simOut = run_pure_simulation(config, opts)
 %       simOut.p_true_out - Noise-free true position    [N x 3, um]
 %                              (ground-truth probe, logged AFTER the
 %                               step's continuous integration)
-%       simOut.a_true_out - True motion gain            [N x 3, um/pN]
+%       simOut.a_true_out - True motion gain            [N x 3, um/pN]  (diagonal of A in the measurement coordinate)
+%       simOut.a_true_mat_out - True gain matrix A = V diag(a_T,a_T,a_N) V'  [N x 9, column-major, um/pN] (2026-10-15)
+%       simOut.a_local_out    - True gains in the local coordinate [a_T a_N] [N x 2, um/pN] (2026-10-15)
 %                              (at the PRE-integration p_curr, i.e. the
 %                               position the controller acts on; always
 %                               populated, one sample ahead of
@@ -463,6 +465,8 @@ function simOut = run_pure_simulation(config, opts)
     p_m_out  = zeros(N, 3);
     p_true_out = zeros(N, 3);    % ground-truth probe: noise-free true position [um]
     a_true_out = zeros(N, 3);    % true gain at PRE-integration p_curr (position the controller acts on) [um/pN]
+    a_true_mat_out = zeros(N, 9);   % 2026-10-15: full true gain matrix A (measurement coordinate), column-major [um/pN]
+    a_local_out    = zeros(N, 2);   % 2026-10-15: true gains in the local coordinate [a_T, a_N] [um/pN]
     ekf_out  = zeros(N, 4);
 
     % Phase 9 R(2,2) validation: optional diag time-series accumulators
@@ -541,10 +545,15 @@ function simOut = run_pure_simulation(config, opts)
             h_bar_true_k = max((dot(p_curr, P.wall.w_hat) - P.wall.pz) / P.common.R, h_bar_floor_drv);
             [c_para_k, c_perp_k] = calc_correction_functions(h_bar_true_k);
             if isa(opts.plant_cperp, 'function_handle'); c_perp_k = opts.plant_cperp(h_bar_true_k); end
-            a_true_k = [a_nom_drv / c_para_k; a_nom_drv / c_para_k; a_nom_drv / c_perp_k];
+            a_local_k = [a_nom_drv / c_para_k; a_nom_drv / c_perp_k];          % local coordinate: [a_T; a_N]
         else
-            a_true_k = a_nom_drv * ones(3, 1);
+            a_local_k = [a_nom_drv; a_nom_drv];
         end
+        % 2026-10-15: true motion gain matrix in the measurement coordinate, A = V diag(a_T, a_T, a_N) V'. a_true_k keeps its
+        % meaning of the per-axis gain (diagonal of A): identical to the earlier [a_T; a_T; a_N] when V = I, and the
+        % per-axis view the current per-axis controllers use. For a tilted wall the off-diagonal terms are in a_true_mat_out.
+        A_true_k = P.wall.V * diag([a_local_k(1); a_local_k(1); a_local_k(2)]) * P.wall.V.';
+        a_true_k = diag(A_true_k);
         if opts.use_true_gain
             a_override_k = opts.true_gain_scale * a_true_k;   % TEMP fixed-g probe (chat 2026-07-06)
         else
@@ -642,6 +651,8 @@ function simOut = run_pure_simulation(config, opts)
         p_m_out(k, :)  = p_m_raw.';
         p_true_out(k, :) = p_curr.';     % ground-truth probe (noise-free position)
         a_true_out(k, :) = a_true_k.';
+        a_true_mat_out(k, :) = A_true_k(:).';
+        a_local_out(k, :) = a_local_k.';
         ekf_out(k, :)  = ekf_k.';
 
         % Phase 9 R(2,2) validation: log diag time-series
@@ -713,6 +724,8 @@ function simOut = run_pure_simulation(config, opts)
     simOut.p_m_out  = p_m_out;
     simOut.p_true_out = p_true_out;
     simOut.a_true_out = a_true_out;
+    simOut.a_true_mat_out = a_true_mat_out;
+    simOut.a_local_out = a_local_out;
     simOut.tout     = tout;
     simOut.ekf_out  = ekf_out;
     simOut.meta = struct( ...

@@ -84,8 +84,8 @@ for idx = 1:n_lc
 
     % Build config: free space, stationary, thermal only
     config = user_config();
-    config.theta     = 0;
-    config.phi       = 0;
+    config.theta_x   = 0;
+    config.theta_y   = 0;
     config.pz        = 0;
     config.h_min     = 1.1 * 2.25;
 

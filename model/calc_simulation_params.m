@@ -83,10 +83,10 @@ function params = calc_simulation_params(config)
     assignin('base', 'CommonBus', CommonBus);
 
     % --- WallBus ---
-    elems_wall = Simulink.BusElement.empty(0, 9);
-    elems_wall(1) = Simulink.BusElement; elems_wall(1).Name = 'theta';
+    elems_wall = Simulink.BusElement.empty(0, 10);  % 2026-10-15: theta/phi -> theta_x/theta_y, + V = [u_hat v_hat w_hat]
+    elems_wall(1) = Simulink.BusElement; elems_wall(1).Name = 'theta_x';
     elems_wall(1).Dimensions = [1 1]; elems_wall(1).DataType = 'double';
-    elems_wall(2) = Simulink.BusElement; elems_wall(2).Name = 'phi';
+    elems_wall(2) = Simulink.BusElement; elems_wall(2).Name = 'theta_y';
     elems_wall(2).Dimensions = [1 1]; elems_wall(2).DataType = 'double';
     elems_wall(3) = Simulink.BusElement; elems_wall(3).Name = 'pz';
     elems_wall(3).Dimensions = [1 1]; elems_wall(3).DataType = 'double';
@@ -102,6 +102,8 @@ function params = calc_simulation_params(config)
     elems_wall(8).Dimensions = [3 1]; elems_wall(8).DataType = 'double';
     elems_wall(9) = Simulink.BusElement; elems_wall(9).Name = 'enable_wall_effect';
     elems_wall(9).Dimensions = [1 1]; elems_wall(9).DataType = 'double';
+    elems_wall(10) = Simulink.BusElement; elems_wall(10).Name = 'V';
+    elems_wall(10).Dimensions = [3 3]; elems_wall(10).DataType = 'double';
 
     WallBus = Simulink.Bus;
     WallBus.Elements = elems_wall;
