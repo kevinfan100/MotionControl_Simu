@@ -789,7 +789,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         kfrz_from  = get_field_default(ctrl_const, 'kfrz_from', 0);   kfrz_K1 = cell(1, 3);  kfrz_K2 = cell(1, 3);
         fefrz_from = get_field_default(ctrl_const, 'fefrz_from', 0);  fefrz_F = cell(1, 3);  fefrz_Q = cell(1, 3);
         fefrz_mode = get_field_default(ctrl_const, 'fefrz_mode', 0);   % 0 = freeze F_e and Q, 1 = F_e only, 2 = Q only
-        fe_cmd_eval = logical(get_field_default(ctrl_const, 'fe_cmd_eval', false));   % 10-14: F_e (P predict only) at the commanded point, see the F_e build
+        fe_cmd_eval = logical(get_field_default(ctrl_const, 'fe_cmd_eval', false));   % 10-14: F_e (P predict only) at the commanded point, see the F_e build; 10-15: also the (delta, p) law
         fefrz_part = get_field_default(ctrl_const, 'fefrz_part', 0);   % > 0: instead of the whole F_e, freeze one input of it: 1 = F_dw, 2 = M_tot, 3 = slope, 4 = M-terms set to 0, 5 = 4 + slope frozen; fefrz_v = frozen [F_dw a' M dap_dd3 dap_ddl]
         fefrz_v = cell(1, 3);
         % mean-only diagnostic knobs (2026-09-03, default off => bit-identical). From
@@ -1237,7 +1237,6 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         % guards, reporting) is plaw_dc_slope's with the value sensitivities of this law: d a/d delta = a', d a/d p =
         % (1/(p-1) + ln g)/((p-1) g^(p-1)). diag.b_hat = p_hat here.
         plaw_dp_slope = logical(get_field_default(ctrl_const, 'plaw_dp_slope', false));
-        assert(~fe_cmd_eval || ~plaw_dp_slope, 'motion_control_law_formC_b:feCmdEval', 'fe_cmd_eval is written for the (c, delta) slope family only.');
         % ap_slot (2026-10-14, user-approved test, default false => bit-identical): slot 7 holds the slope a' ITSELF (a value, no law),
         % riding on the plaw_dc_slope wiring (slot 7 free, its prior Pf_delta_std, seed delta_init, Q77 by q77_adapt_P0, clamp plaw_delta_lim):
         % a[k+1] = a[k] + x7 M,  F_e(4,7) = M,  F_e(4,3) = (1-lc) x7,  H2(7) = -Grad (the y2 delay back-off),  no height law anywhere.
@@ -2209,6 +2208,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 ap_F  = (1 - x_curr(5)) / h_cmd^plaw_p;
                 dd3_F = plaw_p * ap_F / h_cmd;
                 if plaw_dc_slope; ddl_F = -dd3_F; end
+                if plaw_dp_slope                          % 10-15: (delta, p) law, slot 5 = p: a' = 1/g^p, d a'/d p = -a' ln g (J_b below)
+                    ap_F  = 1 / h_cmd^x_curr(5);
+                    dd3_F = x_curr(5) * ap_F / h_cmd;  ddl_F = -dd3_F;
+                end
             end
         end
         if fefrz_part > 0 && fefrz_from > 0 && k_step >= fefrz_from
@@ -2220,8 +2223,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             if fefrz_part == 4; M_F = 0; end                                         % drop the M-proportional entries (dap_dd3 M, dap_ddl M, J_b M)
             if fefrz_part == 5; M_F = 0;  ap_F = v(2);  dd3_F = v(4);  ddl_F = v(5); end   % 4 + slope frozen: F_e no longer reads dw3_hat at all
         end
+        Jb_F = J_b_fac_i;
+        if fe_cmd_eval && plaw_dp_slope; Jb_F = -ap_F * log(max(w_bar_d - ws_11 + x_curr(7), plaw_g_min)) * double(~lm(1)); end   % 10-15: slot-5 (p) column at the commanded height too
         F_e = local_build_F_e_formC(lambda_c, Fdw_F, ap_F, A_a_i, ...
-                                    J_b_fac_i * M_F, M_F, dd3_F);
+                                    Jb_F * M_F, M_F, dd3_F);
         if plaw_dc_slope || plaw_cp_slope; F_e(4, 7) = ddl_F * M_F; end   % 0922 tex S5: F_e(4,7) = -(2 a'/g) M = -(height share of F_e(4,3)); (c, p) law: -(a' ln h) M
         if fe43_off; F_e(4, 3) = 0; end          % diagnostic, see init
         if fe44_Aa_scale ~= 1; F_e(4, 4) = F_e(4, 4) - (1 - fe44_Aa_scale) * A_a_i * M_tot; end   % see init: kappa-weighted self-sensitivity in P (kappa = 0 == fe44_Aa_off)
