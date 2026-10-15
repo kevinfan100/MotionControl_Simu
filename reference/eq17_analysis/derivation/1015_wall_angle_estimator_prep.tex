@@ -1,0 +1,56 @@
+% STATUS: ACTIVE -- 2026-10-15, estimator-side quantities of the angle measurement, moved out of 1015_wall_angle_readout.tex
+%   (user 10-15: that file stops at the angle information; this one is for the estimator design step). Not yet verified
+%   in simulation (the plant thermal force is wrong for a tilted wall until fixed). Notation as in 1015_wall_angle_readout.tex.
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+\usepackage{xcolor}
+\newcommand{\setline}[1]{\noindent{\small\textcolor[gray]{0.35}{#1}}\par\smallskip}
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bx}{\bar{x}}
+\newcommand{\bz}{\bar{z}}
+\newcommand{\bu}{\bar{u}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\tu}{\tilde{u}}
+\newcommand{\tw}{\tilde{w}}
+\newcommand{\thy}{\theta_y}
+\newcommand{\hth}{\hat\theta_y}
+\newcommand{\acov}{a_{\mathrm{cov}}}
+\newcommand{\apd}{a_{\mathrm{pd}}}
+\newcommand{\CK}{C_T\,\kappa_T}
+\newcommand{\Cn}{C_n\,\sigma_n^2}
+\newcommand{\E}{\mathrm{E}}
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{center}\textbf{\large Angle measurement: estimation errors and measurement noise}\\[2pt]\small 2026-10-15 \quad $x$--$z$ plane, $\theta_x = 0$; continues 1015\_wall\_angle\_readout\end{center}
+
+%======================================================================
+\section{Estimation errors of the measured quantities}
+\begin{align*}
+\ba_{Tm}[k] - \hat a_T[k] &= \frac{\delta\tu_r^2[k] - \Cn}{\CK} - \hat a_T[k] \\
+\ba_{Nm}[k] - \hat a_N[k] &= \frac{\delta\tw_r^2[k] - \Cn}{\CK} - \hat a_N[k] \\
+\theta_{ym}[k] - \hth[k] &= e_{\theta m}[k] \\[6pt]
+\E\big[\ba_{Tm} - \hat a_T\big] &\approx \ba_T - \hat a_T \\
+\E\big[\ba_{Nm} - \hat a_N\big] &\approx \ba_N - \hat a_N \\
+\E\big[\theta_{ym} - \hth\big] &\approx \frac{\ba_T - \ba_N}{\hat a_T - \hat a_N}\,e_\theta
+\end{align*}
+
+%======================================================================
+\section{Measurement noise of the measured wall angle}
+\setline{$\xi = \Cn/\CK$; $\delta\tu_r$, $\delta\tw_r$ zero-mean Gaussian, nearly uncorrelated ($e_\theta$ small); $\rho(\tau)$ of the random component along time}
+\begin{align*}
+\sigma^2\big(\delta\tu_r\,\delta\tw_r\big) &\approx \sigma^2_{\delta\tu_r}\,\sigma^2_{\delta\tw_r} = (\CK)^2\,(\ba_T + \xi)(\ba_N + \xi) \\
+\sigma^2_{e_{\theta m}} &= \frac{(\ba_T + \xi)(\ba_N + \xi)}{(\ba_T - \ba_N)^2} \\
+\rho_{e_{\theta m}}(\tau) &= \rho(\tau)^2 \\
+\mathrm{IF} &= 1 + 2\sum_{\tau\ge1}\rho(\tau)^2 \\
+r_\theta &= \mathrm{IF}\cdot\frac{(\hat a_T + \xi)(\hat a_N + \xi)}{(\hat a_T - \hat a_N)^2}
+\end{align*}
+
+\end{document}

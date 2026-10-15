@@ -1,0 +1,119 @@
+% STATUS: ACTIVE -- 2026-10-15, angle information from the measured tracking error, in project notation and paper wording
+%   (TIE 2025 Sec. II-E, dissertation Ch. 5, Estimator_and_Control__.pdf p.3-4). Scope (user 10-15): only how the angle
+%   information is obtained; the estimator (estimation errors, H, r_theta) is in 1015_wall_angle_estimator_prep.tex.
+%   Equations only; explanations in the conversation. x-z plane (theta_x = 0), wall tilt theta_y.
+% Notation (agreed 10-15): measurement coordinate dp-bar = [dx dy dz]; local coordinate [du dv dw] = V^T dp-bar,
+%   V = R_y(theta_y) R_x(theta_x) = [u v w] (local -> measurement); a-bar_T / a-bar_N tangential / normal motion gains;
+%   hats = estimates; subscript m = measured (as the measured input gain a-bar_m): a-bar_Tm, a-bar_Nm measured input gains,
+%   theta_ym measured angle, e_theta_m measured estimation error of the angle; e_theta = theta_y - theta-hat_y.
+%   10-15 (user): no a_cov in the measurements (1011 lesson: a_cov averaging adds correlation and lag; the KF averages),
+%   so every measured quantity is the single-sample (a_cov = 1) form; the notes' (1 - a_cov) a-hat + a_cov(...) form,
+%   based on the estimate, is NOT our a-bar_m (based on its own past) and is dropped.
+%   Wording (user 10-15): measured tracking error, deterministic / random component, variance, covariance, measured input
+%   gain, measured angle, estimation error, measurement / local coordinate, principal direction; no coined terms.
+%   New (shown to the user 10-15): du-tilde_r, dw-tilde_r = random component in the ESTIMATED local coordinate.
+%   Sensor noise taken equal on x and z here (C_n sigma_n^2 one number); unequal noise is subtracted in the measurement
+%   coordinate before the rotation (not in this file).
+% Compile: xelatex 1015_wall_angle_readout.tex (from reference/eq17_analysis/derivation/). Preamble from 1011_random_signal_am.tex.
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+\usepackage{xcolor}
+\newcommand{\setline}[1]{\noindent{\small\textcolor[gray]{0.35}{#1}}\par\smallskip}
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bx}{\bar{x}}
+\newcommand{\bz}{\bar{z}}
+\newcommand{\bu}{\bar{u}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\tu}{\tilde{u}}
+\newcommand{\tw}{\tilde{w}}
+\newcommand{\thy}{\theta_y}
+\newcommand{\hth}{\hat\theta_y}
+\newcommand{\acov}{a_{\mathrm{cov}}}
+\newcommand{\apd}{a_{\mathrm{pd}}}
+\newcommand{\CK}{C_T\,\kappa_T}
+\newcommand{\Cn}{C_n\,\sigma_n^2}
+\newcommand{\E}{\mathrm{E}}
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{center}\textbf{\large Angle information from the measured tracking error}\\[2pt]\small 2026-10-15 \quad $x$--$z$ plane, $\theta_x = 0$\end{center}
+
+%======================================================================
+\section{Measurement coordinate and local coordinate}
+\setline{local $\to$ measurement: $\delta\bar{\mathbf p} = V\,[\delta\bu\ \ \delta\bar v\ \ \delta\bw]^{\mathsf T}$}
+\begin{align*}
+R_x(\theta_x) &= \begin{bmatrix} 1 & 0 & 0 \\ 0 & \cos\theta_x & -\sin\theta_x \\ 0 & \sin\theta_x & \cos\theta_x \end{bmatrix} \\
+R_y(\thy) &= \begin{bmatrix} \cos\thy & 0 & \sin\thy \\ 0 & 1 & 0 \\ -\sin\thy & 0 & \cos\thy \end{bmatrix} \\
+V &= R_y(\thy)\,R_x(\theta_x) = [\,\mathbf u\ \ \mathbf v\ \ \mathbf w\,] \\
+\theta_x = 0:\quad \delta\bx &= \cos\thy\,\delta\bu + \sin\thy\,\delta\bw \\
+\delta\bz &= -\sin\thy\,\delta\bu + \cos\thy\,\delta\bw
+\end{align*}
+
+%======================================================================
+\section{Deterministic and random components of the measured tracking error}
+\begin{align*}
+\delta\bar{\mathbf p}_m[k] &= \bar{\mathbf p}_d[k-2] - \bar{\mathbf p}_m[k] \\
+\overline{\delta\bar{\mathbf p}_m}[k+1] &= \apd\,\delta\bar{\mathbf p}_m[k] + (1-\apd)\,\overline{\delta\bar{\mathbf p}_m}[k] \\
+\delta\bar{\mathbf p}_r[k] &= \delta\bar{\mathbf p}_m[k] - \overline{\delta\bar{\mathbf p}_m}[k] = [\,\delta\bx_r\ \ \delta\bar y_r\ \ \delta\bz_r\,]^{\mathsf T}
+\end{align*}
+
+%======================================================================
+\section{Variance and covariance in the local coordinate}
+\setline{assumption: the random components along the wall and along the surface normal are uncorrelated}
+\begin{align*}
+\E\big[\delta\bu_r^2\big] &= \CK\,\ba_T + \Cn \\
+\E\big[\delta\bw_r^2\big] &= \CK\,\ba_N + \Cn \\
+\E\big[\delta\bu_r\,\delta\bw_r\big] &= 0
+\end{align*}
+
+%======================================================================
+\section{Local coordinate of the estimated angle}
+\setline{the estimator uses $\hth$; the wall is at $\thy$}
+\begin{align*}
+e_\theta &= \thy - \hth \\
+[\,\delta\tu_r\ \ \delta\tw_r\,]^{\mathsf T} &= R_y(\hth)^{\mathsf T}\,[\,\delta\bx_r\ \ \delta\bz_r\,]^{\mathsf T} \\
+&= R_y(\hth)^{\mathsf T}\,R_y(\thy)\,[\,\delta\bu_r\ \ \delta\bw_r\,]^{\mathsf T} = R_y(e_\theta)\,[\,\delta\bu_r\ \ \delta\bw_r\,]^{\mathsf T} \\
+\delta\tu_r &= \cos e_\theta\,\delta\bu_r + \sin e_\theta\,\delta\bw_r \\
+\delta\tw_r &= -\sin e_\theta\,\delta\bu_r + \cos e_\theta\,\delta\bw_r
+\end{align*}
+
+%======================================================================
+\section{Variances and covariance in the estimated local coordinate}
+\begin{align*}
+\delta\tu_r^2 &= \cos^2 e_\theta\,\delta\bu_r^2 + 2\sin e_\theta\cos e_\theta\,\delta\bu_r\delta\bw_r + \sin^2 e_\theta\,\delta\bw_r^2 \\
+\delta\tw_r^2 &= \sin^2 e_\theta\,\delta\bu_r^2 - 2\sin e_\theta\cos e_\theta\,\delta\bu_r\delta\bw_r + \cos^2 e_\theta\,\delta\bw_r^2 \\
+\delta\tu_r\,\delta\tw_r &= -\sin e_\theta\cos e_\theta\,\delta\bu_r^2 + (\cos^2 e_\theta - \sin^2 e_\theta)\,\delta\bu_r\delta\bw_r + \sin e_\theta\cos e_\theta\,\delta\bw_r^2 \\[6pt]
+\E\big[\delta\tu_r^2\big] &= \CK\,(\cos^2 e_\theta\,\ba_T + \sin^2 e_\theta\,\ba_N) + \Cn \\
+\E\big[\delta\tw_r^2\big] &= \CK\,(\sin^2 e_\theta\,\ba_T + \cos^2 e_\theta\,\ba_N) + \Cn \\
+\E\big[\delta\tu_r\,\delta\tw_r\big] &= \CK\,(-\sin e_\theta\cos e_\theta\,\ba_T + \sin e_\theta\cos e_\theta\,\ba_N) \\
+&= -\CK\,\sin e_\theta\cos e_\theta\,(\ba_T - \ba_N)
+\end{align*}
+
+%======================================================================
+\section{Estimation error of the angle}
+\setline{$\sin e_\theta \approx e_\theta$, $\cos e_\theta \approx 1$}
+\begin{align*}
+\E\big[\delta\tu_r^2\big] &\approx \CK\,\ba_T + \Cn \\
+\E\big[\delta\tw_r^2\big] &\approx \CK\,\ba_N + \Cn \\
+\E\big[\delta\tu_r\,\delta\tw_r\big] &\approx -\CK\,(\ba_T - \ba_N)\,e_\theta \\
+e_\theta &\approx -\frac{\E\big[\delta\tu_r\,\delta\tw_r\big]}{\CK\,(\ba_T - \ba_N)}
+\end{align*}
+
+%======================================================================
+\section{Measured input gains and measured angle}
+\setline{one sample in place of $\E[\,\cdot\,]$; estimates in place of $\ba_T$, $\ba_N$}
+\begin{align*}
+\ba_{Tm}[k] &= \frac{\delta\tu_r^2[k] - \Cn}{\CK} \\
+\ba_{Nm}[k] &= \frac{\delta\tw_r^2[k] - \Cn}{\CK} \\
+e_{\theta m}[k] &= -\frac{\delta\tu_r[k]\,\delta\tw_r[k]}{\CK\,\big(\hat a_T[k] - \hat a_N[k]\big)} \\
+\theta_{ym}[k] &= \hth[k] + e_{\theta m}[k]
+\end{align*}
+
+\end{document}
