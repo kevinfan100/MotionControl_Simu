@@ -8,7 +8,9 @@ function plot_mc_s9_wsinit(sfx, plant)
     WT = {'_wm3', '', '_wp3'};  W0 = [-3 0 3];
     cT = [0.85 0 0];  cE = [0 0.25 0.85];  FS = 18;  LFS = 15;  AB = char(257);  HAT = char(770);  WB = ['w' char(772)];
     f = figure('Position', [40 40 2100 1000], 'Color', 'w', 'NumberTitle', 'off', 'Visible', 'off');
-    tl = tiledlayout(2, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
+    S0 = load(fullfile(od, sprintf('gainreg_%s_tau100%s.mat', plant, sfx)));  hasp = isfield(S0, 'p_hat') && any(S0.p_hat(:) > 0);  nr = 2 + hasp;   % 10-15: p-hat row
+    if hasp; set(f, 'Position', [40 40 2100 1450]); end
+    tl = tiledlayout(nr, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
     fprintf('ws0 | min h_true | last 0.5 s: a - a_d | a_hat - a_d | w_s-hat at 0.1 / 0.5 / 1.5 / 3 / end\n');
     for iw = 1:3
         S = load(fullfile(od, sprintf('gainreg_%s_tau100%s%s.mat', plant, WT{iw}, sfx)));  t = S.t;  L = t > t(end) - 0.5;
@@ -22,10 +24,17 @@ function plot_mc_s9_wsinit(sfx, plant)
         text(a1, 0.97, 0.88, sprintf('%s%s_s[0] = %+d', WB, HAT, W0(iw)), 'Units', 'normalized', 'HorizontalAlignment', 'right', 'FontSize', LFS + 2, 'FontWeight', 'bold');
         legend(a1, 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
         a2 = nexttile(tl, 3 + iw);  hold on; box on;
+        if hasp
+            a3 = nexttile(tl, 6 + iw);  hold on; box on;
+            plot(a3, t, S.p_hat, '-', 'Color', cE, 'LineWidth', 1.6, 'DisplayName', ['p' HAT]);  ylim(a3, [1.5 2.5]);  xlim(a3, [0 t(end)]);
+            legend(a3, 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');  xlabel(a3, 'Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');
+            if iw == 1; ylabel(a3, ['p' HAT], 'FontSize', FS, 'FontWeight', 'bold'); end
+            set(a3, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', 2);  grid(a3, 'off');
+        end
         plot(a2, t, zeros(size(t)), '-', 'Color', cT, 'LineWidth', 4, 'DisplayName', [WB '_s']);
         plot(a2, t, S.w_hat, '-', 'Color', cE, 'LineWidth', 1.6, 'DisplayName', [WB HAT '_s']);
         hb = max(S.h_true, 1.001);  plot(a2, t, hb - 1 ./ sqrt(local_ap(hb, plant)), '--', 'Color', 'k', 'LineWidth', 1.6, 'DisplayName', [WB '_s that fits the slope']);
-        ylim(a2, [-3.5 3.5]);  xlabel(a2, 'Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');
+        ylim(a2, [-3.5 3.5]);  if ~hasp; xlabel(a2, 'Time (sec)', 'FontSize', FS, 'FontWeight', 'bold'); end
         legend(a2, 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
         if iw == 1; ylabel(a1, [AB '_z'], 'FontSize', FS, 'FontWeight', 'bold');  ylabel(a2, [WB '_s  [R]'], 'FontSize', FS, 'FontWeight', 'bold'); end
         for a = [a1 a2]; xlim(a, [0 t(end)]);  set(a, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', 2);  grid(a, 'off'); end

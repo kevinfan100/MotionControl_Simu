@@ -11,7 +11,9 @@ function plot_mc_s9_gainreg(plant, sfx)
     addpath(genpath(fullfile(root, 'model')));  S = load(fullfile(od, sprintf('gainreg_%s%s.mat', plant, sfx)));  t = S.t;  q = 1;  wd = S.wd(:, q);  wd(1) = wd(2);
     cT = [0.85 0 0];  cE = [0 0.25 0.85];  FS = 22;  LFS = 17;  R_UM = 2.25;  AB = char(257);  HAT = char(770);  WB = ['w' char(772)];
     f = figure('Position', [40 40 1100 2000], 'Color', 'w', 'NumberTitle', 'off', 'Visible', 'off');
-    tl = tiledlayout(4, 1, 'TileSpacing', 'compact', 'Padding', 'compact');  ax = gobjects(4, 1);
+    hasp = isfield(S, 'p_hat') && any(S.p_hat(:, q) > 0);  nr = 4 + hasp;   % 10-15: p-hat row when the exponent is estimated
+    if hasp; set(f, 'Position', [40 40 1100 2400]); end
+    tl = tiledlayout(nr, 1, 'TileSpacing', 'compact', 'Padding', 'compact');  ax = gobjects(nr, 1);
     ax(1) = nexttile(tl);  hold on; box on;
     h1 = plot(ax(1), t, wd * R_UM, '-', 'Color', cT, 'LineWidth', 5, 'DisplayName', 'z_d');
     h2 = plot(ax(1), t, S.h_true(:, q) * R_UM, '--', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', 'z');
@@ -27,12 +29,20 @@ function plot_mc_s9_gainreg(plant, sfx)
     hb = max(S.h_true(:, q), 1.001);  wsq = hb - 1 ./ sqrt(local_ap(hb, plant));
     h8 = plot(ax(3), t, wsq, '--', 'Color', 'k', 'LineWidth', 1.8, 'DisplayName', [WB '_s that fits the slope']);
     ylim(ax(3), [-1.5 1]);  legend(ax(3), [h6 h7 h8], 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
-    ax(4) = nexttile(tl);  hold on; box on;
+    if hasp
+        ax(5) = nexttile(tl, 4);  hold on; box on;
+        plot(ax(5), t, S.p_hat(:, q), '-', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', ['p' HAT]);
+        ylim(ax(5), [1.5 2.5]);  ylabel(ax(5), ['p' HAT], 'FontSize', FS, 'FontWeight', 'bold');
+        legend(ax(5), 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
+        ax(4) = nexttile(tl, 5);  hold on; box on;
+    else
+        ax(4) = nexttile(tl);  hold on; box on;
+    end
     plot(ax(4), t, S.dxm(:, q), '-', 'Color', cE, 'LineWidth', 1.0);
     ylim(ax(4), [-0.2 0.2]);  yticks(ax(4), [-0.1 0 0.1]);  xlabel(ax(4), 'Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');
     ylabel(ax(1), ['z  [' char(181) 'm]'], 'FontSize', FS, 'FontWeight', 'bold');  ylabel(ax(2), [AB '_z'], 'FontSize', FS + 2, 'FontWeight', 'bold');
     ylabel(ax(3), [WB '_s  [R]'], 'FontSize', FS, 'FontWeight', 'bold');  ylabel(ax(4), [char(948) 'z_m  [' char(181) 'm]'], 'FontSize', FS, 'FontWeight', 'bold');
-    for k = 1:4; xlim(ax(k), [0 t(end)]);  set(ax(k), 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', 2.2);  grid(ax(k), 'off'); end
+    for k = 1:nr; xlim(ax(k), [0 t(end)]);  set(ax(k), 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', 2.2);  grid(ax(k), 'off'); end
     out = fullfile(fd, sprintf('fig_mc_s9_%s%s_s1.png', plant, sfx));  exportgraphics(f, out, 'Resolution', 130);  fprintf('figure: %s\n', out);
 end
 

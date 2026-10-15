@@ -34,13 +34,13 @@ function run_mc_s9_gainreg(plants, seeds, a_d, tau_a, T_sim, ws0, extra, tag, di
         tic;  evalc('Rr = run_formC_b(o);');  tr = toc;
         ns = numel(Rr.runs);  S1 = Rr.runs{1};  n = numel(S1.h_bar_d_out);
         res = struct('ws0', ws0, 't', (0:n-1)' * Ts, 'a_d', a_d, 'lambda_a', lam_a, 'tau_a', tau_a, 'seeds', seeds, 'plant', plants{ip});
-        [res.wd, res.h_true, res.a_true, res.a_hat, res.w_hat, res.dxm, res.ap_hat, res.ap_true, res.sPa, res.sPw] = deal(zeros(n, ns));
+        [res.wd, res.h_true, res.a_true, res.a_hat, res.w_hat, res.dxm, res.ap_hat, res.ap_true, res.sPa, res.sPw, res.p_hat] = deal(zeros(n, ns));
         for q = 1:ns
             S = Rr.runs{q};  hb = S.h_bar_true_out(:);
             res.wd(:, q) = S.h_bar_d_out(:);  res.h_true(:, q) = hb;  res.a_hat(:, q) = S.a_bar_hat_out(:, 3);
             res.w_hat(:, q) = -S.ws_hat_out(:, 3);  res.dxm(:, q) = S.dh_m_out(:, 3);
             res.ap_hat(:, q) = S.a_prime_out(:, 3);  res.ap_true(:, q) = S.a_prime_true_out(:, 3);
-            res.sPa(:, q) = S.P_a_out(:, 3) / S.a_nom;  if isfield(S, 'sP_ws_out'); res.sPw(:, q) = S.sP_ws_out(:, 3); end   % 10-14: sqrt P_aa (a-bar units)   % same driver units; only the ratio kappa is read
+            res.sPa(:, q) = S.P_a_out(:, 3) / S.a_nom;  res.p_hat(:, q) = S.b_hat_out(:, 3);  if isfield(S, 'sP_ws_out'); res.sPw(:, q) = S.sP_ws_out(:, 3); end   % 10-14: sqrt P_aa (a-bar units)   % same driver units; only the ratio kappa is read
             if strcmp(plants{ip}, 'cell'); res.a_true(:, q) = 1 ./ cell_cperp_delta(max(hb, 1.001));
             else; for i = 1:n; [~, cp] = calc_correction_functions(max(hb(i), 1.001)); res.a_true(i, q) = 1 / cp; end; end
         end

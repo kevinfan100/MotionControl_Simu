@@ -27,6 +27,16 @@ function run_mc_apslot_compare(arms, plants, seeds, traj)
             case 'conly'
                 cc.plaw_cp_slope = true;  cc.c_init = 0;  cc.Pf_c_std = 0.1;  cc.p_init = 2;  cc.Pf_p_std = 1e-6;  cc.plaw_p_lim = [1.2, 4];
                 cc.plaw_seed_cross = true;  cc.q55_adapt = 'ratio';  cc.q55_adapt_P0 = 0.15;
+            case 'f4fc'                                  % 10-15: (delta, p) law a' = 1/(h - w_s)^p, plane init w_s 0, p 2; prior w_s 0.3, p 0.1; fe_cmd_eval on
+                cc.plaw_dp_slope = true;  cc.p_init = 2;  cc.Pf_p_std = 0.1;  cc.plaw_p_lim = [1.2, 4];  cc.delta_init = 0;  cc.Pf_delta_std = 0.3;
+                cc.plaw_g_min = 0.5;  cc.plaw_delta_lim = [-5, 5];  cc.plaw_seed_cross = true;  cc.fe_cmd_eval = true;
+            case {'f4fcQ05', 'f4fcQ10', 'f4fcQ20', 'f4fcQ40'}   % 10-15: f4fc + Q on slot 5 (= p): q55_adapt 'ratio', Q_pp = P_fix^2 I_k, sqrt P_fix = NN/100
+                cc.plaw_dp_slope = true;  cc.p_init = 2;  cc.Pf_p_std = 0.1;  cc.plaw_p_lim = [1.2, 4];  cc.delta_init = 0;  cc.Pf_delta_std = 0.3;
+                cc.plaw_g_min = 0.5;  cc.plaw_delta_lim = [-5, 5];  cc.plaw_seed_cross = true;  cc.fe_cmd_eval = true;
+                cc.q55_adapt = 'ratio';  cc.q55_adapt_P0 = str2double(arms{ia}(6:end)) / 100;
+            case 's8fc'                                  % 10-15: S8 with fe_cmd_eval (p pinned at 2)
+                cc.plaw_dc_slope = true;  cc.plaw_p = 2;  cc.c_init = 0;  cc.Pf_c_std = 1e-6;  cc.delta_init = 0;  cc.Pf_delta_std = 0.3;
+                cc.plaw_g_min = 0.5;  cc.plaw_delta_lim = [-5, 5];  cc.plaw_seed_cross = true;  cc.fe_cmd_eval = true;
             case 's8'                                    % plane init: w_s-hat[0] = 0, prior 0.3
                 cc.plaw_dc_slope = true;  cc.plaw_p = 2;  cc.c_init = 0;  cc.Pf_c_std = 1e-6;  cc.delta_init = 0;  cc.Pf_delta_std = 0.3;
                 cc.plaw_g_min = 0.5;  cc.plaw_delta_lim = [-5, 5];  cc.plaw_seed_cross = true;
@@ -45,10 +55,11 @@ function run_mc_apslot_compare(arms, plants, seeds, traj)
             tic;  evalc('Rr = run_formC_b(o);');  tr = toc;
             ns = numel(Rr.runs);  n = numel(Rr.runs{1}.h_bar_d_out);
             res = struct('t', (0:n-1)' * Ts, 'arm', arms{ia}, 'plant', plants{ip}, 'seeds', seeds, 'cc', cc);
-            [res.wd, res.h_true, res.a_true, res.a_hat, res.ap_hat] = deal(zeros(n, ns));
+            [res.wd, res.h_true, res.a_true, res.a_hat, res.ap_hat, res.w_hat, res.p_hat] = deal(zeros(n, ns));
             for q = 1:ns
                 S = Rr.runs{q};  hb = max(S.h_bar_true_out(:), 1.001);
                 res.wd(:, q) = S.h_bar_d_out(:);  res.h_true(:, q) = hb;  res.a_hat(:, q) = S.a_bar_hat_out(:, 3);  res.ap_hat(:, q) = S.a_prime_out(:, 3);
+                res.w_hat(:, q) = -S.ws_hat_out(:, 3);  res.p_hat(:, q) = S.b_hat_out(:, 3);   % 10-15: slot 7 (w_s = -delta), slot 5 (p or c)
                 if isempty(pcp); for i = 1:n; [~, cp] = calc_correction_functions(hb(i)); res.a_true(i, q) = 1 / cp; end
                 else; res.a_true(:, q) = 1 ./ pcp(hb); end
             end
