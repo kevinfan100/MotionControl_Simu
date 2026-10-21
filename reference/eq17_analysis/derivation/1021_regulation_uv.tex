@@ -1,0 +1,136 @@
+% STATUS: ACTIVE -- 2026-10-21 (user): "用文件先呈現原先的 regulation ctrl 再來套到我們新的". Section 1 = the regulation law of
+%   1019_report.tex Part III (1019/sec_regulation.tex) written in w (flat wall: w = z) with T_s/tau in the law and lambda only in the
+%   closed loop (user 10-21: "可以把 la and tau 包裝好嗎"); Section 2 = three axes, regulation along w-hat and the control of u_d, v_d
+%   (symbols tau_u, lambda_u and u_d, v_d, w_d approved 10-21). Equations only (derivation-workflow rule 10). Preamble from 1019_report.tex.
+%   Code: test_script/scratch/run_t2_3d_reg.m (opts.uv_hold, opts.uv_gain = T_s/tau_u).
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+\newcommand{\lc}{\lambda_c}
+\newcommand{\bx}{\bar{x}}
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\Pfix}{p_{\mathrm{fix}}}
+\newcommand{\hd}[1]{\par\bigskip\noindent\underline{\textbf{#1}}}
+\newcommand{\figpage}[3]{\clearpage\subsection*{#1}\noindent{\small\textcolor[gray]{0.35}{#2}}\par\smallskip
+  \begin{center}\includegraphics[width=\textwidth,height=0.78\textheight,keepaspectratio]{#3}\end{center}}
+\usepackage{xcolor}
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{center}
+{\Large\textbf{Regulation of the motion gain}}\\[0.4em]{\small 2026-10-21}
+\end{center}
+
+\section{Regulation law (normal direction $\bw$; 1019 Part III, flat wall $\bw = z$)}
+
+\hd{Regulation law}
+\[
+\begin{aligned}
+\Delta\bw_d[k] &= \frac{T_s}{\tau_a}\,\frac{\ba_d - \hat{\ba}_N[k]}{\hat{\ba}'_N[k]} \\
+\bw_d[k+1] &= \bw_d[k] + \Delta\bw_d[k]
+\end{aligned}
+\]
+
+\hd{Motion gain under the regulation law ($\hat{\ba}_N = \ba_N$, $\hat{\ba}'_N = \ba'_N$, first order in $\Delta\bw_d$)}
+\[
+\begin{aligned}
+\ba_N[k+1] &= \ba_N[k] + \ba'_N[k]\,\Delta\bw_d[k] \\
+\ba_d - \ba_N[k+1] &= \lambda_a\,\big(\ba_d - \ba_N[k]\big) \\
+\lambda_a &= 1 - T_s/\tau_a
+\end{aligned}
+\]
+
+\section{Three axes: regulation along $\hat{\mathbf{w}}$, control of $\bar{u}_d$, $\bar{v}_d$}
+
+\hd{Desired position along the wall in the estimated local coordinate, relative to the start}
+\[
+\begin{aligned}
+\bar{u}_d[k] &= \hat{\mathbf{u}}[k]^{\mathsf{T}}\,\big(\bar{\mathbf{p}}_d[k] - \bar{\mathbf{p}}_d[0]\big) \\
+\bar{v}_d[k] &= \hat{\mathbf{v}}[k]^{\mathsf{T}}\,\big(\bar{\mathbf{p}}_d[k] - \bar{\mathbf{p}}_d[0]\big)
+\end{aligned}
+\]
+
+\hd{Control law}
+\[
+\begin{aligned}
+\Delta\bw_d[k] &= \frac{T_s}{\tau_a}\,\frac{\ba_d - \hat{\ba}_N[k]}{\hat{\ba}'_N[k]} \\
+\Delta\bar{u}_d[k] &= -\frac{T_s}{\tau_u}\,\bar{u}_d[k] \\
+\Delta\bar{v}_d[k] &= -\frac{T_s}{\tau_u}\,\bar{v}_d[k] \\
+\bar{\mathbf{p}}_d[k+1] &= \bar{\mathbf{p}}_d[k] + \hat{\mathbf{V}}[k] \begin{bmatrix} \Delta\bar{u}_d[k] \\ \Delta\bar{v}_d[k] \\ \Delta\bw_d[k] \end{bmatrix}
+\end{aligned}
+\]
+
+\hd{Under the control law ($\hat{\mathbf{V}}[k+1] = \hat{\mathbf{V}}[k]$)}
+\[
+\begin{aligned}
+\ba_d - \ba_N[k+1] &= \lambda_a\,\big(\ba_d - \ba_N[k]\big) \\
+\bar{u}_d[k+1] &= \lambda_u\,\bar{u}_d[k] \\
+\bar{v}_d[k+1] &= \lambda_u\,\bar{v}_d[k] \\
+\lambda_a &= 1 - T_s/\tau_a \\
+\lambda_u &= 1 - T_s/\tau_u
+\end{aligned}
+\]
+
+\hd{Change of $\hat{\mathbf{V}}$ between two steps (first order in $\Delta\hat{\theta}_y$, $\hat{\theta}_x = 0$)}
+\[
+\bar{u}_d[k+1] = \lambda_u\,\bar{u}_d[k] - \Delta\hat{\theta}_y[k]\;\hat{\mathbf{w}}[k]^{\mathsf{T}}\big(\bar{\mathbf{p}}_d[k+1] - \bar{\mathbf{p}}_d[0]\big)
+\]
+
+\hd{Setting}
+\[
+\tau_a = 2\,\mathrm{s}, \qquad \sqrt{p_{\theta}[0]} = 10^{\circ}, \qquad q_{\theta} = 0
+\]
+
+\clearpage
+\section{Hold, approach, scan}
+
+\hd{Angle information per sample (angle rows of the output, random component)}
+\[
+I_{\theta}[k] \approx \frac{\big(\ba_T[k] - \ba_N[k]\big)^2}{2.5\,\ba_T[k]\,\ba_N[k]}
+\]
+
+\hd{Process noise of the angles}
+\[
+\begin{aligned}
+q_{\theta}[k] &= 0, && t < t_{\mathrm{scan}} \\
+q_{\theta}[k] &= \Pfix^2\, I[k], && t \ge t_{\mathrm{scan}} \\
+I[k] &= 1/p_{\theta}[k] - 1/p^{f}_{\theta}[k]
+\end{aligned}
+\]
+
+\hd{Desired position}
+\[
+\begin{aligned}
+\Delta\bw_d[k] &= 0, && t < t_{\mathrm{hold}} \\
+\Delta\bw_d[k] &= \frac{T_s}{\tau_a}\,\frac{\ba_d - \hat{\ba}_N[k]}{\hat{\ba}'_N[k]}, && t \ge t_{\mathrm{hold}} \\
+\Delta\bar{u}_d[k] &= \Delta\bar{u}_{\mathrm{scan}}, && t \ge t_{\mathrm{scan}} \\
+\bar{\mathbf{p}}_d[k+1] &= \bar{\mathbf{p}}_d[k] + \hat{\mathbf{V}}[k] \begin{bmatrix} \Delta\bar{u}_d[k] \\ 0 \\ \Delta\bw_d[k] \end{bmatrix}
+\end{aligned}
+\]
+
+\hd{Setting}
+\[
+h[0] = 15\,\mu\mathrm{m}, \quad t_{\mathrm{hold}} = 4\,\mathrm{s}, \quad t_{\mathrm{scan}} = 11\,\mathrm{s}, \quad
+\sqrt{\Pfix} = 2^{\circ}, \quad \Delta\bar{u}_{\mathrm{scan}} = 0.011, \quad \text{no control of } \bar{u}_d, \bar{v}_d
+\]
+
+\figpage{Fig.~3.1\quad Angle while holding at 15 $\mu$m}{20$^{\circ}$ plane wall, held 15 s at a 15 $\mu$m gap; columns: no dither, dither without ramp, dither with 2 s ramp, dither with 5 s ramp (circle of radius 3 $\mu$m at 8 Hz in the estimated tangent plane); rows: angle errors, $\sqrt{p_{\theta_y}}$; seeds 1--3}{fig_1021_hold_dither.png}
+
+\figpage{Fig.~3.2\quad Hold, approach, scan on the 20$^{\circ}$ plane wall}{hold 4 s with the dither (2 s ramp), regulation from 4 s, scan from 11 s; side view in the measurement coordinate with the true normal through the start (light red dashed); seed 1}{fig_1021_flow_plane_xyz_s1.png}
+
+\figpage{Fig.~3.3\quad Estimates of Fig.~3.2}{rows: $\ba_N$ with $\ba_d$, $\ba_T$, $\theta_y$ and $\theta_x$ with $\pm\sqrt{p_\theta}$; seed 1}{fig_1021_flow_plane_est_s1.png}
+
+\figpage{Fig.~3.4\quad Hold, approach, scan on the bend wall}{flat, 20 $\mu$m bend, 20$^{\circ}$ plane (downslope azimuth 45$^{\circ}$); left: 10-20 run with the gate and prior 30$^{\circ}$; middle: start 22.2 R, $\Pfix$ from the scan; right: Section~3 setting; rows: $\theta$, $h$, $\ba_N$; seed 1}{fig_1021_flow_bend.png}
+
+\figpage{Fig.~3.5\quad Side view of the right column of Fig.~3.4}{wall drawn at the scan line; lower panel: the bend with the gap $h^* R$; seed 1}{fig_1021_flow_bend_xyz_s1.png}
+
+\end{document}

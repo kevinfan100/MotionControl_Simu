@@ -14,6 +14,10 @@
 %   New (shown to the user 10-15): du-tilde_r, dw-tilde_r = random component in the ESTIMATED local coordinate.
 %   Sensor noise taken equal on x and z here (C_n sigma_n^2 one number); unequal noise is subtracted in the measurement
 %   coordinate before the rotation (not in this file).
+%   10-16 (user): T1 simulation check added (Fig. 1): run_t1_angle_readout.m (15 seeds) + plot_t1_angle_readout.m ->
+%   figures/fig_wa_t1_readout.png; Section 6 gains the exact expectations (from Section 5) next to the first-order measured
+%   quantities, so the gain bias of a wrong estimated angle (second order in e_theta) is visible; hat a_T -> hat a-bar_T fixed.
+%   Fig. 2 (user 10-16, top row, readout only): run_t1_formula_check.m + plot_t1_formula_check(true) -> figures/fig_wa_t1_formula.png.
 % Compile: xelatex 1015_wall_angle_readout.tex (from reference/eq17_analysis/derivation/). Preamble from 1011_random_signal_am.tex.
 \documentclass[11pt,a4paper]{ctexart}
 \usepackage[fleqn]{amsmath}
@@ -24,7 +28,11 @@
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0.2em}
 \usepackage{xcolor}
+\usepackage{graphicx}
+\graphicspath{{figures/}}
 \newcommand{\setline}[1]{\noindent{\small\textcolor[gray]{0.35}{#1}}\par\smallskip}
+\newcommand{\figpage}[3]{\clearpage\subsection*{#1}\noindent{\small\textcolor[gray]{0.35}{#2}}\par\smallskip
+  \begin{center}\includegraphics[width=\textwidth,height=0.82\textheight,keepaspectratio]{#3}\end{center}}
 \newcommand{\ba}{\bar{a}}
 \newcommand{\bx}{\bar{x}}
 \newcommand{\bz}{\bar{z}}
@@ -112,8 +120,18 @@ e_\theta &\approx -\frac{\E\big[\delta\tu_r\,\delta\tw_r\big]}{\CK\,(\ba_T - \ba
 \begin{align*}
 \ba_{Tm}[k] &= \frac{\delta\tu_r^2[k] - \Cn}{\CK} \\
 \ba_{Nm}[k] &= \frac{\delta\tw_r^2[k] - \Cn}{\CK} \\
-e_{\theta m}[k] &= -\frac{\delta\tu_r[k]\,\delta\tw_r[k]}{\CK\,\big(\hat a_T[k] - \hat a_N[k]\big)} \\
+e_{\theta m}[k] &= -\frac{\delta\tu_r[k]\,\delta\tw_r[k]}{\CK\,\big(\hat{\ba}_T[k] - \hat{\ba}_N[k]\big)} \\
 \theta_{ym}[k] &= \hth[k] + e_{\theta m}[k]
 \end{align*}
+\setline{expectations without the approximation (Section 5), random component as in Section 3 (not changed by $\hth$ through the control law)}
+\begin{align*}
+\E\big[\ba_{Tm}\big] &= \cos^2 e_\theta\,\ba_T + \sin^2 e_\theta\,\ba_N \\
+\E\big[\ba_{Nm}\big] &= \sin^2 e_\theta\,\ba_T + \cos^2 e_\theta\,\ba_N \\
+\E\big[e_{\theta m}\big] &= \frac{\ba_T - \ba_N}{\hat{\ba}_T - \hat{\ba}_N}\,\sin e_\theta\cos e_\theta
+\end{align*}
+
+\figpage{Fig.~1\quad Measured angle and measured input gains with the estimated angle held fixed}{simulation: plane wall $\thy = 20^\circ$; command along the surface normal to $\bar h = 1.2$, then held 5 s; motion gains known in the control law; $e_\theta = 0^\circ, \pm 1^\circ, \pm 2^\circ, \pm 5^\circ$ (small angle errors, the assumption of Section 6), $\hth$ not updated; one sample per step (Section 6), mean over the hold, paired by seed (each seed minus its own reading at $e_\theta = 0$) $\pm$ SEM, 15 seeds; $\lambda_c = 0.4$; red = expectations of Section 6 with $\ba_T$, $\ba_N$ at the hold (as Fig.~2); left: $e_{\theta m}$; right: $\ba_{Nm}/\ba_N$ (red solid) and $\ba_{Tm}/\ba_T$ (red dashed)}{fig_wa_t1_readout.png}
+
+\figpage{Fig.~2\quad Section 5 checked: control law with the wall angle, readout in the local coordinate of $\hth$}{simulation as Fig.~1, but the control law uses $\thy = 20^\circ$; the same random component read with $e_\theta = 0^\circ, \pm 1^\circ, \pm 2^\circ, \pm 5^\circ$ (small angle errors); mean over the hold, paired by seed (each seed minus its own reading at $e_\theta = 0$) $\pm$ SEM, 15 seeds; red = expectations of Section 6 (from Section 5) with $\ba_T$, $\ba_N$ at the hold; left: $\ba_{Nm}/\ba_N$; middle: $\ba_{Tm}/\ba_T$; right: $e_{\theta m}$}{fig_wa_t1_formula.png}
 
 \end{document}

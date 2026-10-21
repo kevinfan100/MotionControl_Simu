@@ -1,0 +1,271 @@
+% STATUS: ACTIVE -- main document for the WALL ORIENTATION estimator, three axes, a-bar' as a state variable (user 10-19: "直接改原先的
+%   文件 把它變成主要我們處理 esti angle 的文件"). Replaces the 10-15/16 version with one shared wall position w_s and the law
+%   a-bar' = num/h^2 (that version was never committed, so it is not in git; its expansions stay checked in
+%   check_1015_estimator_3d.py sections 1-6, which are shared by this version except the gain rows -> section 7).
+%   Decisions (user 10-19, "對"): a-bar' as a state variable for BOTH gains (a_T, a_T', a_N, a_N'), 15 states; gains change only with
+%   the motion along the surface normal; q of a-bar' = p_fix^2 I[k] as 1019_report (sqrt p_fix = 0.4 (1.1/h_d)^2), with
+%   h_d = w-hat^T p_d (command along the estimated surface normal, visible surface at 0 = plane start); measured quantities single
+%   sample (a_cov = 1, the u[k] of 1019_report; in three axes the matrix vA_m). No wall position, no h: the lever-arm coupling between
+%   e_theta and e_ws of the old version is gone. Wall angles constant (q = 0).
+%   Notation (agreed 10-15/16, IEEE TIE 2025 fonts): scalars italic, vectors / matrices bold upright; A-bar = V Lambda-bar V^T,
+%   Lambda-bar = diag(a_T, a_T, a_N); subscripts T / N; left superscript v = local coordinate of V-hat (dissertation (5.7));
+%   p_fix, I[k], l_ij, e_y as 1019_report / motion_ctrl. Never the word "slope" in the text (user 10-19).
+%   Seeds (header only, as 1019): a-bar'_N[0] = 1/h_d[0]^2, a-bar'_T[0] = (9/16)/h_d[0]^2, sqrt p of a-bar'[0] = 0.002, theta-hat[0] = 0,
+%   sqrt p_theta[0] provisional 30 deg (T1b, no basis yet).
+%   Checks: rows of Section 5 for the a-bar' states: check_1015_estimator_3d.py section 7.
+%   NOT yet: observability gates, d-step delay of the measured quantities, simulation of this version (T2).
+% Compile: xelatex 1015_estimator_3d_wsonly.tex (from reference/eq17_analysis/derivation/). Preamble from 1015_wall_angle_readout.tex.
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=1.8cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+\usepackage{xcolor}
+\newcommand{\setline}[1]{\noindent{\small\textcolor[gray]{0.35}{#1}}\par\smallskip}
+\newcommand{\hd}[1]{\par\bigskip\noindent\underline{\textbf{#1}}}
+\newcommand{\lc}{\lambda_c}
+\newcommand{\bp}{\bar{\mathbf p}}
+\newcommand{\dpb}{\delta\bar{\mathbf p}}
+\newcommand{\dph}{\delta\hat{\bar{\mathbf p}}}
+\newcommand{\Ab}{\bar{\mathbf A}}
+\newcommand{\Ah}{\hat{\bar{\mathbf A}}}
+\newcommand{\uu}{\mathbf u}
+\newcommand{\vv}{\mathbf v}
+\newcommand{\ww}{\mathbf w}
+\newcommand{\uh}{\hat{\mathbf u}}
+\newcommand{\vh}{\hat{\mathbf v}}
+\newcommand{\wh}{\hat{\mathbf w}}
+\newcommand{\aT}{\bar a_T}
+\newcommand{\aN}{\bar a_N}
+\newcommand{\haT}{\hat{\bar a}_T}
+\newcommand{\haN}{\hat{\bar a}_N}
+\newcommand{\apT}{\bar a'_T}
+\newcommand{\apN}{\bar a'_N}
+\newcommand{\hapT}{\hat{\bar a}'_T}
+\newcommand{\hapN}{\hat{\bar a}'_N}
+\newcommand{\Fd}{\mathbf F_{dp}}
+\newcommand{\Mb}{\mathbf M}
+\newcommand{\Mh}{\hat{\mathbf M}}
+\newcommand{\epp}{\boldsymbol\varepsilon_p}
+\newcommand{\cxh}{\cos\hat\theta_x}
+\newcommand{\I}{\mathbf I}
+\newcommand{\Sn}{\boldsymbol\Sigma_n}
+\newcommand{\CK}{C_T\,\kappa_T}
+\newcommand{\E}{\mathrm{E}}
+\newcommand{\V}{\mathbf V}
+\newcommand{\Vh}{\hat{\mathbf V}}
+\newcommand{\Lb}{\bar{\boldsymbol\Lambda}}
+\newcommand{\vAm}{{}^{v}\!\bar{\mathbf A}_m}
+\newcommand{\Pfix}{p_{\mathrm{fix}}}
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{center}\textbf{\large Real-time estimation of the wall orientation and the motion gains}\\[2pt]
+\small 2026-10-19 \quad three axes; $\bar a'$ as a state variable; measurement coordinate $(x, y, z)$, local coordinate $(u, v, w)$\end{center}
+
+%======================================================================
+\section{Motion gain matrix as a function of the wall orientation}
+\begin{align*}
+\V &= \mathbf R_y(\theta_y)\,\mathbf R_x(\theta_x) = [\,\uu\ \ \vv\ \ \ww\,] \\
+\Lb &= \mathrm{diag}(\aT,\ \aT,\ \aN) \\
+\Ab &= \V\,\Lb\,\V^{T} = \aT\,\I + (\aN - \aT)\,\ww\,\ww^{T} \\
+\Mb[k] &= \Delta\bp_d[k] + (1-\lc)\,\dpb_3[k]
+\end{align*}
+
+%======================================================================
+\section{State of the process}
+\hd{Motion model, control law and dynamics of tracking error (three axes)}
+\begin{align*}
+\bp[k+1] &= \bp[k] + \Ab[k]\,\big(\bar{\mathbf f}_d[k] + \bar{\mathbf f}_T[k]\big) \\
+\dpb[k] &= \bp_d[k] - \bp[k] \\
+\bp_m[k] &= \bp[k-d] + \mathbf n_p[k] \\
+\dpb_m[k] &= \bp_d[k-d] - \bp_m[k] \\
+\hat{\bp}[k] &= \bp_m[k] + \sum_{i=1}^{d} \Ah[k-i]\,\bar{\mathbf f}_d[k-i] \\
+\bar{\mathbf f}_d[k] &= \Ah^{-1}[k]\,\Big\{\bp_d[k+1] - \hat{\bp}[k] - \lc\,\big(\bp_d[k] - \hat{\bp}[k]\big)\Big\} \\
+\dpb[k+1] &= \lc\,\dpb[k] - \big(\Ab[k] - \Ah[k]\big)\,\Fd[k] - \epp[k] \\
+\Fd[k] &= \bar{\mathbf f}_d[k] + (1-\lc)\sum_{i=1}^{d} \bar{\mathbf f}_d[k-i] \\
+\epp[k] &= \Ab[k]\,\bar{\mathbf f}_T[k] + (1-\lc)\sum_{i=1}^{d} \Ab[k-i]\,\bar{\mathbf f}_T[k-i] - (1-\lc)\,\mathbf n_p[k]
+\end{align*}
+
+\hd{True state of the process}
+\begin{align*}
+\dpb_1[k+1] &= \dpb_2[k] \\
+\dpb_2[k+1] &= \dpb_3[k] \\
+\dpb_3[k+1] &= \lc\,\dpb_3[k] - \big(\Ab[k] - \Ah[k]\big)\,\Fd[k] - \epp[k] \\
+\aT[k+1] &= \aT[k] + \apT[k]\,\ww^{T}\Big(\Mb[k] + \big(\Ab[k] - \Ah[k]\big)\,\Fd[k] + \epp[k]\Big) \\
+\apT[k+1] &= \apT[k] + w_{\apT}[k] \\
+\aN[k+1] &= \aN[k] + \apN[k]\,\ww^{T}\Big(\Mb[k] + \big(\Ab[k] - \Ah[k]\big)\,\Fd[k] + \epp[k]\Big) \\
+\apN[k+1] &= \apN[k] + w_{\apN}[k] \\
+\theta_x[k+1] &= \theta_x[k] \\
+\theta_y[k+1] &= \theta_y[k]
+\end{align*}
+
+%======================================================================
+\section{State vector}
+\[
+\mathbf x[k] = \big[\,\dpb_1^{T}[k]\ \ \dpb_2^{T}[k]\ \ \dpb_3^{T}[k]\ \ \aT[k]\ \ \apT[k]\ \ \aN[k]\ \ \apN[k]\ \ \theta_x[k]\ \ \theta_y[k]\,\big]^{T} \qquad (15 \times 1,\ d = 2)
+\]
+
+%======================================================================
+\section{Estimator}
+\begin{align*}
+\Vh[k] &= \mathbf R_y(\hat\theta_y[k])\,\mathbf R_x(\hat\theta_x[k]) = [\,\uh\ \ \vh\ \ \wh\,] \\
+\Ah[k] &= \Vh[k]\,\mathrm{diag}\big(\haT[k],\ \haT[k],\ \haN[k]\big)\,\Vh^{T}[k] = \haT[k]\,\I + \big(\haN[k] - \haT[k]\big)\,\wh\,\wh^{T} \\
+\Mh[k] &= \Delta\bp_d[k] + (1-\lc)\,\dph_3[k]
+\end{align*}
+\begin{align*}
+\dph_1[k+1] &= \dph_2[k] + \mathbf L_1[k]\,\mathbf e_y[k] \\
+\dph_2[k+1] &= \dph_3[k] + \mathbf L_2[k]\,\mathbf e_y[k] \\
+\dph_3[k+1] &= \lc\,\dph_3[k] + \mathbf L_3[k]\,\mathbf e_y[k] \\
+\haT[k+1] &= \haT[k] + \hapT[k]\,\wh^{T}\Mh[k] + \mathbf L_4[k]\,\mathbf e_y[k] \\
+\hapT[k+1] &= \hapT[k] + \mathbf L_5[k]\,\mathbf e_y[k] \\
+\haN[k+1] &= \haN[k] + \hapN[k]\,\wh^{T}\Mh[k] + \mathbf L_6[k]\,\mathbf e_y[k] \\
+\hapN[k+1] &= \hapN[k] + \mathbf L_7[k]\,\mathbf e_y[k] \\
+\hat\theta_x[k+1] &= \hat\theta_x[k] + \mathbf L_8[k]\,\mathbf e_y[k] \\
+\hat\theta_y[k+1] &= \hat\theta_y[k] + \mathbf L_9[k]\,\mathbf e_y[k]
+\end{align*}
+\setline{$\mathbf L_1, \mathbf L_2, \mathbf L_3$: $3\times 7$; $\mathbf L_4, \dots, \mathbf L_9$: $1\times 7$; $\mathbf e_y = \mathbf y - \hat{\mathbf y}$ (Section 6)}
+
+%======================================================================
+\clearpage
+\section{Dynamics of estimation errors}
+\setline{$e_{(\cdot)} = (\cdot) - (\hat\cdot)$; $\mathbf e_3 = \dpb_3 - \dph_3$; first order in the errors}
+\begin{align*}
+\mathbf e[k+1] &= \mathbf F_e[k]\,\mathbf e[k] - \mathbf L[k]\,\mathbf H\,\mathbf e[k] + \mathbf q[k] \\
+\mathbf q[k] &= \big[\,\mathbf 0^{T}\ \ \mathbf 0^{T}\ \ -\epp^{T}[k]\ \ \hapT\,\wh^{T}\epp[k]\ \ w_{\apT}[k]\ \ \hapN\,\wh^{T}\epp[k]\ \ w_{\apN}[k]\ \ 0\ \ 0\,\big]^{T}
+\end{align*}
+
+\hd{(a) Each factor written as its estimate plus its error}
+\begin{align*}
+\ww - \wh &= -\vh\,e_{\theta_x} + \cxh\,\uh\,e_{\theta_y} \\
+\Mb - \Mh &= (1-\lc)\,\mathbf e_3 \\
+\Ab - \Ah &= \big(\uh\,\uh^{T} + \vh\,\vh^{T}\big)\,e_{\aT} + \wh\,\wh^{T}\,e_{\aN} \\
+&\quad - (\haN - \haT)\,\big(\vh\,\wh^{T} + \wh\,\vh^{T}\big)\,e_{\theta_x}
++ (\haN - \haT)\,\cxh\,\big(\uh\,\wh^{T} + \wh\,\uh^{T}\big)\,e_{\theta_y}
+\end{align*}
+
+\hd{(b) Motion along the surface normal: true minus estimated}
+\begin{align*}
+&\ww^{T}\Big(\Mb + \big(\Ab - \Ah\big)\,\Fd + \epp\Big) - \wh^{T}\Mh \\
+&= (1-\lc)\,\wh^{T}\mathbf e_3 + \wh^{T}\Fd\,e_{\aN}
++ \Big((\haT - \haN)\,\vh^{T}\Fd - \vh^{T}\Mh\Big)\,e_{\theta_x} \\
+&\quad + \cxh\,\Big(\uh^{T}\Mh - (\haT - \haN)\,\uh^{T}\Fd\Big)\,e_{\theta_y}
++ \wh^{T}\epp
+\end{align*}
+
+\hd{(c) Errors at $k+1$}
+{\small
+\begin{align*}
+\mathbf e_1[k+1] &= \mathbf e_2[k] \\
+\mathbf e_2[k+1] &= \mathbf e_3[k] \\
+\mathbf e_3[k+1] &= \lc\,\mathbf e_3[k]
+- \big(\uh\,\uh^{T} + \vh\,\vh^{T}\big)\Fd[k]\,e_{\aT}[k]
+- \wh\,\wh^{T}\Fd[k]\,e_{\aN}[k] \\
+&\quad + (\haN - \haT)\,\big(\vh\,\wh^{T} + \wh\,\vh^{T}\big)\Fd[k]\,e_{\theta_x}[k]
+- (\haN - \haT)\,\cxh\,\big(\uh\,\wh^{T} + \wh\,\uh^{T}\big)\Fd[k]\,e_{\theta_y}[k]
+- \epp[k] \\[4pt]
+e_{\aT}[k+1] &= \hapT\,(1-\lc)\,\wh^{T}\mathbf e_3[k] + e_{\aT}[k] + \wh^{T}\Mh\,e_{\apT}[k] + \hapT\,\wh^{T}\Fd\,e_{\aN}[k] \\
+&\quad + \hapT\,\Big((\haT - \haN)\,\vh^{T}\Fd - \vh^{T}\Mh\Big)\,e_{\theta_x}[k]
++ \hapT\,\cxh\,\Big(\uh^{T}\Mh - (\haT - \haN)\,\uh^{T}\Fd\Big)\,e_{\theta_y}[k] \\
+&\quad + \hapT\,\wh^{T}\epp[k] \\[4pt]
+e_{\apT}[k+1] &= e_{\apT}[k] + w_{\apT}[k] \\[4pt]
+e_{\aN}[k+1] &= \hapN\,(1-\lc)\,\wh^{T}\mathbf e_3[k] + \big(1 + \hapN\,\wh^{T}\Fd\big)\,e_{\aN}[k] + \wh^{T}\Mh\,e_{\apN}[k] \\
+&\quad + \hapN\,\Big((\haT - \haN)\,\vh^{T}\Fd - \vh^{T}\Mh\Big)\,e_{\theta_x}[k]
++ \hapN\,\cxh\,\Big(\uh^{T}\Mh - (\haT - \haN)\,\uh^{T}\Fd\Big)\,e_{\theta_y}[k] \\
+&\quad + \hapN\,\wh^{T}\epp[k] \\[4pt]
+e_{\apN}[k+1] &= e_{\apN}[k] + w_{\apN}[k] \\
+e_{\theta_x}[k+1] &= e_{\theta_x}[k] \\
+e_{\theta_y}[k+1] &= e_{\theta_y}[k]
+\end{align*}
+}
+
+%======================================================================
+\clearpage
+\section{Process outputs and output matrix}
+\hd{Real-time calculation of process outputs (three axes)}
+\begin{align*}
+\overline{\dpb_m}[k+1] &= a_{\mathrm{pd}}\,\dpb_m[k] + (1 - a_{\mathrm{pd}})\,\overline{\dpb_m}[k] \\
+\dpb_r[k] &= \dpb_m[k] - \overline{\dpb_m}[k] \\
+\E\big[\dpb_r\,\dpb_r^{T}\big] &= \CK\,\Ab + C_n\,\Sn, \qquad \Sn = \mathrm{diag}\big(\sigma_{n,x}^2,\ \sigma_{n,y}^2,\ \sigma_{n,z}^2\big) \\
+{}^{v}\dpb_r[k] &= \Vh^{T}[k]\,\dpb_r[k] \\
+{}^{v}\Sn[k] &= \Vh^{T}[k]\,\Sn\,\Vh[k] \\
+\vAm[k] &= \frac{{}^{v}\dpb_r[k]\;{}^{v}\dpb_r^{T}[k] - C_n\,{}^{v}\Sn[k]}{\CK} \\
+\bar a_{Tm}[k] &= \frac{\big[\vAm[k]\big]_{uu} + \big[\vAm[k]\big]_{vv}}{2} \\
+\bar a_{Nm}[k] &= \big[\vAm[k]\big]_{ww} \\
+\theta_{xm}[k] &= \hat\theta_x[k] + \frac{\big[\vAm[k]\big]_{vw}}{\haT[k] - \haN[k]} \\
+\theta_{ym}[k] &= \hat\theta_y[k] - \frac{\big[\vAm[k]\big]_{uw}}{\big(\haT[k] - \haN[k]\big)\,\cxh[k]}
+\end{align*}
+\begin{align*}
+\E\big[\vAm\big] &= \Vh^{T}\,\Ab\,\Vh \\
+\E\big[\vAm\big]_{uu} &\approx \aT \\
+\E\big[\vAm\big]_{vv} &\approx \aT \\
+\E\big[\vAm\big]_{ww} &\approx \aN \\
+\E\big[\vAm\big]_{vw} &\approx (\aT - \aN)\,e_{\theta_x} \\
+\E\big[\vAm\big]_{uw} &\approx -(\aT - \aN)\,\cxh\,e_{\theta_y}
+\end{align*}
+
+\hd{Measurement, estimator output and output matrix}
+\[
+\mathbf y[k] = \begin{bmatrix} \dpb_m[k] \\ \bar a_{Tm}[k] \\ \bar a_{Nm}[k] \\ \theta_{xm}[k] \\ \theta_{ym}[k] \end{bmatrix},
+\qquad
+\hat{\mathbf y}[k] = \begin{bmatrix} \dph_1[k] \\ \haT[k] \\ \haN[k] \\ \hat\theta_x[k] \\ \hat\theta_y[k] \end{bmatrix},
+\qquad
+\mathbf H =
+\begin{bmatrix}
+\I_3 & \mathbf 0 & \mathbf 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & 0 & 0 & 1 & 0 & 0 & 0 \\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & 0 & 0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+\]
+
+%======================================================================
+\clearpage
+\section{Process noise and measurement noise}
+\begin{align*}
+\mathbf Q_{33}[k] &= \kappa_T\,\Big(\Ah[k] + (1-\lc)^2\sum_{i=1}^{d}\Ah[k-i]\Big) + (1-\lc)^2\,\Sn \\
+q_{\apT}[k] &= \Pfix^{2}[k]\,I_{\apT}[k], \qquad q_{\apN}[k] = \Pfix^{2}[k]\,I_{\apN}[k] \\
+I_{(\cdot)}[k] &= \frac{1}{p_{(\cdot)}[k]} - \frac{1}{p^f_{(\cdot)}[k]} \\
+\sqrt{\Pfix}[k] &= 0.4\,\big(1.1/h_d[k]\big)^{2}, \qquad h_d[k] = \wh^{T}[k]\,\bp_d[k] \\
+\mathbf Q[k] &=
+{\small\begin{bmatrix}
+\mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 \\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 \\
+\mathbf 0 & \mathbf 0 & \mathbf Q_{33} & -\hapT\,\mathbf Q_{33}\wh & \mathbf 0 & -\hapN\,\mathbf Q_{33}\wh & \mathbf 0 & \mathbf 0 & \mathbf 0 \\
+\mathbf 0 & \mathbf 0 & -\hapT\,\wh^{T}\mathbf Q_{33} & \hat{\bar a}_T'^{\,2}\,\wh^{T}\mathbf Q_{33}\wh & 0 & \hapT\hapN\,\wh^{T}\mathbf Q_{33}\wh & 0 & 0 & 0 \\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & 0 & q_{\apT} & 0 & 0 & 0 & 0 \\
+\mathbf 0 & \mathbf 0 & -\hapN\,\wh^{T}\mathbf Q_{33} & \hapT\hapN\,\wh^{T}\mathbf Q_{33}\wh & 0 & \hat{\bar a}_N'^{\,2}\,\wh^{T}\mathbf Q_{33}\wh & 0 & 0 & 0 \\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & 0 & 0 & 0 & q_{\apN} & 0 & 0 \\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & 0 & 0 & 0 & 0 & 0 & 0
+\end{bmatrix}} \\[4pt]
+\xi_T &= \frac{C_n\,\big(\uh^{T}\Sn\,\uh + \vh^{T}\Sn\,\vh\big)}{2\,\CK}, \qquad
+\xi_N = \frac{C_n\,\wh^{T}\Sn\,\wh}{\CK} \\
+\mathbf R[k] &= \mathrm{diag}\Big(\Sn,\ \ \mathrm{IF}\,\big(\haT + \xi_T\big)^2,\ \ 2\,\mathrm{IF}\,\big(\haN + \xi_N\big)^2, \\
+&\qquad\qquad \frac{\mathrm{IF}\,\big(\haT + \xi_T\big)\big(\haN + \xi_N\big)}{\big(\haT - \haN\big)^2},\ \
+\frac{\mathrm{IF}\,\big(\haT + \xi_T\big)\big(\haN + \xi_N\big)}{\big(\haT - \haN\big)^2\cos^2\hat\theta_x}\Big)
+\end{align*}
+
+\hd{Estimator feedback matrix and error covariance}
+\begin{align*}
+\mathbf L[k] &= \mathbf P^f[k]\,\mathbf H^{T}\big(\mathbf H\,\mathbf P^f[k]\,\mathbf H^{T} + \mathbf R[k]\big)^{-1} \\
+\mathbf P[k] &= \big(\I - \mathbf L[k]\,\mathbf H\big)\,\mathbf P^f[k] \\
+\mathbf P^f[k+1] &= \mathbf F_e[k]\,\mathbf P[k]\,\mathbf F_e^{T}[k] + \mathbf Q[k]
+\end{align*}
+
+%======================================================================
+\section*{Seed and prior}
+\begin{align*}
+\hat\theta_x[0] &= 0, \qquad \hat\theta_y[0] = 0 \\
+h_d[0] &= \wh^{T}[0]\,\bp_d[0] \\
+\haT[0] &= \frac{1}{c_\parallel(h_d[0])}, \qquad \haN[0] = \frac{1}{c_\perp(h_d[0])} \\
+\hapT[0] &= \frac{9/16}{h_d[0]^{2}}, \qquad \hapN[0] = \frac{1}{h_d[0]^{2}} \\
+\mathbf P[0] &= \mathrm{diag}\big(\mathbf P_{\delta}[0],\ p_{\aT}[0],\ p_{\apT}[0],\ p_{\aN}[0],\ p_{\apN}[0],\ p_\theta[0],\ p_\theta[0]\big)
+\end{align*}
+
+\end{document}
