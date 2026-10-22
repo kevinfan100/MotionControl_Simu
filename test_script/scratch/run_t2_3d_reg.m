@@ -61,7 +61,9 @@ function r = local_run(opts, seed)
     rng(seed);
     cfg = canonical_scenario(0.05, 1.10, 'ramp_tri', 1);
     cfg.lambda_c = opts.lambda_c;  cfg.theta_y = opts.theta_y;  cfg.theta_x = 0;
-    is_bend = strcmp(opts.wall, 'bend');  if is_bend; cfg.theta_y = 0; end   % bend wall: start on the flat part
+    is_bead = strcmp(opts.wall, 'bead');                       % 10-22 user: Meng glass bead on the cover glass, start above the bead top
+    is_bump = strcmp(opts.wall, 'bump');                       % 10-22 user: Gaussian bump (cell-like) on the glass, scan over it
+    is_bend = strcmp(opts.wall, 'bend') || is_bead || is_bump;  if is_bend; cfg.theta_y = 0; end   % curved walls: start where the wall is flat
     params = calc_simulation_params(cfg);  P = params.Value;
     Ts = P.common.Ts;  Rr = P.common.R;  a_nom = Ts / P.common.gamma_N;  a_o = a_nom / Rr;
     kap = 4 * P.ctrl.k_B * P.ctrl.T * a_o / Rr;  Sn = diag((cfg.meas_noise_std(:) / Rr).^2);
@@ -79,6 +81,7 @@ function r = local_run(opts, seed)
     if isfield(opts, 'tau_u'); g_uv = min(Ts / opts.tau_u, 1); end      % 1021_regulation_uv.tex: Delta u_d = -(T_s / tau_u) u_d
     th_c = [0; 0];                                             % 10-21 user: angle used by the command directions (theta_c), = theta-hat[0]
     u_ref = 0;                                                 % uv_hold + scan: target of u_d [R] (0 before t_scan)
+    rs = struct('line', 1, 'phase', 'u', 'dir', 1, 's', 0);   % raster state (opts.raster = [Lu um, dv um, lines])
     g_th = 0;  if isfield(opts, 'tau_theta') && opts.tau_theta > 0; g_th = min(Ts / opts.tau_theta, 1); end
     if isfield(opts, 'uv_max_um'); uv_max = opts.uv_max_um / Rr; end
     hd_int = p(3) / Rr;                                        % bend wall: h_d integrated from the commanded normal steps
@@ -98,12 +101,16 @@ function r = local_run(opts, seed)
     L = struct('h', NaN(N,1), 'aT_true', NaN(N,1), 'aN_true', NaN(N,1), 'apT_true', NaN(N,1), 'apN_true', NaN(N,1), ...
                'aT', NaN(N,1), 'aN', NaN(N,1), 'apT', NaN(N,1), 'apN', NaN(N,1), 'thx', NaN(N,1), 'thy', NaN(N,1), ...
                'sP', NaN(N,6), 'p', NaN(N,3), 'pd', NaN(N,3), 'dhd', NaN(N,1), 'u_prog', NaN(N,1), 'aNm', NaN(N,1), 'gate', NaN(N,1), ...
-               'thx_true', NaN(N,1), 'thy_true', NaN(N,1), 'hd_used', NaN(N,1));
+               'thx_true', NaN(N,1), 'thy_true', NaN(N,1), 'hd_used', NaN(N,1), 'line', NaN(N,1));
     contact = false;  t_contact = NaN;  kend = N;  u0 = [];
     blk_on = isfield(opts, 'angle_block') && ~strcmp(opts.angle_block, 'none');  latch = false;  t_latch = NaN;
     for k = 1:N
         % ---- truth at k ----
-        if is_bend
+        if is_bump
+            [P.wall, thx_t, thy_t] = local_bump_wall(p, P.wall, pz0, opts);  w_true = P.wall.w_hat(:);  pz = P.wall.pz;
+        elseif is_bead
+            [P.wall, thx_t, thy_t] = local_bead_wall(p, P.wall, pz0, opts);  w_true = P.wall.w_hat(:);  pz = P.wall.pz;
+        elseif is_bend
             [P.wall, thx_t, thy_t] = local_bend_wall(p, P.wall, pz0, opts);  w_true = P.wall.w_hat(:);  pz = P.wall.pz;
         else
             thx_t = 0;  thy_t = opts.theta_y;
@@ -187,7 +194,21 @@ function r = local_run(opts, seed)
         end
         if t(k) >= opts.t_scan
             if isempty(u0); u0 = p; end
-            step = step + opts.du_d * uc;
+            if isfield(opts, 'raster')                         % 10-22 user (Meng Fig. 57): u triangle of length Lu, v ramp of dv at each end
+                Lu = opts.raster(1) / Rr;  dvr = opts.raster(2) / Rr;  nl = opts.raster(3);
+                if rs.line <= nl
+                    if rs.phase == 'u'
+                        step = step + rs.dir * opts.du_d * uc;  rs.s = rs.s + opts.du_d;
+                        if rs.s >= Lu; rs.s = 0;  rs.dir = -rs.dir;  rs.phase = 'v';  rs.line = rs.line + 1; end
+                    else
+                        step = step + opts.du_d * vc;  rs.s = rs.s + opts.du_d;
+                        if rs.s >= dvr; rs.s = 0;  rs.phase = 'u'; end
+                    end
+                end
+                L.line(k) = rs.line;
+            else
+                step = step + opts.du_d * uc;
+            end
         end
         pd_kp1 = pd_k + step * Rr;  hd_int = hd_int + wc' * step;
         phat = pm + a_nom * (Abuf(:, :, 1) * fbuf(:, 1) + Abuf(:, :, 2) * fbuf(:, 2));
@@ -256,6 +277,32 @@ end
 
 function c = local_cperp(h)
     [~, c] = calc_correction_functions(h);
+end
+
+function [W, thx, thy] = local_bump_wall(p, W, pz0, o)      % 10-22: z_w = pz0 + H exp(-r^2 / 2 sigma^2), local tangent plane under the probe
+    H = 3;  sg = 7;  xc = 25;  yc = -3.5;                      % [um]; scan line y = 0 passes sigma / 2 off the centre (plot_wall_bump_setup)
+    if isfield(o, 'bump'); H = o.bump(1); sg = o.bump(2); xc = o.bump(3); yc = o.bump(4); end
+    dx = p(1) - xc;  dy = p(2) - yc;  zb = H * exp(-(dx^2 + dy^2) / (2 * sg^2));
+    n = [dx / sg^2 * zb; dy / sg^2 * zb; 1];  n = n / norm(n);  % (-dz/dx, -dz/dy, 1) normalised
+    thx = -asin(max(min(n(2), 1), -1));  thy = atan2(n(1), n(3));
+    V = local_Ry(thy) * local_Rx(thx);
+    W.V = V;  W.u_hat = V(:, 1);  W.v_hat = V(:, 2);  W.w_hat = V(:, 3);  W.pz = n' * [p(1); p(2); pz0 + zb];
+    thx = thx * 180 / pi;  thy = thy * 180 / pi;
+end
+
+function [W, thx, thy] = local_bead_wall(p, W, pz0, o)      % 10-22: bead (radius bead_r um, top at z = pz0 under the start) on the glass
+    rb = 5;  if isfield(o, 'bead_r'); rb = o.bead_r; end      % Meng diss. Sec. 6.2.1: 10 um glass bead; glass plane at z = pz0 - 2 rb
+    c = [0; 0; pz0 - rb];  zg = pz0 - 2 * rb;
+    d = p(:) - c;  db = norm(d) - rb;  dg = p(3) - zg;         % distances to the bead surface and to the glass
+    if db <= dg                                                % nearest surface + plane law (local tangent plane)
+        n = d / norm(d);  pzw = n' * c + rb;
+    else
+        n = [0; 0; 1];  pzw = zg;
+    end
+    thx = -asin(max(min(n(2), 1), -1));  thy = atan2(n(1), n(3));
+    V = local_Ry(thy) * local_Rx(thx);
+    W.V = V;  W.u_hat = V(:, 1);  W.v_hat = V(:, 2);  W.w_hat = V(:, 3);  W.pz = pzw;
+    thx = thx * 180 / pi;  thy = thy * 180 / pi;
 end
 
 function [W, thx, thy] = local_bend_wall(p, W, pz0, o)      % local tangent plane of the bend wall at the probe (x, y); angles deg

@@ -42,14 +42,18 @@ function plot_t2_xyz(tag, seeds, lbl, AX)
             end
             ft = p(1, :) - r.h(1) * Rr * ww;                     % 10-21: foot of the TRUE normal through the start (where the probe should land)
             hn = plot([p(1, 1) ft(1)], [p(1, 3) ft(3)], '--', 'Color', [0.95 0.65 0.65], 'LineWidth', 2.5, 'DisplayName', 'normal through the start');
-            h2 = plot(pd(:, 1), pd(:, 3), '-', 'Color', cT, 'LineWidth', 3, 'DisplayName', 'p_d');
-            h3 = plot(p(:, 1), p(:, 3), '--', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', 'p');
+            if isfield(AX, 'p_only') && AX.p_only            % 10-22 user test: no p_d, p as a solid line
+                h2 = gobjects(0);  h3 = plot(p(:, 1), p(:, 3), '-', 'Color', cE, 'LineWidth', 2.2, 'DisplayName', 'p');
+            else
+                h2 = plot(pd(:, 1), pd(:, 3), '-', 'Color', cT, 'LineWidth', 3, 'DisplayName', 'p_d');
+                h3 = plot(p(:, 1), p(:, 3), '-', 'Color', cE, 'LineWidth', 1.5, 'DisplayName', 'p');
+            end
             plot(p(ks, 1), p(ks, 3), 's', 'Color', cE, 'MarkerFaceColor', cE, 'MarkerSize', 12, 'HandleVisibility', 'off');
             if row == 1
                 plot(p(1, 1), p(1, 3), 'ko', 'MarkerFaceColor', 'k', 'MarkerSize', 11, 'HandleVisibility', 'off');
                 plot(p(end, 1), p(end, 3), '^', 'Color', cE, 'MarkerFaceColor', cE, 'MarkerSize', 12, 'HandleVisibility', 'off');
                 text(p(1, 1) + 3, p(1, 3), sprintf('start (t = 0)'), 'FontSize', FS - 4, 'FontWeight', 'bold');
-                if has_scan; text(p(ks, 1) + 6, p(ks, 3) + 7, sprintf('scan starts (t = %g s)', S.R.opts.t_scan), 'FontSize', FS - 4, 'FontWeight', 'bold', 'Color', cE); end
+                if has_scan; text(p(ks, 1) + 3, p(ks, 3) + 8, sprintf('scan starts (t = %g s)', S.R.opts.t_scan), 'FontSize', FS - 4, 'FontWeight', 'bold', 'Color', cE); end
                 text(p(end, 1) + 2, p(end, 3) + 2, sprintf('end (t = %g s)', r.t(r.kend)), 'FontSize', FS - 4, 'FontWeight', 'bold', 'Color', cE);
                 L0 = 15;  q0 = p(ks, :) - r.h(ks) * Rr * ww + 35 * uu;     % arrows from a wall point 35 um down the scan
                 if ~has_scan && ~isfield(AX, 'top_x'); L0 = 8;  q0 = p(ks, :) - r.h(ks) * Rr * ww + 10 * uu; end
@@ -75,6 +79,6 @@ function plot_t2_xyz(tag, seeds, lbl, AX)
             set(ax, 'FontSize', FS - 2, 'FontWeight', 'bold', 'LineWidth', 2);  grid off;
         end
     end
-    out = fullfile(od, sprintf('fig_t2_xyz_%s.png', tag));
+    out = fullfile(od, sprintf('fig_t2_xyz_%s.png', tag));  if isfield(AX, 'p_only') && AX.p_only; out = strrep(out, '.png', '_ponly.png'); end
     exportgraphics(f, out, 'Resolution', 120);  close(f);  fprintf('figure: %s\n', out);
 end

@@ -20,8 +20,8 @@ function plot_t2_motion(tag, seeds, lbl)
         tl = tiledlayout(3, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
         for q = 1:3
             ax = nexttile(tl, 2 * q - 1);  hold on;  box on;
-            h1 = plot(t, Ld(:, q), '-', 'Color', cT, 'LineWidth', 4, 'DisplayName', [NM{q} '_d']);
-            h2 = plot(t, L(:, q), '--', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', NM{q});
+            h1 = plot(t, Ld(:, q), '-', 'Color', cT, 'LineWidth', 2.5, 'DisplayName', [NM{q} '_d']);
+            h2 = plot(t, L(:, q), '-', 'Color', cE, 'LineWidth', 1.5, 'DisplayName', NM{q});
             if q == 3
                 plot(t, r.h_star * pc.R + 0 * t, ':', 'Color', [0.4 0.4 0.4], 'LineWidth', 2, 'DisplayName', 'h* R');
                 set(ax, 'YScale', 'log');

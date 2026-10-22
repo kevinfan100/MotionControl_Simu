@@ -17,22 +17,22 @@ function plot_t2_est(tag, seeds, lbl)
     for ic = 1:nc
         r = S.R.runs{find(sd == seeds(ic), 1)};  k = 1:r.kend;  t = r.t(k);
         ax = nexttile(tl, ic);  hold on;  box on;
-        h1 = plot(t, r.aN_true(k), '-', 'Color', cT, 'LineWidth', 4, 'DisplayName', [AB '_N']);
+        h1 = plot(t, r.aN_true(k), '-', 'Color', cT, 'LineWidth', 2.5, 'DisplayName', [AB '_N']);
         h2 = plot(t, r.aN(k), '-', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', [AB HT '_N']);
         h3 = plot(t, S.R.opts.a_d + 0 * t, '--', 'Color', [0 0 0], 'LineWidth', 2, 'DisplayName', sprintf('%s_d = %.1f', AB, S.R.opts.a_d));
         ylim([0 1.1]);  legend([h1 h2 h3], 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
         if ic == 1; ylabel([AB '_N'], 'FontSize', FS + 2, 'FontWeight', 'bold'); end
         set(ax, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', 2);  xlim([0 r.t(end)]);
         ax = nexttile(tl, nc + ic);  hold on;  box on;
-        h1 = plot(t, r.aT_true(k), '-', 'Color', cT, 'LineWidth', 4, 'DisplayName', [AB '_T']);
+        h1 = plot(t, r.aT_true(k), '-', 'Color', cT, 'LineWidth', 2.5, 'DisplayName', [AB '_T']);
         h2 = plot(t, r.aT(k), '-', 'Color', cGr, 'LineWidth', 1.8, 'DisplayName', [AB HT '_T']);
         ylim([0 1.1]);  legend([h1 h2], 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
         if ic == 1; ylabel([AB '_T'], 'FontSize', FS + 2, 'FontWeight', 'bold'); end
         set(ax, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', 2);  xlim([0 r.t(end)]);
         ax = nexttile(tl, 2 * nc + ic);  hold on;  box on;
         fill([t; flipud(t)], [r.thy(k) + r.sP(k, 6); flipud(r.thy(k) - r.sP(k, 6))], cB, 'EdgeColor', 'none', 'HandleVisibility', 'off');
-        h1 = plot(t, ty + 0 * t, '-', 'Color', cT, 'LineWidth', 4, 'DisplayName', [TH '_y,  ' TH '_x']);
-        plot(t, 0 * t, '-', 'Color', cT, 'LineWidth', 4, 'HandleVisibility', 'off');
+        h1 = plot(t, ty + 0 * t, '-', 'Color', cT, 'LineWidth', 2.5, 'DisplayName', [TH '_y,  ' TH '_x']);
+        plot(t, 0 * t, '-', 'Color', cT, 'LineWidth', 2.5, 'HandleVisibility', 'off');
         h2 = plot(t, r.thy(k), '-', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', [TH HT '_y']);
         h3 = plot(t, r.thx(k), '-', 'Color', cGr, 'LineWidth', 1.8, 'DisplayName', [TH HT '_x']);
         ylim([-30 50]);  legend([h1 h2 h3], 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');

@@ -17,8 +17,8 @@ function plot_t2_bend(TG, LB, outtag, t_win)
         ax = nexttile(tl, ic);  hold on;  box on;
         fill([t; flipud(t)], [r.thy(k) + r.sP(k, 6); flipud(r.thy(k) - r.sP(k, 6))], cB, 'EdgeColor', 'none', 'HandleVisibility', 'off');
         fill([t; flipud(t)], [r.thx(k) + r.sP(k, 5); flipud(r.thx(k) - r.sP(k, 5))], cB, 'EdgeColor', 'none', 'HandleVisibility', 'off');
-        h1 = plot(t, r.thy_true(k), '-', 'Color', cT, 'LineWidth', 4, 'DisplayName', [TH '_y,  ' TH '_x']);
-        plot(t, r.thx_true(k), '-', 'Color', cT, 'LineWidth', 4, 'HandleVisibility', 'off');
+        h1 = plot(t, r.thy_true(k), '-', 'Color', cT, 'LineWidth', 2.5, 'DisplayName', [TH '_y,  ' TH '_x']);
+        plot(t, r.thx_true(k), '-', 'Color', cT, 'LineWidth', 2.5, 'HandleVisibility', 'off');
         h2 = plot(t, r.thy(k), '-', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', [TH HT '_y']);
         h3 = plot(t, r.thx(k), '-', 'Color', cGr, 'LineWidth', 1.8, 'DisplayName', [TH HT '_x']);
         ylim([-25 25]);  xlim(tw);
@@ -28,14 +28,14 @@ function plot_t2_bend(TG, LB, outtag, t_win)
         if ic == 1; ylabel([TH '  [' DG ']'], 'FontSize', FS, 'FontWeight', 'bold'); end
         set(ax, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', 2);
         ax = nexttile(tl, nc + ic);  hold on;  box on;
-        h1 = plot(t, r.h_star + 0 * t, '-', 'Color', cT, 'LineWidth', 4, 'DisplayName', 'h*');
+        h1 = plot(t, r.h_star + 0 * t, '-', 'Color', cT, 'LineWidth', 2.5, 'DisplayName', 'h*');
         h2 = plot(t, r.h(k), '-', 'Color', cE, 'LineWidth', 1.5, 'DisplayName', 'h');
         ylim([0.9 2.6]);  xlim(tw);
         legend([h1 h2], 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
         if ic == 1; ylabel('h  [R]', 'FontSize', FS, 'FontWeight', 'bold'); end
         set(ax, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', 2);
         ax = nexttile(tl, 2 * nc + ic);  hold on;  box on;
-        h1 = plot(t, r.aN_true(k), '-', 'Color', cT, 'LineWidth', 4, 'DisplayName', [AB '_N']);
+        h1 = plot(t, r.aN_true(k), '-', 'Color', cT, 'LineWidth', 2.5, 'DisplayName', [AB '_N']);
         h2 = plot(t, r.aN(k), '-', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', [AB HT '_N']);
         h3 = plot(t, S.R.opts.a_d + 0 * t, '--', 'Color', [0 0 0], 'LineWidth', 2, 'DisplayName', sprintf('%s_d = %.1f', AB, S.R.opts.a_d));
         ylim([0 0.3]);  xlim(tw);
