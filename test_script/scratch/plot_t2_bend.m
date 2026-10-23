@@ -50,5 +50,5 @@ function plot_t2_bend(TG, LB, outtag, t_win)
                 mean(r.h(ks) - r.h_star), min(r.h(ks) - r.h_star), max(r.h(ks) - r.h_star), min(r.h(k)));
     end
     out = fullfile(od, sprintf('fig_t2_bend_%s.png', outtag));
-    exportgraphics(f, out, 'Resolution', 120);  close(f);  fprintf('figure: %s\n', out);
+    exportgraphics(f, out, 'Resolution', 150);  close(f);  fprintf('figure: %s\n', out);
 end

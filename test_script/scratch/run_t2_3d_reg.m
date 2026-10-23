@@ -101,7 +101,9 @@ function r = local_run(opts, seed)
     L = struct('h', NaN(N,1), 'aT_true', NaN(N,1), 'aN_true', NaN(N,1), 'apT_true', NaN(N,1), 'apN_true', NaN(N,1), ...
                'aT', NaN(N,1), 'aN', NaN(N,1), 'apT', NaN(N,1), 'apN', NaN(N,1), 'thx', NaN(N,1), 'thy', NaN(N,1), ...
                'sP', NaN(N,6), 'p', NaN(N,3), 'pd', NaN(N,3), 'dhd', NaN(N,1), 'u_prog', NaN(N,1), 'aNm', NaN(N,1), 'gate', NaN(N,1), ...
-               'thx_true', NaN(N,1), 'thy_true', NaN(N,1), 'hd_used', NaN(N,1), 'line', NaN(N,1));
+               'thx_true', NaN(N,1), 'thy_true', NaN(N,1), 'hd_used', NaN(N,1), 'line', NaN(N,1), 'nis', NaN(N,2), ...
+               'thm', NaN(N,2), 'Kth', NaN(N,2), 'dth_y1', zeros(N,2), 'dth_ro', zeros(N,2), 'dth_dp', zeros(N,2), 'dth_ag', zeros(N,2), ...
+               'L8', NaN(N,7), 'L9', NaN(N,7), 'vAm', NaN(N,9), 'thr', NaN(N,2));   % 10-22 estimator feedback rows L_8, L_9 (doc Sec. 4), vA_m   % 10-22 angle readout / actual gain logs
     contact = false;  t_contact = NaN;  kend = N;  u0 = [];
     blk_on = isfield(opts, 'angle_block') && ~strcmp(opts.angle_block, 'none');  latch = false;  t_latch = NaN;
     for k = 1:N
@@ -131,8 +133,13 @@ function r = local_run(opts, seed)
         y  = [dpm; (vA(1,1) + vA(2,2)) / 2; vA(3,3); vA(2,3); vA(1,3)];
         Hm = zeros(7, 15);  Hm(1:3, 1:3) = eye(3);  Hm(4, 10) = 1;  Hm(5, 12) = 1;  Hm(6, 14) = dA;  Hm(7, 15) = -dA * cos(x(14));
         yh = [x(1:3); x(10); x(12); 0; 0];
-        Rm = [sig2; 0.5 * (IFsq(ru) * (aT + xi(1))^2 + IFsq(rv) * (aT + xi(2))^2); 2 * IFsq(rw) * (aN + xi(3))^2; ...
+        Rm =[sig2; 0.5 * (IFsq(ru) * (aT + xi(1))^2 + IFsq(rv) * (aT + xi(2))^2); 2 * IFsq(rw) * (aN + xi(3))^2; ...
               IFx(rv, rw) * (aT + xi(2)) * (aN + xi(3)); IFx(ru, rw) * (aT + xi(1)) * (aN + xi(3))];
+        if isfield(opts, 'angle_den') && strcmp(opts.angle_den, 'meas')   % 10-22 user: theta_m with the MEASURED a_Tm - a_Nm in the
+            dAm = y(4) - y(5);                                 %   denominator, y / H = [vA_m]_vw / dAm (no guard); R to second order:
+            y(6:7) = y(6:7) * dA / dAm;                        %   R_theta,meas = R_theta (1 + (R4 + R5) / dA-hat^2)
+            Rm(6:7) = Rm(6:7) * (1 + (Rm(4) + Rm(5)) / max(dA^2, 1e-12));
+        end
         pf_ap = [Pk(11, 11); Pk(13, 13)];  pf_th = [Pk(14, 14); Pk(15, 15)];
         % 10-20 (user, option 2): update the angles only while the gain difference is significant, |a_T-hat - a_N-hat| > 3 sigma of
         % that difference (from P); otherwise the Kalman gain rows of theta_x, theta_y are zero for every measurement (y1 path too).
@@ -145,12 +152,28 @@ function r = local_run(opts, seed)
         open_cond = abs(x(10) - x(12)) > 3 * sd_diff;
         if isfield(opts, 'gate_dA'); open_cond = abs(x(10) - x(12)) > opts.gate_dA; end   % 10-20 user: constant threshold (tuned)
         if blk_on && ~latch && open_cond; latch = true;  t_latch = t(k); end
+        % 10-22 log: estimator feedback matrix rows L_8 (theta_x), L_9 (theta_y) of 1015_estimator_3d_wsonly Sec. 4 (batch form, equal to the
+        % sequential result), measurement columns [dp_m (3) a_Tm a_Nm theta_xm theta_ym]; angle columns rescaled to the theta_m form (x H)
+        use = 1:7;  if blk_on && ~latch && any(strcmp(opts.angle_block, {'thm', 'both'})); use = 1:5; end   % 10-22: rows actually used
+        Lb = NaN(15, 7);  Lb(:, use) = Pk * Hm(use, :)' / (Hm(use, :) * Pk * Hm(use, :)' + diag(Rm(use)));
+        if ~gate_th; Lb(14:15, use) = 0; end
+        if blk_on && ~latch && any(strcmp(opts.angle_block, {'y1', 'both'})); Lb(14:15, intersect(use, 1:5)) = 0; end
+        L.L8(k, :) = Lb(14, :) .* [1 1 1 1 1 Hm(6, 14) Hm(7, 15)];  L.L9(k, :) = Lb(15, :) .* [1 1 1 1 1 Hm(6, 14) Hm(7, 15)];
+        L.vAm(k, :) = vA(:)';  L.thr(k, :) = x(14:15)' * 180 / pi;
         for j = 1:7                                            % sequential scalar updates (R diagonal), Joseph form
             if blk_on && ~latch && j >= 6 && any(strcmp(opts.angle_block, {'thm', 'both'})); continue; end
             hj = Hm(j, :);  S = hj * Pk * hj' + Rm(j);  if S <= 0; continue; end
+            if j >= 6; L.nis(k, j - 5) = (y(j) - yh(j))^2 / S; end   % 10-22: normalized innovation of the angle rows
             K = Pk * hj' / S;  if ~gate_th; K(14:15) = 0; end
             if blk_on && ~latch && j <= 5 && any(strcmp(opts.angle_block, {'y1', 'both'})); K(14:15) = 0; end
-            x = x + K * (y(j) - yh(j));
+            dx = K * (y(j) - yh(j));
+            if j <= 5; L.dth_y1(k, :) = L.dth_y1(k, :) + dx(14:15)' * 180 / pi; else; L.dth_ro(k, :) = L.dth_ro(k, :) + dx(14:15)' * 180 / pi; end
+            if j <= 3; L.dth_dp(k, :) = L.dth_dp(k, :) + dx(14:15)' * 180 / pi; elseif j <= 5; L.dth_ag(k, :) = L.dth_ag(k, :) + dx(14:15)' * 180 / pi; end   % 10-22: split rows 1-3 (dp_m) / 4-5 (a_Tm, a_Nm)
+            if j >= 6                                          % 10-22: single-sample angle reading and the ACTUAL gain on it
+                L.thm(k, j - 5) = (x(13 + j - 5) + (y(j) - yh(j)) / hj(13 + j - 5)) * 180 / pi;   % theta_m = theta-hat + y / H
+                L.Kth(k, j - 5) = K(13 + j - 5) * hj(13 + j - 5);  % fraction of (theta_m - theta-hat) applied this step
+            end
+            x = x + dx;
             IKH = eye(15) - K * hj;  Pk = IKH * Pk * IKH' + K * Rm(j) * K';
             yh = [x(1:3); x(10); x(12); 0; 0];             % later rows use the updated state (yh of the angle rows stays 0)
         end
