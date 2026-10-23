@@ -1,4 +1,4 @@
-% STATUS: ACTIVE | SSOT derivation: reference/eq17_analysis/derivation/formC_state_da.tex
+% STATUS: ACTIVE | SSOT derivation: reference/eq17_analysis/derivation/archive/formC_state_da.tex
 % FORK OF model/controller/motion_control_law_formB_ws.m @ 73fdc9d | PURPOSE:
 %   slope read off the gain STATE (a_bar' = (1-a_bar)^2 (1+da)) with a
 %   multiplicative constant disturbance da, instead of off the commanded

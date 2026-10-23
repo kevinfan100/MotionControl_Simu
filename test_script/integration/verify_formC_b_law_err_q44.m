@@ -1,5 +1,5 @@
 % VERIFY_FORMC_B_LAW_ERR_Q44  Acceptance for ctrl_const.law_err_q44 (default off).
-%   Derivation: reference/eq17_analysis/derivation/0915_estb_law_error_q44.tex. The flag adds ONE term to the process
+%   Derivation: reference/eq17_analysis/derivation/archive/0915_estb_law_error_q44.tex. The flag adds ONE term to the process
 %   noise of the gain slot -- what the filter admits about its own law being wrong:
 %       dQ44[k] = ( (1-a)^2 * delta_b * M_law[k] )^2 ,   dQ45 = 0,   M_law = the step the law actually integrates
 %   with delta_b = sup |b_true - b_hat| over the envelope, defaulting to the SAME envelope as the b prior (Pf_b_std),

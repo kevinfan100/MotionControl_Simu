@@ -143,9 +143,9 @@ Running document, started 2026-10-05, **untracked**:
 - Figures regenerate with `test_script/scratch/make_motion_ctrl_figs.m`.
 
 Derivations:
-- `reference/eq17_analysis/derivation/0930_q55_ratio_design.tex`, the q₅₅ design (committed `6f8bdad`).
-- `reference/eq17_analysis/derivation/0922_estb_f2_slope_dc.tex`, the F2 law (committed).
-- `reference/eq17_analysis/derivation/0920_5state_noaprime.tex` and `0929_kf_two_tracks.tex`, Layer 1 (**untracked**).
+- `reference/eq17_analysis/derivation/archive/0930_q55_ratio_design.tex`, the q₅₅ design (committed `6f8bdad`).
+- `reference/eq17_analysis/derivation/archive/0922_estb_f2_slope_dc.tex`, the F2 law (committed).
+- `reference/eq17_analysis/derivation/archive/0920_5state_noaprime.tex` and `0929_kf_two_tracks.tex`, Layer 1 (**untracked**).
 
 Ledgers:
 - `reference/eq17_analysis/hypotheses_formC_b.md`: every claim as confirmed / refuted / open, with numbers and runs.

@@ -134,7 +134,7 @@ driver `opts.law_b`（`:136`）經 `ov.law_b_formC`（`:282`）傳入**無效**�
 liveness 普查：`da_known=true` 對 baseline 逐位零差（預期 LIVE、實測 DEAD）。它是 dist 寫法的 known-disturbance 臂，
 fork 時 driver 端留下、controller 端拔掉。
 
-### 1.10 旗標 liveness 普查（2026-08-25，seed 7，arm best，deep；`test_script/scratch/l0_flag_liveness.m`）
+### 1.10 旗標 liveness 普查（2026-08-25，seed 7，arm best，deep；`reference/eq17_analysis/archive/scratch/2026-08-misc/l0_flag_liveness.m`）
 
 63 臂，判準 = max|Δā_hat|（全軸全程）或 max|Δb̂| > 0 即 LIVE；負控制（空 override）逐位零差 PASS。
 **DEAD 9 項**：`law_b_formC`、`Pf_da_std`、`ws_margin`（deep 上不 bind，0.5 仍零差）、`obs_dump`（設計如此）、

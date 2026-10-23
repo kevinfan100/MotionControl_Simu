@@ -1,0 +1,141 @@
+% STATUS: ACTIVE -- 2026-10-19 (user): today's record; Part II (a-bar' state: R = second output, Q = q55) figures from
+%   test_script/scratch/plot_mc_apslot_part2.m (run_mc_apslot_r2 arms raw_q0, white_q0, white_fin) -> figures/fig_1019_apstate_{R,Q}_s1.png.
+%   Original line:, opened from last week's ending. Part 1 = last week: the slope a-bar' as a state vs
+%   the wall position w_s as a state, motion control (plane) and regulation (plane, cell). Parts on R (y2) and Q (q55) of the a-bar' state,
+%   and the regulation section, are to be added. Equations only, one setting line per figure page (motion_ctrl convention).
+% Runs / figures (test_script/scratch):
+%   motion control : run_mc_apslot_compare({'apP002F400H110','s8fc'}, {'plane'}, 1:5, 'desc'); plot_mc_apdiff(1, 'ws')
+%                    -> fig_mc_apws_desc_plane_s1.png, copied as figures/fig_1019_desc_plane_s1.png
+%   regulation     : run_mc_apreg({'state'}) (10-16), run_mc_apreg({'ws9'}, ...) (10-19, Section 9 law, no gate, no cap); plot_mc_apreg(1, 'ws9')
+%                    -> fig_mc_apws9_reg_{plane,cell}_s1.png, copied as figures/fig_1019_reg_{plane,cell}_s1.png
+%   a-bar' state = formC_b ap_slot: a-bar'[0] = 1/22.2^2, sqrt p55[0] = 0.002, q55 = P_fix^2 I[k], sqrt(P_fix) = 0.4 (1.1/max(h_d, 1.1))^2 (code q77_adapt_P0 = sqrt P_fix), fe_cmd_eval;
+%   w_s state = Section 8 estimator: w_s-hat[0] = 0, sqrt p55[0] = 0.3 R, q55 = 0, fe_cmd_eval. Both: whitened y2, lambda_c 0.4.
+%   Regulation, a-bar' state only: slope gate (den = LPF(Delta x_d), beta 2/51, |den| > 0.0066 R/step, a-hat' >= 1/22.2^2) and the step cap.
+% Preamble copied from motion_ctrl.tex.
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+\newcommand{\lc}{\lambda_c}
+\newcommand{\bx}{\bar{x}}
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\hh}{\hat{h}}
+\newcommand{\Pfix}{p_{\mathrm{fix}}}
+\newcommand{\hd}[1]{\par\bigskip\noindent\underline{\textbf{#1}}}
+\newcommand{\figpage}[3]{\clearpage\figbody{#1}{#2}{#3}}
+% figure page with one equation between the setting line and the figure
+\newcommand{\figpageq}[4]{\clearpage\subsection*{#2}\noindent{\small\textcolor[gray]{0.35}{#3}}\par\vspace{-2pt}#1\vspace{-6pt}
+  \begin{center}\includegraphics[width=\textwidth,height=0.74\textheight,keepaspectratio]{#4}\end{center}}
+% figure right under a section heading, same page
+\newcommand{\figbody}[3]{\subsection*{#1}\noindent{\small\textcolor[gray]{0.35}{#2}}\par\smallskip
+  \begin{center}\includegraphics[width=\textwidth,height=0.78\textheight,keepaspectratio]{#3}\end{center}}
+\usepackage{xcolor}
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{center}
+{\Large\textbf{Report}}\\[0.4em]{\small 2026-10-19}
+\end{center}
+
+\begin{center}{\large\textbf{Part I\quad Last week}}\end{center}
+
+\section{Estimators}
+
+\hd{Estimated motion gain}
+\[
+\begin{aligned}
+\hat{M}[k] &= \Delta\bx_d[k] + (1-\lc)\,\delta\hat{\bx}_3[k] \\
+\hat{\ba}[k+1] &= \hat{\ba}[k] + \hat{\ba}'[k]\,\hat{M}[k] + \ell_{41}[k]\,e_{x_1}[k] + \ell_{42}[k]\,e_{a_m}[k]
+\end{aligned}
+\]
+
+\hd{$\ba'$ as a state variable}
+\[
+\begin{aligned}
+\hat{\ba}'[k+1] &= \hat{\ba}'[k] + \ell_{51}[k]\,e_{x_1}[k] + \ell_{52}[k]\,e_{a_m}[k] \\
+q_{55}[k] &= \Pfix^{2}\,I[k] \\
+\sqrt{\Pfix} &= 0.4\,\big(1.1/h_d[k]\big)^{2}
+\end{aligned}
+\]
+
+\hd{Wall position $\bw_s$ as a state variable}
+\[
+\begin{aligned}
+\hh[k] &= \bx_d[k] - \delta\hat{\bx}_3[k] - \hat{\bw}_s[k] \\
+\hat{\ba}'[k] &= \frac{1}{\hh[k]^{2}} \\
+\hat{\bw}_s[k+1] &= \hat{\bw}_s[k] + \ell_{51}[k]\,e_{x_1}[k] + \ell_{52}[k]\,e_{a_m}[k] \\
+q_{55} &= 0
+\end{aligned}
+\]
+
+\clearpage
+\section{Motion control}
+
+\figbody{Fig.~2.1\quad Constant-velocity trajectory on the plane wall}{z axis; 22.2 $\to$ 1.10 R in 1 s, then held 0.2 s; plane wall; left: $\ba'$ as a state variable; right: wall position $\bw_s$ as a state variable, $\hat{\bw}_s[0] = 0$; rows: $z_d$ and $z$, $\ba_z$, $\ba'_z$ (log scale, right column $1/\hh^2$), $\delta z_m$; $\lc = 0.4$, seed 1}{fig_1019_desc_plane_s1.png}
+
+\clearpage
+\section{Regulation of the motion gain}
+
+\hd{Regulation law}
+\[
+\begin{aligned}
+\Delta\bx_d[k] &= (1-\lambda_a)\,\frac{\ba_d - \hat{\ba}[k]}{\hat{\ba}'[k]} \\
+\bx_d[k+1] &= \bx_d[k] + \Delta\bx_d[k] \\
+\lambda_a &= 1 - T_s/\tau_a, \qquad \tau_a = 0.1\,\mathrm{s}
+\end{aligned}
+\]
+
+\hd{$\ba'$ as a state variable: limit on $\Delta\bx_d$}
+\[
+\begin{aligned}
+\big|\Delta\bx_d[k]\big| &\le v_{\max} \\
+v_{\max} &= (22.2 - 1.10)\,T_s / 1\,\mathrm{s}
+\end{aligned}
+\]
+
+\figpage{Fig.~3.1\quad Regulation on the plane wall}{z axis; start parked at 22.2 R, run 6 s; $\ba_d = 0.07$; left: $\ba'$ as a state variable, $|\Delta\bx_d| \le v_{\max}$; right: wall position $\bw_s$ as a state variable; rows: $z_d$, $z$ and $z^*$ (height where $\ba = \ba_d$), $\ba_z$, $\ba'_z$ (log scale), $\delta z_m$; $\lc = 0.4$, seed 1}{fig_1019_reg_plane_s1.png}
+\figpage{Fig.~3.2\quad Regulation on the cell wall}{z axis; start parked at 22.2 R, run 6 s; $\ba_d = 0.60$; cell wall = plane polynomial slid by 1.05 R, plant only; estimators started from the plane; left: $\ba'$ as a state variable, $|\Delta\bx_d| \le v_{\max}$; right: wall position $\bw_s$ as a state variable; rows as in Fig.~3.1; $\lc = 0.4$, seed 1}{fig_1019_reg_cell_s1.png}
+
+\clearpage
+\begin{center}{\large\textbf{Part II\quad $\ba'$ as a state variable}}\end{center}
+
+\section{Measured input gain as the second output}
+
+\hd{Two choices of the second output}
+\[
+\begin{aligned}
+y_2[k] &= \ba_m[k] \\
+y_2[k] &= \ba_m[k] - (1-a_{\mathrm{cov}})\,\ba_m[k-1] = a_{\mathrm{cov}}\,u[k] \\
+u[k] &= \frac{\delta\bx_r^2[k] - C_n\,\sigma^2_{n}}{C_T\,\kappa_T}
+\end{aligned}
+\]
+
+\figpageq{\[\hat{\ba}[k+1] - \hat{\ba}[k] = \hat{\ba}'[k]\,\hat{M}[k] + \ell_{41}[k]\,e_{x_1}[k] + \ell_{42}[k]\,e_{a_m}[k]\]}{Fig.~4.1\quad Second output $y_2 = \ba_m$ vs $y_2 = a_{\mathrm{cov}}\,u$}{z axis; 22.2 $\to$ 1.10 R in 1 s, then held 0.2 s; plane wall; $q_{55} = 0$ in both columns; rows: $\ba_z$; change of $\hat{\ba}_z$ from $k = 0$ (true, $\Sigma\,\hat{\ba}'\hat{M}$, $\Sigma\,\ell_{41}e_{x_1}$, $\Sigma\,\ell_{42}e_{a_m}$); $|\ell_{41}|$, $|\ell_{42}|$ (50 ms mean, log scale); $\lc = 0.4$, seed 1}{fig_1019_apstate_R_s1.png}
+
+\clearpage
+\section{Process noise of $\ba'$}
+
+\hd{$\ba'$ as a state variable}
+\[
+\begin{aligned}
+\ba'[k+1] &= \ba'[k] + w_{\ba'}[k] \\
+q_{55}[k] &= 0 \quad\text{or}\quad \Pfix^{2}\,I[k] \\
+\sqrt{\Pfix} &= 0.4\,\big(1.1/h_d[k]\big)^{2}
+\end{aligned}
+\]
+
+\figpageq{\[\hat{\ba}[k+1] - \hat{\ba}[k] = \hat{\ba}'[k]\,\hat{M}[k] + \ell_{41}[k]\,e_{x_1}[k] + \ell_{42}[k]\,e_{a_m}[k]\]}{Fig.~5.1\quad Process noise of $\ba'$: $q_{55} = 0$ vs $q_{55} = \Pfix^{2}\,I$}{z axis; 22.2 $\to$ 1.10 R in 1 s, then held 0.2 s; plane wall; $y_2 = a_{\mathrm{cov}}\,u$ in both columns; right column = left column of Fig.~2.1; rows: $\ba_z$; change of $\hat{\ba}_z$ from $k = 0$; $\ba'_z$ (log scale); $|\ell_{51}|$, $|\ell_{52}|$ (50 ms mean, log scale); $\lc = 0.4$, seed 1}{fig_1019_apstate_Q_s1.png}
+
+
+% Part III (regulation), written by the ws session in its own file
+\IfFileExists{1019/sec_regulation.tex}{\input{1019/sec_regulation}}{}
+
+\end{document}

@@ -1,5 +1,5 @@
 % VERIFY_FORMC_B_AMODEL_FE  Acceptance for ctrl_const.amodel_fe (the "green" variant, default off).
-%   Derivation: reference/eq17_analysis/derivation/0911_estb_green_variant.tex. The flag changes ONLY the covariance
+%   Derivation: reference/eq17_analysis/derivation/archive/0911_estb_green_variant.tex. The flag changes ONLY the covariance
 %   model of formC_b: in F_e rows 3-4 the gain error carried by the step error, F_dw e_4, is replaced by F_dw psi with
 %   psi = -a' e_3 + ((1-a)/b) e_b, and the second-order mean term of the a_w predict follows (Cov(e_4,u) -> Cov(psi,u),
 %   u built with the green step-error vector c). H, Q, R, P[0], the mean predict and the control law are untouched.

@@ -214,7 +214,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
 %                      the contact position -- the law's zero-gain point is
 %                      w_bar = beta, i.e. diag.b_hat doubles as the implied
 %                      wall. x/y are untouched (they read the frozen slot 7).
-%                      Derivation: derivation/formB_amp_bonly_probe.tex
+%                      Derivation: derivation/archive/formB_amp_bonly_probe.tex
 %       .b_init / .p_init / .ws_init   seeds                 (default 9/8, 1, 1)
 %       .Pf_b_std / .Pf_p_std   sqrt P0 widths               (default 1/8, 1/8)
 %       .Pf_ws_std     sqrt P0 width of w_s; REQUIRED if lock_ws = false
@@ -471,7 +471,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formB_ws(del_pd, pd, p_m, par
         %     the canonical oscillation band; the tied Jacobian has no null,
         %     which is the whole point of the arm.
         %     Default false = today's behaviour, bit-identical.
-        %     Derivation + prior chain: derivation/formB_amp_bonly_probe.tex.
+        %     Derivation + prior chain: derivation/archive/formB_amp_bonly_probe.tex.
         law_form_amp = logical(get_field_default(ctrl_const, 'law_form_amp', false));
         if law_form_amp
             % The tie is only defined for the single-free-scalar arm: p must

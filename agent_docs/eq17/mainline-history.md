@@ -20,7 +20,7 @@
 - **驗收**（同 10 seeds、canon deep 與 Meng ramp、hold 拉長 4 s）：hold 偏差 −0.00035 ± 0.00026／
   +0.00017 ± 0.00068；長 hold 斜率 −0.014 ± 0.041／−0.023 ± 0.075（e-6/步，修前 +0.239／+0.126）；
   散布 = √P 不變；追蹤誤差不變。收官 100-seed（<0.1%）未跑。
-- **文件（09-04 統一）**：SSOT = `derivation/0903_aptrue_4state_from_true.tex`（寫法 A：斜率讀估測高度
+- **文件（09-04 統一）**：SSOT = `derivation/archive/0903_aptrue_4state_from_true.tex`（寫法 A：斜率讀估測高度
   w̄_d − δŵ̄₃；九節含 nw_mcorr；§10 = b_true 臂；末兩頁 = b_true 三臂圖、a′_true 最終圖；獨立驗算 09-04
   全 PASS，三處記法修正已套）。`_mcorr` 版已併入並搬 `derivation/archive/`；`0902_formC_aptrue_4state.tex`
   （階梯／撤回／hold 位準模態／code 行）與 `0903_formC_aptrue_update_half.tex`（update 半步、引理、相關雜訊 KF）
@@ -103,7 +103,7 @@
 
 「真動態粒子列的 e_ā 能不能用 e_δw̄₃ 與 e_b 表示」的完整處理。代換式 e_ā = −ā′e₃ + ((1−â)/b̂)e_b（前提 w̄_s 已知、â 在自己的法則曲線上）。
 
-- **綠色 `amodel_fe`**（只改 F_e 列 3–4 與 pred_mean2 的二階項）：半套不自洽，閉迴路與 production 打平、Meng 配對最差 +0.0005 ± 0.0002 觸發停損 ⇒ **R60 關閉**。推導 `derivation/0911_estb_green_variant.tex`。
+- **綠色 `amodel_fe`**（只改 F_e 列 3–4 與 pred_mean2 的二階項）：半套不自洽，閉迴路與 production 打平、Meng 配對最差 +0.0005 ± 0.0002 觸發停損 ⇒ **R60 關閉**。推導 `derivation/archive/0911_estb_green_variant.tex`。
 - **橘色 `amodel_h`**（連 y₂ 的 H 一起換，保留 a 槽）：a 槽在 F 與兩條量測列都沒出口 ⇒ **第 4 關 rank 6/7、CRLB(a_w) = Inf**；b 連 hold 都可辨識、√P₅₅ 減半，但 b̂ 誠實比翻到 1.2–1.6、增益誤差不動 ⇒ **R61 關閉**。推導 `0912_estb_orange_variant.tex`。
 - **自洽 4-state `gain_algebraic`**（拿掉 ā_w 槽，增益每步用法則在估測器高度求值；需前兩個旗標）：秩滿、b 從最弱方向變 v₁（CRLB/prior canon 0.104 → 0.020、Meng 0.81 → 0.045）、hold 不再退化；**模型正確時與 production 逐項打平**，且增益不確定度由 b 完整重建（(1−â)/b̂ × √P₅₅ = 0.0067 對 √P₄₄ 0.0065，誠實比同為 0.63）。**模型錯時更差**（細胞 plant ＋ 平面種子：hold −0.188 對 −0.146，5.7 SEM），**且承接不了牆位不確定度**（開 Pf_w0_std 1 R：5-state hold −0.146 → −0.0065（22×），4-state −0.168） ⇒ **R62**。推導 `0914_estb_4state_core.tex`。
 - **C53（本線最有用的結論）**：未知有兩種型別 —— **位置型** w̄_s（沒有 state，經 ∂ā/∂w̄_s = −ā′ 一次性灌進 P₄₄[0]，`formC_b.m:1174–1191`）與**形狀型** b。兩者不能互換：不匹配時放寬位置型修好 22×，放寬 b 的 prior 無效。**a 槽 = 位置型不確定度的容器**，這也是 R57/R58/R59/Q₅₅/δa 全敗的共同原因（修錯旋鈕）。
@@ -166,14 +166,14 @@
 ## [1/1] Padé 兩常數線的歷史段（09-16 ～ 09-21）
 
 - 基底：平面 c_⊥ 多項式寫成 gap 的函數 ā(w̄ − w̄_s)，w̄_s = 實際牆面、已知不估；工作帶 w̄ ≥ 1.1，帶外不建模。
-  文件 `derivation/0916_abar_gap_polynomial.tex`（§1–3 基底、§4 s 縮放、§5–6 兩點 Padé）。
+  文件 `derivation/archive/0916_abar_gap_polynomial.tex`（§1–3 基底、§4 s 縮放、§5–6 兩點 Padé）。
 - 場景 = 牆位已知、牆面未知。資料檢驗（Meng Fig 11，`data/`）：單一縮放 s 只對平面成立（R64）；細胞 = [1/1] 自由接觸
   ā = (g + c₀)/(g + d₁)，(1.056, 2.197)，帶內 2%（C54）；平面不在任何一係數族（6.5%，C55），用精確多項式零參數；球面要兩端分家（O30）。
-- 估測器兩版（`derivation/0916_estb_11_two_versions.tex`，9 節 + 可觀性 + ladder 圖）：**A** = (c₀, d₁) 常數 state、增益代數算
+- 估測器兩版（`derivation/archive/0916_estb_11_two_versions.tex`，9 節 + 可觀性 + ladder 圖）：**A** = (c₀, d₁) 常數 state、增益代數算
   （`formC_b.m` 旗標 `c0_state`，需 `gain_algebraic`+`amodel_fe`+`amodel_h`；slot 5 = d₁、slot 7 = c₀；default off，
   production defaults 與 amodel_fe 驗收 ALL PASS）；**B** = production 關 `ma2_aug`/`nw_mcorr`/`pred_mean2`/`law_exact_step`
   （a 槽沿法則走，c₀ 由種子固定；b_init = 1/(d₁−c₀)、ws0_perp = 2 − d₁）。可觀性 C56。
-- 兩牆測試（`test_script/scratch/run_11_two_walls.m` → `plot_11_ladder.m`；細胞 plant `cell_cperp_fig11.m` = **資料 1.03–4.5 R ＋ [1/1] 帶內擬合法則
+- 兩牆測試（`reference/eq17_analysis/archive/scratch/2026-09-11/run_11_two_walls.m` → `plot_11_ladder.m`；細胞 plant `cell_cperp_fig11.m` = **資料 1.03–4.5 R ＋ [1/1] 帶內擬合法則
   4.5–25 R 一條平滑函數（09-18 C60 修訂：舊尾巴在 7 R 差 0.02，曾在 T 臂 1.1 s 造出 +0.018 假凸起）**，熱力經 `calc_thermal_force.m:61` 跟 plant）：
   臂 T（真值種子，sanity）／P（平面種子上細胞，正題）／N（細胞種子上平面，負控制），同 10 seeds、canon deep。
   結果（新 plant）：A 常數是常數且兩個方向學得回（cell T 走幅 ≈ √P、hold +0.017 = 帶底 2% 殘差；plane N ĉ₀ → 0.026、d̂₁ → 1.23 = d₁,eff）；

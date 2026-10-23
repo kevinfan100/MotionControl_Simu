@@ -1,4 +1,4 @@
-% STATUS: ACTIVE | SSOT derivation: reference/eq17_analysis/derivation/formC_state_dist.tex
+% STATUS: ACTIVE | SSOT derivation: reference/eq17_analysis/derivation/archive/formC_state_dist.tex
 % FORK OF model/controller/motion_control_law_formC_state.m @ 2f2fef6 | PURPOSE:
 %   the ADDITIVE writing of the same parameter-free state gain law:
 %   a_bar' = (1-a_bar)^2 exactly (no law parameter anywhere), with an
@@ -19,7 +19,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_dist(del_pd, pd, p_m, p
 %       a_bar'(a_bar) = (1 - a_bar)^2                      (S1; NO parameter)
 %       a_w = a_o * a_bar ,   a_o = Ts/(gamma_N*R)  [1/pN]  (fixed, not a state)
 %
-%   Authoritative spec: reference/eq17_analysis/derivation/formC_state_dist.tex
+%   Authoritative spec: reference/eq17_analysis/derivation/archive/formC_state_dist.tex
 %   (S1-S8 + seed section), which carries BOTH derivations side by side:
 %       (a) BASELINE     4 states [dw1 dw2 dw3 a_bar], no free parameter at all
 %       (b) WITH da      5 states [dw1 dw2 dw3 a_bar da], da[k+1] = da[k]

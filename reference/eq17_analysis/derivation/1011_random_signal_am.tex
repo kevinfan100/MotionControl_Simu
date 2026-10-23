@@ -1,0 +1,110 @@
+% STATUS: ACTIVE -- 2026-10-11 report for the advisor: how to look at a random signal, the measured input gain, and what the
+%   augmented estimator assumes about it. Convention of 0924_report / motion_ctrl: title, one setting line, definitions, one
+%   figure per page; no readings in the text (talking points go to the speaker notes).
+% 10-12: thermal displacement written a-bar f-bar_T (no delta-x_T); page 3 rho(1) over 200 seeds; no a-bar_m^(1) symbol.
+% 10-12 (user, second pass): story = with a_cov (0.05, y_2 = a-bar_m) versus without a_cov (a_cov = 1: a-bar_m from one
+%   sample = the whitened y_2); key point = whether r_2 handles the autocorrelation of y_2. Old page 4 (variance of an
+%   average) removed. Time index as in the paper (9): recursions [k+1] <- [k], the residual uses the mean before the new
+%   sample. The 06-13 code updates the mean with delta x_m[k] first (motion_ctrl Sec. 3 keeps that form): its residual is
+%   (1 - a_pd) times this one and its a-bar_m one step later; constant scaling and shift, so every rho and variance ratio in
+%   the figures is unchanged. Page 7: both checks are variances over seeds at a fixed time; the difference is whether the
+%   autocorrelation of y_2 along time enters r_2 (IF_eff of the 06 r_2 only sets the variance of a-bar_m).
+% 10-12 (user, third pass): pages 'with and without a_cov' and 'two checks of r_2' removed (fig_rs_p6, p8 still produced
+%   by the script). Whitening page: y_2 written out only; figure = step response only (user).
+% 10-12 (user, fourth pass): order = question, four properties, chain, a_cov adds correlation, a_cov adds lag, what the
+%   estimator assumes with and without a_cov (y_2 and r_2 of both cases, IF there). Correlation and lag are separate
+%   concepts; a_cov (an average) causes both through the same (1 - a_cov) term.
+% 10-13 (user): rebuilt around ONE factor, the autocorrelation of y_2 (4 pages, one formula and one figure each, the
+%   figure drawing the formula's own quantities): question; rho(tau) as quadrant lag plots; estimator belief r_2/N vs the
+%   finite-N variance of a mean (formula line uses the page-2 estimator of rho, matches the measured points); why it
+%   matters = the gain process noise q_44 = eps r_2 can be raised only with the whitened y_2 (first-order estimator runs of
+%   motion_ctrl Sec. 4, other data than pages 1-3). The a_cov delay (19 steps = 12 ms) is a minor item, not shown; the
+%   ~100 ms lag of page 1 is the estimator's own averaging (gain q too small).
+% Notation and terms follow motion_ctrl (motion_ctrl/PLAN_notation_outline.md): normalized x-bar, a-bar; upright abbreviation
+%   subscripts (a_pd, a_cov); sigma^2 for variances; matrix entries lowercase (r_2, p_44); paper wording (motion gain, random
+%   component of the measured tracking error, measured input gain, augmented estimator). K_var, IF_eff as in
+%   motion_control_law_eq17_6state.m and R22_derivation.tex. Statistics: mu, sigma^2, rho(tau) only.
+%   Figures show lengths in nm (physical, no bar) and gains divided by a_nom (bar).
+% Compile: xelatex 1011_random_signal_am.tex   (from reference/eq17_analysis/derivation/)
+% Figures: figures/fig_rs_p1_question, fig_rs_q2_quadrant, fig_rs_q3_belief, fig_rs_q4_eps (.png)
+%          <- test_script/scratch/plot_rs_figs.m ('all'); q4 reads test_results/temp_5state_noap/mc_s4_plain*_tri10_plane_s1.mat
+% Data:    test_results/gain_compare/f1Hz/runs.mat (06-13 gain_compare: 6-state Vpersonal, y_2 = a-bar_m, lambda_c 0.7,
+%          a_cov = a_pd = 0.05, 200 seeds, runs.B = control law uses the estimate); z axis; window 0.25-0.75 s (far field,
+%          motion gain change < 1%). a-bar_m with a_cov = 1 rebuilt from the logged random component; the logged a-bar_m
+%          equals its EWMA.
+% Preamble copied from motion_ctrl.tex.
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\graphicspath{{figures/}}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+\usepackage{xcolor}
+\newcommand{\setline}[1]{\noindent{\small\textcolor[gray]{0.35}{#1}}\par\smallskip}
+\newcommand{\fig}[1]{\begin{center}\includegraphics[width=\textwidth,height=0.55\textheight,keepaspectratio]{#1}\end{center}}
+\newcommand{\lc}{\lambda_c}
+\newcommand{\bx}{\bar{x}}
+\newcommand{\ba}{\bar{a}}
+\newcommand{\apd}{a_{\mathrm{pd}}}
+\newcommand{\acov}{a_{\mathrm{cov}}}
+\newcommand{\IF}{\mathrm{IF}}
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{center}\textbf{\large Autocorrelation of the measured input gain and the augmented estimator}\\[2pt]
+\small 2026-10-13 \quad $z$ axis; lengths in nm, motion gains divided by $a_{\mathrm{nom}}$\end{center}
+
+%======================================================================
+\section{The question}
+\setline{06-13 run (6-state estimator, $y_2 = \ba_m$): 1 s descent to 1.2 R, then 1 Hz oscillation 1.2--3.42 R; $\lc = 0.7$, $\apd = \acov = 0.05$; seed 1}
+\begin{align*}
+\overline{\delta\bx_m}[k+1] &= \apd\,\delta\bx_m[k] + (1-\apd)\,\overline{\delta\bx_m}[k] \\
+\delta\bx_r[k] &= \delta\bx_m[k] - \overline{\delta\bx_m}[k] \\
+\hat\sigma^2_{\delta\bx_r}[k+1] &= \acov\,\delta\bx_r^2[k] + (1-\acov)\,\hat\sigma^2_{\delta\bx_r}[k] \\
+\ba_m[k] &= \frac{\hat\sigma^2_{\delta\bx_r}[k] - C_n\,\sigma_n^2}{C_T\,\kappa_T} \\
+y_2[k] &= \ba_m[k], \qquad r_2 = \sigma^2_{\ba_m}
+\end{align*}
+\fig{fig_rs_p1_question.png}
+
+%======================================================================
+\clearpage
+\section{Autocorrelation}
+\setline{record: far field 0.25--0.75 s, $n = 800$ samples; $\tau$: steps between the two samples. Figure: $\tau = 1$, each point one pair ($x[k]-\mu$, $x[k+1]-\mu$), $n-1$ points of seed 1; red quadrants: product $> 0$, grey: product $< 0$; $\rho(1)$: 200 seeds}
+\begin{align*}
+\rho(\tau) &= \frac{\dfrac{1}{n-\tau}\displaystyle\sum_{k=1}^{n-\tau}\big(x[k]-\mu\big)\big(x[k+\tau]-\mu\big)}{\dfrac{1}{n}\displaystyle\sum_{k=1}^{n}\big(x[k]-\mu\big)^2} \\
+x[k+\tau] - \mu &\approx \rho(\tau)\,\big(x[k] - \mu\big)
+\end{align*}
+\fig{fig_rs_q2_quadrant.png}
+
+%======================================================================
+\clearpage
+\section{What the estimator assumes}
+\setline{same record (motion gain constant within 1\%); $N$ consecutive readings averaged. Dots: each run cut into blocks of $N$, variance of the block means over 200 seeds; grey: $\sigma^2_{y_2}/N$ (the estimator with $r_2 = \sigma^2_{y_2}$); red: the second line with $\rho(\tau)$ of page 2; at $N = 1$ all three are $\sigma^2_{y_2}$}
+\begin{align*}
+\frac{1}{p_{44}[k+1]} &= \frac{1}{p_{44}[k]} + \frac{1}{r_2} \\
+p_{44}[N] &= \frac{r_2}{N} \\
+\sigma^2\Big(\frac{y_2[1] + y_2[2]}{2}\Big) &= \frac{\sigma^2_{y_2}}{2}\big[1 + \rho(1)\big] \\
+\sigma^2\Big(\frac{1}{N}\sum_{k=1}^{N} y_2[k]\Big) &= \frac{\sigma^2_{y_2}}{N}\Big[1 + 2\sum_{\tau=1}^{N-1}\Big(1-\frac{\tau}{N}\Big)\rho(\tau)\Big]
+\end{align*}
+\fig{fig_rs_q3_belief.png}
+
+%======================================================================
+\clearpage
+\section{Why it matters: the process noise of the motion gain}
+\setline{first-order estimator of Section 4 of motion\_ctrl: 22.2 $\to$ 1.10 R in 1 s, then triangle 1.10 $\leftrightarrow$ 10 R at 2 Hz; plane wall, $\lc = 0.4$, seed 1; $\acov = 0.05$ with $\varepsilon = 10^{-3}$ diverges (not drawn)}
+\begin{align*}
+q_{44} &= \varepsilon\, r_2 \\
+\acov = 0.05:\quad & r_2 = \sigma^2_{y_2} \\
+\acov = 1:\quad & r_2 = \IF\cdot\sigma^2_{y_2}, \qquad \IF = 1 + 2\sum_{\tau\ge1}\rho_{y_2}(\tau)
+\end{align*}
+\fig{fig_rs_q4_eps.png}
+
+\end{document}

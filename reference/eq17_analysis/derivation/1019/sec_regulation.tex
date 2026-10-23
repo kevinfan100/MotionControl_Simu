@@ -1,0 +1,33 @@
+% STATUS: ACTIVE -- 2026-10-19 (ws session, user): Part III of 1019_report.tex (\input by the hook before \end{document}).
+%   a law without the limit on the desired motion increment (tau 0.1 s run: law keeps the last a'-hat while the low-passed |Delta x_d|
+%   <= 0.0066 R per step, floor 1/22.2^2; tau 2 s runs: no hold); smallest tau_a without contact with the wall (plane a_d 0.07, cell a_d 0.55);
+%   cell figure fig_mc_alaw_cell_tau2.png (plot_mc_alaw_tau2('cell', 0.55, 2)).
+%   Figures copied from test_results/temp_1009_ws/: fig_mc_alaw_ws_vs_ap.png (plot_mc_alaw_ws_vs_ap.m), fig_mc_alaw_tau2.png
+%   (plot_mc_alaw_tau2.m), fig_alaw_tau2_long_T40_s1.png (run_alaw_tau2_long.m + plot_alaw_tau2_final.m), fig_alaw_tau2_design.png
+%   (plot_alaw_tau2_design.m); tau sweep probe_alaw_tau_min.m.
+\clearpage
+\begin{center}{\large\textbf{Part III\quad Regulation of the motion gain without the limit on $\Delta\bx_d$}}\end{center}
+
+\section{Contact with the wall, $\tau_a = 0.1$ s}
+
+\hd{Regulation law}
+\[
+\begin{aligned}
+\Delta\bx_d[k] &= (1-\lambda_a)\,\frac{\ba_d - \hat{\ba}[k]}{\hat{\ba}'[k]} \\
+\bx_d[k+1] &= \bx_d[k] + \Delta\bx_d[k] \\
+\lambda_a &= 1 - T_s/\tau_a
+\end{aligned}
+\]
+
+\figpage{Fig.~6.1\quad $\tau_a = 0.1$ s on the plane wall, first 12 ms}{z axis; start parked at 22.2 R; $\ba_d = 0.07$; left: wall position $\bw_s$ as a state variable; right: $\ba'$ as a state variable; rows: $z_d$, $z$ and $z^*$ with the wall, $\ba_z$, $\ba'_z$ (log scale); one marker = one sampling period $T_s$; $\lc = 0.4$, seed 1}{fig_1019_alaw_tau01_contact_s1.png}
+
+\clearpage
+\section{Smallest $\tau_a$ without contact with the wall}
+
+\figbody{Fig.~7.1\quad $\tau_a = 2$ s on the plane wall}{z axis; start parked at 22.2 R, run 6 s; $\ba_d = 0.07$; left: wall position $\bw_s$ as a state variable; right: $\ba'$ as a state variable; rows: $z_d$, $z$ and $z^*$ (log scale), $\ba_z$, $\ba'_z$ (log scale), $\delta z_m$; $\lc = 0.4$, seed 1}{fig_1019_alaw_tau2_plane_s1.png}
+
+\figpage{Fig.~7.2\quad $\ba_z$ with $\tau_a = 2$ s on the plane wall}{settings of Fig.~7.1, run 40 s; left: wall position $\bw_s$ as a state variable; right: $\ba'$ as a state variable; rows: $\ba_z$ over 0--10 s; $\ba_z$ over 10--20 s with the 1 s mean of the true $\ba_z$; seed 1}{fig_1019_alaw_tau2_final_s1.png}
+
+\figpageq{\[\ba_d - \ba[k+1] = \lambda_a\,\big(\ba_d - \ba[k]\big)\]}{Fig.~7.3\quad $|\ba_z - \ba_d|$ with $\tau_a = 2$ s on the plane wall}{settings of Fig.~7.1, run 40 s; left: wall position $\bw_s$ as a state variable; right: $\ba'$ as a state variable; rows: $|\ba_z - \ba_d|$, $|\hat{\ba}_z - \ba_d|$ and $e^{-t/\tau_a}$ (log scale), $\ba'_z$ (log scale); seed 1}{fig_1019_alaw_tau2_design_s1.png}
+
+\figpage{Fig.~7.4\quad $\tau_a = 2$ s on the cell wall}{z axis; start parked at 22.2 R, run 6 s; $\ba_d = 0.55$; cell wall = plane polynomial slid by 1.05 R, plant only; estimators started from the plane; left: wall position $\bw_s$ as a state variable; right: $\ba'$ as a state variable; rows as in Fig.~7.1; $\lc = 0.4$, seed 1}{fig_1019_alaw_tau2_cell_s1.png}

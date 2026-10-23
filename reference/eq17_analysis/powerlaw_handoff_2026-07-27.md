@@ -238,6 +238,6 @@ test_script/integration/verify_powerlaw_regress_final.m   產線 regression + a_
 test_script/integration/verify_powerlaw_regress_A12.m     A1/A2 修復的驗收（a_cov 不變性）
 test_script/integration/plot_p_prior_origin.m             p prior 0.035 來源圖
 test_script/integration/verify_blocal_exp.m               產 figures/blocal_exp_check.png
-test_script/scratch/temp_mcl_powerlaw_diag.m              instrumented fork（9 knob + P45/K2 分解 log）
-test_script/scratch/temp_run_powerlaw_diag.m              上面那支的 driver
+reference/eq17_analysis/archive/scratch/2026-07-temp/temp_mcl_powerlaw_diag.m              instrumented fork（9 knob + P45/K2 分解 log）
+reference/eq17_analysis/archive/scratch/2026-07-temp/temp_run_powerlaw_diag.m              上面那支的 driver
 ```

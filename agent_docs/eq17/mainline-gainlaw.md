@@ -81,13 +81,13 @@
 
 - 論文階梯的對照組：state [δx₁ δx₂ δx₃ a δa]，a 純運動學（Q44 = Q55 = 0），不讀 c、不讀 a′、不用 Δw̄_d；
   a′-free 修正全接（白化 y₂、predict 時序、先 update 再算力、n_x 相關噪聲、MA(2)、prior P[0]、IF_white）。
-- controller `motion_control_law_eq17_5state_noap.m`（`config.eq17_variant = '5state_noap'`）；推導 `derivation/0920_5state_noaprime.tex`
+- controller `motion_control_law_eq17_5state_noap.m`（`config.eq17_variant = '5state_noap'`）；推導 `derivation/archive/0920_5state_noaprime.tex`
   （完整，§15 收官）與 `0921_5state_noap_simple.tex`（老師鏈、零新符號）；五格 battery `test_script/integration/run_5state_noap_battery.m`
   （定點 22.2/2.0/1.10 R 遠場 init、canon、meng 作弊 init；`opts.plant = 'cell'` 換細胞牆）。
 - 終版：Ljung 記憶排程（命令速度×高度，clamp 0.98）、P44[0] 依 seed、√P55[0] = a_nom/40000。結論：定點散布平台 5–9%（讀數流結構，
   非迴音、非濾波器）；慢坡運動段 ±0.04、hold 0.006；1 Hz 轉折尖峰 0.09–0.15 = 記憶極限。**再往下要 a′·Δw̄_d = Layer 2**，用同一套 battery 對照。
 - **一階 Q44 故事線（09-29~10-02，`gain_order 1`，memory `project_first_order_q44_story_2026-10-02`）**：Q44 = 0 的 KF = 全部 y₂ 讀數的 1/R₂ 加權平均
-  （`derivation/0929_kf_two_tracks.tex` §4，c_{k,j} = P^f_aa[k]/R₂[j]）⇒ 下坡必 lag、拉長 T_d 無用（停點 e_ā −0.65）；Q44 = ε R₂、**ε = 1e-5 定案**（記憶 1/√ε 步，停點 −0.077、遠場 sd 0.077）。
+  （`derivation/archive/0929_kf_two_tracks.tex` §4，c_{k,j} = P^f_aa[k]/R₂[j]）⇒ 下坡必 lag、拉長 T_d 無用（停點 e_ā −0.65）；Q44 = ε R₂、**ε = 1e-5 定案**（記憶 1/√ε 步，停點 −0.077、遠場 sd 0.077）。
   Δâ = ℓ41 e_y1 + ℓ42 e_y2 精確拆分：追蹤靠 y₁（ε 讓 P44 活著，ℓ41 大 30×），誤差集中在 y₁ 失明的轉折點／停點；4 Hz 不比 1 Hz 差、T_d 0.5 對 5 s 近壁只多 45%。
   a_m 偏高 = 控制增益錯的迴音（極點 1 − (1−λc)/s，Stein 預測對上）。新旗標 `q44_r2_frac`（ε）、`q44_mse_opt`、`q44_ratio_{std,cap,rel}`、`lf_info_beta` 等全 default off、逐位相同。
   ⚠ ε 與文件熱力項 ε[k] 同名，寫文件前要改一個。

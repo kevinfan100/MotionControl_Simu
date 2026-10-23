@@ -1,7 +1,7 @@
 % VERIFY_FORMC_B_PRODUCTION_DEFAULTS  Acceptance for the 2026-09-04 production defaults of formC_b.
 %   The four blocks law_exact_step + pred_mean2 + nw_mcorr + pred_mean2_e4 are ON by default since 2026-09-04; the
 %   covariance weight fe44_Aa_scale stays 1 in production (0.5 only on the b_true arm, V2c checks the knob is wired)
-%   (derivation reference/eq17_analysis/derivation/0903_aptrue_4state_from_true.tex S1-S11). Self-contained
+%   (derivation reference/eq17_analysis/derivation/archive/0903_aptrue_4state_from_true.tex S1-S11). Self-contained
 %   (no stored results needed). Three checks, z axis, canonical deep scenario:
 %     V1  default ctrl_const == the four flags true + fe44_Aa_scale 1 set explicitly (bit-identical, arm 'best', seeds 1:3)
 %     V2  the four flags explicitly false runs and is finite (the pre-09-04 Euler recipe), and differs from V1

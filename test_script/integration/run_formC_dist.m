@@ -1,5 +1,5 @@
 % STATUS: ACTIVE (additive-disturbance driver) -- spec
-%          reference/eq17_analysis/derivation/formC_state_dist.tex;
+%          reference/eq17_analysis/derivation/archive/formC_state_dist.tex;
 %          controller model/controller/motion_control_law_formC_dist.m
 % FORK OF test_script/integration/run_formC_state.m @ 2f2fef6 | PURPOSE: same
 %   canonical scenario, seeds and metrics, controller swapped for the ADDITIVE
@@ -25,7 +25,7 @@ function out = run_formC_dist(opts, test_opts)
 %   different natural scale from the multiplicative sibling's).
 %
 %   Authoritative spec:
-%       reference/eq17_analysis/derivation/formC_state_dist.tex
+%       reference/eq17_analysis/derivation/archive/formC_state_dist.tex
 %   State (5 per axis, mapped onto the inherited 9-slot layout):
 %       [dw1 dw2 dw3 a_bar da | (inert) (inert) | m1 m2]
 %   Plant truth comes from calc_correction_functions (c_perp on z); the

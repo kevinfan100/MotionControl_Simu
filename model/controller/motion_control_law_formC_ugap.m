@@ -1,4 +1,4 @@
-% STATUS: ACTIVE | SSOT derivation: reference/eq17_analysis/derivation/formC_ugap.tex
+% STATUS: ACTIVE | SSOT derivation: reference/eq17_analysis/derivation/archive/formC_ugap.tex
 %          (+ companion formC_ugap_ref.tex for the caveats and the two
 %          well-posedness constraints implemented here)
 % FORK OF model/controller/motion_control_law_formC_dist.m @ d0490c3 | PURPOSE:
@@ -23,7 +23,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_ugap(del_pd, pd, p_m, p
 %       u(w_bar) = (1 + delta a)(w_bar - w_bar_0)                     (S1)
 %       a_w = a_o * a_bar ,   a_o = Ts/(gamma_N*R)  [1/pN]   (fixed, not a state)
 %
-%   Authoritative spec: reference/eq17_analysis/derivation/formC_ugap.tex
+%   Authoritative spec: reference/eq17_analysis/derivation/archive/formC_ugap.tex
 %   (S1-S8 + seed section), which carries BOTH derivations side by side:
 %       (a) BASELINE     4 states [dw1 dw2 dw3 u],      delta a locked at 0
 %       (b) WITH delta a 5 states [dw1 dw2 dw3 u delta a], delta a[k+1] = delta a[k]

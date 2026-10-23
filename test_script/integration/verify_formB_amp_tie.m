@@ -1,6 +1,6 @@
 % STATUS: ACTIVE | acceptance for ctrl_const.law_form_amp (the amplitude
 %          writing probe). Derivation SSOT:
-%          reference/eq17_analysis/derivation/formB_amp_bonly_probe.tex
+%          reference/eq17_analysis/derivation/archive/formB_amp_bonly_probe.tex
 %
 %VERIFY_FORMB_AMP_TIE  Structural acceptance for the tied (amplitude) arm.
 %

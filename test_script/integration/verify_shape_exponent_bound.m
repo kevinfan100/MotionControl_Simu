@@ -130,7 +130,7 @@ function res = verify_shape_exponent_bound(law, opts)
 %
 %   See also: reference/shared/param_prior_rules.md,
 %             reference/eq17_analysis/shape_ledger.md,
-%             reference/eq17_analysis/derivation/formC_state_b_ref.tex (open items 3,4)
+%             reference/eq17_analysis/derivation/archive/formC_state_b_ref.tex (open items 3,4)
 
     if nargin < 1 || isempty(law); law = 'all'; end
     if nargin < 2; opts = struct(); end

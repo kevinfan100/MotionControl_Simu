@@ -79,7 +79,7 @@ function out = run_formB_ws(opts, test_opts)
 %                            (sqrt(P_bb) 0.0708, shape floor 0.0372, against
 %                            the length arm's 0.0157 / 0.00284). Tag '_amp'.
 %                            Refuses oracle_bp / ctrl_cell_Rc / tier t2.
-%                            Derivation: derivation/formB_amp_bonly_probe.tex
+%                            Derivation: derivation/archive/formB_amp_bonly_probe.tex
 %       .seeds       [7 11 23 42 101 777]    house 6-seed convention
 %       .verbose     false   per-run progress printout
 %       .config_override     struct merged into the canonical config (window
@@ -327,7 +327,7 @@ function out = run_formB_ws(opts, test_opts)
         %     a_bar = 1 - b/w_bar and slot 5 is the ONLY free parameter.
         %     Both P0 numbers must come from the amplitude read-off: swapping
         %     only Pf_b_std would leave the gain prior ~13x too tight.
-        %     Derivation: derivation/formB_amp_bonly_probe.tex.
+        %     Derivation: derivation/archive/formB_amp_bonly_probe.tex.
         ov.law_form_amp = true;
         ov.lock_b       = false;
         ov.lock_p       = true;              % exponent pinned at the far-field anchor
@@ -642,7 +642,7 @@ function [sPbb, floor_a] = local_envelope_priors_amp(h_lo, h_hi)
 %   -> 9/8 in the far field), so the sup sits on the envelope FLOOR and the
 %   width inherits the floor margin's provenance directly. The length
 %   reading's sup is interior and boundary-immune; that difference is
-%   declared, with numbers, in derivation/formB_amp_bonly_probe.tex.
+%   declared, with numbers, in derivation/archive/formB_amp_bonly_probe.tex.
 %
 %   Outputs are sqrt-P quantities (standard deviations), [-].
     B_SEED  = 9/8;    % derived far-field reflection coefficient

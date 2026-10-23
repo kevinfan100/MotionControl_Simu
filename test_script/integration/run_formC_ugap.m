@@ -1,5 +1,5 @@
 % STATUS: ACTIVE (u-coordinate driver) -- spec
-%          reference/eq17_analysis/derivation/formC_ugap.tex (+ _ref.tex);
+%          reference/eq17_analysis/derivation/archive/formC_ugap.tex (+ _ref.tex);
 %          controller model/controller/motion_control_law_formC_ugap.m
 % FORK OF test_script/integration/run_formC_dist.m @ d0490c3 | PURPOSE: same
 %   canonical scenario, seeds and metrics, controller swapped for the GAP
@@ -35,8 +35,8 @@ function out = run_formC_ugap(opts, test_opts)
 %           failing.
 %
 %   Authoritative spec:
-%       reference/eq17_analysis/derivation/formC_ugap.tex      (equations)
-%       reference/eq17_analysis/derivation/formC_ugap_ref.tex  (caveats,
+%       reference/eq17_analysis/derivation/archive/formC_ugap.tex      (equations)
+%       reference/eq17_analysis/derivation/archive/formC_ugap_ref.tex  (caveats,
 %           constraints, pre-registration)
 %   State (5 per axis, mapped onto the inherited 9-slot layout):
 %       [dw1 dw2 dw3 u delta_a | (inert) (inert) | m1 m2]

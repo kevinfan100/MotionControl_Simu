@@ -61,7 +61,7 @@ c_⊥(w̄) = X^A₁₁(s, λ_JO)
 
 ## 產生的結果(摘要)
 
-`test_script/scratch/verify_gainlaw_curved_wall.m`,範圍 w̄ ∈ [1.1, 10]:
+`reference/eq17_analysis/archive/scratch/2026-07-gainlaw/verify_gainlaw_curved_wall.m`,範圍 w̄ ∈ [1.1, 10]:
 
 - 同一個 w̄ = 1.1,平壁真實增益 0.087、7 µm 細胞 0.136 —— **差 56%**,
   用平壁模型控細胞會系統性低估增益

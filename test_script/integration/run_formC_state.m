@@ -1,4 +1,4 @@
-% STATUS: ACTIVE (state-writing driver) -- spec reference/eq17_analysis/derivation/formC_state_da.tex;
+% STATUS: ACTIVE (state-writing driver) -- spec reference/eq17_analysis/derivation/archive/formC_state_da.tex;
 %          controller model/controller/motion_control_law_formC_state.m
 % FORK OF test_script/integration/run_formB_ws.m @ 73fdc9d | PURPOSE: same
 %   canonical scenario, seeds and metrics, controller swapped for the state
@@ -86,7 +86,7 @@ function out = run_formC_state(opts, test_opts)
 %                            (sqrt(P_bb) 0.0708, shape floor 0.0372, against
 %                            the length arm's 0.0157 / 0.00284). Tag '_amp'.
 %                            Refuses oracle_bp / ctrl_cell_Rc / tier t2.
-%                            Derivation: derivation/formB_amp_bonly_probe.tex
+%                            Derivation: derivation/archive/formB_amp_bonly_probe.tex
 %       .seeds       [7 11 23 42 101 777]    house 6-seed convention
 %       .verbose     false   per-run progress printout
 %       .config_override     struct merged into the canonical config (window
@@ -499,7 +499,7 @@ function [sPbb, floor_a] = local_envelope_priors_amp(h_lo, h_hi)
 %   -> 9/8 in the far field), so the sup sits on the envelope FLOOR and the
 %   width inherits the floor margin's provenance directly. The length
 %   reading's sup is interior and boundary-immune; that difference is
-%   declared, with numbers, in derivation/formB_amp_bonly_probe.tex.
+%   declared, with numbers, in derivation/archive/formB_amp_bonly_probe.tex.
 %
 %   Outputs are sqrt-P quantities (standard deviations), [-].
     B_SEED  = 9/8;    % derived far-field reflection coefficient

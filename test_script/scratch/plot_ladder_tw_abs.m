@@ -1,4 +1,4 @@
-% FORK OF test_script/scratch/plot_ladder_endpoints_abs.m (2026-09-08) | PURPOSE: the same 4-row / two-trajectory ladder figure
+% FORK OF reference/eq17_analysis/archive/scratch/2026-09-misc/plot_ladder_endpoints_abs.m (2026-09-08) | PURPOSE: the same 4-row / two-trajectory ladder figure
 %   (Meng left, canon right; rows: seed-7 gain vs true, seed-mean gain error in um/pN with +- sigma_seed band, b used / b_hat vs
 %   b_true(w) at the true height, R dw_3 [um]) for arms of the three-wall PLANE plant stored by run_three_walls
 %   (three_walls_<traj>_plane-sphere-cell_<tag>.mat, keys plane_<arm>). Shared y per row across the arms of one call.

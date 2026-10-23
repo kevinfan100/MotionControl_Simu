@@ -17,7 +17,7 @@ function out = plot_obs_b_5state_two_traj(seed, win)
 %   The 5-state core drops production's correlated-noise column and MA(2) slots, so shapes carry over, absolute
 %   numbers do not: grade b on the production dump (verify_obs_b_of_w.m).
 %   Output test_results/apd_acov_meng/obs_b_5state_two_traj.png
-%   STATUS: ACTIVE | produces the last page of reference/eq17_analysis/derivation/0907_estb_5state_core.pdf
+%   STATUS: ACTIVE | produces the last page of reference/eq17_analysis/derivation/archive/0907_estb_5state_core.pdf
 %   (figures/obs_b_5state_two_traj.png). Re-run and copy into derivation/figures/ after any change to formC_b's
 %   row-4/H Jacobians or to the canon / Meng scenarios.
     if nargin < 1 || isempty(seed); seed = 7; end

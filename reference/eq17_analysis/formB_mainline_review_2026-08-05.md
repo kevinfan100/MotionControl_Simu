@@ -143,7 +143,7 @@ Ptt = [Pf_b_std(ax)^2, Pf_p_std(ax)^2, Pf_ws_std(ax)^2] .* free_mask_row;
 
 ### 4.2 prior 自相矛盾 —— 見接縫 2。**純內部矛盾，不需新實驗即可判定。**
 
-**2026-08-05 實驗確認 [驗]**（`test_script/scratch/plot_formB_b_only_planeprior.m`，
+**2026-08-05 實驗確認 [驗]**（`reference/eq17_analysis/archive/scratch/2026-08-formB/plot_formB_b_only_planeprior.m`，
 文件頁 6）：單自由參數臂 —— plant 真值 = 頁 2 構造曲線 (b, p, w̄_s) = (0.13, 1, 1)，
 controller 只放開 b（p 與 w̄_s 鎖在**真值**）。零表示誤差、零 b–p 耦合、零 b–w̄_s 簡併。
 

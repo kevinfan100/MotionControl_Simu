@@ -1,4 +1,4 @@
-% FORK OF test_script/scratch/run_btrue_e4.m (2026-09-04) | PURPOSE: the production rung of the ladder. Same 10 seeds,
+% FORK OF reference/eq17_analysis/archive/scratch/2026-09-btrue/run_btrue_e4.m (2026-09-04) | PURPOSE: the production rung of the ladder. Same 10 seeds,
 %   both trajectories, hold extended by 4 s. Arms (opts.arm of run_formC_b; b_mid = 8/9 since 2026-08-18):
 %     lockb   arm 'bmid'  : b LOCKED at 8/9, four blocks on (exact + pred_mean2 + nw_mcorr + pred_mean2_e4)
 %                           -> A (b_true curve, btrue_e4_<traj>.mat e4 arm) minus lockb = the constant-b MODEL error alone
