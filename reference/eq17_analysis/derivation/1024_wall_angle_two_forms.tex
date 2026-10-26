@@ -1,0 +1,167 @@
+% STATUS: ACTIVE -- 2026-10-24 (user): how the wall angle is produced, two parts, equations only (as 1015_wall_angle_readout.tex).
+%   Part 1 Estimated angle: the angles are states; the flow of 1015_wall_angle_readout.tex, shortened (only the product of the random
+%   components, so the sensor noise drops out; gain readings, exact expectations and figures left in 1015). Part 2 Computed angle: the
+%   six entries of A-bar are states (1023_estimator_3d_xyz.tex, to be cleaned later); everything in the measurement coordinate, no local
+%   coordinate. x-z plane (theta_x = 0) first, three axes at the end of each part.
+%   Names (user 10-24): estimated angle / computed angle. Notation (user 10-24): entries of A-bar written A-bar_xz (no brackets);
+%   new symbol phi_yz = angle of A-bar in the y-z plane (theta_y written directly; w components not used, user 10-24); du-tilde_r, dv-tilde_r, dw-tilde_r = random component in the
+%   estimated local coordinate (as 1015). Wording: paper terms only (user 10-24 rejected "ruler", a chat word).
+%   Checks (10-23/24, numerical, error 0): x-z expansions, entries of A-bar in w, w_y / w_z = -tan theta_x / cos theta_y, plane formulas.
+%   Figs 4-5 (user 10-24): flow_wait5 scan, plot_t3_flow.m (src = 'flow_wait5') and plot_t3_flow_path.m.
+%   Fig 3 (user 10-24): plot_t3_planes_50um.m -> figures/fig_1024_planes_50um.png.
+%   Figs 1-2 (user 10-24): plot_t3_pair_angles.m on run_t3_pair (copied to figures/fig_1024_angles_{15,50}um.png).
+% Compile: xelatex 1024_wall_angle_two_forms.tex (from reference/eq17_analysis/derivation/). Preamble from 1015_wall_angle_readout.tex.
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=1.6cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+\AtBeginDocument{\setlength{\abovedisplayskip}{4pt}\setlength{\belowdisplayskip}{4pt}}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+\newcommand{\setline}[1]{\noindent{\small\textcolor[gray]{0.35}{#1}}\par\smallskip}
+\newcommand{\figbody}[3]{\subsection*{#1}\noindent{\small\textcolor[gray]{0.35}{#2}}\par\smallskip
+  \begin{center}\includegraphics[width=\textwidth,height=0.36\textheight,keepaspectratio]{#3}\end{center}}
+\newcommand{\figpage}[3]{\clearpage\subsection*{#1}\noindent{\small\textcolor[gray]{0.35}{#2}}\par\smallskip
+  \begin{center}\includegraphics[width=\textwidth,height=0.82\textheight,keepaspectratio]{#3}\end{center}}
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bx}{\bar{x}}
+\newcommand{\bz}{\bar{z}}
+\newcommand{\bu}{\bar{u}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\tu}{\tilde{u}}
+\newcommand{\tv}{\tilde{v}}
+\newcommand{\tw}{\tilde{w}}
+\newcommand{\thy}{\theta_y}
+\newcommand{\hth}{\hat\theta_y}
+\newcommand{\apd}{a_{\mathrm{pd}}}
+\newcommand{\CK}{C_T\,\kappa_T}
+\newcommand{\Cn}{C_n\,\sigma_n^2}
+\newcommand{\E}{\mathrm{E}}
+\newcommand{\Ab}{\bar{A}}
+\newcommand{\Ah}{\hat{\bar{A}}}
+\newcommand{\dpb}{\delta\bar{\mathbf p}}
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{center}\textbf{\large Wall angle: estimated angle and computed angle}\\[2pt]\small 2026-10-24 \quad $x$--$z$ plane ($\theta_x = 0$) first, three axes at the end of each part\end{center}
+
+%======================================================================
+\part*{Part 1 \quad Estimated angle}
+
+\section{Measurement coordinate and local coordinate}
+\begin{align*}
+V &= R_y(\thy)\,R_x(\theta_x) = [\,\mathbf u\ \ \mathbf v\ \ \mathbf w\,] \\
+\theta_x = 0:\quad \delta\bx &= \cos\thy\,\delta\bu + \sin\thy\,\delta\bw \\
+\delta\bz &= -\sin\thy\,\delta\bu + \cos\thy\,\delta\bw
+\end{align*}
+
+\section{Random component of the measured tracking error}
+\begin{align*}
+\overline{\dpb_m}[k+1] &= \apd\,\dpb_m[k] + (1-\apd)\,\overline{\dpb_m}[k] \\
+\dpb_r[k] &= \dpb_m[k] - \overline{\dpb_m}[k] = [\,\delta\bx_r\ \ \delta\bar y_r\ \ \delta\bz_r\,]^{\mathsf T}
+\end{align*}
+
+\section{Variance and covariance in the local coordinate}
+\setline{assumption: the random components along the wall and along the surface normal are uncorrelated}
+\begin{align*}
+\E\big[\delta\bu_r^2\big] &= \CK\,\ba_T + \Cn \\
+\E\big[\delta\bw_r^2\big] &= \CK\,\ba_N + \Cn \\
+\E\big[\delta\bu_r\,\delta\bw_r\big] &= 0
+\end{align*}
+
+\section{Estimated local coordinate}
+\setline{the estimator uses $\hth$; the wall is at $\thy$}
+\begin{align*}
+e_\theta &= \thy - \hth \\
+[\,\delta\tu_r\ \ \delta\tw_r\,]^{\mathsf T} &= R_y(\hth)^{\mathsf T}\,[\,\delta\bx_r\ \ \delta\bz_r\,]^{\mathsf T} \\
+&= R_y(\hth)^{\mathsf T}\,R_y(\thy)\,[\,\delta\bu_r\ \ \delta\bw_r\,]^{\mathsf T} = R_y(e_\theta)\,[\,\delta\bu_r\ \ \delta\bw_r\,]^{\mathsf T} \\
+\delta\tu_r &= \cos e_\theta\,\delta\bu_r + \sin e_\theta\,\delta\bw_r \\
+\delta\tw_r &= -\sin e_\theta\,\delta\bu_r + \cos e_\theta\,\delta\bw_r
+\end{align*}
+
+\section{Covariance in the estimated local coordinate and the measured angle}
+\begin{align*}
+\delta\tu_r\,\delta\tw_r &= -\sin e_\theta\cos e_\theta\,\delta\bu_r^2 + (\cos^2 e_\theta - \sin^2 e_\theta)\,\delta\bu_r\,\delta\bw_r + \sin e_\theta\cos e_\theta\,\delta\bw_r^2 \\
+\E\big[\delta\tu_r\,\delta\tw_r\big] &= -\CK\,(\ba_T - \ba_N)\,\sin e_\theta\cos e_\theta
+\end{align*}
+\setline{$\sin e_\theta \approx e_\theta$, $\cos e_\theta \approx 1$}
+\begin{align*}
+\E\big[\delta\tu_r\,\delta\tw_r\big] &\approx -\CK\,(\ba_T - \ba_N)\,e_\theta \\
+e_\theta &\approx -\frac{\E\big[\delta\tu_r\,\delta\tw_r\big]}{\CK\,(\ba_T - \ba_N)}
+\end{align*}
+\setline{one sample in place of $\E[\,\cdot\,]$; estimates in place of $\ba_T$, $\ba_N$}
+\begin{align*}
+e_{\theta m}[k] &= -\frac{\delta\tu_r[k]\,\delta\tw_r[k]}{\CK\,\big(\hat{\ba}_T[k] - \hat{\ba}_N[k]\big)} \\
+\theta_{ym}[k] &= \hth[k] + e_{\theta m}[k]
+\end{align*}
+
+\section*{Three axes}
+\begin{align*}
+[\,\delta\tu_r\ \ \delta\tv_r\ \ \delta\tw_r\,]^{\mathsf T} &= \hat V^{\mathsf T}\,\dpb_r \\
+\theta_{xm}[k] &= \hat\theta_x[k] + \frac{\delta\tv_r[k]\,\delta\tw_r[k]}{\CK\,\big(\hat{\ba}_T[k] - \hat{\ba}_N[k]\big)} \\
+\theta_{ym}[k] &= \hth[k] - \frac{\delta\tu_r[k]\,\delta\tw_r[k]}{\CK\,\big(\hat{\ba}_T[k] - \hat{\ba}_N[k]\big)\cos\hat\theta_x[k]}
+\end{align*}
+
+%======================================================================
+\clearpage
+\part*{Part 2 \quad Computed angle}
+\setcounter{section}{0}
+
+\section{Motion gain matrix in the measurement coordinate}
+\begin{align*}
+\Ab &= \ba_T\,I + (\ba_N - \ba_T)\,\mathbf w\,\mathbf w^{\mathsf T} \\
+\mathbf w &= [\,\sin\thy\cos\theta_x\ \ \ -\sin\theta_x\ \ \ \cos\thy\cos\theta_x\,]^{\mathsf T}
+\end{align*}
+
+\section{Variance and covariance in the measurement coordinate}
+\setline{sensor noise taken equal on $x$, $y$ and $z$}
+\begin{align*}
+\E\big[\delta\bx_r\,\delta\bz_r\big] &= \CK\,\Ab_{xz} \\
+\E\big[\delta\bx_r^2\big] - \E\big[\delta\bz_r^2\big] &= \CK\,\big(\Ab_{xx} - \Ab_{zz}\big) \\
+\E\big[\delta\bar y_r\,\delta\bz_r\big] &= \CK\,\Ab_{yz} \\
+\E\big[\delta\bar y_r^2\big] - \E\big[\delta\bz_r^2\big] &= \CK\,\big(\Ab_{yy} - \Ab_{zz}\big)
+\end{align*}
+
+\section{Wall angle}
+\setline{$\theta_x = 0$}
+\begin{align*}
+\Ab_{xx} &= \ba_T\cos^2\thy + \ba_N\sin^2\thy \\
+\Ab_{zz} &= \ba_T\sin^2\thy + \ba_N\cos^2\thy \\
+\Ab_{xz} &= -(\ba_T - \ba_N)\,\sin\thy\cos\thy \\
+\Ab_{xx} - \Ab_{zz} &= (\ba_T - \ba_N)\,\big(\cos^2\thy - \sin^2\thy\big) = (\ba_T - \ba_N)\,\cos 2\thy \\
+-2\,\Ab_{xz} &= (\ba_T - \ba_N)\,2\sin\thy\cos\thy = (\ba_T - \ba_N)\,\sin 2\thy \\
+\frac{-2\,\Ab_{xz}}{\Ab_{xx} - \Ab_{zz}} &= \frac{\sin 2\thy}{\cos 2\thy} = \tan 2\thy
+\end{align*}
+\setline{$\thy$ is not small; no approximation}
+\begin{align*}
+\tan 2\thy &= \frac{-2\,\Ab_{xz}}{\Ab_{xx} - \Ab_{zz}} \\
+\tan 2\varphi_{yz} &= \frac{-2\,\Ab_{yz}}{\Ab_{yy} - \Ab_{zz}} \\
+\theta_x &= -\arctan\big(\tan\varphi_{yz}\,\cos\thy\big)
+\end{align*}
+\enlargethispage{6\baselineskip}
+\setline{estimates $\Ah$ in place of $\Ab$}
+\begin{align*}
+\tan 2\hth &= \frac{-2\,\Ah_{xz}}{\Ah_{xx} - \Ah_{zz}} \\
+\tan 2\hat\varphi_{yz} &= \frac{-2\,\Ah_{yz}}{\Ah_{yy} - \Ah_{zz}} \\
+\hat\theta_x &= -\arctan\big(\tan\hat\varphi_{yz}\,\cos\hth\big)
+\end{align*}
+
+
+%======================================================================
+\clearpage
+\part*{Comparison in simulation}
+\figbody{Fig.~1\quad 15\,$\mu$m}{plane wall $\theta_y = 20^\circ$, $\theta_x = 0$, fixed point 15\,$\mu$m, 20\,s; left computed angle, right estimated angle; rows: $\hat\theta_y - \theta_y$, $\hat\theta_x - \theta_x$ (angle between lines, in $\pm 90^\circ$); seed 1 dark, seeds 2--3 light}{fig_1024_angles_15um.png}
+\figbody{Fig.~2\quad 50\,$\mu$m}{as Fig.~1 at 50\,$\mu$m}{fig_1024_angles_50um.png}
+
+\figpage{Fig.~3\quad Computed angle at 50\,$\mu$m: numerator and denominator}{left $x$--$z$ plane ($\tan 2\theta_y$), right $y$--$z$ plane ($\tan 2\varphi_{yz}$); rows: angle error, numerator $-2\hat{\bar A}_{xz}$ / $-2\hat{\bar A}_{yz}$, denominator $\hat{\bar A}_{xx} - \hat{\bar A}_{zz}$ / $\hat{\bar A}_{yy} - \hat{\bar A}_{zz}$ (red = true); seed 1 dark, seeds 2--3 light}{fig_1024_planes_50um.png}
+
+\figpage{Fig.~4\quad Wait, regulation and scan: angles, gap and normal gain}{plane wall $\theta_y = 20^\circ$, start 15\,$\mu$m, wait 5\,s (no motion), regulation to $\bar a_N = 0.1$ ($\tau_a = 2$\,s), scan along $\hat{\mathbf u}$ from 12\,s; seed 1; left computed angle (with $\bar A'$), right estimated angle; rows: $\hat\theta_y - \theta_y$, $\hat\theta_x - \theta_x$, gap $h$ (red = target), $\bar a_N$ (red = true)}{fig_1024_scan_wait5.png}
+\figpage{Fig.~5\quad Same run: wall and trajectory}{top: measurement coordinate $x$--$z$, wall (gray) and probe position; bottom: local coordinate, distance along the wall $u$ against gap $h$ (red = target); dots: start, start of regulation, start of scan}{fig_1024_scan_wait5_path.png}
+
+\end{document}

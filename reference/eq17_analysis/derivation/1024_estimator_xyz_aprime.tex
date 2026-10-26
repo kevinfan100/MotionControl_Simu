@@ -1,0 +1,159 @@
+% STATUS: ACTIVE -- 2026-10-24 (user): computed angle estimator with the gain change along the surface normal, every entry of A-bar with its
+%   own slope (user 10-24: "six a with their own a'"), A-bar' = dA-bar/dh; states dp1 dp2 dp3 (x, y, z), six entries of A-bar, six entries of
+%   A-bar' (21). q of a-bar' = 0 while holding, P_fix^2 I[k] once moving (user 10-24; the slope changes ~30x from 15 um to 1.1 R); r_theta dropped from F_e (user 10-24: 1.6e8 at the start, A-hat ~ I). The normal w-hat used in the prediction is computed from A-hat
+%   by the plane formulas of 1024_wall_angle_two_forms.tex; its first-order error (Section 4) checked numerically 10-24 (chain rule vs
+%   numerical Jacobian of the plane formulas, max difference 1e-6; the eigenvector Jacobian differs: the plane formulas do not use A_xy).
+%   Not yet: sympy check of Section 5, observability gates 4-5, simulation. Initial values (simulation only, not here): A-hat = I,
+%   A-hat' = diag((9/16), (9/16), (9/8)) / h_d[0]^2 (1015 seeds), theta-hat = 0.
+%   New symbols (user 10-24): a-bar' (bold) = six entries of A-bar'.
+% Compile: xelatex 1024_estimator_xyz_aprime.tex (from reference/eq17_analysis/derivation/). Preamble from 1023_estimator_3d_xyz.tex.
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=1.6cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+\AtBeginDocument{\setlength{\abovedisplayskip}{4pt}\setlength{\belowdisplayskip}{4pt}}
+\usepackage{xcolor}
+\newcommand{\setline}[1]{\noindent{\small\textcolor[gray]{0.35}{#1}}\par\smallskip}
+\newcommand{\hd}[1]{\par\bigskip\noindent\underline{\textbf{#1}}}
+\newcommand{\lc}{\lambda_c}
+\newcommand{\dpb}{\delta\bar{\mathbf p}}
+\newcommand{\dph}{\delta\hat{\bar{\mathbf p}}}
+\newcommand{\Ab}{\bar{A}}
+\newcommand{\Ah}{\hat{\bar A}}
+\newcommand{\Abp}{\bar{A}'}
+\newcommand{\av}{\bar{\mathbf a}}
+\newcommand{\avh}{\hat{\bar{\mathbf a}}}
+\newcommand{\avp}{\bar{\mathbf a}'}
+\newcommand{\avph}{\hat{\bar{\mathbf a}}'}
+\newcommand{\Fd}{\bar{\mathbf F}_{dp}}
+\newcommand{\Mh}{\hat{\mathbf M}}
+\newcommand{\Mb}{\mathbf M}
+\newcommand{\epp}{\boldsymbol\varepsilon_p}
+\newcommand{\I}{\mathbf I}
+\newcommand{\ww}{\mathbf w}
+\newcommand{\wh}{\hat{\mathbf w}}
+\newcommand{\uh}{\hat{\mathbf u}}
+\newcommand{\vh}{\hat{\mathbf v}}
+\newcommand{\Pfix}{P_{\mathrm{fix}}}
+\newcommand{\FM}{\begin{bmatrix} F_x & 0 & 0 & F_y & F_z & 0 \\ 0 & F_y & 0 & F_x & 0 & F_z \\ 0 & 0 & F_z & 0 & F_x & F_y \end{bmatrix}}
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{center}\textbf{\large Computed angle estimator with $\bar A'$}\\[2pt]
+\small 2026-10-24 \quad states in $(x, y, z)$: tracking error, the six entries of $\Ab$ and of $\Abp = d\Ab/dh$\end{center}
+
+%======================================================================
+\section{Motion gain matrix and its change along the surface normal}
+\begin{align*}
+\av &= [\,\Ab_{xx}\ \ \Ab_{yy}\ \ \Ab_{zz}\ \ \Ab_{xy}\ \ \Ab_{xz}\ \ \Ab_{yz}\,]^{\mathsf T} \\
+\avp &= [\,\Abp_{xx}\ \ \Abp_{yy}\ \ \Abp_{zz}\ \ \Abp_{xy}\ \ \Abp_{xz}\ \ \Abp_{yz}\,]^{\mathsf T} \\
+\Mb[k] &= \Delta\bar{\mathbf p}_d[k] + (1-\lc)\,\dpb_3[k] \\
+\Mh[k] &= \Delta\bar{\mathbf p}_d[k] + (1-\lc)\,\dph_3[k]
+\end{align*}
+
+%======================================================================
+\section{True state of the process}
+\begin{align*}
+\dpb_1[k+1] &= \dpb_2[k] \\
+\dpb_2[k+1] &= \dpb_3[k] \\
+\dpb_3[k+1] &= \lc\,\dpb_3[k] - \big(\Ab - \Ah[k]\big)\,\Fd[k] - \epp[k] \\
+\av[k+1] &= \av[k] + \avp[k]\,\ww^{\mathsf T}\Big(\Mb[k] + \big(\Ab - \Ah[k]\big)\,\Fd[k] + \epp[k]\Big) \\
+\avp[k+1] &= \avp[k] + \mathbf w_{a'}[k]
+\end{align*}
+
+%======================================================================
+\section{State vector and estimator}
+\begin{align*}
+\mathbf x[k] &= \big[\,\dpb_1^{\mathsf T}\ \ \dpb_2^{\mathsf T}\ \ \dpb_3^{\mathsf T}\ \ \av^{\mathsf T}\ \ \avp^{\mathsf T}\,\big]^{\mathsf T} \qquad (21 \times 1,\ d = 2)
+\end{align*}
+\begin{align*}
+\dph_1[k+1] &= \dph_2[k] + \mathbf L_1[k]\,\mathbf e_y[k] \\
+\dph_2[k+1] &= \dph_3[k] + \mathbf L_2[k]\,\mathbf e_y[k] \\
+\dph_3[k+1] &= \lc\,\dph_3[k] + \mathbf L_3[k]\,\mathbf e_y[k] \\
+\avh[k+1] &= \avh[k] + \avph[k]\,\wh^{\mathsf T}[k]\,\Mh[k] + \mathbf L_4[k]\,\mathbf e_y[k] \\
+\avph[k+1] &= \avph[k] + \mathbf L_5[k]\,\mathbf e_y[k]
+\end{align*}
+\setline{$\wh[k]$ from $\Ah[k]$ by the plane formulas: $\tan 2\hat\theta_y = -2\Ah_{xz}/(\Ah_{xx} - \Ah_{zz})$, $\tan 2\hat\varphi_{yz} = -2\Ah_{yz}/(\Ah_{yy} - \Ah_{zz})$, $\hat\theta_x = -\arctan(\tan\hat\varphi_{yz}\cos\hat\theta_y)$}
+
+%======================================================================
+\clearpage
+\section{Error of the surface normal from the error of $\Ah$}
+\setline{$\mathbf e_a = \av - \avh = [\,e_{xx}\ e_{yy}\ e_{zz}\ e_{xy}\ e_{xz}\ e_{yz}\,]^{\mathsf T}$; first order}
+\begin{align*}
+e_{\theta_y} &= \frac{\big(\Ah_{xx} - \Ah_{zz}\big)\,(-2\,e_{xz}) + 2\,\Ah_{xz}\,\big(e_{xx} - e_{zz}\big)}{2\,\Big(\big(\Ah_{xx} - \Ah_{zz}\big)^2 + 4\,\Ah_{xz}^2\Big)} \\
+e_{\varphi_{yz}} &= \frac{\big(\Ah_{yy} - \Ah_{zz}\big)\,(-2\,e_{yz}) + 2\,\Ah_{yz}\,\big(e_{yy} - e_{zz}\big)}{2\,\Big(\big(\Ah_{yy} - \Ah_{zz}\big)^2 + 4\,\Ah_{yz}^2\Big)} \\
+e_{\theta_x} &= -\frac{\cos\hat\theta_y\,\big(1 + \tan^2\hat\varphi_{yz}\big)}{1 + \tan^2\hat\varphi_{yz}\cos^2\hat\theta_y}\,e_{\varphi_{yz}}
++ \frac{\tan\hat\varphi_{yz}\,\sin\hat\theta_y}{1 + \tan^2\hat\varphi_{yz}\cos^2\hat\theta_y}\,e_{\theta_y} \\
+\ww - \wh &= -\vh\,e_{\theta_x} + \cos\hat\theta_x\,\uh\,e_{\theta_y}
+\end{align*}
+
+%======================================================================
+\section{Dynamics of estimation errors}
+\setline{$F_x, F_y, F_z$ = components of $\Fd[k]$; $\mathbf e_{a'} = \avp - \avph$}
+\begin{align*}
+\big(\Ab - \Ah\big)\,\Fd &= \FM \mathbf e_a \\
+\ww^{\mathsf T}\Big(\Mb + \big(\Ab - \Ah\big)\Fd + \epp\Big) - \wh^{\mathsf T}\Mh
+&= (1-\lc)\,\wh^{\mathsf T}\mathbf e_3 + \wh^{\mathsf T}\FM \mathbf e_a \\
+&\quad - \vh^{\mathsf T}\Mh\,e_{\theta_x} + \cos\hat\theta_x\,\uh^{\mathsf T}\Mh\,e_{\theta_y} + \wh^{\mathsf T}\epp
+\end{align*}
+\begin{align*}
+\mathbf e_1[k+1] &= \mathbf e_2[k] \\
+\mathbf e_2[k+1] &= \mathbf e_3[k] \\
+\mathbf e_3[k+1] &= \lc\,\mathbf e_3[k] - \FM \mathbf e_a[k] - \epp[k] \\
+\mathbf e_a[k+1] &= (1-\lc)\,\avph\,\wh^{\mathsf T}\mathbf e_3[k] + \mathbf e_a[k] + \avph\,\wh^{\mathsf T}\FM \mathbf e_a[k] \\
+&\quad - \avph\,\vh^{\mathsf T}\Mh\,e_{\theta_x}[k] + \avph\,\cos\hat\theta_x\,\uh^{\mathsf T}\Mh\,e_{\theta_y}[k] + \big(\wh^{\mathsf T}\Mh\big)\,\mathbf e_{a'}[k] + \avph\,\wh^{\mathsf T}\epp[k] \\
+\mathbf e_{a'}[k+1] &= \mathbf e_{a'}[k] + \mathbf w_{a'}[k]
+\end{align*}
+\setline{$e_{\theta_x}$, $e_{\theta_y}$: rows of Section 4, linear in $\mathbf e_a$}
+
+\hd{Error dynamics matrix}
+\begin{align*}
+\mathbf F_e[k] &=
+\begin{bmatrix}
+\mathbf 0 & \I_3 & \mathbf 0 & \mathbf 0 & \mathbf 0 \\
+\mathbf 0 & \mathbf 0 & \I_3 & \mathbf 0 & \mathbf 0 \\
+\mathbf 0 & \mathbf 0 & \lc\,\I_3 & -\FM & \mathbf 0 \\
+\mathbf 0 & \mathbf 0 & (1-\lc)\,\avph\,\wh^{\mathsf T} & \I_6 + \avph\,\wh^{\mathsf T}\FM & \big(\wh^{\mathsf T}\Mh\big)\,\I_6 \\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \I_6
+\end{bmatrix}
+\end{align*}
+\setline{$\wh$ taken as given in $\mathbf F_e$: the terms $-\avph\,\vh^{\mathsf T}\Mh\,e_{\theta_x} + \avph\cos\hat\theta_x\,\uh^{\mathsf T}\Mh\,e_{\theta_y}$ are dropped (about $0.0025\,\mathbf e_a$ next to $\I_6$; unbounded where $\Ah_{xx} - \Ah_{zz}$, $\Ah_{xz}$ vanish)}
+
+%======================================================================
+\section{Process outputs and output matrix}
+\[
+\mathbf y[k] = \begin{bmatrix} \dpb_m[k] \\ \av_m[k] \end{bmatrix},
+\qquad
+\hat{\mathbf y}[k] = \begin{bmatrix} \dph_1[k] \\ \avh[k] \end{bmatrix},
+\qquad
+\mathbf H =
+\begin{bmatrix}
+\I_3 & \mathbf 0 & \mathbf 0 & \mathbf 0 & \mathbf 0 \\
+\mathbf 0 & \mathbf 0 & \mathbf 0 & \I_6 & \mathbf 0
+\end{bmatrix}
+\]
+
+%======================================================================
+\section{Process noise}
+\begin{align*}
+\mathbf q[k] &= \big[\,\mathbf 0^{\mathsf T}\ \ \mathbf 0^{\mathsf T}\ \ -\epp^{\mathsf T}\ \ \big(\avph\,\wh^{\mathsf T}\epp\big)^{\mathsf T}\ \ \mathbf w_{a'}^{\mathsf T}\,\big]^{\mathsf T} \\
+q_{a',j}[k] &= 0 \qquad (\text{holding: } \bar{\mathbf p}_d \text{ fixed}) \\
+q_{a',j}[k] &= \Pfix^{2}[k]\,I_{a',j}[k], \qquad j = 1, \dots, 6 \qquad (\text{regulation, scan}) \\
+I_{a',j}[k] &= \frac{1}{p_{a',j}[k]} - \frac{1}{p^f_{a',j}[k]} \\
+\sqrt{\Pfix}[k] &= 0.4\,\big(1.1/h_d[k]\big)^{2}, \qquad h_d[k] = \wh^{\mathsf T}[k]\,\bar{\mathbf p}_d[k]
+\end{align*}
+
+%======================================================================
+\section*{Observability, gates 1--2}
+\begin{align*}
+\mathbf F_e(\mathbf e_a, \mathbf e_{a'}) &= \big(\wh^{\mathsf T}\Mh\big)\,\I_6, \qquad \mathbf H(\cdot, \mathbf e_{a'}) = \mathbf 0 \\
+\mathbf e_a[k+N] - \mathbf e_a[k] &\ni \mathbf e_{a'} \sum_{i=0}^{N-1} \wh^{\mathsf T}\Mh[k+i]
+\end{align*}
+\setline{gate 1: one path (state path), zero while $\wh^{\mathsf T}\Mh = 0$ (hold, motion along the wall); gate 2: $\mathbf e_{a'}$ = ramp in $\mathbf e_a$ with the travel along the normal, $\mathbf e_a$ = constant offset; entry $j$ of $\mathbf e_{a'}$ reaches only entry $j$ of $\mathbf e_a$}
+
+\end{document}
