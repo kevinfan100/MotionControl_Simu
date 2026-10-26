@@ -91,6 +91,7 @@ function r = local_run(opts, seed)
     if isfield(opts, 'a_init_true') && opts.a_init_true      % 10-21 REFERENCE arm only: gains and slopes seeded at the truth
         [x(10), x(12), x(11), x(13)] = local_truth((dot(p, w_true) - pz) / Rr);
     end
+    if isfield(opts, 'th0_deg'); x(14:15) = opts.th0_deg(:) * pi / 180; end   % 10-25 (test 2 vs 1025 Section 6): theta-hat[0] [deg]
     sig2 = diag(Sn);
     Pk = diag([repmat(sig2, 3, 1); ((9/8) / hd0)^2; x(11)^2; ((9/8) / hd0)^2; x(13)^2; (opts.sP_theta_deg * pi / 180)^2 * [1; 1]]);
     if isfield(opts, 'fix_theta') && opts.fix_theta            % REFERENCE arm only: angles given (truth), not estimated
@@ -105,6 +106,7 @@ function r = local_run(opts, seed)
                'thm', NaN(N,2), 'Kth', NaN(N,2), 'dth_y1', zeros(N,2), 'dth_ro', zeros(N,2), 'dth_dp', zeros(N,2), 'dth_ag', zeros(N,2), ...
                'L8', NaN(N,7), 'L9', NaN(N,7), 'vAm', NaN(N,9), 'thr', NaN(N,2));   % 10-22 estimator feedback rows L_8, L_9 (doc Sec. 4), vA_m   % 10-22 angle readout / actual gain logs
     contact = false;  t_contact = NaN;  kend = N;  u0 = [];
+    Vm = eye(3);  Lm = [1; 1; 1];  L.th_meng = NaN(N, 2);   % 10-25 passive Meng angle observer (opts.meng_acov), see the readout
     blk_on = isfield(opts, 'angle_block') && ~strcmp(opts.angle_block, 'none');  latch = false;  t_latch = NaN;
     for k = 1:N
         % ---- truth at k ----
@@ -125,6 +127,17 @@ function r = local_run(opts, seed)
         dbar = apd * dpm + (1 - apd) * dbar;  dpr = dpm - dbar;
         Vh = local_Ry(x(15)) * local_Rx(x(14));  uh = Vh(:, 1);  vh = Vh(:, 2);  wh = Vh(:, 3);
         vSn = Vh' * Sn * Vh;  vd = Vh' * dpr;  vA = (vd * vd' - C_n * vSn) / (C_T * kap);
+        if isfield(opts, 'meng_acov')                        % 10-25 user: Meng diss. (5.4)-(5.14) literally, IIR a_cov, passive (logged only):
+            ac = opts.meng_acov;  Mm = ((Vm' * dpr) * (Vm' * dpr)' - C_n * (Vm' * Sn * Vm)) / (C_T * kap);   %   same readout chain, frame V_m
+            dAm = ac * (Mm - diag(Lm));                      %   (5.7) v-dA = a_cov (v-dx v-dx' - Lambda-hat)
+            dth = zeros(3, 1);                               %   (5.9)/(5.14) dtheta_1 = dA_23 / (l2 - l3), dtheta_2 = dA_13 / (l3 - l1);
+            if abs(Lm(2) - Lm(3)) > 0.02 * max(Lm); dth(1) = dAm(2, 3) / (Lm(2) - Lm(3)); end   %   dtheta_3 (about w) = 0: l1 = l2 (tangential)
+            if abs(Lm(3) - Lm(1)) > 0.02 * max(Lm); dth(2) = dAm(1, 3) / (Lm(3) - Lm(1)); end   %   guard: skip when |l_i - l_j| < 2 % (notes' eps, value ours)
+            Vm = Vm * [1 -dth(3) dth(2); dth(3) 1 -dth(1); -dth(2) dth(1) 1];   % (5.13)
+            [Uo, ~, Wo] = svd(Vm);  Vm = Uo * Wo';           %   re-orthonormalise (not in the text)
+            Lm = Lm + diag(dAm);                             %   (5.11)-(5.12) Lambda[k+1] = Lambda[k] + d-Lambda
+            wm = Vm(:, 3);  L.th_meng(k, :) = [-asind(max(min(wm(2), 1), -1)), atan2d(wm(1), wm(3))];   % theta_x, theta_y of the w column [deg]
+        end
         aT = max(x(10), 0.02);  aN = max(x(12), 0.02);  dA = x(10) - x(12);
         xi = C_n * diag(vSn) / (C_T * kap);
         rho = @(a, s2) (kap * a * cT + s2 * cn) / (kap * a * cT(1) + s2 * cn(1));
@@ -204,6 +217,10 @@ function r = local_run(opts, seed)
             c1 = Af(t(k)) * [cos(2 * pi * fd * t(k)) - 1; sin(2 * pi * fd * t(k))];
             c2 = Af(t(k) + Ts) * [cos(2 * pi * fd * (t(k) + Ts)) - 1; sin(2 * pi * fd * (t(k) + Ts))];
             step = step + ((c2(1) - c1(1)) * uc + (c2(2) - c1(2)) * vc) / Rr;
+        end
+        t0a = 0;  if isfield(opts, 'approach_t0'); t0a = opts.approach_t0; end   % 10-25: approach starts at t0 (hold before it)
+        if fp && isfield(opts, 'approach') && t(k) >= t0a && t(k) < t0a + opts.approach(1) / opts.approach(2)   % 10-25 user (Meng diss. Sec. 5.5): p_d moves
+            step = step - opts.approach(2) * Ts / Rr * w_true;   %   toward the wall along the TRUE normal, opts.approach = [distance um, speed um/s], then stays
         end
         uv_on = isfield(opts, 'uv_hold') && opts.uv_hold && (~isfield(opts, 'uv_hold_until') || t(k) < opts.uv_hold_until);   % 10-21: off from uv_hold_until
         if uv_on                                             % 10-20 user: hold u_d, v_d (estimated local coordinate, relative to p-bar_d[0])
