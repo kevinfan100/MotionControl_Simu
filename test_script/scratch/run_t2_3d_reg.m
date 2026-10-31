@@ -76,17 +76,23 @@ function r = local_run(opts, seed)
     % ---- estimator init (known / assumed only) ----
     p = P.common.p0;  pd_k = p;
     if isfield(opts, 'h0'); p = (pz + opts.h0 * Rr) * w_true;  pd_k = p; end   % 10-21: start at h0 [R] along the true normal
+    if isfield(opts, 'start_deg')                             % 10-28 (user): bead/sphere -- start start_deg off the top on the +x side, h0 [R] above it
+        rb0 = 5;  if isfield(opts, 'bead_r'); rb0 = opts.bead_r; end;  cb = [0; 0; pz0 - rb0];
+        p = cb + (rb0 + opts.h0 * Rr) * [sind(opts.start_deg); 0; cosd(opts.start_deg)];  pd_k = p;
+    end
     pd0 = p;  uv_max = Inf;                                    % uv_hold: p-bar_d[0] (start of the desired position); no step limit (user 10-20)
     g_uv = 1;  if isfield(opts, 'uv_gain'); g_uv = opts.uv_gain; end   % uv_hold: proportional gain per step (1 = back to 0 in one step)
     if isfield(opts, 'tau_u'); g_uv = min(Ts / opts.tau_u, 1); end      % 1021_regulation_uv.tex: Delta u_d = -(T_s / tau_u) u_d
     th_c = [0; 0];                                             % 10-21 user: angle used by the command directions (theta_c), = theta-hat[0]
     u_ref = 0;                                                 % uv_hold + scan: target of u_d [R] (0 before t_scan)
-    rs = struct('line', 1, 'phase', 'u', 'dir', 1, 's', 0);   % raster state (opts.raster = [Lu um, dv um, lines])
+    rs = struct('line', 1, 'phase', 'u', 'dir', 1, 's', 0, 'y0', 0, 'tend', NaN);   % raster state (opts.raster = [Lu um, dv um, lines])
     g_th = 0;  if isfield(opts, 'tau_theta') && opts.tau_theta > 0; g_th = min(Ts / opts.tau_theta, 1); end
     if isfield(opts, 'uv_max_um'); uv_max = opts.uv_max_um / Rr; end
     hd_int = p(3) / Rr;                                        % bend wall: h_d integrated from the commanded normal steps
+    if isfield(opts, 'start_deg'); hd_int = opts.h0; end
     x = zeros(15, 1);                                          % [dp1(3) dp2(3) dp3(3) aT aTp aN aNp thx thy]
     hd0 = p(3) / Rr;                                           % w-hat[0] = z: h_d[0] = w-hat' p_d (visible surface at 0)
+    if isfield(opts, 'start_deg'); hd0 = opts.h0; end          % 10-28: commanded distance (the start is not above the top)
     x(10) = 1;  x(12) = 1;  x(11) = (9/16) / hd0^2;  x(13) = (9/8) / hd0^2;
     if isfield(opts, 'a_init_true') && opts.a_init_true      % 10-21 REFERENCE arm only: gains and slopes seeded at the truth
         [x(10), x(12), x(11), x(13)] = local_truth((dot(p, w_true) - pz) / Rr);
@@ -206,6 +212,7 @@ function r = local_run(opts, seed)
         L.thc(k, :) = th_c' * 180 / pi;
         % gain regulation along w_c (+ scan along u_c)
         s_ap = max(x(13), ap_min);
+        if isfield(opts, 'ap_floor_law') && opts.ap_floor_law; s_ap = max(x(13), (8 / 9) * (1 - min(x(12), 1))^2); end   % 10-28: as run_t3_xyz_fixed
         dh = (1 - lam_a) * (opts.a_d - x(12)) / s_ap;  dh = sign(dh) * min(abs(dh), v_max);
         step = dh * wc;
         fp = (isfield(opts, 'fixed_point') && opts.fixed_point) || (isfield(opts, 'hold_until') && t(k) < opts.hold_until);
@@ -234,7 +241,19 @@ function r = local_run(opts, seed)
         end
         if t(k) >= opts.t_scan
             if isempty(u0); u0 = p; end
-            if isfield(opts, 'raster')                         % 10-22 user (Meng Fig. 57): u triangle of length Lu, v ramp of dv at each end
+            if isfield(opts, 'raster_x')                       % 10-28 (user): as run_t3_xyz_fixed raster -- lines along u_c, turn at x = +-X_end, step dy along v_c
+                Xe = opts.raster_x(1);  dyr = opts.raster_x(2);  nl = opts.raster_x(3);
+                if rs.line <= nl
+                    if rs.phase == 'u'
+                        step = step - rs.dir * opts.du_d * uc;
+                        if -rs.dir * pd_k(1) >= Xe; if rs.line >= nl; rs.line = nl + 1;  rs.tend = t(k); else; rs.phase = 'v';  rs.y0 = pd_k(2); end; end
+                    else
+                        step = step + opts.du_d * vc;
+                        if pd_k(2) - rs.y0 >= dyr; rs.phase = 'u';  rs.dir = -rs.dir;  rs.line = rs.line + 1; end
+                    end
+                end
+                L.line(k) = rs.line;
+            elseif isfield(opts, 'raster')                     % 10-22 user (Meng Fig. 57): u triangle of length Lu, v ramp of dv at each end
                 Lu = opts.raster(1) / Rr;  dvr = opts.raster(2) / Rr;  nl = opts.raster(3);
                 if rs.line <= nl
                     if rs.phase == 'u'
@@ -299,7 +318,7 @@ function r = local_run(opts, seed)
         fbuf = [f_d, fbuf(:, 1)];  Abuf = cat(3, Ab, Abuf(:, :, 1));
         pdbuf = [pdbuf(:, 2:end), pd_kp1];  pd_k = pd_kp1;
     end
-    r = struct('seed', seed, 't', t, 'contact', contact, 't_contact', t_contact, 'kend', kend, 'opts', opts, 't_latch', t_latch);
+    r = struct('seed', seed, 't', t, 'contact', contact, 't_contact', t_contact, 'kend', kend, 'opts', opts, 't_latch', t_latch, 'rs_tend', rs.tend);
     f = fieldnames(L);  for i = 1:numel(f); r.(f{i}) = L.(f{i}); end
     r.thx = r.thx * 180 / pi;  r.thy = r.thy * 180 / pi;  r.sP(:, 5:6) = r.sP(:, 5:6) * 180 / pi;
     [r.h_star, ~] = local_hstar(opts.a_d);
@@ -334,7 +353,7 @@ function [W, thx, thy] = local_bead_wall(p, W, pz0, o)      % 10-22: bead (radiu
     rb = 5;  if isfield(o, 'bead_r'); rb = o.bead_r; end      % Meng diss. Sec. 6.2.1: 10 um glass bead; glass plane at z = pz0 - 2 rb
     c = [0; 0; pz0 - rb];  zg = pz0 - 2 * rb;
     d = p(:) - c;  db = norm(d) - rb;  dg = p(3) - zg;         % distances to the bead surface and to the glass
-    if db <= dg                                                % nearest surface + plane law (local tangent plane)
+    if db <= dg || (isfield(o, 'bead_void') && o.bead_void)  % nearest surface + plane law (local tangent plane); 10-28: bead_void = no glass
         n = d / norm(d);  pzw = n' * c + rb;
     else
         n = [0; 0; 1];  pzw = zg;

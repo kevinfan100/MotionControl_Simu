@@ -36,8 +36,9 @@ end
 
 function r = local_run(opts, seed)
     if isfield(opts, 'form') && strcmp(opts.form, 'estimated'); r = local_run_est(opts, seed); return; end
+    if isfield(opts, 'form') && strcmp(opts.form, 'local'); r = local_run_loc(opts, seed); return; end
     clear calc_thermal_force;
-    rng(seed);
+    gen = 'threefry';  if isfield(opts, 'rng_gen'); gen = opts.rng_gen; end;  rng(seed, gen);   % 10-29: generator named (threefry = the parfor-worker default used by the morning figures), serial = parfor
     cfg = canonical_scenario(0.05, 1.10, 'ramp_tri', 1);
     cfg.lambda_c = opts.lambda_c;  cfg.theta_y = opts.theta_y;  cfg.theta_x = 0;  if isfield(opts, 'theta_x'); cfg.theta_x = opts.theta_x; end   % 10-26: theta_x [deg]
     if isfield(opts, 'noise_um'); cfg.meas_noise_std = opts.noise_um(:); end   % 10-25 (user): sensor noise override [um] per axis
@@ -265,7 +266,7 @@ function r = local_run_est(opts, seed)
 %   Fixed point only (p_d held). q of the slopes as the computed arm (0 unless opts.ap_q). opts.dump_k: store x, H, finite-difference
 %   H, F_e and the step inputs at that step (wiring check, check_1025_est_wiring.m).
     clear calc_thermal_force;
-    rng(seed);
+    gen = 'threefry';  if isfield(opts, 'rng_gen'); gen = opts.rng_gen; end;  rng(seed, gen);   % 10-29: generator named (threefry = the parfor-worker default used by the morning figures), serial = parfor
     cfg = canonical_scenario(0.05, 1.10, 'ramp_tri', 1);
     cfg.lambda_c = opts.lambda_c;  cfg.theta_y = opts.theta_y;  cfg.theta_x = 0;  if isfield(opts, 'theta_x'); cfg.theta_x = opts.theta_x; end   % 10-26: theta_x [deg]
     if isfield(opts, 'noise_um'); cfg.meas_noise_std = opts.noise_um(:); end   % 10-25 (user): sensor noise override [um] per axis
@@ -282,6 +283,7 @@ function r = local_run_est(opts, seed)
     [aTt, aNt] = local_truth(h_true0);  A_true = V_true * diag([aTt aTt aNt]) * V_true';
     hd0 = p(3) / Rr;
     x = zeros(15, 1);  x(10) = 1;  x(11) = 1;  x(12) = (9/16) / hd0^2;  x(13) = (9/8) / hd0^2;
+    if isfield(opts, 'gain0') && strcmp(opts.gain0, 'seed'); x(10) = 1 - (9/16) / hd0;  x(11) = 1 - (9/8) / hd0; end   % 10-26: reflection seeds
     if isfield(opts, 'th0_deg'); x(14:15) = opts.th0_deg(:) * pi / 180; end
     sPth = 10 * pi / 180;  if isfield(opts, 'sP_theta_deg'); sPth = opts.sP_theta_deg * pi / 180; end
     sig2 = diag(Sn);
@@ -392,6 +394,447 @@ function r = local_run_est(opts, seed)
     r.thx_true = 0;  if isfield(opts, 'theta_x'); r.thx_true = opts.theta_x; end;  r.thy_true = opts.theta_y;
 end
 
+function r = local_run_loc(opts, seed)
+% 10-26 (user): 1026_local_angle_estimator.tex -- estimator in the local coordinate of V-hat = V(theta-hat). States
+%   [dp1 dp2 dp3 (u v w) | a_par a_perp a_uw a_vw | a_par' a_perp' | theta_x theta_y] (17). Process outputs rotated by V-hat[k]:
+%   (uu + vv)/2, ww, uw, vw of V-hat' A_m V-hat; H = 0 / 1. Written as the document (combined form, every term at step k):
+%   x[k+1] = f(x[k]) + L[k] e[k] with L = F_e K (K = P^f H' S^-1); f includes theta-hat[k] + delta-theta-hat[k],
+%   delta-theta-hat[k] = a_vw-hat[k] / (a_par-hat[k] - a_perp-hat[k]) (estimates before the feedback); F_e angle rows of Section 5
+%   (e_theta[k+1] = e_off[k] / (a_par - a_perp)). Order: feedback -> control law (estimates after the feedback, local of V-hat[k])
+%   -> plant -> x[k+1] in the local coordinate of V-hat[k] -> all estimates (and the dp blocks of P) into the local coordinate of
+%   V-hat[k+1]. R: R6 of the six elements mapped linearly to the four local elements (not in the document). Same plant, readout and
+%   random-number order as local_run_est (paired seeds). opts.gain0 = 'seed': gains start at 1 - (9/16)/h, 1 - (9/8)/h.
+%   opts.gap_gate (test only): delta-theta-hat = 0 and angle rows of F_e = I unless |a_par-hat - a_perp-hat| > n sqrt(P_gap).
+    clear calc_thermal_force;
+    gen = 'threefry';  if isfield(opts, 'rng_gen'); gen = opts.rng_gen; end;  rng(seed, gen);  rs_ch = RandStream('threefry', 'Seed', seed + 7919);   % 10-29: separate stream for the ym_cheat noise (thermal draws unchanged)   % 10-29: generator named (threefry = the parfor-worker default used by the morning figures), serial = parfor
+    cfg = canonical_scenario(0.05, 1.10, 'ramp_tri', 1);
+    cfg.lambda_c = opts.lambda_c;  cfg.theta_y = opts.theta_y;  cfg.theta_x = 0;  if isfield(opts, 'theta_x'); cfg.theta_x = opts.theta_x; end
+    if isfield(opts, 'noise_um'); cfg.meas_noise_std = opts.noise_um(:); end
+    params = calc_simulation_params(cfg);  P = params.Value;
+    Ts = P.common.Ts;  Rr = P.common.R;  a_nom = Ts / P.common.gamma_N;  a_o = a_nom / Rr;
+    kap = 4 * P.ctrl.k_B * P.ctrl.T * a_o / Rr;  Sn = diag((cfg.meas_noise_std(:) / Rr).^2);
+    lc = cfg.lambda_c;  apd = cfg.a_pd;  d = 2;
+    [C_T, C_n, cT, ~] = local_coeffs(lc, apd, d);
+    rT = cT / cT(1);  IF = 1 + 2 * sum(rT(2:end).^2);
+    w_true = P.wall.w_hat(:);  pz = P.wall.pz;  V_true = P.wall.V;
+    N = round(opts.T / Ts) + 1;  t = (0:N-1)' * Ts;
+    p = (pz + opts.h0 * Rr) * w_true;  pd_k = p;
+    wall = 'plane';  if isfield(opts, 'wall'); wall = opts.wall; end   % 10-28 (user): curved walls -- 'bend' (as run_t2_3d_reg) or 'hemi' (hemisphere
+    curved = ~strcmp(wall, 'plane');  pz0 = pz;  rb = 15;  if isfield(opts, 'hemi_r'); rb = opts.hemi_r; end   %   of radius hemi_r um on the plane, start above its top);
+    if strcmp(wall, 'hemi'); p = [0; 0; pz0 + rb + opts.h0 * Rr];  pd_k = p; end
+    if strcmp(wall, 'hemi') && isfield(opts, 'hemi_start_deg')   % 10-28 (user): start off the top, polar angle hemi_start_deg along scan_dir
+        sd0 = [1; 0];  if isfield(opts, 'scan_dir'); sd0 = opts.scan_dir(:) / norm(opts.scan_dir); end
+        ph0 = opts.hemi_start_deg * pi / 180;  p = [0; 0; pz0] + (rb + opts.h0 * Rr) * [sin(ph0) * sd0; cos(ph0)];  pd_k = p;
+    end   %   plant = plane law on the local tangent plane of the nearest surface point
+    b2 = strcmp(wall, 'bead2');                                % 10-29 (user): Meng glass bead -- bead (radius bead_r um) on the glass z = pz0,
+    if b2 || strcmp(wall, 'bead3') || strcmp(wall, 'fillet')                             %   two-wall superposition of the plane-law drag (local_gamma2); start above the glass
+        sxy = [9; -9];  if isfield(opts, 'bead_start'); sxy = opts.bead_start(:); end;  p = [sxy; pz0 + opts.h0 * Rr];  pd_k = p;
+        if isfield(opts, 'bead_top_deg')                       %   or above the bead, bead_top_deg off its top on the +x side, h0 above its surface
+            rbd = 5;  if isfield(opts, 'bead_r'); rbd = opts.bead_r; end;  a0 = opts.bead_top_deg * pi / 180;
+            p = [0; 0; pz0 + rbd] + (rbd + opts.h0 * Rr) * [sin(a0); 0; cos(a0)];  pd_k = p;
+        end
+    end
+    if curved; [P.wall, w_true, pz, V_true] = local_wall_now(wall, p, P.wall, pz0, rb, opts); end
+    h_true0 = (dot(p, w_true) - pz) / Rr;
+    [aTt, aNt] = local_truth(h_true0);  A_true = V_true * diag([aTt aTt aNt]) * V_true';
+    hd0 = opts.h0;   % 10-28 fix: commanded distance along the wall normal (was p(3)/Rr = z height, wrong on a tilted plane: 5 um at theta_x -70 gave 1.6 um)
+    hd_int = hd0;  thT = [cfg.theta_x; cfg.theta_y];  s_scan = 0;   % 10-29 fix: plane wall logged true angles (were 0 for a tilted plane)
+    eI = 0;  e_sgn0 = NaN;  pi_go = false;                     % PI regulation: running sum of a_d - a-hat_33 (opts.reg_pi); 'cross' gate state
+    rs_on = isfield(opts, 'raster') || isfield(opts, 'raster_disc');  rs_line = 1;  rs_dir = -1;  rs_mode = 0;  rs_y0 = 0;  rs_tend = NaN;   % 10-28 (user): raster [X_end um, dy um, n_lines]
+    dsc_on = isfield(opts, 'descent_v');  dsc_done = false;  tsc = inf;  if isfield(opts, 't_scan'); tsc = opts.t_scan; end   % 10-28 (user): constant-speed descent
+    if dsc_on; tsc = inf; end                                 %   after the hold, no regulation, until a-hat_33 <= a_d; then scan + regulation start
+    ap_hold = NaN;                                            % 10-29 (user): opts.reg_ap_hold -- regulation slope frozen at a'-hat_33 of the scan start
+    treg = inf;  pw = [0 0];  if isfield(opts, 'post_wait'); pw = opts.post_wait; end   % 10-29 (user): [regulation, scan] start this long after the descent stop
+    x = zeros(18, 1);  x(10) = 1;  x(11) = 1;  x(14) = (9/16) / hd0^2;  x(15) = (9/8) / hd0^2;
+    if isfield(opts, 'gain0') && strcmp(opts.gain0, 'seed'); x(10) = 1 - (9/16) / hd0;  x(11) = 1 - (9/8) / hd0; end
+    if isfield(opts, 'gain0') && isnumeric(opts.gain0); x(10:11) = opts.gain0(:); end   % reference arm only (e.g. the true gains)
+    if isfield(opts, 'th0_deg'); x(16:17) = opts.th0_deg(:) * pi / 180; end
+    sPth = 10 * pi / 180;  if isfield(opts, 'sP_theta_deg'); sPth = opts.sP_theta_deg * pi / 180; end
+    sig2 = diag(Sn);  Vh = local_Ry(x(17)) * local_Rx(x(16));
+    sPg = (9/8) / hd0;  if isfield(opts, 'sP_gain'); sPg = opts.sP_gain; end   % reference arm only: small gain prior
+    Pk = diag([repmat(sig2, 3, 1); sPg^2 * [1; 1]; 0; 0; x(14)^2; x(15)^2; sPth^2 * [1; 1]]);
+    Pk(1:9, 1:9) = kron(eye(3), Vh' * diag(sig2) * Vh);
+    dh0 = x(10) - x(11);                                       % prior of a_uw, a_vw consistent with the angle prior
+    if isfield(opts, 'off_gap_seed') && opts.off_gap_seed; dh0 = (9/8 - 9/16) / hd0; end   % 10-27 (user test): gains start at 1, off-diagonal prior from the reflection-seed gap
+    Jc = zeros(2);  Jc(1, 2) = -dh0 * cos(x(16));  Jc(2, 1) = dh0;   % [a_uw; a_vw] = Jc [e_thx; e_thy]
+    Pk(12:13, 12:13) = Jc * Pk(16:17, 16:17) * Jc';  Pk(12:13, 16:17) = Jc * Pk(16:17, 16:17);  Pk(16:17, 12:13) = Pk(12:13, 16:17)';
+    th_out = isfield(opts, 'theta_out') && opts.theta_out;   % 10-27 (user): angle out of the KF -- theta-hat kept outside, P has no angle block,
+    if th_out; Pk(16:17, :) = 0;  Pk(:, 16:17) = 0; end
+    if isfield(opts, 'freeze_ap11') && opts.freeze_ap11; Pk(14, :) = 0;  Pk(:, 14) = 0; end   % 10-28 test: a'_11 held at its seed (no P, no Q)       %   angle step from the updated off-diagonal elements, angle error in F_e = e_off / gap
+    mk = isfield(opts, 'mekf') && opts.mekf;                  % 10-28 (user test): error-state angle (MEKF) -- slots 12, 13 = small angles (d theta_y, d theta_x),
+    if mk                                                     %   H of the uw, vw readouts = (-gap cos theta-hat_x, gap) (multiplication, no gate), reset to 0 each step
+        Pk(12:13, :) = 0;  Pk(:, 12:13) = 0;  Pk(12, 12) = sPth^2;  Pk(13, 13) = sPth^2;  Pk(16:17, :) = 0;  Pk(:, 16:17) = 0;  th_out = true;
+    end
+    kp_on = isfield(opts, 'kappa_state') && opts.kappa_state;   % 10-28 (user test): slot 18 = wall curvature kappa [1/R] (constant, Q = 0):
+    Pk(18, 18) = 0;  if kp_on; sPk = 0.2;  if isfield(opts, 'sP_kappa'); sPk = opts.sP_kappa; end;  Pk(18, 18) = sPk^2; end   %   the normal turns by kappa * (tangential step)
+    dt_on = isfield(opts, 'doc_timing') && opts.doc_timing;  % 10-28 (user): document timing -- delta-theta-hat[k+1] = a_off-hat[k+1] / gap[k]
+                                                            %   from x[k+1] (predict + feedback, coordinate of V-hat[k]); with theta_out = arm A,
+                                                            %   without = arm B1 (angle also has its own gain L10 = rows of F_e K, F_e angle rows = I)
+    ij = [1 1; 2 2; 3 3; 1 2; 1 3; 2 3];  I_ap = zeros(2, 1);  nn = [0 0 1];
+    pbuf = repmat(p, 1, d + 1);  pdbuf = repmat(pd_k, 1, d + 1);  fbuf = zeros(3, d);  Abuf = repmat(eye(3), 1, 1, d);
+    dbar = zeros(3, 1);  n_floor = 0;  kend = N;  contact = false;  s_ramp = 0;
+    L = struct('h', NaN(N,1), 'thx', NaN(N,1), 'thy', NaN(N,1), 'aT', NaN(N,1), 'aN', NaN(N,1), 'apT', NaN(N,1), 'apN', NaN(N,1), ...
+               'auw', NaN(N,1), 'avw', NaN(N,1), 'dth', NaN(N,2), 'dgap', NaN(N,1), 'a', NaN(N,6), 'mineig', NaN(N,1), 'sPth', NaN(N,2), ...
+               'sPa', NaN(N,2), 'Pcond', NaN(N,1), 'dp', NaN(N,3), 'aN_tr', NaN(N,1), 'aT_tr', NaN(N,1), 'gate', NaN(N,1), 'off_post', NaN(N,2), 'off_tr', NaN(N,2), 'dLe', NaN(N,2), 'sgap', NaN(N,1), 'ym', NaN(N,4), 'yhat', NaN(N,4), 'off_k1', NaN(N,2), 'p', NaN(N,3), 'pd', NaN(N,3), 'th_tr', NaN(N,2), 'hd_int', NaN(N,1));  dump = struct();
+    for k = 1:N
+        if curved; [P.wall, w_true, pz, V_true, thT] = local_wall_now(wall, p, P.wall, pz0, rb, opts); end
+        h_true = (dot(p, w_true) - pz) / Rr;
+        if h_true < 1; kend = k - 1; contact = true; break; end
+        [aTk, aNk] = local_truth(h_true);  A_true = V_true * diag([aTk aTk aNk]) * V_true';   % 10-29 fix: also on a plane (was frozen at h_true0; log / reference arms only)
+        if b2; Gn = local_gamma2(p, opts, pz0, Rr);  A_true = inv(Gn);  ea = sort(eig(0.5 * (A_true + A_true')));  aNk = ea(1);  aTk = mean(ea(2:3)); end
+        % ---- process outputs, into the local coordinate of V-hat[k] ----
+        pm = pbuf(:, 1);  dpm = (pdbuf(:, 1) - pm) / Rr;
+        dbar = apd * dpm + (1 - apd) * dbar;  dpr = dpm - dbar;
+        Am = (dpr * dpr' - C_n * Sn) / (C_T * kap);
+        vdpm = Vh' * dpm;  vAm = Vh' * Am * Vh;
+        y4 = [(vAm(1,1) + vAm(2,2)) / 2; vAm(3,3); vAm(1,3); vAm(2,3)];
+        L.vdpr(k, :) = (Vh' * dpr)';  L.vdpm(k, :) = vdpm';   % 10-29 log: readout input (high-passed tracking error) in the local coordinate of V-hat[k]
+        % ---- R: six elements (as the other arms) -> four local elements ----
+        vAh = local_loc_A(x);  Ah = Vh * vAh * Vh';  Ahx = Ah;   % 10-29: gain matrix before the feedback (log of the known control-gain term m)
+        Ac = local_floor(Ah, 0.02);  S = C_T * kap * Ac + C_n * Sn;  R6 = zeros(6);
+        for a = 1:6
+            for b = 1:6
+                i1 = ij(a, 1); j1 = ij(a, 2); k1 = ij(b, 1); l1 = ij(b, 2);
+                R6(a, b) = IF * (S(i1, k1) * S(j1, l1) + S(i1, l1) * S(j1, k1)) / (C_T * kap)^2;
+            end
+        end
+        T4 = zeros(4, 6);                                       % y4 = T4 * (six elements of A_m), linear in A_m
+        for c = 1:6
+            E6 = zeros(6, 1);  E6(c) = 1;  vE = Vh' * local_sym(E6) * Vh;
+            T4(:, c) = [(vE(1,1) + vE(2,2)) / 2; vE(3,3); vE(1,3); vE(2,3)];
+        end
+        Rm = blkdiag(Vh' * diag(sig2) * Vh, T4 * R6 * T4');
+        if isfield(opts, 'ym_cheat') && t(k) >= opts.ym_cheat_from   % 10-29 reference arms only: gain readout replaced by the TRUE elements
+            vAt0 = Vh' * A_true * Vh;  y4 = [(vAt0(1,1) + vAt0(2,2)) / 2; vAt0(3,3); vAt0(1,3); vAt0(2,3)];   %   in the local coordinate of V-hat[k]
+            if strcmp(opts.ym_cheat, 'true_noise'); [Ub, Db] = eig(0.5 * (Rm(4:7, 4:7) + Rm(4:7, 4:7)'));  y4 = y4 + Ub * diag(sqrt(max(diag(Db), 0))) * randn(rs_ch, 4, 1); end   %   + white noise with the model R (own stream)
+        end
+        H = zeros(7, 18);  H(1:3, 1:3) = eye(3);  H(4:7, 10:13) = eye(4);
+        if mk; gk = x(10) - x(11);  H(6, 12) = -gk * cos(x(16));  H(7, 13) = gk; end
+        nu = [vdpm - x(1:3); y4 - H(4:7, :) * x];
+        Sy = H * Pk * H' + Rm;  K = Pk * H' / Sy;                % x = estimates at step k (before the feedback), Pk = P^f[k]
+        if isfield(opts, 'k_ap_cut') && t(k) >= opts.k_ap_cut_from   % 10-29 test: the slopes (slots 14:15) not updated by one channel
+            if strcmp(opts.k_ap_cut, 'y1'); K(14:15, 1:3) = 0; else; K(14:15, 4:7) = 0; end   %   ('y1' = position readings, 'ym' = gain readout); Joseph P update stays valid
+        end
+        xu = x + K * nu;                                        % estimates after the feedback: control law and log only
+        L.dap(k, :) = K(15, :) .* nu';  L.k15w(k) = K(15, 3);  L.nuw(k) = nu(3);  L.c15w(k) = Pk(15, 3) / sqrt(Pk(15, 15) * Pk(3, 3));   % 10-29 log: gain, innovation, correlation of a'_33 with the normal position   % 10-29 log: update of a'-hat_33 by each channel (y1 u v w | y4 four readouts), local of V-hat[k]
+        IKH = eye(18) - K * H;  Pu = IKH * Pk * IKH' + K * Rm * K';  Pu = 0.5 * (Pu + Pu');
+        I_ap = max(1 ./ diag(Pu(14:15, 14:15)) - 1 ./ diag(Pk(14:15, 14:15)), 0);  I_kap = max(1 / Pu(18, 18) - 1 / Pk(18, 18), 0);   % 10-30: information on kappa this step (kappa_pfix)
+        I_off = max(1 ./ diag(Pu(12:13, 12:13)) - 1 ./ diag(Pk(12:13, 12:13)), 0);   % information on a_13, a_23 this step (angle P_fix)
+        % ---- small angle from the estimates at step k (document: delta-theta-hat[k] = a_vw-hat[k] / (a_par-hat[k] - a_perp-hat[k])) ----
+        dgap = x(10) - x(11);  den = dgap;                       % den: denominator of the angle step (delta-theta-hat and F_e angle rows)
+        if isfield(opts, 'den_mode')                           % 10-26 diagnostic (sign vs size of the denominator), not in the document:
+            switch opts.den_mode                               %   'abs' -> |gap| (sign fixed); 'floor' -> sign(gap) max(|gap|, den_floor)
+                case 'abs';   den = abs(dgap);                 %   (size fixed); 'both' -> max(gap, den_floor)
+                case 'floor'; den = sign(dgap) * max(abs(dgap), opts.den_floor);  if den == 0; den = opts.den_floor; end
+                case 'both';  den = max(dgap, opts.den_floor);
+            end
+        end
+        dth = [x(13) / den; -x(12) / (den * cos(x(16)))];
+        if th_out; dth = [xu(13) / den; -xu(12) / (den * cos(x(16)))]; end   % angle out: the off-diagonal elements after the feedback
+        sgap = sqrt(max(Pk(10,10) + Pk(11,11) - 2 * Pk(10,11), 0));      % opts.gap_gate = n (test only, not in the document):
+        go = ~isfield(opts, 'gap_gate') || abs(dgap) > opts.gap_gate * sgap;   %   angle step only when |a_par-hat - a_perp-hat| > n sqrt(P_gap)
+        if isfield(opts, 'gap_gate') && isfield(opts, 'gate_one') && opts.gate_one; go = dgap > opts.gap_gate * sgap; end   % 10-26: one-sided (a_par > a_perp)
+        if isfield(opts, 'gap_min'); go = abs(dgap) > opts.gap_min; end   % 10-26 (user test): fixed threshold on |a_par-hat - a_perp-hat|
+        if isfield(opts, 'no_dth') && opts.no_dth; go = false; end
+        if isfield(opts, 'freeze_angle') && opts.freeze_angle; go = false;  K(16:17, :) = 0; end   % 10-27 (explanation): angle and frame frozen, off-diagonal estimates kept   % 10-26 discriminator: delta-theta-hat = 0, angle rows of F_e = I
+        if ~go; dth = [0; 0]; end
+        L.ym(k, :) = y4';  L.yhat(k, :) = x(10:13)';                    % 10-27: the four local process outputs and their estimates at step k
+        vAt = Vh' * A_true * Vh;  L.off_post(k, :) = [xu(12) xu(13)];  L.off_tr(k, :) = [vAt(1,3) vAt(2,3)];  L.gate(k) = go;  L.sgap(k) = sgap;
+        % ---- motion control law in the local coordinate of V-hat[k] (estimates after the feedback) ----
+        xa = xu;  if mk; xa(12:13) = 0; end
+        Ah = Vh * local_loc_A(xa) * Vh';  wh = Vh(:, 3);
+        ev = min(eig(0.5 * (Ah + Ah')));
+        Ac = local_floor(Ah, 0.02);  if ev < 0.02; n_floor = n_floor + 1; end
+        pd_kp1 = pd_k;
+        if isfield(opts, 'ramp')
+            stp = min(opts.ramp(1) * Ts, opts.ramp(2) - s_ramp);  pd_kp1 = pd_k - stp * wh;  s_ramp = s_ramp + stp;
+        elseif isfield(opts, 'dither') && (~isfield(opts, 'dither_win') || (t(k) >= opts.dither_win(1) && t(k) + Ts < opts.dither_win(2)))   % 10-29: optional window
+            pd_kp1 = pd_k + local_circle_step(opts.dither, t(k), Ts, Vh);
+        elseif isfield(opts, 'wdither') && (~isfield(opts, 'wdither_win') || (t(k) >= opts.wdither_win(1) && t(k) + Ts < opts.wdither_win(2)))   % 10-28: optional time window [t0 t1]
+            if isfield(opts, 'wdither_win'); tt0 = opts.wdither_win(1); else; tt0 = 0; end   %   (the ramp and phase start at t0)
+            Af = @(tt) opts.wdither(1) * min((tt - tt0) / opts.wdither(3), 1);   %   10-27 (user): oscillation along the estimated normal w-hat, [amplitude um, f Hz, ramp s]
+            pd_kp1 = pd_k + (Af(t(k) + Ts) * sin(2 * pi * opts.wdither(2) * (t(k) + Ts - tt0)) - Af(t(k)) * sin(2 * pi * opts.wdither(2) * (t(k) - tt0))) * wh;
+        end
+        if dsc_on && ~dsc_done && t(k) >= opts.hold_until        % descent along w-hat at opts.descent_v [um/s], open loop
+            pd_kp1 = pd_kp1 - opts.descent_v * Ts * wh;  hd_int = hd_int - opts.descent_v * Ts / Rr;
+            if isfield(opts, 'descent_T')                         % 10-29 (user): fixed descent time instead of the a-hat_33 <= a_d stop
+                if t(k) + Ts >= opts.hold_until + opts.descent_T - 1e-9; dsc_done = true;  tsc = t(k) + Ts + pw(2);  treg = t(k) + Ts + pw(1); end
+            elseif xu(11) <= opts.a_d; dsc_done = true;  tsc = t(k) + Ts + pw(2);  treg = t(k) + Ts + pw(1); end
+        end
+        if isfield(opts, 'hold_until') && t(k) >= opts.hold_until && (~dsc_on || t(k) >= treg) && ~(isfield(opts, 'reg_off') && opts.reg_off) && ~(isfield(opts, 'reg_off_from') && t(k) >= opts.reg_off_from)   % 10-28 (user): regulation along w-hat after the hold (1019 Part III law); 10-29 opts.reg_off: none
+            tau_k = opts.tau_a;  if isfield(opts, 'tau_a_scan') && t(k) >= tsc + opts.tau_a_scan(2); tau_k = opts.tau_a_scan(1); end   % 10-29 (user): tau_a switches to tau_a_scan(1) at tsc + tau_a_scan(2)
+            dhr = (Ts / tau_k) * (opts.a_d - xu(11)) / max(xu(15), 1 / 22.2^2);   %   Delta h_d = (Ts / tau_a)(a_d - a_33-hat) / a'_33-hat
+            if isfield(opts, 'ap_floor_law') && opts.ap_floor_law   % 10-28 (user): floor from the exact plane law a' = (1 - a)^2 / b_true(a), b_true in [1, 9/8]
+                dhr = (Ts / tau_k) * (opts.a_d - xu(11)) / max(xu(15), (8 / 9) * (1 - min(xu(11), 1))^2);
+            end
+            if isfield(opts, 'reg_ap_hold') && opts.reg_ap_hold && t(k) >= tsc
+                if isnan(ap_hold); ap_hold = max(xu(15), (8 / 9) * (1 - min(xu(11), 1))^2); end
+                dhr = (Ts / tau_k) * (opts.a_d - xu(11)) / ap_hold;
+            end
+            if isfield(opts, 'reg_slope_law') && opts.reg_slope_law   % 10-28 (user, option 1): regulation slope from the plane law a' = (1 - a)^2 / b at a-hat_33,
+                dhr = (Ts / tau_k) * (opts.a_d - xu(11)) / ((17 / 18) * (1 - min(xu(11), 0.999))^2);   %   1/b at the middle of [8/9, 1]; a'-hat not used
+            end
+            if isfield(opts, 'cheat_ap') && opts.cheat_ap         % 10-28 reference arm only: regulation slope = true d a_33 / d h-bar at the true gap
+                hc = max(h_true, 1.0003);  [~, c1] = calc_correction_functions(hc + 1e-4);  [~, c0] = calc_correction_functions(hc - 1e-4);
+                dhr = (Ts / tau_k) * (opts.a_d - xu(11)) / ((1 / c1 - 1 / c0) / 2e-4);
+            end
+            whc = wh;  if isfield(opts, 'cheat_w') && opts.cheat_w; whc = w_true; end   % reference arm only: true normal for regulation and scan
+            if isfield(opts, 'reg_pi') && opts.reg_pi && t(k) >= tsc   % 10-29 (user): PI regulation -- integral of e = a_d - a-hat_33 from the scan start,
+                ek = opts.a_d - xu(11);  tau_i = 4 * tau_k;  if isfield(opts, 'tau_i'); tau_i = opts.tau_i; end   %   tau_i = 4 tau_a (critical damping of s^2 + s/tau_a + 1/(tau_a tau_i))
+                gate = true;  if isfield(opts, 'reg_pi_cond') && isequal(opts.reg_pi_cond, true); gate = abs(ek) <= 2 * sqrt(Pu(11, 11)); end   % 10-30: conditional integration --
+                if isfield(opts, 'reg_pi_cond') && strcmp(opts.reg_pi_cond, 'cross')           %   'cross': start integrating once e first changes sign
+                    if isnan(e_sgn0); e_sgn0 = sign(ek); end;  if ~pi_go && sign(ek) ~= e_sgn0; pi_go = true; end;  gate = pi_go;   %   (a-hat has reached a_d once), then always
+                end
+                L.gate_pi(k) = gate;  if gate; eI = eI + ek; end;  L.eI(k) = eI;
+                sl = max(xu(15), (8 / 9) * (1 - min(xu(11), 1))^2);                %   integrate only when |e| is within 2 sd of a-hat_33 (anti-windup);
+                dhr = dhr + Ts^2 / (tau_k * tau_i) * eI / sl;                      %   10-30: I term uses the same tau as the P term (tau_k)
+            end
+            if isfield(opts, 'raster_keep_y') && opts.raster_keep_y && rs_on && t(k) >= tsc && rs_mode == 0   % 10-29 (user): on a raster line keep y --
+                wxz = [whc(1); 0; whc(3)];  cg = norm(wxz);  whc = wxz / max(cg, 1e-9);   %   regulate along w-hat projected on the line's x-z plane, step scaled
+                dhr = dhr / max(cg, 1 / 3);                                         %   by 1 / (w-hat . direction) so the gap changes by dhr (capped at 3x)
+            end
+            pd_kp1 = pd_kp1 + dhr * Rr * whc;  hd_int = hd_int + dhr;
+        end
+        if t(k) >= tsc && (~isfield(opts, 'scan_len') || s_scan < opts.scan_len)   % scan along u-hat, du_d [R] per step
+            sdir = [1; 0];  if isfield(opts, 'scan_dir'); sdir = opts.scan_dir(:) / norm(opts.scan_dir); end   % 10-28: direction in the estimated (u, v) plane
+            dsc = sdir(1) * Vh(:, 1) + sdir(2) * Vh(:, 2);
+            if isfield(opts, 'scan_meridian') && opts.scan_meridian   % 10-28 (user): heading e = scan_dir in the world x-y plane; step along (e - z) projected
+                e3 = [sdir; 0];  dsc = (eye(3) - Vh(:, 3) * Vh(:, 3)') * (e3 - [0; 0; 1]);  dsc = dsc / norm(dsc);   %   on the estimated tangent plane (meridian on a sphere)
+            end
+            if isfield(opts, 'raster_disc')                        % 10-29 (user): raster inside a disc of radius Rd (top view): transfer along -y to the first
+                Rd = opts.raster_disc(1);  dyr = opts.raster_disc(2);  nl = round(2 * Rd / dyr);   %   line y_1 = -Rd + dy/2, lines along +-x turning at
+                yk = -Rd + (rs_line - 0.5) * dyr;  Xe = sqrt(max(Rd^2 - yk^2, 0));                 %   x = +-sqrt(Rd^2 - y_k^2), steps dy along +y
+                if rs_mode == 0 && rs_line == 1 && ~rs_y0; rs_mode = 2; end
+                if rs_mode == 2                                    % transfer
+                    dsc = (eye(3) - Vh(:, 3) * Vh(:, 3)') * [0; -1; 0];  dsc = dsc / norm(dsc);
+                    if pd_kp1(2) <= yk; rs_mode = 0;  rs_y0 = 1; end
+                elseif rs_mode == 0
+                    dsc = cross(rs_dir * [0; 1; 0], Vh(:, 3));  dsc = dsc / norm(dsc);
+                    if rs_dir * pd_kp1(1) >= Xe
+                        if rs_line >= nl; dsc = zeros(3, 1);  s_scan = inf;  rs_tend = t(k); else; rs_mode = 1; end
+                    end
+                else
+                    dsc = (eye(3) - Vh(:, 3) * Vh(:, 3)') * [0; 1; 0];  dsc = dsc / norm(dsc);
+                    if pd_kp1(2) >= -Rd + (rs_line + 0.5) * dyr; rs_mode = 0;  rs_line = rs_line + 1;  rs_dir = -rs_dir; end
+                end
+            elseif rs_on                                           % raster: lines along +-x (direction n x w-hat, n = +-y, y kept), steps along +y
+                X_end = opts.raster(1);  dyr = opts.raster(2);  nl = opts.raster(3);
+                if rs_mode == 0                                    % line
+                    dsc = cross(rs_dir * [0; 1; 0], Vh(:, 3));  dsc = dsc / norm(dsc);
+                    if rs_dir * pd_kp1(1) >= X_end
+                        if rs_line >= nl; dsc = zeros(3, 1);  s_scan = inf;  rs_tend = t(k); else; rs_mode = 1;  rs_y0 = pd_kp1(2); end
+                    end
+                else                                               % step along +y projected on the estimated tangent plane
+                    dsc = (eye(3) - Vh(:, 3) * Vh(:, 3)') * [0; 1; 0];  dsc = dsc / norm(dsc);
+                    if pd_kp1(2) - rs_y0 >= dyr; rs_mode = 0;  rs_line = rs_line + 1;  rs_dir = -rs_dir; end
+                end
+            elseif isfield(opts, 'scan_plane_n')                   % 10-28 (user): great circle -- step along n x w-hat (n = normal of the scan plane), works all the way round
+                wsc = Vh(:, 3);  if isfield(opts, 'cheat_w') && opts.cheat_w; wsc = w_true; end
+                dsc = cross(opts.scan_plane_n(:), wsc);  dsc = dsc / norm(dsc);
+            end
+            fr = 1;  if isfield(opts, 'scan_ramp'); fr = min((t(k) + Ts - tsc) / opts.scan_ramp, 1); end   % 10-29 (user): scan speed ramps up over scan_ramp s
+            if all(isfinite(dsc)); pd_kp1 = pd_kp1 + fr * opts.du_d * Rr * dsc; end;  s_scan = s_scan + fr * opts.du_d * Rr;   %   opts.scan_len [um]: stop after this path length
+        end
+        phat = pm + a_nom * (Abuf(:, :, 1) * fbuf(:, 1) + Abuf(:, :, 2) * fbuf(:, 2));
+        f_d = (a_nom * Ac) \ (pd_kp1 - phat - lc * (pd_k - phat));
+        % ---- plant ----
+        h_log = h_true;  dp_log = ((pd_k - p) / Rr)';  p_log = p;  pd_log = pd_k;  thT_log = thT;
+        if b2                                                   % two-wall plant: Gamma = gamma_N Gn(p), thermal covariance (4 k_B T / Ts) Gamma
+            if ~all(isfinite(Gn(:))) || ~all(isfinite(f_d)); kend = k;  contact = true;  break; end   % the run has diverged
+            f_th = sqrt(4 * P.thermal.k_B * P.thermal.T * P.common.gamma_N / Ts) * chol(0.5 * (Gn + Gn'), 'lower') * randn(3, 1);
+            try
+                p = local_step2(p, f_d + f_th, opts, pz0, Rr, P.common.gamma_N, Ts);
+            catch
+                kend = k;  contact = true;  break
+            end
+        else
+            f_th = calc_thermal_force(p, P);
+            try
+                p = step_dynamics(p, f_d + f_th, P, Ts);
+            catch
+                kend = k;  contact = true;  break
+            end
+        end
+        pbuf = [pbuf(:, 2:end), p + cfg.meas_noise_std(:) .* randn(3, 1)];
+        % ---- estimator (document Section 4): x[k+1] = f(x[k]) + L[k] e[k], L = F_e K, in the local coordinate of V-hat[k] ----
+        vF = Vh' * (a_o * (f_d + (1 - lc) * sum(fbuf, 2)));
+        Ga = [vF(1) 0 vF(3) 0; vF(2) 0 0 vF(3); 0 vF(3) vF(1) vF(2)];
+        L.vF(k, :) = vF';   % 10-29 log: force step in the local coordinate (a_o f, R units)
+        vMh = Vh' * (pd_kp1 - pd_k) / Rr + (1 - lc) * x(7:9);
+        L.vMh(k, :) = vMh';  L.mk(k, :) = (Vh' * a_o * ((Ac - Ahx) * f_d + (1 - lc) * ((Abuf(:, :, 1) - Ahx) * fbuf(:, 1) + (Abuf(:, :, 2) - Ahx) * fbuf(:, 2))))';   % 10-29 log only: known term m missing from fx(7:9)
+        rs = (x(14) - x(15)) / dgap;
+        if ~go; rs = 0; end                                    % 10-27: slope ratio of the off-diagonal rows also divides by the gap -> used only when the gate is open
+        if ~(isfield(opts, 'off_slope') && opts.off_slope); rs = 0; end   % 10-28 (user): off-diagonal rows without the slope term (document); opts.off_slope = true restores it
+        Fe = zeros(18);  Fe(18, 18) = 1;  Fe(1:3, 4:6) = eye(3);  Fe(4:6, 7:9) = eye(3);  Fe(7:9, 7:9) = lc * eye(3);  Fe(7:9, 10:13) = -Ga;
+        for q = 1:2
+            aq = x(13 + q);  rw = 9 + q;
+            Fe(rw, 7:9) = (1 - lc) * aq * nn;  Fe(rw, 10:13) = aq * Ga(3, :);  Fe(rw, rw) = Fe(rw, rw) + 1;
+            Fe(rw, 13 + q) = vMh(3);  Fe(rw, 16:17) = aq * [-vMh(2), cos(x(16)) * vMh(1)];
+            if th_out                                           % angle error written with the off-diagonal errors: e_thx = e_vw / gap, e_thy = -e_uw / (gap cos)
+                Fe(rw, 13) = Fe(rw, 13) - aq * vMh(2) / den;  Fe(rw, 12) = Fe(rw, 12) - aq * vMh(1) / den;  Fe(rw, 16:17) = 0;
+                if isfield(opts, 'no_ang_gain') && opts.no_ang_gain; Fe(rw, 12:13) = 0; end   % 10-28 test: drop the angle -> gain coupling (tangential motion x slope / gap)
+            end
+        end
+        Fe(12, 12) = 1 + rs * vMh(3);  Fe(13, 13) = 1 + rs * vMh(3);  Fe(14, 14) = 1;  Fe(15, 15) = 1;
+        ap_pred = isfield(opts, 'ap_predict') && opts.ap_predict;   % 10-28 (user test): slope predicted with the height, from the plane law a' = (1 - a)^2 / b:
+        if ap_pred                                              %   a'' = -2 a'^2 / (1 - a)  ->  a'_33[k+1] = a'_33 - 2 a'_33^2 / (1 - a_33) M_w
+            om = max(1 - x(11), 0.02);
+            Fe(15, 15) = 1 - 4 * x(15) * vMh(3) / om;  Fe(15, 11) = -2 * x(15)^2 * vMh(3) / om^2;  Fe(15, 9) = Fe(15, 9) - 2 * x(15)^2 / om * (1 - lc);
+        end
+        if mk                                                   % MEKF columns: e_13 = -gap cos e_thy, e_23 = gap e_thx (slot 12 = theta_y, 13 = theta_x)
+            gk = x(10) - x(11);  cx = cos(x(16));  Fe(12, 12) = 1;  Fe(13, 13) = 1;
+            Fe(7:9, 12) = Ga(:, 3) * gk * cx;  Fe(7:9, 13) = -Ga(:, 4) * gk;
+            for q = 1:2
+                aq = x(13 + q);  rw = 9 + q;
+                Fe(rw, 12) = -aq * Ga(3, 3) * gk * cx + aq * cx * vMh(1);  Fe(rw, 13) = aq * Ga(3, 4) * gk - aq * vMh(2);
+            end
+        end
+        if th_out                                               % angle out: no angle rows
+        elseif dt_on                                            % arm B1: angle constant, own gain from P
+            Fe(16:17, 16:17) = eye(2);
+        elseif go                                               % angle rows (document Section 5): e_theta[k+1] = e_off[k] / (a_par - a_perp)
+            Fe(16, 13) = 1 / den;  Fe(17, 12) = -1 / (den * cos(x(16)));
+        else
+            Fe(16:17, 16:17) = eye(2);
+        end
+        if kp_on                                                % off-diagonal error from the curvature error: the true wall turns by kappa M_u about v-hat
+            Fe(12, 18) = -dgap * vMh(1);  Fe(13, 18) = -dgap * vMh(2);   %   (theta_y up for +u) and by -kappa M_v about u-hat; e_13 = -gap e_rot_v, e_23 = gap e_rot_u
+        end
+        if isfield(opts, 'fe_cut') && t(k) >= opts.fe_cut_from      % 10-29 diagnostic only: drop F_e couplings from t >= fe_cut_from
+            if any(strcmp(opts.fe_cut, 'angain')); Fe(10:11, 12:13) = 0; end   %   off-diagonal (angle) error -> gain rows (tangential force / motion x slope)
+            if any(strcmp(opts.fe_cut, 'offpos')); Fe(7:9, 12:13) = 0; end     %   off-diagonal error -> position error (force x a_uw, a_vw)
+            if any(strcmp(opts.fe_cut, 'kap')); Fe(12:13, 18) = 0; end         %   curvature error -> off-diagonal
+            if any(strcmp(opts.fe_cut, 'gainpos')); Fe(7:9, 10:11) = 0; end    %   gain error -> position error (force x a_11, a_33)
+        end
+        Q33 = Vh' * (kap * (Ac + (1 - lc)^2 * (Abuf(:, :, 1) + Abuf(:, :, 2))) + (1 - lc)^2 * Sn) * Vh;
+        g = zeros(18, 3);  g(7:9, :) = -eye(3);  g(10, :) = x(14) * nn;  g(11, :) = x(15) * nn;
+        Q = g * Q33 * g';
+        if kp_on && isfield(opts, 'kappa_pfix') && t(k) >= tsc   % 10-30 (user): curvature allowed to change (random walk), same Q/R-ratio design as the
+            Q(18, 18) = opts.kappa_pfix^4 * I_kap;                %   slopes: Q = P_fix^2 I, sqrt P_fix = kappa_pfix [1/R] = curvature span of the probe-centre path
+        end
+        if isfield(opts, 'ap_q') && opts.ap_q
+            hd = max(dot(wh, pd_k) / Rr, 1.1);  if curved; hd = max(hd_int, 1.1); end
+            pfix = (0.4 * (1.1 / hd)^2)^2;  if isfield(opts, 'ap_pfix_scale'); pfix = pfix * opts.ap_pfix_scale^2; end
+            if isfield(opts, 'ap_pfix_scale_scan') && t(k) >= tsc; pfix = pfix * opts.ap_pfix_scale_scan^2; end   % 10-28 test: slope sqrt P_fix x scale from t_scan   % 10-28 test: sqrt P_fix of the slopes x scale
+            if isfield(opts, 'ap_pfix_law') && opts.ap_pfix_law && (~isfield(opts, 'ap_pfix_law_from_scan') || t(k) >= tsc)   % 10-29: law only from the scan start (report P_fix before)
+                                                                % 10-28 (user): slope P_fix from the plane law a' = (1 - a)^2 / b_true, b_true in [1, 9/8]:
+                pfix = ((1 / 9) * (1 - min(xu(10:11), 1)).^2).^2;      %   relative width 1 - 8/9 = 1/9 of the law slope, per slot (a_11 -> slot 14, a_33 -> slot 15)
+            end
+            Q(14:15, 14:15) = diag(pfix.^2 .* I_ap);
+            if isfield(opts, 'freeze_ap11') && opts.freeze_ap11; Q(14, 14) = 0; end   % 10-28 test: tangential slope a'_11 not driven
+            if isfield(opts, 'ap_q_off_from') && t(k) >= opts.ap_q_off_from; Q(14:15, 14:15) = 0; end   % 10-28 (user test): slope Q off (e.g. during the scan)
+        end
+        qtf = inf;  if isfield(opts, 'q_theta_from'); qtf = opts.q_theta_from; end;  if dsc_on && ~(isfield(opts, 'q_theta_off') && opts.q_theta_off); qtf = tsc;  if isfield(opts, 'q_theta_delay'); qtf = tsc + opts.q_theta_delay; end; end   % 10-29 opts.q_theta_off: no angle P_fix; descent mode: angle P_fix from the scan start
+        if t(k) >= qtf   % 10-28 (user): angle P_fix on the off-diagonal slots, P_off = (gap)^2 P_theta
+            Pft = (opts.sP_fix_theta_deg * pi / 180)^2;  g2 = dgap^2;
+            Q(12, 12) = Q(12, 12) + (g2 * cos(x(16))^2 * Pft)^2 * I_off(1);  Q(13, 13) = Q(13, 13) + (g2 * Pft)^2 * I_off(2);
+            if mk; Q(12, 12) = Pft^2 * I_off(1);  Q(13, 13) = Pft^2 * I_off(2); end   % angle units directly
+        end
+        fx = x;
+        fx(1:3) = x(4:6);  fx(4:6) = x(7:9);  fx(7:9) = lc * x(7:9);
+        fx(10) = x(10) + x(14) * vMh(3);  fx(11) = x(11) + x(15) * vMh(3);
+        if isfield(opts, 'cheat_slope_pred') && opts.cheat_slope_pred   % 10-29 reference arm only: the gain prediction uses the TRUE slopes at the true gap
+            hc = max(h_true, 1.0003);  [p1, q1] = calc_correction_functions(hc + 1e-4);  [p0, q0] = calc_correction_functions(hc - 1e-4);
+            fx(10) = x(10) + (1 / p1 - 1 / p0) / 2e-4 * vMh(3);  fx(11) = x(11) + (1 / q1 - 1 / q0) / 2e-4 * vMh(3);
+        end
+        if ap_pred; fx(15) = x(15) - 2 * x(15)^2 / max(1 - x(11), 0.02) * vMh(3); end
+        fx(12) = x(12) * (1 + rs * vMh(3));  fx(13) = x(13) * (1 + rs * vMh(3));
+        fx(16:17) = x(16:17) + dth;
+        if dt_on; fx(16:17) = x(16:17);  thx_k = x(16); end
+        Lg = Fe * K;  kpk = x(18);
+        if isfield(opts, 'dump_k') && k == opts.dump_k             % one-step inputs for check_1026_local_wiring.m
+            dump = struct('Fe', Fe, 'xk', x, 'fx', fx, 'vF', vF, 'dpd', Vh' * (pd_kp1 - pd_k) / Rr, 'lc', lc, 'go', go);
+        end
+        x = fx + Lg * nu;
+        if dt_on                                                % angle step from the off-diagonal elements at k+1 (coordinate of V-hat[k]), gap at k
+            L.off_k1(k, :) = [x(12) x(13)];                     % a_uw-hat[k+1], a_vw-hat[k+1] (coordinate of V-hat[k], before the angle step)
+            cyk = cos(thx_k);  if isfield(opts, 'no_cos') && opts.no_cos; cyk = 1; end   % 10-28 (user test): drop cos theta-hat_x in the theta_y step
+            if isfield(opts, 'dthy_scale'); cyk = cyk / opts.dthy_scale; end   % 10-28 test: scale the theta_y step (loop-gain check)
+            dth = [0; 0];  if go; dth = [x(13) / den; -x(12) / (den * cyk)]; end
+            if mk; dth = [x(13); x(12)];  x(12:13) = 0; end      % MEKF: the small angles themselves, then reset
+            x(16:17) = x(16:17) + dth;
+            Vone = local_Ry(x(17)) * local_Rx(x(16));         % frame after the measured step only (used to carry the gain matrix)
+            if kp_on; x(17) = x(17) + kpk * vMh(1) / cos(thx_k);  x(16) = x(16) - kpk * vMh(2); end   % + predicted turn kappa-hat M (u, v)
+        end
+        Pk = Fe * Pu * Fe' + Q;  Pk = 0.5 * (Pk + Pk');
+        if isfield(opts, 'lf_off') && (~isfield(opts, 'lf_from') || t(k) >= opts.lf_from)   % 10-28 (user, Meng diss. lambda_fh): forgetting factor
+            sc = ones(18, 1);  sc(12:13) = 1 / sqrt(opts.lf_off);  Pk = diag(sc) * Pk * diag(sc);   %   on the off-diagonal (angle) slots: P_off / lambda,
+        end                                                                                          %   cross terms / sqrt(lambda)
+        % ---- all estimates in the local coordinate of V-hat[k+1] ----
+        Vold = Vh;  Vh = local_Ry(x(17)) * local_Rx(x(16));  C = Vh' * Vold;
+        Ca = C;  if kp_on && dt_on; Ca = Vone' * Vold; end      % the gain matrix turns with the predicted wall turn (only the measured step changes it)
+        vAh = Ca * local_loc_A(x) * Ca';
+        x(10) = (vAh(1,1) + vAh(2,2)) / 2;  x(11) = vAh(3,3);  x(12) = vAh(1,3);  x(13) = vAh(2,3);
+        if mk; x(12:13) = 0; end
+        for i = 0:2; x(3*i+1:3*i+3) = C * x(3*i+1:3*i+3); end
+        Cb = blkdiag(C, C, C, eye(9));  Pk = Cb * Pk * Cb';
+        if kp_on && isfield(opts, 'kappa_from_scan') && opts.kappa_from_scan && t(k) + Ts < tsc   % 10-29 (user): kappa-hat held at 0 (plane), P at the prior,
+            x(18) = 0;  Pk(18, :) = 0;  Pk(:, 18) = 0;  Pk(18, 18) = sPk^2;                     %   until the scan starts (no curvature information before)
+        end
+        % ---- log (theta-hat[k+1]) ----
+        ev2 = eig(0.5 * (Pk + Pk'));
+        L.h(k) = h_log;  L.thx(k) = x(16);  L.thy(k) = x(17);  L.aT(k) = xu(10);  L.aN(k) = xu(11);  L.apT(k) = xu(14);  L.apN(k) = xu(15);
+        L.kap(k) = x(18);  L.auw(k) = x(12);  L.avw(k) = x(13);  L.dth(k, :) = dth' * 180 / pi;  L.dLe(k, :) = (Lg(16:17, :) * nu)' * 180 / pi;  L.dgap(k) = dgap;
+        L.a(k, :) = local_six(Ah)';  L.mineig(k) = ev;  L.sPth(k, :) = sqrt(diag(Pk(16:17, 16:17)))' * 180 / pi;
+        if th_out; L.sPth(k, :) = [sqrt(Pk(13, 13)), sqrt(Pk(12, 12)) / cos(x(16))] / abs(x(10) - x(11)) * 180 / pi; end
+        if mk; L.sPth(k, :) = [sqrt(Pk(13, 13)), sqrt(Pk(12, 12))] * 180 / pi; end
+        L.sPa(k, :) = sqrt(diag(Pu(10:11, 10:11)))';  L.Pcond(k) = min(ev2) / max(ev2);
+        L.dp(k, :) = dp_log;  [L.aT_tr(k), L.aN_tr(k)] = local_truth(h_log);  if b2; L.aT_tr(k) = aTk;  L.aN_tr(k) = aNk; end
+        L.p(k, :) = p_log';  L.pd(k, :) = pd_log';  L.th_tr(k, :) = thT_log';  L.hd_int(k) = hd_int;
+        fbuf = [f_d, fbuf(:, 1)];  Abuf = cat(3, Ac, Abuf(:, :, 1));
+        pdbuf = [pdbuf(:, 2:end), pd_kp1];  pd_k = pd_kp1;
+    end
+    r = struct('seed', seed, 't', t, 'opts', opts, 'kend', kend, 'contact', contact, 'n_floor', n_floor, 'A_true', A_true, 'IF', IF, 'dump', dump, 'tsc', tsc, 'rs_tend', rs_tend);  r.CTkap = C_T * kap;  r.Cn_Sn = C_n * diag(Sn)';   % 10-29: readout scale
+    f = fieldnames(L);  for i = 1:numel(f); r.(f{i}) = L.(f{i}); end
+    r.aT_true = repmat(aTt, N, 1);  r.aN_true = repmat(aNt, N, 1);
+    r.thx = r.thx * 180 / pi;  r.thy = r.thy * 180 / pi;  r.thx_eig = r.thx;  r.thy_eig = r.thy;
+    r.thx_true = 0;  if isfield(opts, 'theta_x'); r.thx_true = opts.theta_x; end;  r.thy_true = opts.theta_y;
+end
+
+function [W, w, pz, V, th] = local_wall_now(wall, p, W, pz0, rb, o)   % 10-28: local tangent plane of the nearest surface point; th = [thx thy] deg
+    switch wall
+        case 'hemi'                                            % hemisphere of radius rb um, centre on the plane z = pz0
+            c = [0; 0; pz0];  dv = p(:) - c;  db = norm(dv) - rb;  dg = p(3) - pz0;
+            void = isfield(o, 'hemi_void') && o.hemi_void;   % 10-28 (user): no plane around the hemisphere (void) -> nearest surface is always the sphere
+            if void || (db <= dg && dv(3) >= 0); n = dv / norm(dv);  pzw = n' * c + rb; else; n = [0; 0; 1];  pzw = pz0; end
+        case 'bead3'                                           % 10-29 (user): bead + glass blended into ONE effective plane-law wall (rounds the
+            rbd = 5;  if isfield(o, 'bead_r'); rbd = o.bead_r; end;  lb = 1;  if isfield(o, 'blend_l'); lb = o.blend_l; end   %   concave junction):
+            cbd = [0; 0; pz0 + rbd];  d = p(:) - cbd;  hs = [norm(d) - rbd; p(3) - pz0];  ns = [d / norm(d), [0; 0; 1]];   %   w_i = exp(-h_i/l)/sum,
+            m0 = min(hs);  e = exp(-(hs - m0) / lb);  wgt = e / sum(e);  heff = m0 - lb * log(sum(e));   %   h_eff = -l log sum exp(-h_i/l) (soft-min),
+            n = ns * wgt;  n = n / norm(n);  pzw = n' * p(:) - heff;   %   n_eff = sum w_i n_i (unit); the plant then is the plane law at (h_eff, n_eff)
+        case 'fillet'                                          % 10-29 (user): bead (radius bead_r) on the glass z = pz0, concave junction filled by a torus
+            rbd = 5;  if isfield(o, 'bead_r'); rbd = o.bead_r; end;  rho = 6;  if isfield(o, 'fillet_rho'); rho = o.fillet_rho; end   %   fillet of tube radius rho, tangent to both:
+            Rt = 2 * sqrt(rbd * rho);  q = p(:) - [0; 0; pz0];  rq = norm(q(1:2));  er = [1; 0];  if rq > 1e-12; er = q(1:2) / rq; end   %   ring radius Rt = 2 sqrt(rbd rho)
+            ct = [Rt * er; rho];  cs = [0; 0; rbd];  dt = ct - q;                 %   (centre distance rbd + rho); one smooth wall, h = nearest distance
+            a_q = atan2(q(3) - rho, rq - Rt);  a_s = atan2(rbd - rho, -Rt);      %   arc of the fillet seen from the tube centre: from straight down (-pi/2)
+            inarc = mod(a_q - a_s, 2 * pi) <= mod(-pi / 2 - a_s, 2 * pi);        %   through the corner side to the bead tangency (direction a_s to the bead centre)
+            if norm(dt) < rho && inarc; n = dt / norm(dt);  hq = rho - norm(dt);   % concave fillet: normal toward the tube centre
+            elseif rq >= Rt; n = [0; 0; 1];  hq = q(3);                         % glass
+            else; n = (q - cs) / norm(q - cs);  hq = norm(q - cs) - rbd; end      % bead
+            pzw = n' * p(:) - hq;
+        case 'bead2'                                           % 10-29: principal normal of the two-wall drag (largest eigenvalue), h = nearest distance
+            [Gn, hmin] = local_gamma2(p, o, pz0, 2.25);  [Ve, De] = eig(0.5 * (Gn + Gn'));  [~, im] = max(diag(De));  n = Ve(:, im);
+            rbd = 5;  if isfield(o, 'bead_r'); rbd = o.bead_r; end;  cbd = [0; 0; pz0 + rbd];  nout = (p(:) - cbd) / norm(p(:) - cbd);
+            if norm(p(:) - cbd) - rbd < p(3) - pz0; ref = nout; else; ref = [0; 0; 1]; end;  if dot(n, ref) < 0; n = -n; end
+            pzw = n' * p(:) - hmin * 2.25;
+        case 'bend'                                            % as run_t2_3d_reg local_bend_wall
+            m = [cosd(o.bend_phi); sind(o.bend_phi)];  ae = o.bend_alpha * pi / 180;  Lxi = o.bend_Lx * m(1);
+            xi = m' * p(1:2) - o.bend_xb * m(1);
+            if xi <= 0; a = 0;  zw = 0;
+            elseif xi <= Lxi; a = ae * xi / Lxi;  zw = (Lxi / ae) * log(cos(a));
+            else; a = ae;  zw = (Lxi / ae) * log(cos(ae)) - tan(ae) * (xi - Lxi); end
+            n = [sin(a) * m(1); sin(a) * m(2); cos(a)];  pzw = n' * [p(1); p(2); pz0 + zw];
+    end
+    thx = -asin(max(min(n(2), 1), -1));  thy = atan2(n(1), n(3));
+    V = local_Ry(thy) * local_Rx(thx);
+    W.V = V;  W.u_hat = V(:, 1);  W.v_hat = V(:, 2);  W.w_hat = V(:, 3);  W.pz = pzw;
+    w = V(:, 3);  pz = pzw;  th = [thx; thy] * 180 / pi;
+end
+
+function A = local_loc_A(x)                                    % 1026: gain matrix in the local coordinate from (a_par, a_perp, a_uw, a_vw)
+    A = [x(10) 0 x(12); 0 x(10) x(13); x(12) x(13) x(11)];
+end
+
 function [Ah, Ja, wh, dW] = local_est_A(x)                     % Section 6: A-hat and d a / d(a_par, a_perp, theta_x, theta_y)
     tx = x(14);  ty = x(15);  ap = x(10);  an = x(11);
     wh = [sin(ty) * cos(tx); -sin(tx); cos(ty) * cos(tx)];
@@ -439,6 +882,29 @@ end
 
 function A = local_floor(A, lo)                                % eigenvalues floored at lo (control only)
     [E, D] = eig(0.5 * (A + A'));  A = E * diag(max(diag(D), lo)) * E';
+end
+
+function [Gn, hmin] = local_gamma2(p, o, pz0, Rr)            % 10-29: two-wall drag, Gamma / gamma_N = I + sum_i V_i (C_i - I) V_i' (plane law per wall)
+    rbd = 5;  if isfield(o, 'bead_r'); rbd = o.bead_r; end
+    cbd = [0; 0; pz0 + rbd];  d = p(:) - cbd;  hs = [norm(d) - rbd; p(3) - pz0];  ns = [d / norm(d), [0; 0; 1]];
+    Gn = eye(3);  hmin = min(hs) / Rr;
+    for i = 1:2
+        hb = max(hs(i) / Rr, 1.0005);  [cpa, cpe] = calc_correction_functions(hb);  n = ns(:, i);
+        Gn = Gn + (cpa - 1) * (eye(3) - n * n') + (cpe - 1) * (n * n');
+    end
+end
+
+function p = local_step2(p, F, o, pz0, Rr, gN, Ts)          % 10-29: one RK4 step over Ts with the two-wall mobility (the drag changes < 1 %
+    Ni = 1;  hh = Ts / Ni;                                     %   over one step: ~0.03 um of travel at a 2.4 um gap)
+    for j = 1:Ni
+        k1 = local_pdot2(p, F, o, pz0, Rr, gN);  k2 = local_pdot2(p + hh / 2 * k1, F, o, pz0, Rr, gN);
+        k3 = local_pdot2(p + hh / 2 * k2, F, o, pz0, Rr, gN);  k4 = local_pdot2(p + hh * k3, F, o, pz0, Rr, gN);
+        p = p + hh / 6 * (k1 + 2 * k2 + 2 * k3 + k4);
+    end
+end
+
+function v = local_pdot2(p, F, o, pz0, Rr, gN)
+    Gn = local_gamma2(p, o, pz0, Rr);  v = (gN * Gn) \ F;
 end
 
 function [aT, aN] = local_truth(h)
