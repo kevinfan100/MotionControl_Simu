@@ -1,0 +1,109 @@
+% STATUS: ACTIVE -- 2026-10-29 (user): angle step of the local version (1026 Section 1) written from the readout: off-diagonal
+%   elements -> small angles about the local axes u, v (no cos) -> turn about w from the definition of V-hat ([V-hat]_21 = 0) ->
+%   V-hat[k+1] -> angles (cos only here) -> estimates into the new coordinate. Section 1 verbatim from 1026. Notation (user 10-29):
+%   delta-theta-hat_u, _v, _w = small angles about the local axes of V-hat[k]; matrix elements [.]_ij; no delta-theta-hat_x, _y.
+%   Code: test_script/scratch/run_t3_xyz_fixed.m (dth at :723, V-hat rebuilt from the angles at :735).
+% Compile: xelatex 1029_local_gain_small_angle.tex (from reference/eq17_analysis/derivation/).
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm,upgreek,graphicx}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=1.8cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+\AtBeginDocument{\setlength{\abovedisplayskip}{10pt}\setlength{\belowdisplayskip}{10pt}}
+\setlength{\jot}{8pt}
+\renewcommand{\arraystretch}{1.35}
+\usepackage{xcolor}
+\graphicspath{{figures/}}
+\newcommand{\Ab}{\bar{\mathbf A}}
+\newcommand{\Ah}{\hat{\mathbf A}}
+\newcommand{\I}{\mathbf I}
+\newcommand{\V}{\mathbf V}
+\newcommand{\Vh}{\hat{\mathbf V}}
+\newcommand{\T}{T}
+\newcommand{\dth}{\delta\hat\theta}
+\newcommand{\dph}{\delta\hat{\mathbf p}}
+\pagestyle{plain}
+
+\begin{document}
+
+
+\vspace{2.2em}
+\begin{align*}
+{}^{V[k]}\Ah[k] &= \Vh^{\T}[k]\,\Ah[k]\,\Vh[k] \approx \mathrm{diag}\big(\hat a_{11}[k],\ \hat a_{22}[k],\ \hat a_{33}[k]\big) \\[4pt]
+{}^{V[k]}\Ab[k+1] &= \Vh^{\T}[k]\,\Ab[k+1]\,\Vh[k] \\
+&\approx \Vh^{\T}[k]\,\Vh[k+1]\;\mathrm{diag}\big(\hat a_{11}[k+1],\ \hat a_{22}[k+1],\ \hat a_{33}[k+1]\big)\;\Vh^{\T}[k+1]\,\Vh[k]
+\end{align*}
+
+\vspace{2.2em}
+\begin{align*}
+\Vh^{\T}[k]\,\Vh[k+1] &\approx \begin{bmatrix}
+1 & -\dth_w[k] & \dth_v[k] \\
+\dth_w[k] & 1 & -\dth_u[k] \\
+-\dth_v[k] & \dth_u[k] & 1
+\end{bmatrix} \\[4pt]
+{}^{V[k]}\Ab[k+1] &\approx \begin{bmatrix}
+\hat a_{11}[k+1] & \big(\hat a_{11}[k] - \hat a_{22}[k]\big)\,\dth_w[k] & -\big(\hat a_{11}[k] - \hat a_{33}[k]\big)\,\dth_v[k] \\
+\big(\hat a_{11}[k] - \hat a_{22}[k]\big)\,\dth_w[k] & \hat a_{22}[k+1] & \big(\hat a_{22}[k] - \hat a_{33}[k]\big)\,\dth_u[k] \\
+-\big(\hat a_{11}[k] - \hat a_{33}[k]\big)\,\dth_v[k] & \big(\hat a_{22}[k] - \hat a_{33}[k]\big)\,\dth_u[k] & \hat a_{33}[k+1]
+\end{bmatrix} \\[4pt]
+\hat a_{11}[k] &= \hat a_{22}[k] \\[4pt]
+{}^{V[k]}\Ab[k+1] &\approx \begin{bmatrix}
+\hat a_{11}[k+1] & 0 & -\big(\hat a_{11}[k] - \hat a_{33}[k]\big)\,\dth_v[k] \\
+0 & \hat a_{22}[k+1] & \big(\hat a_{22}[k] - \hat a_{33}[k]\big)\,\dth_u[k] \\
+-\big(\hat a_{11}[k] - \hat a_{33}[k]\big)\,\dth_v[k] & \big(\hat a_{22}[k] - \hat a_{33}[k]\big)\,\dth_u[k] & \hat a_{33}[k+1]
+\end{bmatrix} \\
+&= \begin{bmatrix} \hat a_{11}[k+1] & 0 & \hat a_{13}[k+1] \\ 0 & \hat a_{22}[k+1] & \hat a_{23}[k+1] \\ \hat a_{13}[k+1] & \hat a_{23}[k+1] & \hat a_{33}[k+1] \end{bmatrix}
+\end{align*}
+
+\vspace{2.2em}
+\begin{align*}
+\dth_u[k] &= \frac{\hat a_{23}[k+1]}{\hat a_{22}[k] - \hat a_{33}[k]} \\[4pt]
+\dth_v[k] &= -\frac{\hat a_{13}[k+1]}{\hat a_{11}[k] - \hat a_{33}[k]}
+\end{align*}
+
+\vspace{2.2em}
+{\setlength{\arraycolsep}{2.5pt}
+\begin{align*}
+\Vh[k] &= \mathbf R_y(\hat\theta_y[k])\,\mathbf R_x(\hat\theta_x[k]) \\[4pt]
+&= \begin{bmatrix}
+\cos\hat\theta_y[k] & \sin\hat\theta_y[k]\,\sin\hat\theta_x[k] & \sin\hat\theta_y[k]\,\cos\hat\theta_x[k] \\
+0 & \cos\hat\theta_x[k] & -\sin\hat\theta_x[k] \\
+-\sin\hat\theta_y[k] & \cos\hat\theta_y[k]\,\sin\hat\theta_x[k] & \cos\hat\theta_y[k]\,\cos\hat\theta_x[k]
+\end{bmatrix} \\[4pt]
+\Vh^{\T}[k]\,\Vh[k+1] &\approx \begin{bmatrix}
+1 & -\dth_w[k] & \dth_v[k] \\
+\dth_w[k] & 1 & -\dth_u[k] \\
+-\dth_v[k] & \dth_u[k] & 1
+\end{bmatrix} \\[4pt]
+\Vh[k+1] &\approx \Vh[k]\,\Vh^{\T}[k]\,\Vh[k+1] \\[4pt]
+&= \begin{bmatrix}
+\begin{array}{c}\cos\hat\theta_y[k] \\ +\,\sin\hat\theta_y[k]\,\sin\hat\theta_x[k]\,\dth_w[k] \\ -\,\sin\hat\theta_y[k]\,\cos\hat\theta_x[k]\,\dth_v[k]\end{array} & \begin{array}{c}\sin\hat\theta_y[k]\,\sin\hat\theta_x[k] \\ -\,\cos\hat\theta_y[k]\,\dth_w[k] \\ +\,\sin\hat\theta_y[k]\,\cos\hat\theta_x[k]\,\dth_u[k]\end{array} & \begin{array}{c}\sin\hat\theta_y[k]\,\cos\hat\theta_x[k] \\ +\,\cos\hat\theta_y[k]\,\dth_v[k] \\ -\,\sin\hat\theta_y[k]\,\sin\hat\theta_x[k]\,\dth_u[k]\end{array} \\[28pt]
+\begin{array}{c}\cos\hat\theta_x[k]\,\dth_w[k] \\ +\,\sin\hat\theta_x[k]\,\dth_v[k]\end{array} & \begin{array}{c}\cos\hat\theta_x[k] \\ -\,\sin\hat\theta_x[k]\,\dth_u[k]\end{array} & \begin{array}{c}-\sin\hat\theta_x[k] \\ -\,\cos\hat\theta_x[k]\,\dth_u[k]\end{array} \\[28pt]
+\begin{array}{c}-\sin\hat\theta_y[k] \\ +\,\cos\hat\theta_y[k]\,\sin\hat\theta_x[k]\,\dth_w[k] \\ -\,\cos\hat\theta_y[k]\,\cos\hat\theta_x[k]\,\dth_v[k]\end{array} & \begin{array}{c}\cos\hat\theta_y[k]\,\sin\hat\theta_x[k] \\ +\,\sin\hat\theta_y[k]\,\dth_w[k] \\ +\,\cos\hat\theta_y[k]\,\cos\hat\theta_x[k]\,\dth_u[k]\end{array} & \begin{array}{c}\cos\hat\theta_y[k]\,\cos\hat\theta_x[k] \\ -\,\sin\hat\theta_y[k]\,\dth_v[k] \\ -\,\cos\hat\theta_y[k]\,\sin\hat\theta_x[k]\,\dth_u[k]\end{array}
+\end{bmatrix} \\[8pt]
+\Vh[k+1] &= \begin{bmatrix}
+\cos\hat\theta_y[k+1] & \sin\hat\theta_y[k+1]\,\sin\hat\theta_x[k+1] & \sin\hat\theta_y[k+1]\,\cos\hat\theta_x[k+1] \\
+0 & \cos\hat\theta_x[k+1] & -\sin\hat\theta_x[k+1] \\
+-\sin\hat\theta_y[k+1] & \cos\hat\theta_y[k+1]\,\sin\hat\theta_x[k+1] & \cos\hat\theta_y[k+1]\,\cos\hat\theta_x[k+1]
+\end{bmatrix} \\[8pt]
+0 &= \cos\hat\theta_x[k]\,\dth_w[k] + \sin\hat\theta_x[k]\,\dth_v[k] \\
+\dth_w[k] &= -\tan\hat\theta_x[k]\,\dth_v[k]
+\end{align*}}
+The limit at $\hat\theta_x = 90^\circ$ comes from defining $u$ from $x$: at $\hat\theta_x = 90^\circ$ the $0$ in the second row of $\Vh$ holds for every $\hat\theta_y$, so $u$ is not unique.
+\par\medskip
+
+\vspace{2.2em}
+\begin{align*}
+-\sin\hat\theta_x[k+1] &= -\sin\hat\theta_x[k] - \cos\hat\theta_x[k]\,\dth_u[k] \\
+&\approx -\sin\big(\hat\theta_x[k] + \dth_u[k]\big) \\
+\hat\theta_x[k+1] &= \hat\theta_x[k] + \dth_u[k] \\[8pt]
+-\sin\hat\theta_y[k+1] &= -\sin\hat\theta_y[k] + \cos\hat\theta_y[k]\,\sin\hat\theta_x[k]\,\dth_w[k] - \cos\hat\theta_y[k]\,\cos\hat\theta_x[k]\,\dth_v[k] \\
+&= -\sin\hat\theta_y[k] - \frac{\cos\hat\theta_y[k]}{\cos\hat\theta_x[k]}\,\dth_v[k] \\
+&\approx -\sin\Big(\hat\theta_y[k] + \frac{\dth_v[k]}{\cos\hat\theta_x[k]}\Big) \\
+\hat\theta_y[k+1] &= \hat\theta_y[k] + \frac{\dth_v[k]}{\cos\hat\theta_x[k]}
+\end{align*}
+
+\end{document}
