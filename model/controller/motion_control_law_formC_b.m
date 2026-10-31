@@ -407,7 +407,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent predict_quad                 % Stage B diagnostic: row-4 predict quadrature rule
     persistent lock_mask_g lock_mask_ax lock_state_idx_ax
     persistent par_law w0_par w0_nominal
-    persistent fefrz_part fefrz_v fe_cmd_eval apslot_on
+    persistent fefrz_part fefrz_v fe_cmd_eval apslot_on q77_hscale q77_curv q77_r2_frac q77_rel q77_relP
     persistent kfrz_from fefrz_from fefrz_mode kfrz_K1 kfrz_K2 fefrz_F fefrz_Q   % 10-14 hold-drift diagnostics (user-approved): freeze K / (F_e, Q) from a step; default 0 = off
 
     % Axis roles (world frame; the wall normal is the z axis by convention)
@@ -1001,6 +1001,11 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         q55a_hgate = get_field_default(ctrl_const, 'q55_adapt_hgate', Inf);   % 10-02 (oscillation test): any q55_adapt mode adds Q only while the estimator height h_hat < hgate [R] (Inf = no gate)
         q55a_P0s  = get_field_default(ctrl_const, 'q55_adapt_P0', 0);   % 'ratio': sqrt(P_0) override (0 = the slot-5 prior std, the design default); the ONLY constant of the ratio design
         assert(isscalar(q55a_P0s) && q55a_P0s >= 0, 'motion_control_law_formC_b:q55AdaptP0', 'q55_adapt_P0 must be a non-negative scalar (sqrt of P_0).');
+        q77_hscale = get_field_default(ctrl_const, 'q77_hscale', 0);   % 10-15 (test, default 0 = off): reference height [R] of a 1/h_d^2 scaling of sqrt(P_fix) on slot 7
+        q77_curv   = logical(get_field_default(ctrl_const, 'q77_curv', false));   % 10-15 (test, default off): ap_slot Q from the one-step slope change, see the Q build
+        q77_relP    = get_field_default(ctrl_const, 'q77_relP', 0);      % 10-19 (test, default 0 = off): ap_slot Q77 = (eps a'-hat^2)^2 I7, sqrt(eps) = q77_relP (P77 held at eps a'^2)
+        q77_rel     = get_field_default(ctrl_const, 'q77_rel', 0);       % 10-19 (test, default 0 = off): ap_slot Q77 = eps * max(|a'-hat|, 1/22.2^2)^2 (relative random walk of a')
+        q77_r2_frac = get_field_default(ctrl_const, 'q77_r2_frac', 0);   % 10-19 (test, default 0 = off): ap_slot Q77 = eps * R2 (R2 in a-bar^2 units, this step), as Layer-1 Q44 = eps R2
         q77a_P0s  = get_field_default(ctrl_const, 'q77_adapt_P0', 0);   % 10-13: sqrt(P_fix) of the slot-7 ratio Q (0 = off); Q77 = P_fix^2 I7, I7 = 1/P77+ - 1/P77-
         assert(isscalar(q77a_P0s) && q77a_P0s >= 0, 'motion_control_law_formC_b:q77AdaptP0', 'q77_adapt_P0 must be a non-negative scalar (sqrt of P_fix).');
         wsg_on    = logical(get_field_default(ctrl_const, 'ws_gate_info', false));   % 10-13: slot-7 information gate (Schmidt-style: gain zeroed, P77 kept, others updated)
@@ -1493,6 +1498,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 end
             end
             a_bar_seed = min(max(a_bar_seed, a_bar_floor), a_bar_ceil);
+            if isfield(ctrl_const, 'a_seed_override'); a_bar_seed = ctrl_const.a_seed_override; end   % 10-27 test (default off): gain seed set directly
             a_bar_seed_v(ax) = a_bar_seed;
 
             P7 = zeros(n_state);
@@ -1632,6 +1638,9 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             if plaw_cp_slope; free_idx = [free_idx, 7]; end                 % (c, p) slope law: slot 7 = p free as well
             if ma2_aug || pade22
                 free_idx = [free_idx, 8, 9];
+            end
+            if isfield(ctrl_const, 'Pf_a_seed_std')                % 10-27 test (default off): prior of the gain slot set directly, no cross terms
+                P7(4, 4) = ctrl_const.Pf_a_seed_std^2;  P7(4, [1:3 5:end]) = 0;  P7([1:3 5:end], 4) = 0;
             end
             [~, chol_flag] = chol(P7(free_idx, free_idx));
             if chol_flag ~= 0
@@ -2198,7 +2207,12 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             if ~isinf(q55a_hgate) && plaw_c_slope && h_v2 > q55a_hgate; qadd = 0; end   % height gate (oscillation test): no Q above hgate
             Q_i(5, 5) = Q_i(5, 5) + qadd;  q55a_q(ax) = qadd;
         end
-        if q77a_P0s > 0 && plaw_dc_slope; Q_i(7, 7) = Q_i(7, 7) + (q77a_P0s^2)^2 * q77a_I(ax); end   % 10-13: slot-7 ratio Q (w_s), Q77 = P_fix^2 I7 with P_fix = q77_adapt_P0^2 (variance; same as q55 'ratio'), I7 from the last update
+        q77s_i = q77a_P0s;  if q77_hscale > 0; q77s_i = q77a_P0s * (q77_hscale / max(w_bar_d - ws_11, q77_hscale))^2; end   % 10-15: sqrt(P_fix) scaled ~ 1/h_d^2 (equal to q77_adapt_P0 at h_d = q77_hscale), slope-sized steps
+        if q77a_P0s > 0 && plaw_dc_slope; Q_i(7, 7) = Q_i(7, 7) + (q77s_i^2)^2 * q77a_I(ax); end   % 10-13: slot-7 ratio Q (w_s), Q77 = P_fix^2 I7 with P_fix = q77_adapt_P0^2 (variance; same as q55 'ratio'), I7 from the last update
+        if q77_curv && apslot_on; Q_i(7, 7) = Q_i(7, 7) + (2 * x_curr(7) * abs(Delta_wbar_d_km1) / max(w_bar_d - ws_11, plaw_g_min))^2; end   % 10-15: slope change of one step on the 1/h^2 family, a'' ~ 2 a'/h: Q = (2 a' |Delta h_d| / h_d)^2 (0 in a hold)
+        if q77_r2_frac > 0 && apslot_on; Q_i(7, 7) = Q_i(7, 7) + q77_r2_frac * R2_i; end
+        if q77_rel > 0 && apslot_on; Q_i(7, 7) = Q_i(7, 7) + q77_rel * max(abs(x_curr(7)), 1 / 22.2^2)^2; end
+        if q77_relP > 0 && apslot_on; Q_i(7, 7) = Q_i(7, 7) + (q77_relP^2 * max(abs(x_curr(7)), 1 / 22.2^2)^2)^2 * q77a_I(ax); end   % 10-19: relative P_fix   % 10-19: Q77 = eps a'^2   % 10-19: constant ratio Q77 / R2 = eps
         Fdw_F = F_dw;  ap_F = a_prime_i;  M_F = M_tot;  dd3_F = dap_dd3_i;  ddl_F = dap_ddl_i;   % 10-14 diagnostic copies (fefrz_part), = live values when off
         if fe_cmd_eval                                  % 10-14 (user-approved test): the COVARIANCE Jacobian does not read the just-updated dw3_hat;
             M_F = Delta_wbar_d_km1;                       %   M-terms keep only the known commanded step (0 in a hold) ...
@@ -2781,7 +2795,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             lam_b_spend(ax) = lam_b_spend(ax) + (1 - lam_b_k);
         end
         lam_b_v(ax) = lam_b_k;
-        if q77a_P0s > 0 && plaw_dc_slope && P_pred(7, 7) > 0 && P_upd(7, 7) > 0; q77a_I(ax) = max(0, 1 / P_upd(7, 7) - 1 / P_pred(7, 7)); end   % 10-13: I7 = this step's information on slot 7
+        if (q77a_P0s > 0 || q77_relP > 0) && plaw_dc_slope && P_pred(7, 7) > 0 && P_upd(7, 7) > 0; q77a_I(ax) = max(0, 1 / P_upd(7, 7) - 1 / P_pred(7, 7)); end   % 10-13: I7 = this step's information on slot 7
         if any(strcmp(q55a_mode, {'ratio', 'rhoconst', 'ratiogate', 'ratioinnov', 'ratiodrift', 'covmatch', 'rationew', 'drift', 'driftsq'})) && ~lm(1) && P_pred(5, 5) > 0 && P_upd(5, 5) > 0
             q55a_I(ax) = max(0, 1 / P_upd(5, 5) - 1 / P_pred(5, 5));      % I_k = this step's information on slot 5 (both channels), consumed at the next predict
             if ~any(strcmp(q55a_mode, {'ratiogate', 'ratioinnov'})); q55a_stat(ax) = q55a_I(ax); end

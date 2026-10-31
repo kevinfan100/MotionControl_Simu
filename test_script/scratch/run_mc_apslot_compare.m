@@ -24,9 +24,10 @@ function run_mc_apslot_compare(arms, plants, seeds, traj)
     for ia = 1:numel(arms)
         cc = base;
         switch arms{ia}
-            case 'conly'
+            case {'conly', 'conlyQ0'}                   % 10-20 deck: 'conlyQ0' = c-only with Q on c off (q55_adapt 'off')
                 cc.plaw_cp_slope = true;  cc.c_init = 0;  cc.Pf_c_std = 0.1;  cc.p_init = 2;  cc.Pf_p_std = 1e-6;  cc.plaw_p_lim = [1.2, 4];
                 cc.plaw_seed_cross = true;  cc.q55_adapt = 'ratio';  cc.q55_adapt_P0 = 0.15;
+                if strcmp(arms{ia}, 'conlyQ0'); cc.q55_adapt = 'off'; end
             case 'f4fc'                                  % 10-15: (delta, p) law a' = 1/(h - w_s)^p, plane init w_s 0, p 2; prior w_s 0.3, p 0.1; fe_cmd_eval on
                 cc.plaw_dp_slope = true;  cc.p_init = 2;  cc.Pf_p_std = 0.1;  cc.plaw_p_lim = [1.2, 4];  cc.delta_init = 0;  cc.Pf_delta_std = 0.3;
                 cc.plaw_g_min = 0.5;  cc.plaw_delta_lim = [-5, 5];  cc.plaw_seed_cross = true;  cc.fe_cmd_eval = true;
@@ -37,29 +38,42 @@ function run_mc_apslot_compare(arms, plants, seeds, traj)
             case 's8fc'                                  % 10-15: S8 with fe_cmd_eval (p pinned at 2)
                 cc.plaw_dc_slope = true;  cc.plaw_p = 2;  cc.c_init = 0;  cc.Pf_c_std = 1e-6;  cc.delta_init = 0;  cc.Pf_delta_std = 0.3;
                 cc.plaw_g_min = 0.5;  cc.plaw_delta_lim = [-5, 5];  cc.plaw_seed_cross = true;  cc.fe_cmd_eval = true;
+            case 'apcurv'                                % 10-15: a' as a state, Q from the one-step slope change (q77_curv), prior 0.002, no ratio Q
+                cc.plaw_dc_slope = true;  cc.plaw_p = 2;  cc.c_init = 0;  cc.Pf_c_std = 1e-6;  cc.ap_slot = true;  cc.fe_cmd_eval = true;
+                cc.delta_init = 1 / 22.2^2;  cc.Pf_delta_std = 0.002;  cc.plaw_g_min = 0.5;  cc.plaw_delta_lim = [-1, 10];  cc.plaw_seed_cross = false;
+                cc.q77_curv = true;
+            case {'diff050', 'diff100', 'diff200', 'diff400'}   % 10-15: slope = difference of the filter's own a_hat over the commanded height, N = NNN steps
+                cc.lock_b = true;                        %   exogenous slope (run_formC_b opts.ap_diff), a slot as in the true-slope arm, no slope state
+                apdN = str2double(arms{ia}(5:end));
             case 's8'                                    % plane init: w_s-hat[0] = 0, prior 0.3
                 cc.plaw_dc_slope = true;  cc.plaw_p = 2;  cc.c_init = 0;  cc.Pf_c_std = 1e-6;  cc.delta_init = 0;  cc.Pf_delta_std = 0.3;
                 cc.plaw_g_min = 0.5;  cc.plaw_delta_lim = [-5, 5];  cc.plaw_seed_cross = true;
             otherwise   % 'apNN' (prior 0.05, sqrt P_fix NN/100) or 'apP<prior x1000>F<P_fix x1000>' (10-14 sweep)
                 cc.plaw_dc_slope = true;  cc.plaw_p = 2;  cc.c_init = 0;  cc.Pf_c_std = 1e-6;  cc.ap_slot = true;  cc.fe_cmd_eval = true;
                 cc.delta_init = 1 / 22.2^2;  cc.Pf_delta_std = 0.05;  cc.plaw_g_min = 0.5;  cc.plaw_delta_lim = [-1, 10];  cc.plaw_seed_cross = false;
-                tk = regexp(arms{ia}, '^apP(\d+)F(\d+)$', 'tokens', 'once');
+                tk = regexp(arms{ia}, '^apP(\d+)F(\d+)(H\d+)?(E\d+)?(V\d+)?(R\d+)?(W\d+)?$', 'tokens', 'once');   % 10-15: optional H<ref x100> = q77_hscale; 10-19: optional E<n> = q77_r2_frac 1e-n
                 if isempty(tk); cc.q77_adapt_P0 = str2double(arms{ia}(3:end)) / 100;
-                else; cc.Pf_delta_std = str2double(tk{1}) / 1000;  cc.q77_adapt_P0 = str2double(tk{2}) / 1000; end
+                else; cc.Pf_delta_std = str2double(tk{1}) / 1000;  cc.q77_adapt_P0 = str2double(tk{2}) / 1000;
+                    if numel(tk) > 2 && ~isempty(tk{3}); cc.q77_hscale = str2double(tk{3}(2:end)) / 100; end
+                    if numel(tk) > 3 && ~isempty(tk{4}); cc.q77_r2_frac = 10^(-str2double(tk{4}(2:end))); end
+                    if numel(tk) > 4 && ~isempty(tk{5}); cc.q77_rel = 10^(-str2double(tk{5}(2:end))); end   % 10-19: V<n> = q77_rel 1e-n
+                    if numel(tk) > 5 && ~isempty(tk{6}); cc.q77_relP = str2double(tk{6}(2:end)) / 10; end
+                    if numel(tk) > 6 && ~isempty(tk{7}); cc.q77_rel = str2double(tk{7}(2:end)) / 1000; end; end   % 10-19: W<n> = q77_rel n/1000   % 10-19: R<n> = q77_relP n/10
         end
         for ip = 1:numel(plants)
             o = struct('arm', 'best', 'ctrl_const_override', cc, 'config_override', OV, 'scenario', scen, 'verbose', false, ...
                        'seeds', seeds, 'log_P_full', false);
             pcp = [];  if strcmp(plants{ip}, 'cell'); pcp = @cell_cperp_delta;  o.plant_cperp = pcp; end
+            if startsWith(arms{ia}, 'diff'); o.ap_diff = struct('N', apdN, 'gate', 1e-3, 's0', 1 / 22.2^2); end
             clear run_formC_b motion_control_law_formC_b;
             tic;  evalc('Rr = run_formC_b(o);');  tr = toc;
             ns = numel(Rr.runs);  n = numel(Rr.runs{1}.h_bar_d_out);
             res = struct('t', (0:n-1)' * Ts, 'arm', arms{ia}, 'plant', plants{ip}, 'seeds', seeds, 'cc', cc);
-            [res.wd, res.h_true, res.a_true, res.a_hat, res.ap_hat, res.w_hat, res.p_hat] = deal(zeros(n, ns));
+            [res.wd, res.h_true, res.a_true, res.a_hat, res.ap_hat, res.w_hat, res.p_hat, res.dxm] = deal(zeros(n, ns));
             for q = 1:ns
                 S = Rr.runs{q};  hb = max(S.h_bar_true_out(:), 1.001);
                 res.wd(:, q) = S.h_bar_d_out(:);  res.h_true(:, q) = hb;  res.a_hat(:, q) = S.a_bar_hat_out(:, 3);  res.ap_hat(:, q) = S.a_prime_out(:, 3);
-                res.w_hat(:, q) = -S.ws_hat_out(:, 3);  res.p_hat(:, q) = S.b_hat_out(:, 3);   % 10-15: slot 7 (w_s = -delta), slot 5 (p or c)
+                res.w_hat(:, q) = -S.ws_hat_out(:, 3);  res.p_hat(:, q) = S.b_hat_out(:, 3);  res.dxm(:, q) = S.dh_m_out(:, 3);   % 10-16 dxm [um]; 10-15: slot 7 (w_s = -delta), slot 5 (p or c)
                 if isempty(pcp); for i = 1:n; [~, cp] = calc_correction_functions(hb(i)); res.a_true(i, q) = 1 / cp; end
                 else; res.a_true(:, q) = 1 ./ pcp(hb); end
             end

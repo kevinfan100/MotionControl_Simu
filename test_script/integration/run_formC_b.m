@@ -168,7 +168,8 @@ function out = run_formC_b(opts, test_opts)
     if ~isfield(opts, 'ctrl_const_override'); opts.ctrl_const_override = struct(); end
     if ~isfield(opts, 'a_ctrl_override');     opts.a_ctrl_override     = [];       end
     if ~isfield(opts, 'gain_reg');            opts.gain_reg            = [];       end   % 2026-10-13 (user): z-axis gain regulation, struct(a_d, lambda_a); [] = off (the trajectory generator drives pd)
-    if ~isfield(opts, 'cmd_dither');          opts.cmd_dither          = [];       end   % 2026-10-14 (diagnostic): struct(amp_R, freq, t_on), known sine added to the command; [] = off
+    if ~isfield(opts, 'cmd_dither');          opts.cmd_dither          = [];       end
+    if ~isfield(opts, 'ap_diff');             opts.ap_diff             = [];       end   % 2026-10-15 (test): struct(N, gate, s0), slope = difference of the filter's own a_hat over the commanded height, fed as the exogenous slope; [] = off   % 2026-10-14 (diagnostic): struct(amp_R, freq, t_on), known sine added to the command; [] = off
 
     % ------------------------------------------------------------------
     % Named constants (every number is derived or a house convention)
@@ -445,7 +446,8 @@ function out = run_formC_b(opts, test_opts)
         fprintf('PLANT WALL OVERRIDE: c_perp from a user function handle (estimator b_init = %.5f)\n', ov.b_init);
     end
     cfg.gain_reg = opts.gain_reg;                     % read by local_run_once (gain regulation, default off)
-    cfg.cmd_dither = opts.cmd_dither;                 % read by local_run_once (command dither, default off)
+    cfg.cmd_dither = opts.cmd_dither;
+    cfg.ap_diff = opts.ap_diff;                       % read by local_run_once (difference slope, default off)                 % read by local_run_once (command dither, default off)
     n_seeds = numel(seeds);
     runs  = cell(n_seeds, 1);
     Mrows = zeros(n_seeds, 7);   % desc | osc | hold | rms_all | bud_b | bud_p | nan
@@ -1058,6 +1060,8 @@ if nargin < 8; plant_cperp = []; end
     pd_for_ctrl = p0;
     greg = [];  if isfield(config, 'gain_reg'); greg = config.gain_reg; end   % 2026-10-13 gain regulation (default off)
     cdith = [];  if isfield(config, 'cmd_dither'); cdith = config.cmd_dither; end   % 2026-10-14 command dither (default off)
+    apd = [];  if isfield(config, 'ap_diff'); apd = config.ap_diff; end   % 2026-10-15 difference slope (default off)
+    if ~isempty(apd); apd_ah = NaN(N, 1);  apd_hd = NaN(N, 1);  apd_s = apd.s0; end
     diag_prev = [];
 
     R_drv       = P.common.R;
@@ -1161,13 +1165,37 @@ if nargin < 8; plant_cperp = []; end
         pd_k = pd_for_ctrl;
         if ~isempty(greg)                                % gain regulation (motion_ctrl S9): Delta x_d = (1-lambda_a)(a_d - a_hat)/a_hat' on z, from the previous step
             dwr = 0;
-            if k > 1 && isfield(diag_prev, 'a_prime_bar') && isfinite(diag_prev.a_prime_bar(3)) && diag_prev.a_prime_bar(3) > 0   % the first call (initialisation) has no a_hat' yet: no step
-                dwr = (1 - greg.lambda_a) * (greg.a_d - diag_prev.a_bar_hat(3)) / diag_prev.a_prime_bar(3);
+            greg_gate = isfield(greg, 'thr');            % 10-16: law slope gate, same rule as run_pure_simulation opts.gain_reg
+            if greg_gate
+                if k == 1; greg_den = 0;  greg_dwr = 0;  greg_s = greg.ap_min; end
+                greg_den = (1 - greg.beta) * greg_den + greg.beta * greg_dwr;   % low-passed commanded step [R/step]
+                if k > 1 && abs(greg_den) > greg.thr && isfinite(diag_prev.a_prime_bar(3)); greg_s = max(diag_prev.a_prime_bar(3), greg.ap_min); end
             end
+            if greg_gate && k > 1 && isfield(greg, 'coord') && strcmp(greg.coord, 'u')   % 10-18: same law in u = 1/(1 - a): du/dh = a'/(1-a)^2 = 1/b_true in [8/9, 1]
+                a_use = diag_prev.a_bar_hat(3);  s_use = greg_s;                            %   10-18 diagnostic greg.oracle: 'slope' = true a' at the previous true height,
+                if isfield(greg, 'oracle') && strcmp(greg.oracle, 'slope') && isfinite(hb_prev)  %   'a' = true a_bar there (the estimator still runs; only the law reads the truth)
+                    s_use = local_a_prime_true(hb_prev, a_nom_drv, h_bar_floor_drv, plant_cperp);  s_use = s_use(3) / a_nom_drv;   % [par; par; perp], z = perp
+                elseif isfield(greg, 'oracle') && strcmp(greg.oracle, 'a') && isfinite(cperp_prev)
+                    a_use = 1 / cperp_prev;
+                end
+                om = max(1 - a_use, 0.01);                                                   %   (u ~ linear in h => h converges exponentially with tau); 1 - a_hat >= 0.01 guard
+                dwr = (1 - greg.lambda_a) * (1 / (1 - greg.a_d) - 1 / om) / (s_use / om^2);
+            elseif greg_gate && k > 1
+                dwr = (1 - greg.lambda_a) * (greg.a_d - diag_prev.a_bar_hat(3)) / greg_s;
+            elseif k > 1 && isfield(diag_prev, 'a_prime_bar') && isfinite(diag_prev.a_prime_bar(3)) && diag_prev.a_prime_bar(3) > 0   % the first call (initialisation) has no a_hat' yet: no step
+                ad_k = greg.a_d;  if isfield(greg, 'a_mid') && t_now < greg.t_switch; ad_k = greg.a_mid; end   % 10-15: two-stage target (a_mid until t_switch), default single stage
+                dwr = (1 - greg.lambda_a) * (ad_k - diag_prev.a_bar_hat(3)) / diag_prev.a_prime_bar(3);
+                if isfield(greg, 'eta') && greg.eta > 0      % 10-15 (user-approved test): step limited to eta x the estimator's own gap to its wall
+                    g_est = max((dot(pd_k, P.wall.w_hat(:)) - P.wall.pz) / R_drv + diag_prev.ws_hat(3), 0.05);   %   (command frame height + delta-hat, slope-law families where slot 7 = delta)
+                    dwr = sign(dwr) * min(abs(dwr), greg.eta * g_est);
+                end
+            end
+            if greg_gate && isfield(greg, 'v_max'); dwr = sign(dwr) * min(abs(dwr), greg.v_max); end   % 10-16 speed cap [R/step]
+            if greg_gate; greg_dwr = dwr; end
             del_pd_k = dwr * R_drv * P.wall.w_hat(:);
             pd_kp1   = pd_k + del_pd_k;
         end
-        if ~isempty(cdith) && t_now + Ts >= cdith.t_on   % command dither (10-14, diagnostic): known sine amp_R [R] at freq [Hz] on the wall normal from t_on
+        if ~isempty(cdith) && t_now + Ts >= cdith.t_on && (~isfield(cdith, 't_off') || t_now < cdith.t_off)   % command dither (10-14, diagnostic): known sine amp_R [R] at freq [Hz] on the wall normal from t_on (10-15: until t_off if given)
             g1 = cdith.amp_R * sin(2 * pi * cdith.freq * (t_now + Ts - cdith.t_on));
             if isempty(greg)                         % trajectory gives the absolute command: add the dither offset
                 pd_kp1 = pd_kp1 + g1 * R_drv * P.wall.w_hat(:);
@@ -1259,6 +1287,16 @@ if nargin < 8; plant_cperp = []; end
                 ap_known_k = zeros(3, 1);
             end
         end
+        if ~isempty(apd)                                 % 10-15 difference slope: s = (a_hat[k-1] - a_hat[k-1-N]) / (h_d[k-1] - h_d[k-1-N]);
+            if k > apd.N + 1                             %   kept from the last valid step when |Delta h_d| < gate or s <= 0
+                dh_a = apd_hd(k - 1) - apd_hd(k - 1 - apd.N);
+                if abs(dh_a) > apd.gate
+                    s_a = (apd_ah(k - 1) - apd_ah(k - 1 - apd.N)) / dh_a;
+                    if isfinite(s_a) && s_a > 0; apd_s = s_a; end
+                end
+            end
+            ap_known_k = [0; 0; apd_s];
+        end
 
         % --- TRUE-b ARM: b at the PREVIOUS step's true height (z only) ------
         b_true_k = [];
@@ -1284,6 +1322,7 @@ if nargin < 8; plant_cperp = []; end
         diag_prev = diag_k;                              % gain regulation reads this step's a_hat, a_hat' at the next step
         dx3_prev = diag_k.delta_x_hat_3(3) / R_drv;   % this step's posterior -> next step's 'est' evaluation point
         hd_prev = max((dot(pd_k, P.wall.w_hat) - pz_plant) / R_drv, h_bar_floor_drv);   % this step's command -> next step's 'cmd' evaluation point
+        if ~isempty(apd); apd_ah(k) = diag_k.a_bar_hat(3);  apd_hd(k) = hd_prev; end   % 10-15 difference-slope history
 
         if P.thermal.enable > 0.5
             f_th_k = calc_thermal_force(p_curr, P_plant);

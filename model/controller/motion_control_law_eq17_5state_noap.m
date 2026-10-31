@@ -100,6 +100,13 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_noap(del_pd, pd, 
 %       .q44_r2_frac                0 (default) | rho > 0 (2026-09-30): Q44 += rho * R2[k-1], R2 in gain units
 %                                   (R22 / H2(4)^2 of the previous y2 update). Q44/R2 = rho is fixed, so the gain
 %                                   memory is 1/sqrt(rho) steps at every height; rho = (1 - lambda_f)^2 equivalent.
+%       .ap_ff                      'off' (default) | 'true' | 'lpf' (2026-10-16, Layer 2 test): gain predict
+%                                   a[k] = a[k-1] + a'*del_pd[k-1]. 'true' = driver slope (upper bound);
+%                                   'lpf' = low-passed difference of the filter's own posterior,
+%                                   a' = num/den, num = (1-beta) num + beta (a_post[k] - a_post[k-1]),
+%                                   den = (1-beta) den + beta (pd[k] - pd[k-1]); a' = 0 until den ~= 0.
+%       .ap_ff_beta                 2/51 (default, mean age of a 50-step window): beta of 'lpf'
+%       .ap_ff_thr                  0 (default) | thr > 0 [um per step]: 'lpf' keeps the last a' while |den| <= thr
 %       .q44_aprime_cmd             DIAGNOSTIC (default false, 2026-09-30): Q44 += (a'_true[k-1] * del_pd[k-1])^2, the
 %                                   squared gain change the commanded step causes (upper bound: reads the true slope).
 %       .q44_lag_budget             DIAGNOSTIC eps > 0 (default 0, 2026-09-30): Q44 += R2[k-1] * rho_k,
@@ -172,6 +179,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_noap(del_pd, pd, 
     persistent q44_ratio_std q44r_I                                          % Q/R-ratio design (ap model 09-30): Q44[k+1] = P0^2 I_k
     persistent q44_ratio_cap                                                 % cap the put-back at P0 per step: Q44 = P0^2 min(I, 1/P0)
     persistent q44_ratio_rel                                                 % relative P0: sqrt(P0) = sigma * a_hat
+    persistent ap_ff ap_ff_beta ap_ff_thr apf_num apf_den apf_s                         % Layer-2 gain feed-forward a'*del_pd (2026-10-16), default off
 
     if isempty(initialized)
         initialized = true;
@@ -224,6 +232,10 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_noap(del_pd, pd, 
         q_aprime_cross = logical(get_field_default(ctrl_const, 'q_aprime_cross', true));   % false = Q44 only (discriminator)
         q44_r2_frac = get_field_default(ctrl_const, 'q44_r2_frac', 0);  r2a_km1 = nan(3, 1);
         q44_aprime_cmd = logical(get_field_default(ctrl_const, 'q44_aprime_cmd', false));  del_pd_km1 = zeros(3, 1);
+        ap_ff = lower(get_field_default(ctrl_const, 'ap_ff', 'off'));  ap_ff_beta = get_field_default(ctrl_const, 'ap_ff_beta', 2 / 51);
+        ap_ff_thr = get_field_default(ctrl_const, 'ap_ff_thr', 0);
+        assert(any(strcmp(ap_ff, {'off', 'true', 'lpf'})), 'motion_control_law_eq17_5state_noap:apFf', 'ctrl_const.ap_ff must be off | true | lpf.');
+        apf_num = zeros(3, 1);  apf_den = zeros(3, 1);  apf_s = zeros(3, 1);
         q44_lag_budget = get_field_default(ctrl_const, 'q44_lag_budget', 0);
         q44_mse_opt = get_field_default(ctrl_const, 'q44_mse_opt', 0);
         lf_info_beta = get_field_default(ctrl_const, 'lf_info_beta', 0);  lf_info_floor = get_field_default(ctrl_const, 'lf_info_floor', 0.99);
@@ -467,6 +479,8 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_noap(del_pd, pd, 
         if nw_mcorr;   x_pred(3) = x_pred(3) - alpha * res1_km1(ax); end
         if corr_input; x_pred(3) = x_pred(3) - u_c_km1(ax); end
         x_pred(4) = x_curr(4);  x_pred(5) = x_curr(5);
+        if strcmp(ap_ff, 'true'); x_pred(4) = x_pred(4) + aprime_true_km1(ax) * del_pd_km1(ax); end   % Layer 2, see header
+        if strcmp(ap_ff, 'lpf');  x_pred(4) = x_pred(4) + apf_s(ax) * del_pd_km1(ax); end
         if gain_order >= 2; x_pred(4) = x_pred(4) + x_curr(5); end
         if rate_damp; x_pred(5) = rho_used(ax) * x_curr(5); end
         if gain_order >= 3; x_pred(5) = x_pred(5) + x_curr(8);  x_pred(8) = x_curr(8); end
@@ -547,6 +561,11 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_noap(del_pd, pd, 
     % ------------------------------------------------------------------
     % Bookkeeping
     % ------------------------------------------------------------------
+    if strcmp(ap_ff, 'lpf')                           % low-passed difference slope for the next predict, see header
+        apf_num = (1 - ap_ff_beta) * apf_num + ap_ff_beta * (a_post - a_prior_law);
+        apf_den = (1 - ap_ff_beta) * apf_den + ap_ff_beta * (pd(:) - pd_km1(:));
+        nz = abs(apf_den) > ap_ff_thr & apf_den ~= 0;  apf_s(nz) = apf_num(nz) ./ apf_den(nz);
+    end
     pd_km2 = pd_km1;  pd_km1 = pd;
     f_d_km3 = f_d_km2;  f_d_km2 = f_d_km1;  f_d_km1 = f_d;
     a_ctrl_km2 = a_ctrl_km1;  a_ctrl_km1 = a_ctrl;
@@ -576,6 +595,7 @@ function [f_d, ekf_out, diag] = motion_control_law_eq17_5state_noap(del_pd, pd, 
         diag.innovation_y1 = innov1_v;  diag.innovation_y2 = innov2_v;  diag.S_y1 = S11_v;  diag.S_y2 = S22_v;  diag.w_y2 = w_y2_v;
         diag.K_kf_a_y2 = K_a_y2_v;  diag.K_kf_dx_y1 = K_dx_y1_v;  diag.K_kf_a_y1 = K_a_y1_v;
         diag.delta_a_hat = da_post;  diag.a_hat = a_post;  diag.a_ctrl_used = a_ctrl;
+        if ~strcmp(ap_ff, 'off'); diag.a_prime_hat = apf_s; if strcmp(ap_ff, 'true'); diag.a_prime_hat = aprime_true_km1; end; end   % slope the next predict uses (run_pure_simulation logs a_prime_hat)
         diag.delta_x_hat_1 = x_e_per_axis(1, :).';  diag.delta_x_hat_3 = x_e_per_axis(3, :).';
         diag.gate_active_per_axis = gate_off(:);  diag.guards_individual = G_flags;
         diag.h_bar = h_bar;  diag.f_d = f_d;  diag.lambda_f_used = lf_used;

@@ -85,6 +85,10 @@ function simOut = run_pure_simulation(config, opts)
     % Plant-side boundary override (2026-09-21): opts.plant_cperp = @(h_bar) c_perp, e.g. cell_cperp_delta. The
     % controller keeps P (plane); the plant (step_dynamics, calc_thermal_force) and the logged a_true use P_plant.
     if ~isfield(opts, 'plant_cperp');  opts.plant_cperp  = [];                 end
+    % Gain regulation (2026-10-16, motion_ctrl a' difference vs state): struct(a_d, lambda_a, beta, thr, ap_min[, v_max]); [] = off.
+    % z only: Delta h_d = (1 - lambda_a)(a_d - a_hat)/a_hat' [R], a_hat' from diag.a_prime_hat (5state_noap ap_ff), gated as in
+    % run_formC_b (law slope taken only while the low-passed commanded step |den| > thr [R/step], floored at ap_min). Needs collect_diag.
+    if ~isfield(opts, 'gain_reg');     opts.gain_reg     = [];                 end
 
     % ------------------------------------------------------------------
     % 1. RNG seeding — MUST precede calc_simulation_params.
@@ -536,6 +540,18 @@ function simOut = run_pure_simulation(config, opts)
 
         % --- (b) Controller input pd[k] is the unit-delayed trajectory
         pd_k = pd_for_ctrl;
+        if ~isempty(opts.gain_reg)                        % gain regulation replaces the trajectory (see opts)
+            if k == 1; greg_den = 0;  greg_dwr = 0;  greg_s = opts.gain_reg.ap_min; end
+            greg_den = (1 - opts.gain_reg.beta) * greg_den + opts.gain_reg.beta * greg_dwr;   % low-passed commanded step [R/step]
+            dwr = 0;
+            if k > 1
+                ap_b = NaN;  if isfield(diag_k, 'a_prime_hat'); ap_b = diag_k.a_prime_hat(3) * P.common.R / a_nom_drv; end   % init call has no slope
+                if abs(greg_den) > opts.gain_reg.thr && isfinite(ap_b); greg_s = max(ap_b, opts.gain_reg.ap_min); end
+                dwr = (1 - opts.gain_reg.lambda_a) * (opts.gain_reg.a_d - diag_k.a_hat(3) / a_nom_drv) / greg_s;
+            end
+            if isfield(opts.gain_reg, 'v_max'); dwr = sign(dwr) * min(abs(dwr), opts.gain_reg.v_max); end   % speed cap [R/step]
+            greg_dwr = dwr;  del_pd_k = dwr * P.common.R * P.wall.w_hat(:);  pd_kp1 = pd_k + del_pd_k;
+        end
 
         % --- (c) Sensor-delayed p_m for controller (head of buffer)
         p_m_delayed = p_m_buffer(:, 1);
