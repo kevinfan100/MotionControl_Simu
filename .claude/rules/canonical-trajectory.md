@@ -1,3 +1,11 @@
+---
+paths:
+  - "model/config/canonical_scenario.m"
+  - "model/trajectory/**"
+  - "test_script/integration/run_formC_*.m"
+  - "test_script/integration/run_formB_ws.m"
+---
+
 # 通用軌跡規約（2026-08-19 起）
 
 **SSOT = `model/config/canonical_scenario.m`。** 五支 gain-law driver

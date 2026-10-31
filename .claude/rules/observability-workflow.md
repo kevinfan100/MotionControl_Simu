@@ -1,3 +1,10 @@
+---
+paths:
+  - "model/diag/**"
+  - "test_script/integration/*observability*.m"
+  - "reference/eq17_analysis/derivation/**/*obs*.tex"
+---
+
 # 可觀性檢查工作流
 
 新增（或重新審查）一個 filter state 時走這五關。**前三關在紙上，寫進 `.tex`；後兩關跑

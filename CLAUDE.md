@@ -5,6 +5,12 @@
 
 ---
 
+## 目前主線（2026-10-15 起）：三軸估測器 + 牆角度 + 曲面掃描
+
+快照與從哪接：@agent_docs/eq17/mainline-3d.md（每 session 自動載入）。
+下面的「估測函數」章程與約束仍適用；一維 gain-law 三形式是 7–10 月的主線，檔案級對應在
+`agent_docs/eq17/mainline-gainlaw.md`（需要時才讀）。
+
 ## 研究主線：估測函數（2026-07 轉折）
 
 目標：c(h̄) 未知前提下估準三軸 motion gain a（z 軸優先）。
@@ -23,7 +29,7 @@
    （工具 `test_script/integration/verify_state_observability.m`；捕捉 `model/diag/obs_dump.m`）
 6. 未知牆測試：估測器一律 init 在平面、牆種只給 plant、三牆並列 —— `.claude/rules/wall-test-protocol.md`
 
-三個形式（檔案級對應見 @agent_docs/eq17/mainline-gainlaw.md；
+三個形式（檔案級對應見 `agent_docs/eq17/mainline-gainlaw.md`；
 對照與定案門檻見 `reference/eq17_analysis/shape_ledger.md`）：
 - **powerlaw** c = 1 + K/(h̄−1)^p —— ⊥ 最準；∥ 結構性失效
 - **expgain** a_h = a_o[1 − h̄^(−b)] —— 三軸可用；7a 代數式已修缺陷 1
@@ -110,10 +116,11 @@ Scope: wall-effect, simulation, control, analysis, etc.
 `@` 前綴 = 每個 session 開場自動載入；無前綴 = 指標，需要時才讀。
 
 ### 主線（eager）
-- @agent_docs/eq17/mainline-gainlaw.md — 兩形式對照、入口、驗收工具、缺陷狀態
+- @agent_docs/eq17/mainline-3d.md — 目前主線快照（三軸估測器、現行流程、開放項）
 - @agent_docs/shared/math-model.md — 座標系統、單位、系統方程、Gamma_inv
 
 ### 需要時才讀
+- agent_docs/eq17/mainline-gainlaw.md — 一維 gain-law 線（powerlaw / expgain / Form B / F2 / c-only）對照、入口、驗收工具
 - agent_docs/eq17/mainline-history.md — 主線快照移出的已結案舊線（a′_true 作弊臂、未知牆面、e_ā 代換、08-03 現況、[1/1]／δ／版本二細節）
 - agent_docs/shared/simulink-architecture.md — Simulink 方塊圖、Block 模式、Solver、ToWorkspace
 - agent_docs/shared/analysis-guide.md — GUI 分析 Tabs、建議測試參數

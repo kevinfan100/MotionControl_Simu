@@ -1,3 +1,10 @@
+---
+paths:
+  - "model/controller/motion_control_law_formC*.m"
+  - "model/controller/motion_control_law_formB*.m"
+  - "test_script/integration/run_formC_*.m"
+---
+
 # 正規化邊界規約（2026-08-30，formC/formB 家族）
 
 > 來源：Jones 問「Q33 = 4k_BT a_o ā/R 的分母該不該是 R²」→ 三方對帳（tex↔code↔plant）＋
