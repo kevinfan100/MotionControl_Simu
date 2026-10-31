@@ -15,21 +15,24 @@ function plot_mc_raster_ref(which, seed)
     wd = S.wd(:);  if wd(1) == 0; wd(1) = wd(2); end;  zd = wd * R_UM;
     D = squeeze(S.dxm_xyz(:, :, seed));
     xa = [xd(1); xd(1); xd(1:end-2)] - D(:, 1);  ya = [yd(1); yd(1); yd(1:end-2)] - D(:, 2);
+    za = [zd(1); zd(1); zd(1:end-2)] - D(:, 3);   % actual = measured position x_d[k-2] - delta x_m[k] (same for all three axes)
     cT = [0.85 0 0];  cE = [0 0.25 0.85];  FS = 20;  LFS = 15;  AXLW = 2.0;  AB = char(257);  HAT = char(770);  AXN = {'x', 'y', 'z'};
     if strcmp(which, 'traj')
         f = figure('Position', [40 40 1800 950], 'Color', 'w', 'NumberTitle', 'off', 'Visible', 'off');
         tl = tiledlayout(3, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
         ax = nexttile(tl, 1, [3 1]);  hold on; box on;
-        ha = plot(ax, xa, ya, '-', 'Color', cT, 'LineWidth', 4.0, 'DisplayName', 'actual');
-        hd = plot(ax, xd, yd, '--', 'Color', cE, 'LineWidth', 1.6, 'DisplayName', 'desired');
+        hd = plot(ax, xd, yd, '-', 'Color', cT, 'LineWidth', 4.0, 'DisplayName', 'desired');     % desired = reference: red thick (user 10-11)
+        ha = plot(ax, xa, ya, '--', 'Color', cE, 'LineWidth', 1.6, 'DisplayName', 'actual');
         xlim(ax, [-25 25]);  ylim(ax, [-1 17]);  xlabel(ax, ['x  [' char(181) 'm]']);  ylabel(ax, ['y  [' char(181) 'm]']);
-        legend(ax, [ha hd], 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
+        legend(ax, [hd ha], 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
         set(ax, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW);  grid(ax, 'off');
-        Y = {xd, yd, zd};  YL = {[-25 25], [-1 18], [0 4]};
+        Y = {xd, yd, zd};  YA = {xa, ya, za};  YL = {[-25 25], [-1 18], [0 4]};
         for ia = 1:3
             a2 = nexttile(tl, 2 * ia);  hold on; box on;
-            plot(a2, t, Y{ia}, '-', 'Color', cE, 'LineWidth', 2.5);
-            ylim(a2, YL{ia});  xlim(a2, [0 t(end)]);  ylabel(a2, [AXN{ia} '_d  [' char(181) 'm]']);
+            g1 = plot(a2, t, Y{ia}, '-', 'Color', cT, 'LineWidth', 4.0, 'DisplayName', [AXN{ia} '_d']);   % desired = red thick, first (user 10-11)
+            g2 = plot(a2, t, YA{ia}, '--', 'Color', cE, 'LineWidth', 1.6, 'DisplayName', AXN{ia});         % actual (user 10-11)
+            ylim(a2, YL{ia});  xlim(a2, [0 t(end)]);  ylabel(a2, [AXN{ia} '  [' char(181) 'm]']);
+            legend(a2, [g1 g2], 'Location', 'northeast', 'Orientation', 'horizontal', 'FontSize', LFS - 2, 'FontWeight', 'bold');
             if ia == 3; xlabel(a2, 'Time (sec)'); end
             set(a2, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW);  grid(a2, 'off');
         end

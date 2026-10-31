@@ -27,11 +27,14 @@ function plot_mc_s9_wsinit(sfx, plant)
         if hasp
             a3 = nexttile(tl, 6 + iw);  hold on; box on;
             plot(a3, t, S.p_hat, '-', 'Color', cE, 'LineWidth', 1.6, 'DisplayName', ['p' HAT]);  ylim(a3, [1.5 2.5]);  xlim(a3, [0 t(end)]);
+            plot(a3, t, local_peff(max(S.h_true, 1.001), plant), '--', 'Color', 'k', 'LineWidth', 1.6, 'DisplayName', 'p_{eff}(h)');   % 10-15: local exponent at the true height
             legend(a3, 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');  xlabel(a3, 'Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');
             if iw == 1; ylabel(a3, ['p' HAT], 'FontSize', FS, 'FontWeight', 'bold'); end
             set(a3, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', 2);  grid(a3, 'off');
         end
-        plot(a2, t, zeros(size(t)), '-', 'Color', cT, 'LineWidth', 4, 'DisplayName', [WB '_s']);
+        weq = -1.05 * strcmp(plant, 'cell');   % 10-15 (user): red = equivalent wall (plane 0, cell -1.05); grey = visible surface (cell only)
+        if weq ~= 0; plot(a2, t, zeros(size(t)), '-', 'Color', [0.55 0.55 0.55], 'LineWidth', 2, 'DisplayName', 'visible surface'); end
+        plot(a2, t, weq * ones(size(t)), '-', 'Color', cT, 'LineWidth', 4, 'DisplayName', ['equivalent wall ' WB '_s']);
         plot(a2, t, S.w_hat, '-', 'Color', cE, 'LineWidth', 1.6, 'DisplayName', [WB HAT '_s']);
         hb = max(S.h_true, 1.001);  plot(a2, t, hb - 1 ./ sqrt(local_ap(hb, plant)), '--', 'Color', 'k', 'LineWidth', 1.6, 'DisplayName', [WB '_s that fits the slope']);
         ylim(a2, [-3.5 3.5]);  if ~hasp; xlabel(a2, 'Time (sec)', 'FontSize', FS, 'FontWeight', 'bold'); end
@@ -49,4 +52,11 @@ end
 function a = local_a(h, plant)
     if strcmp(plant, 'cell'); a = 1 ./ cell_cperp_delta(h); return; end
     a = zeros(size(h));  for i = 1:numel(h); [~, c] = calc_correction_functions(h(i)); a(i) = 1 / c; end
+end
+
+function pe = local_peff(h, plant)
+%LOCAL_PEFF  10-15: local exponent of the true slope at height h, -d ln a' / d ln(h - w_phys), w_phys = physical wall (plane 0, cell -1.05).
+    wp = 0;  if strcmp(plant, 'cell'); wp = -1.05; end
+    d = 1e-4;  h1 = h * (1 + d);  h0 = h * (1 - d);
+    pe = -(log(local_ap(h1, plant)) - log(local_ap(h0, plant))) ./ (log(h1 - wp) - log(h0 - wp));
 end

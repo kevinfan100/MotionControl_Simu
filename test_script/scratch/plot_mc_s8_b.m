@@ -36,10 +36,12 @@ function plot_mc_s8_b(which, suffix, num, st)
             ax(3) = nexttile(tl, 4 + ic);  hold on; box on;
             wh = S.w_hat(:, q);  sp = S.sP_w(:, q);
             fill(ax(3), [t; flipud(t)], [wh + sp; flipud(wh - sp)], cB, 'EdgeColor', 'none', 'HandleVisibility', 'off');
-            h5 = plot(ax(3), t, zeros(size(t)), '-', 'Color', cT, 'LineWidth', 5, 'DisplayName', [WB '_s']);
+            weq = -1.05 * strcmp(WL{ic}, 'cell');   % 10-15 (user): red = equivalent wall (plane 0, cell -1.05); grey = visible surface (cell only)
+            if weq ~= 0; plot(ax(3), t, zeros(size(t)), '-', 'Color', [0.55 0.55 0.55], 'LineWidth', 2, 'DisplayName', 'visible surface'); end
+            h5 = plot(ax(3), t, weq * ones(size(t)), '-', 'Color', cT, 'LineWidth', 5, 'DisplayName', ['equivalent wall ' WB '_s']);
             h6 = plot(ax(3), t, wneed, '--', 'Color', cG, 'LineWidth', 2.2, 'DisplayName', 'law');
             h7 = plot(ax(3), t, wh, '-', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', [WB HAT '_s']);
-            ylim(ax(3), [-2 2]);  legend(ax(3), [h5 h6 h7], 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
+            ylim(ax(3), [-2 2]);  legend(ax(3), 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
             ax(4) = nexttile(tl, 6 + ic);  hold on; box on;
             plot(ax(4), t, S.dxm(:, q), '-', 'Color', cE, 'LineWidth', 1.0);
             ylim(ax(4), [-0.2 0.2]);  yticks(ax(4), [-0.1 0 0.1]);  xlabel(ax(4), 'Time (sec)', 'FontSize', FS, 'FontWeight', 'bold');

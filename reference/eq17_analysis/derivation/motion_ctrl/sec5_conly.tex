@@ -1,7 +1,7 @@
 % Section 5 of motion_ctrl.tex (Layer-1 session, 2026-10-07): position-dependent motion gain, c-only slope law, q55 = 0.
 %   Extension of Section 4 in the same layout; plane wall only (the unknown wall type and the meaning of c are Section 6).
-%   Code: motion_control_law_formC_b.m via run_plaw_walls law 'f1p2' (slope (1-c)/h^2), production refinements ON and not
-%   shown (user 10-07): y2 whitening, echo factor, MA(2), correlated n_x, and the d-step walk-back of y2 (the text writes the
+%   Code: motion_control_law_formC_b.m via run_plaw_walls law 'f1p2' (slope (1-c)/h^2), not shown in the text (user 10-07):
+%   y2 whitening and echo factor ON; MA(2) (ma2_aug) and correlated n_x (nw_mcorr) OFF (run_plaw_walls law 'f1p2' default, found 10-08), and the d-step walk-back of y2 (the text writes the
 %   delay-free H, measured harmless C92). c seeded at 0 (user 10-07), sqrt(P_cc[0]) = 0.1, q55 = 0, lambda_c 0.4.
 %   Runs: test_script/scratch/run_mc_s5_conly.m (tags _mcs5_desc, _mcs5_tri); figures plot_mc_s5.m (first-order column =
 %   run_mc_s4_first_order.m 'prod_xyz' / 'prod_tri10', same seed).

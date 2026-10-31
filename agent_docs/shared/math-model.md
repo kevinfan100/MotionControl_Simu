@@ -6,8 +6,10 @@
   V = R_y(θ_y)·R_x(θ_x) = [û v̂ ŵ]（`params.wall.V`）
 - V 把 local 轉到 measurement：δp = V·ᵛδp；Vᵀ 把 measurement 轉到 local：ᵛδp = Vᵀ·δp
 - 角度為 0 時 V = I：u = x、v = y、w = z。θ_y > 0：法向往 +x 傾（牆往 +x 降低）；θ_x > 0：法向往 −y 傾
-- ŵ = (sinθ_y cosθ_x, −sinθ_x, cosθ_y cosθ_x)；增益在 local 座標為 Λ = diag(ā_T, ā_T, ā_N)，
-  在 measurement 座標為 A = V·Λ·Vᵀ（T = tangential，N = normal）
+- ŵ = (sinθ_y cosθ_x, −sinθ_x, cosθ_y cosθ_x)；增益在 local 座標為 𝚲̄ = diag(ā_T, ā_T, ā_N)，
+  在 measurement 座標為 𝐀̄ = 𝐕·𝚲̄·𝐕ᵀ（T = tangential，N = normal；bar = 已除以 a_nom；同博論 (5.1) 𝐀 = 𝐕𝚲𝐕ᵀ）
+- 字體依 IEEE TIE 2025：純量斜體（ā_T、θ_x、λ_c），向量／矩陣粗體正體（δ𝐩̄、𝐮 𝐯 𝐰、𝐕、𝐀̄、𝚲̄）；
+  左上標 ᵛ = 估測的 local coordinate（博論 (5.7)，ᵛδ𝐩̄ = 𝐕̂ᵀδ𝐩̄）
 - 舊參數（方位角 theta、極角 phi；角度 0 時 û = −x、v̂ = −y）已移除，設非零值會被 `calc_wall_params` 擋下並給換算：
   θ_x = −asin(sinθ·sinφ)，θ_y = atan2(cosθ·sinφ, cosφ)；切向正弦 amp_u、amp_v 的正負號因此翻轉（同一條路徑）
 - 熱力（2026-10-15）：在 local 座標抽 √(係數·[c∥ c∥ c⊥])·randn，再乘 V 轉回量測座標，

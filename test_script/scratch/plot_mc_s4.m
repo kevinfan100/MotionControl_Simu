@@ -27,10 +27,10 @@ function plot_mc_s4(seed, which)
             r = D{ic};  t = r.t;
             if is_tri
                 ax0 = nexttile(tl, ic);  hold on; box on;          % tracking: desired (solid) and actual (dashed, thinner) [um]
-                hz = plot(ax0, t, r.h * R_UM, '-', 'Color', cT, 'LineWidth', 5.0, 'DisplayName', 'z');      % red first (user 10-07)
-                hd = plot(ax0, t, r.h_d * R_UM, '--', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', 'z_d');  % only tracking rows dashed
+                hd = plot(ax0, t, r.h_d * R_UM, '-', 'Color', cT, 'LineWidth', 5.0, 'DisplayName', 'z_d');   % desired = reference: red thick, first (user 10-11)
+                hz = plot(ax0, t, r.h * R_UM, '--', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', 'z');      % actual: blue dashed
                 xlim(ax0, [0 t(end)]);  ylim(ax0, [0 55]);
-                legend(ax0, [hz hd], 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
+                legend(ax0, [hd hz], 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
                 set(ax0, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW);  grid(ax0, 'off');
                 if ic == 1; ylabel(ax0, ['z  [' char(181) 'm]'], 'FontSize', FS, 'FontWeight', 'bold'); end
             end

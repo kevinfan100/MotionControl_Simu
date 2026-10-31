@@ -24,10 +24,10 @@ function plot_mc_s6_walltype(seed, tag)
     for ic = 1:2
         r = C{ic};  t = r.t;  ax = gobjects(4, 1);
         ax(1) = nexttile(tl, ic);  hold on; box on;
-        hz = plot(ax(1), t, r.h * R_UM, '-', 'Color', cT, 'LineWidth', 5.0, 'DisplayName', 'z');
-        hd = plot(ax(1), t, r.h_d * R_UM, '--', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', 'z_d');
+        hd = plot(ax(1), t, r.h_d * R_UM, '-', 'Color', cT, 'LineWidth', 5.0, 'DisplayName', 'z_d');   % desired = reference: red thick, first (user 10-11)
+        hz = plot(ax(1), t, r.h * R_UM, '--', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', 'z');      % actual: blue dashed
         ylim(ax(1), [0 55]);
-        legend(ax(1), [hz hd], 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
+        legend(ax(1), [hd hz], 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
         ax(2) = nexttile(tl, 2 + ic);  hold on; box on;
         ht = plot(ax(2), t, r.a_true, '-', 'Color', cT, 'LineWidth', 5.0, 'DisplayName', az);
         hh = plot(ax(2), t, r.a_hat, '-', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', [AB HAT '_z']);

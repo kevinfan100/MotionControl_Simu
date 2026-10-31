@@ -24,14 +24,17 @@ function plot_mc_s9_gainreg(plant, sfx)
     h5 = yline(ax(2), S.a_d, '--', 'Color', 'k', 'LineWidth', 2, 'DisplayName', [AB '_d']);
     ylim(ax(2), [-0.2 1.2]);  legend(ax(2), [h3 h4 h5], 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
     ax(3) = nexttile(tl);  hold on; box on;
-    h6 = plot(ax(3), t, zeros(size(t)), '-', 'Color', cT, 'LineWidth', 5, 'DisplayName', [WB '_s']);
+    weq = -1.05 * strcmp(plant, 'cell');   % 10-15 (user): red = equivalent wall (plane 0, cell -1.05); grey = visible surface (cell only)
+    if weq ~= 0; plot(ax(3), t, zeros(size(t)), '-', 'Color', [0.55 0.55 0.55], 'LineWidth', 2, 'DisplayName', 'visible surface'); end
+    h6 = plot(ax(3), t, weq * ones(size(t)), '-', 'Color', cT, 'LineWidth', 5, 'DisplayName', ['equivalent wall ' WB '_s']);
     h7 = plot(ax(3), t, S.w_hat(:, q), '-', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', [WB HAT '_s']);
     hb = max(S.h_true(:, q), 1.001);  wsq = hb - 1 ./ sqrt(local_ap(hb, plant));
     h8 = plot(ax(3), t, wsq, '--', 'Color', 'k', 'LineWidth', 1.8, 'DisplayName', [WB '_s that fits the slope']);
-    ylim(ax(3), [-1.5 1]);  legend(ax(3), [h6 h7 h8], 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
+    ylim(ax(3), [-1.5 1]);  legend(ax(3), 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
     if hasp
         ax(5) = nexttile(tl, 4);  hold on; box on;
         plot(ax(5), t, S.p_hat(:, q), '-', 'Color', cE, 'LineWidth', 1.8, 'DisplayName', ['p' HAT]);
+        plot(ax(5), t, local_peff(max(S.h_true(:, q), 1.001), plant), '--', 'Color', 'k', 'LineWidth', 1.8, 'DisplayName', 'p_{eff}(h)');   % 10-15: local exponent at the true height
         ylim(ax(5), [1.5 2.5]);  ylabel(ax(5), ['p' HAT], 'FontSize', FS, 'FontWeight', 'bold');
         legend(ax(5), 'Location', 'northoutside', 'Orientation', 'horizontal', 'FontSize', LFS, 'FontWeight', 'bold');
         ax(4) = nexttile(tl, 5);  hold on; box on;
@@ -53,4 +56,11 @@ end
 function a = local_a(h, plant)
     if strcmp(plant, 'cell'); a = 1 ./ cell_cperp_delta(h); return; end
     a = zeros(size(h));  for i = 1:numel(h); [~, c] = calc_correction_functions(h(i)); a(i) = 1 / c; end
+end
+
+function pe = local_peff(h, plant)
+%LOCAL_PEFF  10-15: local exponent of the true slope at height h, -d ln a' / d ln(h - w_phys), w_phys = physical wall (plane 0, cell -1.05).
+    wp = 0;  if strcmp(plant, 'cell'); wp = -1.05; end
+    d = 1e-4;  h1 = h * (1 + d);  h0 = h * (1 - d);
+    pe = -(log(local_ap(h1, plant)) - log(local_ap(h0, plant))) ./ (log(h1 - wp) - log(h0 - wp));
 end

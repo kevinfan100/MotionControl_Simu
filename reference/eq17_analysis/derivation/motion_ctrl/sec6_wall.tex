@@ -13,7 +13,7 @@
 %   Plants: plane = production polynomial (calc_correction_functions.m, c_perp = 1/D_perp); cell = the same polynomial slid by
 %   1.05 R (test_script/scratch/cell_cperp_delta.m, ledger C62).
 %   Code: formC_b via run_plaw_walls law 'f1p2', q55_adapt 'ratio' (q55 = P_fix^2 I, single sqrt(P_fix) = 0.15; user 10-06:
-%   one P_fix, no new/revisit split), production refinements ON and not shown. Runs: run_mc_s5_conly.m tags _mcs5_tri and
+%   one P_fix, no new/revisit split), y2 whitening and echo factor ON; MA(2) (ma2_aug) and correlated n_x (nw_mcorr) OFF (run_plaw_walls law 'f1p2' default, found 10-08); not shown. Runs: run_mc_s5_conly.m tags _mcs5_tri and
 %   _mcs5_tri_ratio, plants plane and cell; figures plot_mc_s5.m 's6_plane' / 's6_cell', plot_mc_s6_a_of_h.m (Fig. 6.1), plot_mc_s6_c_of_h.m (Fig. 6.2).
 %   Measured 10-07 (5 seeds, triangle 1.10 <-> 10 R at 2 Hz, e_a = a_true - a_hat): plane q55 = 0 troughs +0.022 tops +0.054,
 %   P_fix troughs +0.005 tops +0.004 (mean |e_a| 0.039 -> 0.015); cell q55 = 0 troughs +0.075 tops +0.024, P_fix troughs +0.014
@@ -72,7 +72,7 @@ P_{\mathrm{fix}}\, I[k] \ll 1 \quad\Longrightarrow\quad \boxed{\,q_{55}[k] = P_{
 \]
 
 \figpage{Fig.~6.1\quad Motion gain of the two walls}{$\ba_{\mathrm{plane}}(h)$ and $\ba_{\mathrm{cell}}(h)$; $h$ from 1.10 to 22.2 R}{fig_mc_s6_a_of_h.png}
-\figpage{Fig.~6.2\quad Value of $c$ that makes the slope exact, $c(h) = 1 - h^{2}\,\ba'(h)$}{plane and cell; $h$ from 1.10 to 22.2 R}{fig_mc_s6_c_of_h.png}
+\figpage{Fig.~6.2\quad Slope term of the two walls, $1 - c(h) = h^{2}\,\ba'(h)$}{plane and cell; $h$ from 1.10 to 22.2 R; top: $1 - c(h)$; bottom: the smaller of the two divided by the larger}{fig_mc_s6_c_of_h.png}
 \figpage{Fig.~6.3\quad Plane wall: $q_{55} = 0$ vs $q_{55} = P_{\mathrm{fix}}^{2} I$}{z axis; trajectory of Fig.~4.3; left: $q_{55} = 0$ (Section 5); right: $\sqrt{P_{\mathrm{fix}}} = 0.15$; $\lc = 0.4$, seed 1}{fig_mc_s6_plane_s1.png}
 \figpage{Fig.~6.4\quad Cell wall: $q_{55} = 0$ vs $q_{55} = P_{\mathrm{fix}}^{2} I$}{z axis; trajectory of Fig.~4.3; left: $q_{55} = 0$; right: $\sqrt{P_{\mathrm{fix}}} = 0.15$; $\lc = 0.4$, seed 1}{fig_mc_s6_cell_s1.png}
 

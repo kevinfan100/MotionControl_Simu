@@ -3,7 +3,7 @@
 %   First case: plane wall, a_d = 0.1, lambda_a = 1 - Ts / tau_a with tau_a = 0.1 s, start parked at 22.2 R (h_init 50 um), no saturation,
 %   no height floor. Estimator: S8 = formC_b plaw_dc_slope with c pinned at 0 (numerator 1), delta_init = -w_s-hat[0] = 0,
 %   Pf_delta_std 0.3, plaw_delta_lim [-5, 5]. lambda_c 0.4. Output test_results/temp_1009_ws/gainreg_<plant>.mat.
-function run_mc_s9_gainreg(plants, seeds, a_d, tau_a, T_sim, ws0, extra, tag, dith)
+function run_mc_s9_gainreg(plants, seeds, a_d, tau_a, T_sim, ws0, extra, tag, dith, ws_inj, greg_x)
     if nargin < 1 || isempty(plants); plants = {'plane'}; end
     if nargin < 2 || isempty(seeds); seeds = 1; end
     if nargin < 3 || isempty(a_d); a_d = 0.1; end
@@ -13,6 +13,8 @@ function run_mc_s9_gainreg(plants, seeds, a_d, tau_a, T_sim, ws0, extra, tag, di
     if nargin < 7 || isempty(extra); extra = struct(); end   % 10-14: extra ctrl_const overrides (e.g. struct('fe_cmd_eval', true))
     if nargin < 8; tag = ''; end
     if nargin < 9; dith = []; end   % 10-14: run_formC_b opts.cmd_dither (known sine on the command), [] = off
+    if nargin < 10 || isempty(ws_inj); ws_inj = 0; end
+    if nargin < 11 || isempty(greg_x); greg_x = struct(); end   % 10-15: extra gain_reg fields, e.g. struct('a_mid', 0.3, 't_switch', 1.5)   % 10-15: true wall moved by ws_inj [R] on the plant side only (run_formC_b opts.ws_inject)
     here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));
     addpath(genpath(fullfile(root, 'model'))); addpath(fullfile(root, 'test_script', 'integration')); addpath(here);
     od = fullfile(root, 'test_results', 'temp_1009_ws');
@@ -28,19 +30,19 @@ function run_mc_s9_gainreg(plants, seeds, a_d, tau_a, T_sim, ws0, extra, tag, di
                 't_descend_override', 0, 'T_sim', T_sim, 'lambda_c', 0.4);
     for ip = 1:numel(plants)
         o = struct('arm', 'best', 'ctrl_const_override', cc, 'config_override', OV, 'scenario', 'deep', 'verbose', false, ...
-                   'seeds', seeds, 'log_P_full', false, 'gain_reg', struct('a_d', a_d, 'lambda_a', lam_a), 'cmd_dither', dith);
+                   'seeds', seeds, 'log_P_full', false, 'gain_reg', local_merge(struct('a_d', a_d, 'lambda_a', lam_a), greg_x), 'cmd_dither', dith, 'ws_inject', ws_inj);
         if strcmp(plants{ip}, 'cell'); o.plant_cperp = @cell_cperp_delta; end
         clear run_formC_b motion_control_law_formC_b;
         tic;  evalc('Rr = run_formC_b(o);');  tr = toc;
         ns = numel(Rr.runs);  S1 = Rr.runs{1};  n = numel(S1.h_bar_d_out);
-        res = struct('ws0', ws0, 't', (0:n-1)' * Ts, 'a_d', a_d, 'lambda_a', lam_a, 'tau_a', tau_a, 'seeds', seeds, 'plant', plants{ip});
+        res = struct('ws_inj', ws_inj, 'ws0', ws0, 't', (0:n-1)' * Ts, 'a_d', a_d, 'lambda_a', lam_a, 'tau_a', tau_a, 'seeds', seeds, 'plant', plants{ip});
         [res.wd, res.h_true, res.a_true, res.a_hat, res.w_hat, res.dxm, res.ap_hat, res.ap_true, res.sPa, res.sPw, res.p_hat] = deal(zeros(n, ns));
         for q = 1:ns
             S = Rr.runs{q};  hb = S.h_bar_true_out(:);
             res.wd(:, q) = S.h_bar_d_out(:);  res.h_true(:, q) = hb;  res.a_hat(:, q) = S.a_bar_hat_out(:, 3);
             res.w_hat(:, q) = -S.ws_hat_out(:, 3);  res.dxm(:, q) = S.dh_m_out(:, 3);
             res.ap_hat(:, q) = S.a_prime_out(:, 3);  res.ap_true(:, q) = S.a_prime_true_out(:, 3);
-            res.sPa(:, q) = S.P_a_out(:, 3) / S.a_nom;  res.p_hat(:, q) = S.b_hat_out(:, 3);  if isfield(S, 'sP_ws_out'); res.sPw(:, q) = S.sP_ws_out(:, 3); end   % 10-14: sqrt P_aa (a-bar units)   % same driver units; only the ratio kappa is read
+            res.sPa(:, q) = S.P_a_out(:, 3) / S.a_nom;  res.p_hat(:, q) = S.b_hat_out(:, 3);  res.sPw(:, q) = S.P_ws_out(:, 3);   % 10-15: sqrt P of slot 7 (w_s)   % 10-14: sqrt P_aa (a-bar units)   % same driver units; only the ratio kappa is read
             if strcmp(plants{ip}, 'cell'); res.a_true(:, q) = 1 ./ cell_cperp_delta(max(hb, 1.001));
             else; for i = 1:n; [~, cp] = calc_correction_functions(max(hb(i), 1.001)); res.a_true(i, q) = 1 / cp; end; end
         end
@@ -58,4 +60,8 @@ end
 
 function s = local_ttag(T_sim)
     s = '';  if T_sim ~= 1.5; s = sprintf('_T%g', T_sim); end   % 10-14: longer runs keep their own file
+end
+
+function a = local_merge(a, b)
+    fn = fieldnames(b);  for i = 1:numel(fn); a.(fn{i}) = b.(fn{i}); end
 end

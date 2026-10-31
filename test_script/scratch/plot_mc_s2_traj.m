@@ -12,7 +12,7 @@ function plot_mc_s2_traj()
     Y = {xd, yd, zd};  L = {'x_d', 'y_d', 'z_d'};  YL = {[-10 10], [-10 10], [0 55]};
     for i = 1:3
         ax = nexttile(tl);  hold on; box on;
-        plot(ax, t, Y{i}, '-', 'Color', cE, 'LineWidth', LW);
+        plot(ax, t, Y{i}, '-', 'Color', [0.85 0 0], 'LineWidth', LW);   % desired = red (user 10-11)
         xlim(ax, [0 5]);  ylim(ax, YL{i});
         set(ax, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', AXLW);  grid(ax, 'off');
         ylabel(ax, [L{i} '  [' char(181) 'm]'], 'FontSize', FS, 'FontWeight', 'bold');
