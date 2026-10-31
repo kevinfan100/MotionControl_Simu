@@ -373,6 +373,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     persistent Q_theta_floor a_bar_floor a_bar_ceil ws_margin gap_floor
     persistent b_floor b_ceil
     persistent y2_whiten fe_row4_full use_fdet y2_off y1_gain_off y1_gain_off_from t2_pure_prop lambda_f obs_dump_on
+    persistent control_law_j6 j6_tab                                  % journal law (J6) + its readout table (2026-10-07, 1007_conly_meng_law.tex), default off
     persistent r2_scale                                       % diagnostic: multiplies the WHOLE R2 (colour chain + delay term) after compute_R2_formB (2026-09-23), default 1 = bit-identical
     persistent mean_knob_from pred_slope_scale y1_gain_leg_scale   % mean-only diagnostic knobs (2026-09-03), default off
     persistent nw_mcorr res1_km1                                  % correlated process/measurement noise correction (2026-09-03), default off
@@ -1236,6 +1237,30 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                    'ctrl_const.plaw_c_slope has its own exact height step: law_exact_step and pred_mean2 (b-law terms) must be off.');
             assert(strcmp(ap_src, 'post'), 'motion_control_law_formC_b:plawCSlope', 'ctrl_const.plaw_c_slope sets the slope itself: leave ap_src at its default.');
             plaw_p   = get_field_default(ctrl_const, 'plaw_p', 2);
+        end
+        % control_law = 'j6' (2026-10-07, branch test/conly-meng-law; derivation reference/eq17_analysis/derivation/1007_conly_meng_law.tex,
+        % default 'eq17' => bit-identical). The JOURNAL control law (Meng, Long, Menq, IEEE TIE 2025 eq. (6) = thesis (4.4)),
+        %     fbar_d[k] = M[k] / a_hat[k],   M[k] = Delta_wbar_d[k] + (1 - lc) dw3_hat[k],   x_D_hat = 0,
+        % with every estimate the POSTERIOR of the same step: the force is computed AFTER the KF update ([3b] below), not in [2].
+        % M is then a known input of the error dynamics, so (tex S5, S8): F_e(3,3) = 1 (not lc), F_e(3,4) = -fbar_det with
+        % fbar_det = Delta_wbar_d/a_hat (no history), F_e(4,3) loses its a'(1-lc) share, F_e(4,4) = 1 + a' fbar_det; Q33 = kappa_T a_hat
+        % (white, no (1-lc)^2 history / n_w terms: ma2_aug, nw_mcorr, q33_dc_match are the old law's patches and must be off);
+        % the position block of P[0] has the closed form of tex S7 (no DARE). The a_m readout chain closes through the KF gain
+        % K1 = m/(m+r) of the position block, so C_dpmr/C_n/IF/echo-S become functions of K1(kappa_T a_hat, sigma2_n):
+        % table from calc_readout_consts_kfloop (exact Lyapunov on a K1 grid; K1 = 1 reproduces the production constants),
+        % interpolated per step at the estimate (c-free, as R2 already is).
+        control_law_j6 = strcmpi(get_field_default(ctrl_const, 'control_law', 'eq17'), 'j6');
+        j6_tab = [];
+        if control_law_j6
+            assert(plaw_c_slope, 'motion_control_law_formC_b:j6Law', 'ctrl_const.control_law = ''j6'' is derived for the plaw slope laws (plaw_c_slope / plaw_cp_slope).');
+            assert(d_delay == 2, 'motion_control_law_formC_b:j6Law', 'control_law ''j6'': the readout table is derived for d = 2.');
+            assert(~ma2_aug && ~nw_mcorr && ~q33_dc_match && ~pred_force_step && ~pred_mean2 && ~law_exact_step && ~t2_pure_prop, ...
+                   'motion_control_law_formC_b:j6Law', ...
+                   'control_law ''j6'': ma2_aug, nw_mcorr, q33_dc_match, pred_force_step, pred_mean2, law_exact_step and t2_pure_prop are the old law''s terms and must be off.');
+            assert(lambda_f >= 1, 'motion_control_law_formC_b:j6Law', 'control_law ''j6'': lambda_f < 1 is not derived with it.');
+            j6_tab = calc_readout_consts_kfloop(lambda_c, a_pd, a_cov, d_delay);
+        end
+        if plaw_c_slope
             assert(plaw_p > 1, 'motion_control_law_formC_b:plawCSlope', 'ctrl_const.plaw_p must exceed 1.');
             if plaw_dc_slope && ~plaw_dp_slope
                 assert(plaw_p == 2, 'motion_control_law_formC_b:plawDcSlope', 'ctrl_const.plaw_dc_slope pins p = 2 (far-field anchor (9/8)/h^2).');
@@ -1450,6 +1475,15 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
                 P5  = solve_dare_kf_local(F5, H5, Q5, sigma2_n_nd(ax));
                 ma2_idx = [1, 2, 3, 8, 9];
                 P7(ma2_idx, ma2_idx) = P5;
+            elseif control_law_j6
+                % Journal law (1007 tex S7 / seed section): the position block is a random walk read through a two-step
+                % delay, whose stationary filter has the closed form m = (q + sqrt(q^2 + 4 q r))/2, p1 = m r/(m + r),
+                % P = [p1 p1 p1; p1 p1+q p1+q; p1 p1+q p1+2q] at q = kappa_T a_bar_seed, r = sigma2_n -- no DARE.
+                q0 = kappa_T * a_bar_seed;  r0 = sigma2_n_nd(ax);
+                m0 = (q0 + sqrt(q0^2 + 4 * q0 * r0)) / 2;  p10 = m0 * r0 / (m0 + r0);
+                P7(1:3, 1:3) = [p10, p10,      p10; ...
+                                p10, p10 + q0, p10 + q0; ...
+                                p10, p10 + q0, p10 + 2 * q0];
             else
                 % Same Q33 container as run time (S8 revision 2026-08-01),
                 % evaluated at the seed where the whole history equals the seed.
@@ -1719,7 +1753,13 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     dw_bar_m_new = (1 - a_pd) * dw_bar_m + a_pd * delta_w_m;
     dw_r = delta_w_m - dw_bar_m_new;
     sigma2_dwr_hat_new = (1 - a_cov) * sigma2_dwr_hat + a_cov * dw_r.^2;
-    a_bar_wm = (sigma2_dwr_hat_new - C_n * sigma2_n_nd) / (C_dpmr * kappa_T);   % [-]
+    if control_law_j6
+        % readout constants of THIS loop at the stored posterior gain (1007 tex S7; K1 = m/(m+r) of the position block)
+        j6c = local_j6_consts(j6_tab, kappa_T * max(a_bar_hat, a_bar_floor), sigma2_n_nd, y2_whiten);
+        a_bar_wm = (sigma2_dwr_hat_new - j6c.C_N .* sigma2_n_nd) ./ (j6c.C_T * kappa_T);   % [-]
+    else
+        a_bar_wm = (sigma2_dwr_hat_new - C_n * sigma2_n_nd) / (C_dpmr * kappa_T);   % [-]
+    end
     if y2_whiten
         y2 = a_bar_wm - (1 - a_cov) * a_wm_km1;      % = a_cov*u[k]
         H2_scale = a_cov;
@@ -1764,6 +1804,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         F_dw_vec = F_dw_det;
     else
         F_dw_vec = F_dw_raw;      % ablation only: reproduces the rectification
+    end
+    if control_law_j6
+        % journal law: the force of this step is computed AFTER the update ([3b]); the eq17 values above are discarded
+        fbar_d = nan(3, 1);  fbar_det = nan(3, 1);  F_dw_vec = nan(3, 1);
     end
 
     % --- [U3] force output conversion (the ONLY loop-adjacent a_o use) ---
@@ -2015,6 +2059,7 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             end
             Q33 = q33_dc_fac * kappa_T * (a_bar_i + one_minus_lc^2 * a_bar_hist) ...
                   + one_minus_lc^2 * sigma2_n_nd(ax);
+            if control_law_j6; Q33 = kappa_T * a_bar_i; end   % journal law (1007 tex S8): the thermal step alone, white, no n_w feed-through
             Q_i = zeros(n_state);
             Q_i(3, 3) = Q33;
             Q_i(3, 4) = -a_prime_i * Q33;
@@ -2037,15 +2082,24 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
 
         % --- R (R2 at the ESTIMATE a_bar_hat, never the raw readout) ---
         R1_i = sigma2_n_nd(ax);
-        R2_i = compute_R2_formB(a_bar_i, sigma2_n_nd(ax), IF_abc, C_dpmr, C_n, ...
-                                K_var, amlpf_var_factor, xi_bar(ax), kappa_T, ...
+        if control_law_j6                        % readout chain of THIS loop at the estimate (1007 tex S7): K1(kappa_T a_bar_i, sigma2_n) -> table
+            j6i = local_j6_consts(j6_tab, kappa_T * a_bar_i, sigma2_n_nd(ax), y2_whiten);
+            IF_abc_i = j6i.IF_abc;  C_dpmr_i = j6i.C_T;  C_n_i = j6i.C_N;
+            xi_bar_i = (C_n_i / C_dpmr_i) * sigma2_n_nd(ax) / kappa_T;
+            S_echo_T_i = j6i.S_T;  S_echo_n_i = j6i.S_n;
+        else
+            IF_abc_i = IF_abc;  C_dpmr_i = C_dpmr;  C_n_i = C_n;  xi_bar_i = xi_bar(ax);
+            S_echo_T_i = S_echo_T;  S_echo_n_i = S_echo_n;
+        end
+        R2_i = compute_R2_formB(a_bar_i, sigma2_n_nd(ax), IF_abc_i, C_dpmr_i, C_n_i, ...
+                                K_var, amlpf_var_factor, xi_bar_i, kappa_T, ...
                                 Q_i(4, 4), d_delay, a_cov, y2_whiten, r22_delay_scale);
         R2_i = R2_i * r2_scale;                  % diagnostic whole-R2 scale (default 1)
         R2_v(ax) = R2_i;
 
         % --- Gates (OR): warm-up / readout NaN guard / near wall ---
         G1 = (t_now < t_warmup_kf);
-        G2 = ((sigma2_dwr_hat_new(ax) - C_n * sigma2_n_nd(ax)) <= 0);
+        G2 = ((sigma2_dwr_hat_new(ax) - C_n_i * sigma2_n_nd(ax)) <= 0);
         G3 = (h_bar < h_bar_safe);
         G_flags(:, ax) = [G1; G2; G3];
         gate_off(ax) = G1 || G2 || G3;
@@ -2093,6 +2147,10 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
         end
         F_e = local_build_F_e_formC(lambda_c, F_dw, a_prime_i, A_a_i, ...
                                     J_b_fac_i * M_tot, M_tot, dap_dd3_i);
+        if control_law_j6                              % journal law (1007 tex S5): M is a known input, so row 3 = [0 0 1 -f_det] and row 4 loses the a'(1-lc) share
+            F_e(3, 3) = 1;
+            F_e(4, 3) = F_e(4, 3) - one_minus_lc * a_prime_i;
+        end
         if plaw_dc_slope || plaw_cp_slope; F_e(4, 7) = dap_ddl_i * M_tot; end   % 0922 tex S5: F_e(4,7) = -(2 a'/g) M = -(height share of F_e(4,3)); (c, p) law: -(a' ln h) M
         if fe43_off; F_e(4, 3) = 0; end          % diagnostic, see init
         if fe44_Aa_scale ~= 1; F_e(4, 4) = F_e(4, 4) - (1 - fe44_Aa_scale) * A_a_i * M_tot; end   % see init: kappa-weighted self-sensitivity in P (kappa = 0 == fe44_Aa_off)
@@ -2450,8 +2508,8 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
             % still dominated by the cross-covariance P(4,5) that F_e builds.
             echo_fac = 1;
             if y2_echo_corr
-                S_i = (S_echo_T * a_bar_i + S_echo_n * xi_bar(ax)) ...
-                      / (a_bar_i + xi_bar(ax));
+                S_i = (S_echo_T_i * a_bar_i + S_echo_n_i * xi_bar_i) ...
+                      / (a_bar_i + xi_bar_i);
                 echo_fac = 1 - S_i;
             end
             % y2 = a_bar_w - a_bar'*Grad, so every column is -Grad times that
@@ -2654,6 +2712,29 @@ function [f_d, ekf_out, diag] = motion_control_law_formC_b(del_pd, pd, p_m, para
     end
 
     % ------------------------------------------------------------------
+    % [3b] Journal control law (J6), from the POSTERIOR of this step (1007 tex S4 (c)):
+    %   fbar_d = M / a_hat,  M = Delta_wbar_d + (1-lc) dw3_hat   (per axis; the command step per axis is del_pd/R)
+    %   fbar_det = Delta_wbar_d / a_hat (the exogenous share) is the F_e regressor of the NEXT call (F_dw_km1).
+    % ------------------------------------------------------------------
+    if control_law_j6
+        if has_override
+            a_ctrl = a_ctrl_override / a_disp;          % [U1 interface]
+        else
+            a_ctrl = x_e_per_axis(4, :).';
+        end
+        a_ctrl = max(a_ctrl, a_bar_floor);
+        dwd_step = del_pd / R_radius;                   % 3x1 command step [-]
+        fbar_d   = (dwd_step + one_minus_lc * x_e_per_axis(3, :).') ./ a_ctrl;
+        fbar_det = dwd_step ./ a_ctrl;
+        if use_fdet
+            F_dw_vec = fbar_det;
+        else
+            F_dw_vec = fbar_d;                          % ablation only
+        end
+        f_d = fbar_d / a_o;                             % [U3]
+    end
+
+    % ------------------------------------------------------------------
     % [4] Bookkeeping
     % ------------------------------------------------------------------
     pd_km2 = pd_km1; pd_km1 = pd;
@@ -2809,6 +2890,26 @@ function [a_bar, dA_dw0] = local_seed_level_formC(w_bar, w0, enable, gap_floor, 
     u      = max(w_bar - w0, gap_floor);
     a_bar  = 1 - 1 / (law_b * u);
     dA_dw0 = -1 / (law_b * u^2);          % = -a_bar'
+end
+
+
+function c = local_j6_consts(tab, q, r, whitened)
+%LOCAL_J6_CONSTS  Readout constants of the KF-closed loop at (q, r) = (kappa_T a_bar, sigma2_n), vectorised over axes.
+%   K1 = m/(m+r) (1007 tex S7) -> linear interpolation of the calc_readout_consts_kfloop table (clamped to its K1 range).
+    q = q(:);  r = r(:);
+    K1 = tab.K1_of(q, r);
+    K1 = min(max(K1, tab.K1(1)), tab.K1(end));
+    c.K1  = K1;
+    c.C_T = interp1(tab.K1, tab.C_T, K1);
+    c.C_N = interp1(tab.K1, tab.C_N, K1);
+    c.S_T = interp1(tab.K1, tab.S_T, K1);
+    c.S_n = interp1(tab.K1, tab.S_n, K1);
+    if whitened
+        c.IF_abc = interp1(tab.K1, tab.IF_abc_white, K1);   % numel(K1) x 3
+    else
+        c.IF_abc = interp1(tab.K1, tab.IF_abc, K1);
+    end
+    if numel(K1) == 1; c.IF_abc = c.IF_abc(:); end
 end
 
 

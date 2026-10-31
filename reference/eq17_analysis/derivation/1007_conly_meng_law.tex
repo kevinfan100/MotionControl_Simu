@@ -1,0 +1,298 @@
+% STATUS: ACTIVE | derivation (2026-10-07, branch test/conly-meng-law) of the c-only slope-law estimator (p = 2, slot 5 = c)
+%   under the JOURNAL control law -- Meng, Long, Menq, IEEE TIE 72(1) 2025, eq. (6) = thesis (4.4):
+%       f_d[k] = (1/a_hat[k]) { x_d[k+1] - x_d[k] + (1 - lambda_c) dx_hat[k] - xD_hat[k] },   xD_hat = 0 in simulation.
+%   Every equation that has a journal counterpart carries its number as (J<n>). The gain model (a_w, c) is ours; the position
+%   rows, the control law, the thermal-only Q and the KF recursion are the journal's. Ordering inside one step: measurement
+%   update with y[k] FIRST, then the force from the posterior (our choice; the journal's (16) does not fix it -- see _ref).
+%   Style of 0922_estb_f2_slope_dc.tex; equations only (derivation-workflow rule 10), prose in 1007_conly_meng_law_ref.tex.
+%   sympy: test_script/scratch/check_conly_meng_law.py.   Plan: agent_docs/eq17/conly_meng_law_plan.md
+% Compile: xelatex 1007_conly_meng_law.tex
+
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.80em}
+\linespread{1.08}
+\setlength{\abovedisplayskip}{10pt}
+\setlength{\belowdisplayskip}{10pt}
+
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\dW}{\Delta\bw}
+\newcommand{\ap}{\ba'}
+\newcommand{\ah}{\hat{\ba}_w}
+\newcommand{\wh}{\hat{\bw}}
+\newcommand{\hh}{\hat{h}}
+\newcommand{\ch}{\hat{c}}
+\newcommand{\lc}{\lambda_c}
+\newcommand{\fd}{\bar{f}_d}
+\newcommand{\fdet}{\bar{f}_{\det}}
+\newcommand{\am}{\ba_m}
+\newcommand{\J}[1]{\quad\text{(J#1)}}
+
+\begin{document}
+
+\begin{center}\textbf{\large c-only slope law under the journal control law (J6)}\end{center}
+
+($h := \bw - \bw_s$, $\bw_s$ = visible surface, given ($\bw_s = 0$ in every c-only run); $p = 2$ pinned; $c$ = the one constant;
+$d = 2$; $e := \text{true} - \text{estimate}$; all lengths $/R$, gain $/a_{nom}$, force $\times a_o$)
+
+\section{Law and control law}
+
+(gain law: unchanged from 0928 / 1006)
+\begin{align*}
+\ap(h;\,c)                        &= \frac{1 - c}{h^{2}} \\[2pt]
+\frac{\partial\ap}{\partial h}    &= -\,\frac{2\,\ap}{h} \\[2pt]
+\frac{\partial\ap}{\partial c}    &= -\,\frac{1}{h^{2}} \\[2pt]
+\frac{\partial\ap}{\partial\ba_w} &= 0
+\end{align*}
+
+(control law; every estimate on the right is the posterior of step $k$, Section 4)
+\begin{align*}
+\fd[k]    &= \frac{1}{\ah[k]}\Bigl(\dW_d[k] + (1-\lc)\,\delta\hat{\bw}_3[k] - \hat{x}_D[k]\Bigr), \qquad \hat{x}_D \equiv 0 \J{6} \\[4pt]
+M[k]      &:= \dW_d[k] + (1-\lc)\,\delta\hat{\bw}_3[k] \qquad = \ah[k]\,\fd[k] \\[2pt]
+\fdet[k]  &:= \frac{\dW_d[k]}{\ah[k]} \qquad(\text{the exogenous share of } \fd;\ \text{regressor of } F_e)
+\end{align*}
+
+(reference: the law this file replaces, \texttt{motion\_control\_law\_formC\_b.m:1773}; $\nabla_d\bw_d[k] := \bw_d[k] - \bw_d[k-d]$)
+\begin{align*}
+\fd^{\mathrm{old}}[k] &= \frac{1}{\ah[k-1]}\Bigl(\dW_d[k] + (1-\lc)\Bigl[\delta\bw_m[k] + \nabla_d\bw_d[k] - \sum_{i=1}^{d}\ah[k-i]\,\fd^{\mathrm{old}}[k-i]\Bigr]\Bigr)
+\end{align*}
+
+\section{State}
+
+\begin{align*}
+\mathbf{x} &= \bigl[\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \ba_w,\ c\,\bigr]^{\top}
+\qquad(\text{code slots } 1\text{--}5;\ 6,\,7 \text{ locked, } 7 = p = 2) \J{14}
+\end{align*}
+
+\section{True dynamics}
+
+($\ap_{\mathrm{true}}$ = the plant's slope; $w_T[k]$ = thermal step, $\mathrm{Var}\,w_T[k] = \kappa_T\,\ba_w[k]$)
+
+\begin{align*}
+\bw[k+1]         &= \bw[k] + \ba_w[k]\,\fd[k] + w_T[k] \J{5} \\
+\delta\bw_3[k]   &= \bw_d[k] - \bw[k] \\
+\delta\bw_1[k+1] &= \delta\bw_2[k] \\
+\delta\bw_2[k+1] &= \delta\bw_3[k] \\
+\delta\bw_3[k+1] &= \delta\bw_3[k] + \dW_d[k] - \ba_w[k]\,\fd[k] - w_T[k] \\
+                 &= \lc\,\delta\bw_3[k] + (1-\lc)\,e_{\delta\bw_3}[k] - \fd[k]\,e_{\ba_w}[k] - w_T[k] \J{7, 8, 14} \\
+\ba_w[k+1]       &= \ba_w[k] + \ap_{\mathrm{true}}\bigl(\bw[k]-\bw_s\bigr)\,\dW[k] \\
+c[k+1]           &= c[k] \\[4pt]
+\dW[k]           &:= \bw[k+1] - \bw[k] = M[k] + \fd[k]\,e_{\ba_w}[k] + w_T[k]
+\end{align*}
+
+(the two identities behind row 3)
+\begin{align*}
+\ba_w[k]\,\fd[k]       &= \bigl(\ah[k] + e_{\ba_w}[k]\bigr)\fd[k] = M[k] + \fd[k]\,e_{\ba_w}[k] \\
+\dW_d[k] - M[k]        &= -(1-\lc)\,\delta\hat{\bw}_3[k] = -(1-\lc)\bigl(\delta\bw_3[k] - e_{\delta\bw_3}[k]\bigr)
+\end{align*}
+
+\section{Estimator}
+
+($\hh[k] = \bw_d[k] - \delta\hat{\bw}_3[k] - \bw_s$; $\ap[k] = (1-\ch[k])/\hh[k]^{2}$; superscript $-$ = before the update with $y[k]$)
+
+(a) time update $k-1 \to k$, input $M[k-1]$ known
+\begin{align*}
+\delta\hat{\bw}_1^{-}[k] &= \delta\hat{\bw}_2[k-1] \\
+\delta\hat{\bw}_2^{-}[k] &= \delta\hat{\bw}_3[k-1] \\
+\delta\hat{\bw}_3^{-}[k] &= \lc\,\delta\hat{\bw}_3[k-1] \J{16} \\
+\ah^{-}[k]               &= \ah[k-1] + \bigl(1 - \ch[k-1]\bigr)\Bigl(\frac{1}{\hh[k-1]} - \frac{1}{\hh[k-1] + M[k-1]}\Bigr) \\
+                         &\qquad(= \ah[k-1] + \ap[k-1]\,M[k-1] + O(M^{2})) \\
+\ch^{-}[k]               &= \ch[k-1]
+\end{align*}
+
+(b) measurement update with $y[k]$
+\begin{align*}
+\hat{\mathbf{x}}[k] &= \hat{\mathbf{x}}^{-}[k] + L[k]\bigl(\mathbf{y}[k] - \hat{\mathbf{y}}^{-}[k]\bigr) \J{16, 19}
+\end{align*}
+
+(c) force of step $k$, from the posterior of (b)
+\begin{align*}
+\fd[k] &= \frac{M[k]}{\ah[k]}, \qquad M[k] = \dW_d[k] + (1-\lc)\,\delta\hat{\bw}_3[k] \J{6}
+\end{align*}
+
+\section{Error dynamics}
+
+($h - \hh = -e_{\delta\bw_3}$; $\dW - M = \fd\,e_{\ba_w} + w_T$; $r'$ = family residual of the slope on this wall)
+
+\begin{align*}
+\ap_{\mathrm{true}} - \ap[k] &= \frac{2\,\ap[k]}{\hh[k]}\,e_{\delta\bw_3}[k] - \frac{1}{\hh[k]^{2}}\,e_c[k] + r'[k] \\[6pt]
+e_{\delta\bw_1}[k+1] &= e_{\delta\bw_2}[k] \\
+e_{\delta\bw_2}[k+1] &= e_{\delta\bw_3}[k] \\
+e_{\delta\bw_3}[k+1] &= e_{\delta\bw_3}[k] - \fd[k]\,e_{\ba_w}[k] - w_T[k] \J{17, 18} \\
+e_{\ba_w}[k+1]       &= e_{\ba_w}[k] + \bigl(\ap_{\mathrm{true}} - \ap[k]\bigr)\dW[k] + \ap[k]\bigl(\dW[k] - M[k]\bigr) \\
+                     &= \frac{2\,\ap[k]}{\hh[k]}M[k]\,e_{\delta\bw_3}[k]
+                        + \bigl(1 + \ap[k]\,\fd[k]\bigr)e_{\ba_w}[k]
+                        - \frac{M[k]}{\hh[k]^{2}}\,e_c[k]
+                        + \ap[k]\,w_T[k] + M[k]\,r'[k] \\
+e_c[k+1]             &= e_c[k]
+\end{align*}
+
+\begin{align*}
+F_e[k] &= \begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & 1 & -\fdet[k] & 0 \\
+0 & 0 & \dfrac{2\,\ap[k]}{\hh[k]}M[k] & 1 + \ap[k]\,\fdet[k] & -\dfrac{M[k]}{\hh[k]^{2}} \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix} \J{18}
+\end{align*}
+
+($\fdet$ in place of $\fd$ in $F_e$: the share $(1-\lc)\,\delta\hat{\bw}_3/\ah$ of $\fd$ is a function of the estimate and is
+correlated with $e_{\delta\bw_3}$; the same convention as $F_{dw,\det}$ in the file this replaces)
+
+(what changes against the law this file replaces, $F_{dw}[k] := \fd[k] + (1-\lc)\bigl(\fd[k-1] + \fd[k-2]\bigr)$)
+\begin{align*}
+F_{e,33}:\quad \lc &\;\to\; 1 \\
+F_{e,34}:\quad -F_{dw} &\;\to\; -\fdet \\
+F_{e,43}:\quad \ap(1-\lc) + \frac{2\,\ap}{\hh}M &\;\to\; \frac{2\,\ap}{\hh}M \\
+F_{e,44}:\quad 1 + \ap F_{dw} &\;\to\; 1 + \ap\fdet
+\end{align*}
+
+\section{Measurement}
+
+($\nabla_d\bw_d[k] := \bw_d[k] - \bw_d[k-d]$; $y_1$ = the delayed tracking-error reading; $y_2$ = the gain reading of Section 7)
+
+\begin{align*}
+y_1[k]      &= \delta\bw_1[k] + n_w[k] \qquad = \delta\bw_m[k] \J{15} \\
+y_2[k]      &= \ba_w[k-d] + n_a[k] \J{13, 15} \\
+\hat y_1[k] &= \delta\hat{\bw}_1[k] \\
+\hat y_2[k] &= \ah[k] - \ap[k]\,\nabla_d\bw_d[k] \qquad(\text{the walk-back of the journal's two-step delay, (J21) note}) \\[4pt]
+H[k]        &= \begin{bmatrix} 1 & 0 & 0 & 0 & 0 \\[2pt]
+               0 & 0 & -\,\dfrac{2\,\ap[k]}{\hh[k]}\nabla_d\bw_d[k] & 1 & \dfrac{\nabla_d\bw_d[k]}{\hh[k]^{2}} \end{bmatrix} \J{15}
+\end{align*}
+
+(as implemented: $y_2$ whitened with $s = a_{cov}$, echo factor $1 - S[k]$; unchanged from 1006 Section 7)
+\begin{align*}
+y_2[k]        &= \am[k] - (1 - a_{cov})\,\am[k-1] \\
+\hat y_2[k]   &= s\Bigl(\ah[k] - (1-S[k])\,\ap[k]\,\nabla_d\bw_d[k]\Bigr) \\
+H_2[k]        &= s\,(1-S[k])\Bigl[\,0,\ 0,\ -\frac{2\,\ap[k]}{\hh[k]}\nabla_d\bw_d[k],\ 1,\ \frac{\nabla_d\bw_d[k]}{\hh[k]^{2}}\Bigr], \qquad
+\frac{\partial\hat y_2}{\partial\ba_w} - H_{24} = s\,S[k]
+\end{align*}
+
+\section{Gain reading from the loop variance}
+
+(the journal's (J9)--(J13) chain, with (J11)(J12) re-derived for THIS loop; position block only, $\ba_w$ frozen, steady state;
+$q := \kappa_T\,\ba_w$, $r := \sigma^{2}_{n_w}$)
+
+(J9)(J10), as in code \texttt{:1746--1748}
+\begin{align*}
+\overline{\delta\bw}_m[k+1] &= a_{pd}\,\delta\bw_m[k] + (1 - a_{pd})\,\overline{\delta\bw}_m[k] \J{9} \\
+\delta\bw_r[k]              &= \delta\bw_m[k] - \overline{\delta\bw}_m[k+1] \\
+\hat\sigma^{2}_{\delta\bw_r}[k+1] &= a_{cov}\,\delta\bw_r[k]^{2} + (1 - a_{cov})\,\hat\sigma^{2}_{\delta\bw_r}[k] \J{10}
+\end{align*}
+
+steady-state filter of the position block ($F_3 = \begin{bmatrix} 0&1&0\\0&0&1\\0&0&1 \end{bmatrix}$, $H_3 = [\,1\ 0\ 0\,]$, $Q_{33} = q$, $R_1 = r$)
+\begin{align*}
+m   &:= P^{-}_{11} \qquad m = \frac{m\,r}{m + r} + q \quad\Longrightarrow\quad m^{2} - q\,m - q\,r = 0,\qquad m = \frac{q + \sqrt{q^{2} + 4\,q\,r}}{2} \\
+K_1 &:= \frac{m}{m + r} \qquad = L_{11} = L_{21} = L_{31} \\
+p_1 &:= P_{11} = \frac{m\,r}{m + r} = K_1\,r \\
+q   &= m - p_1 = \frac{m^{2}}{m + r} \\[4pt]
+P^{-} &= \begin{bmatrix} m & m & m \\ m & m+q & m+q \\ m & m+q & m+2q \end{bmatrix}, \qquad
+P = \begin{bmatrix} p_1 & p_1 & p_1 \\ p_1 & p_1+q & p_1+q \\ p_1 & p_1+q & p_1+2q \end{bmatrix}
+\end{align*}
+
+tracking error of the loop ($e_{\ba_w} = 0$; $\nu[k] := y_1[k] - \hat y_1^{-}[k]$, white, $\mathrm{Var}\,\nu = m + r$; $\mathrm{E}[\delta\hat{\bw}_3\,e_{\delta\bw_3}] = 0$)
+\begin{align*}
+\delta\bw_3[k+1]       &= \lc\,\delta\hat{\bw}_3[k] + e_{\delta\bw_3}[k] - w_T[k] \\
+\delta\hat{\bw}_3[k+1] &= \lc\,\delta\hat{\bw}_3[k] + K_1\,\nu[k+1] \\
+\mathrm{Var}\,\delta\hat{\bw}_3 &= \frac{K_1^{2}\,(m + r)}{1 - \lc^{2}} = \frac{q}{1 - \lc^{2}} \\
+\mathrm{Var}\,\delta\bw_3 &= \mathrm{Var}\,\delta\hat{\bw}_3 + P_{33} = \Bigl(2 + \frac{1}{1 - \lc^{2}}\Bigr)q + K_1\,r \J{11} \\
+\mathrm{Var}\,\delta\bw_m &= \mathrm{Var}\,\delta\bw_3 + r = \Bigl(2 + \frac{1}{1 - \lc^{2}}\Bigr)q + (1 + K_1)\,r \J{12}
+\end{align*}
+
+(J13) for this loop; $K_1$ evaluated at the estimate
+\begin{align*}
+C_{dpmr} &= 2 + \frac{1}{1 - \lc^{2}} \qquad(\text{unchanged}) \\
+C_n[k]   &= 1 + K_1\bigl(\kappa_T\,\ah[k],\ \sigma^{2}_{n_w}\bigr) \qquad\Bigl(\text{replaces } \frac{2}{1 + \lc}\Bigr) \\
+\am[k]   &= \frac{\hat\sigma^{2}_{\delta\bw_r}[k] - C_n[k]\,\sigma^{2}_{n_w}}{C_{dpmr}\,\kappa_T} \J{13}
+\end{align*}
+
+(composition with (J9)(J10) and the colour of $\hat\sigma^{2}_{\delta\bw_r}$: from the full autocovariance of the loop,
+$\mathbf{z} = [\,\delta\bw_1,\ \delta\bw_2,\ \delta\bw_3,\ \delta\hat{\bw}_1,\ \delta\hat{\bw}_2,\ \delta\hat{\bw}_3\,]^{\top}$,
+gain ratio $g := \ba_w/\ah$ in the loop)
+\begin{align*}
+\mathbf{z}[k+1] &= A(\lc, K_1, g)\,\mathbf{z}[k] + B\begin{bmatrix} w_T[k] \\ n_w[k+1] \end{bmatrix} \\
+A &= \begin{bmatrix}
+0 & 1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 & -g(1-\lc) \\
+0 & K_1 & 0 & 0 & 1 - K_1 & 0 \\
+0 & K_1 & 0 & 0 & -K_1 & 1 \\
+0 & K_1 & 0 & 0 & -K_1 & \lc
+\end{bmatrix}, \qquad
+B = \begin{bmatrix} 0 & 0 \\ 0 & 0 \\ -1 & 0 \\ 0 & K_1 \\ 0 & K_1 \\ 0 & K_1 \end{bmatrix} \\
+\Sigma &= A\,\Sigma\,A^{\top} + B\,\mathrm{diag}(q,\ r)\,B^{\top}, \qquad
+R_{\delta}(\tau) = \bigl[A^{\tau}\Sigma\bigr]_{11}, \qquad \mathrm{Var}\,\delta\bw_m = \Sigma_{11} + r \\
+C_{dpmr,\mathrm{eff}}(K_1),\ C_{n,\mathrm{eff}}(K_1),\ IF(K_1) &: \text{(J9)(J10) applied to } R_{\delta}(\tau) \\
+S_T(K_1),\ S_n(K_1) &= \frac{\partial \ln \mathrm{Var}\,\delta\bw_m}{\partial \ln g}\Big|_{g=1} \quad\text{thermal / noise share (echo)}
+\end{align*}
+
+\section{Noise}
+
+\begin{align*}
+Q[k]      &= \kappa_T\,\ah[k]\;\mathbf{g}\mathbf{g}^{\top}, \qquad \mathbf{g} = \bigl[\,0,\ 0,\ -1,\ \ap[k],\ 0\,\bigr]^{\top}, \qquad Q_{55} = 0 \J{17, 21} \\
+R[k]      &= \mathrm{diag}\bigl(\sigma^{2}_{n_w},\ R_2[k]\bigr) \J{19} \\
+\mathrm{E}\bigl[w_T[k]\,n_w[j]\bigr] &= 0, \qquad \mathrm{E}\bigl[w_T[k]\,w_T[j]\bigr] = 0\ (k \ne j)
+\end{align*}
+
+(what changes against the law this file replaces)
+\begin{align*}
+Q_{33}^{\mathrm{old}} &= \kappa_T\Bigl(\ah[k] + (1-\lc)^{2}\sum_{i=1}^{d}\ah[k-i]\Bigr) + (1-\lc)^{2}\,\sigma^{2}_{n_w}
+\;\to\; Q_{33} = \kappa_T\,\ah[k] \\
+\text{MA(2) memory } (m_1, m_2) &\;\to\; \text{none} \\
+\text{correlated } (w_T, n_w) &\;\to\; \text{none}
+\end{align*}
+
+(KF recursion, unchanged)
+\begin{align*}
+L[k]        &= P^{-}[k]\,H^{\top}[k]\bigl(H[k]\,P^{-}[k]\,H^{\top}[k] + R[k]\bigr)^{-1} \J{19} \\
+P[k]        &= \bigl(I - L[k]\,H[k]\bigr)P^{-}[k] \J{20} \\
+P^{-}[k+1]  &= F_e[k]\,P[k]\,F_e^{\top}[k] + Q[k] \J{21}
+\end{align*}
+
+\section{Observability (gates 1--3 on paper)}
+
+Gate 1, the two columns of $c$ (unchanged):
+\begin{align*}
+F_{e,45}[k] &= -\,\frac{M[k]}{\hh[k]^{2}}, \qquad H_{25}[k] = \frac{\nabla_d\bw_d[k]}{\hh[k]^{2}}
+\end{align*}
+
+Gate 2, time signatures:
+\begin{align*}
+e_c[k+1] &= e_c[k] \\
+e_{\ba_w}[k+1] &= \bigl(1 + \ap\fdet\bigr)e_{\ba_w} - \frac{M}{\hh^{2}}\,e_c + \dots \qquad(\text{level, drifting with the height travelled}) \\
+e_{\delta\bw_3}[k+1] &= e_{\delta\bw_3} - \fdet\,e_{\ba_w} - w_T, \qquad y_1[k+2] = e_{\delta\bw_3}[k] + \dots \\
+                      &\qquad(\text{a random walk read by } y_1 \text{ after } d \text{ steps; was } \lc\text{-contracting})
+\end{align*}
+
+Gate 3, $\det O_2$ with coefficients frozen ($\alpha := 1 + \ap\fdet$, $\beta := M/\hh^{2}$, $\gamma := \nabla_d\bw_d/\hh^{2}$):
+\begin{align*}
+\text{pair } (e_{\ba_w}, e_c),\ \text{row } y_2:\quad
+\det\begin{bmatrix} 1 & \gamma \\ \alpha & \gamma - \beta \end{bmatrix} &= -\,\beta - \gamma(\alpha - 1) = -\,\frac{M + \nabla_d\bw_d\,\ap\fdet}{\hh^{2}} \\
+\text{pair } (e_{\ba_w}, e_c),\ \text{row } y_1:\quad
+\det\begin{bmatrix} -\fdet & 0 \\ -\fdet\,\alpha & \fdet\,\beta \end{bmatrix} &= -\,\fdet^{2}\,\beta = -\,\frac{\fdet^{2}\,M}{\hh^{2}}
+\end{align*}
+(in a hold $\nabla_d\bw_d = 0$ and $\fdet = 0$: the $y_1$ row vanishes, the $y_2$ row is $-M/\hh^{2}$ with $M = (1-\lc)\,\delta\hat{\bw}_3$,
+noise-driven and zero-mean; both $\to 0$ as $\hh \to \infty$. $M$ in $F_{e,43}$, $F_{e,45}$ keeps its $(1-\lc)\,\delta\hat{\bw}_3$ share,
+as in the file this replaces; only $F_{e,34}$, $F_{e,44}$ use $\fdet$)
+
+\section*{Seed and prior}
+
+(unchanged from the f1p2 arm except the position block)
+\begin{align*}
+\ch[0]  &= c_{\mathrm{plane}} = +0.0533 \qquad(\text{plane init, wall-test protocol}) \\
+\ah[0]  &= D_{\perp}\!\Bigl(\frac{1}{\bw[0] - \bw_s}\Bigr) \qquad(\text{plane polynomial at the start height}) \\
+\sigma_{c,0} &= 0.6 \qquad(\text{wall family: plane } 0.05 \dots \text{cell } 0.64) \\
+P_{44}[0] &= \Bigl(\frac{\partial\ba}{\partial c}\Bigr)^{2}\sigma_{c,0}^{2} + P_{a,\mathrm{floor}}, \qquad P_{45}[0] = \frac{\partial\ba}{\partial c}\,\sigma_{c,0}^{2}, \qquad P_{a,\mathrm{floor}} = 0.002^{2} \\
+P_{55}[0] &= \sigma_{c,0}^{2}, \qquad Q_{55} = 0 \\[4pt]
+&\text{position block (closed form of Section 7 at } q = \kappa_T\,\ah[0],\ r = \sigma^{2}_{n_w};\ \text{was a DARE with } F_{3,33} = \lc): \\
+P_{1:3,1:3}[0] &= \begin{bmatrix} p_1 & p_1 & p_1 \\ p_1 & p_1+q & p_1+q \\ p_1 & p_1+q & p_1+2q \end{bmatrix}, \qquad p_1 = K_1\,r
+\end{align*}
+
+\end{document}

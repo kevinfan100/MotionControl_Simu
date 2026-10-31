@@ -1,0 +1,163 @@
+% STATUS: ACTIVE | prose companion of 1007_conly_meng_law.tex (2026-10-07, branch test/conly-meng-law): what the swap to the
+%   journal control law (J6) changes, the journal <-> ours correspondence, the five deliberate differences, the numbers behind
+%   the three pitfalls (scalar loop probe: test_script/scratch/check_conly_meng_law.py S7 numeric block), and the pre-registered
+%   acceptance of stages 2-4 (plan: agent_docs/eq17/conly_meng_law_plan.md).
+% Compile: xelatex 1007_conly_meng_law_ref.tex
+
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm,booktabs,array}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.0cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.6em}
+\newcommand{\ba}{\bar{a}}
+\newcommand{\bw}{\bar{w}}
+\newcommand{\ap}{\ba'}
+\newcommand{\ah}{\hat{\ba}_w}
+\newcommand{\hh}{\hat{h}}
+\newcommand{\lc}{\lambda_c}
+\newcommand{\fd}{\bar{f}_d}
+\newcommand{\fdet}{\bar{f}_{\det}}
+
+\begin{document}
+\begin{center}\textbf{\large c-only 換成期刊控制律 (J6)：說明、對照、數字}\end{center}
+（式子在 \texttt{1007\_conly\_meng\_law.tex}，本檔只放文字；期刊 = Meng, Long, Menq, IEEE TIE 72(1) 2025，式號記 (J$n$)）
+
+\section{換了什麼}
+
+只換一件事：控制律裡「現在的追蹤誤差」從哪裡來。
+現行式（\texttt{formC\_b.m:1773}）拿兩步前的原始量測 $\delta\bw_m$，再把這兩步自己推過的量
+$\nabla_d\bw_d - \sum\ah\fd$ 手動補回來；(J6) 直接拿濾波器的 $\delta\hat{\bw}_3$。
+增益模型（$\ba_w$ 狀態 + 常數 $c$ 的斜率式）、$y_2$ 的走回兩步、$c$ 的 prior 與 $Q_{55}$ 都不動。
+
+\section{一步之內的順序}
+
+期刊 (J16) 是 predictor form：$\hat{\mathbf{x}}[k+1] = F\hat{\mathbf{x}}[k] + L[k]\,e_y[k]$，逐字讀時 $\hat{\mathbf{x}}[k]$ 是
+「還沒吃 $y[k]$」的一步預測，(J6) 用同一個符號，所以期刊的力用的是 pre-$y[k]$ 的估計（有效延遲 $d + 1$）。
+期刊真正含糊的地方是 (J19) 給的 $L = P'H^{\top}(HP'H^{\top} + R)^{-1}$ 是 posterior-form 的增益，predictor form 該用 $F_e L$。
+本檔定成：先用 $y[k]$ 做量測更新，再從後驗算 $\fd[k]$（主檔第 4 節 (a)(b)(c)）。這是刻意少一拍延遲的設計選擇，
+偏離 (J6)+(J16) 的逐字讀法；(J17)(J18) 與閉迴路極點 $\lc$ 在兩種讀法下都成立，不是判別依據（獨立複核 10-07 [A]）。
+不能做的是混合版：力吃上一拍的後驗、預測器仍寫 $\lc\,\delta\hat{\bw}_3[k]$（08 月複製線的寫法，ledger §8／§25）。
+那時模型與 plant 不一致，極點在 $\lc = 0.7$ 時變 0.77–0.78，$\lc \le 0.2$ 不穩（$\lc = 0$ 時 1.16；ledger 量到 1.173）。
+
+\section{F\_e 裡用 $\fdet$ 不用 $\fd$}
+
+$\fd = \fdet + (1-\lc)\,\delta\hat{\bw}_3/\ah$，第二份是估計的函數。把它當確定性係數放進 $P$ 的傳播，
+在三個前例（eq17-4state 06-18、formB 08-01、ch4 08-14）都量到增益整流偏差，同藥 fdet（Ljung 內生性）。
+理由是經驗的；同一拍的後驗與誤差正交（$\mathrm{E}[\delta\hat{\bw}_3\,e_{\delta\bw_3}] = 0$，主檔第 7 節），
+所以不能拿「兩者相關」當理由。沿用現行慣例：$F_e(3,4)$、$F_e(4,4)$ 用 $\fdet = \Delta\bw_d/\ah$，
+$F_e(4,3)$、$F_e(4,5)$ 的 $M$ 保留 $(1-\lc)\,\delta\hat{\bw}_3$ 份（現行 \texttt{M\_tot} 也是）。
+四格一致改 $M_{\det} = \Delta\bw_d$ 是另一個判別，不在本線。
+
+\section{逐式對照}
+
+{\small
+\begin{tabular}{@{}p{5.6cm}p{4.6cm}p{6.6cm}@{}}
+\toprule
+期刊 & 本檔 & 關係 \\
+\midrule
+(J5) $x[k+1] = x[k] + a_x(f_{dx} + f_T) + x_D$ & 第 3 節 $\bw[k+1] = \bw + \ba_w\fd + w_T$ & 相同，$x_D = 0$，$w_T = \ba_w\bar f_T$ \\
+(J6) 控制律 & 第 1 節 $\fd = (M - \hat x_D)/\ah$ & 相同，$\hat x_D = 0$ \\
+(J7)(J8) $\delta x[k+1] = \lc\delta x - \varepsilon$ & 第 3 節第 3 列 & 相同（$e_{x_D}$ 項為 0） \\
+(J9)(J10) IIR 均值、變異數 & 第 7 節，code \texttt{:1746--1748} & 相同 \\
+(J11)(J12) $\sigma^2_{\delta x}$、$\sigma^2_{\delta x_m}$ & 第 7 節 & \textbf{重推}：熱力係數相同，雜訊係數 $\tfrac{2}{1+\lc} \to 1 + K_1$ \\
+(J13) $a_{xm}$ & 第 7 節 $\ba_m$ & 同式，$C_n$ 換新 \\
+(J14) 七格真動態 & 第 3 節五格 & 位置三列相同；$(x_D,\delta x_D)$ 拿掉；$(a_x,\delta a_x) \to (\ba_w, c)$ \\
+(J15) $H$ & 第 6 節 & 第 1 列相同；第 2 列多走回兩步（他 (J21) 下方自承未修） \\
+(J16) 估測器 & 第 4 節 & 相同結構；一步內順序本檔定 \\
+(J17) $q = a f_T[0\,0\,{-1}\,0\,0\,0\,0]^{\top}$ & 第 8 節 $\mathbf g = [0\,0\,{-1}\,\ap\,0]^{\top}$ & 第 3 格相同；第 4 格因 $\ba_w$ 隨高度走而多出 \\
+(J18) $F_e$ 第 3 列 $[0\,0\,1\,{-1}\,0\,{-f_{dx}}\,0]$ & 第 5 節 $[0\,0\,1\,{-\fdet}\,0]$ & 相同（去掉 $x_D$ 欄；$f_{dx} \to \fdet$） \\
+(J19)--(J21) KF 遞迴 & 第 8 節 & 相同 \\
+\bottomrule
+\end{tabular}}
+
+\section{仍然不同的五處（論文要明講）}
+
+\begin{enumerate}
+\item \textbf{增益的模型}：他估值 $(a_x, \delta a_x)$，我們估斜率式的 $(\ba_w, c)$。這是研究本體，不是為了一致而改的東西。
+\item \textbf{$x_D$}：式子照他的寫，模擬裡 plant 的力只有命令力加熱力（\texttt{run\_formC\_b.m:1268}），$x_D \equiv 0$，
+      所以 $\hat x_D = 0$、不加狀態。要上實機或做細胞互動力時在同一條式子補回來。
+\item \textbf{讀數式 (J11)--(J13)}：他沿用 [19] 在舊迴路推的常數；本檔換成這個迴路的閉式。不換會偏（第 6 節）。
+\item \textbf{一步內的順序}：第 2 節；他逐字讀是 pre-$y[k]$，我們是 post-$y[k]$，少一拍延遲。
+\item \textbf{$y_2$ 的兩步延遲}：他自承未修（(J21) 下方），我們的 $H_2$ 走回 $\nabla_d\bw_d$。
+\end{enumerate}
+另外：$\lc$ 維持 0.7（他 0.4）；$d = 2$、1.6 kHz、$R = 2.25\,\mu$m 相同；z 軸量測雜訊 3.31 nm（他 2.3 nm）。
+
+\section{讀數鏈的數字}
+
+純量迴路驗算（位置三格 + 穩態 $K_1$、增益已知、定高；\texttt{check\_conly\_meng\_law.py} S7 數值段，24/24 過），
+z 軸，變異數以 $\sigma^2_{n_w}$ 為 1，$\kappa_T = 4.98\times10^{-5}$、$\sigma_{n_w} = 3.31$ nm$/2.25\,\mu$m：
+
+{\small
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+高度（平面牆） & $\kappa_T\ba/\sigma^2_{n_w}$ & $K_1$ & Var 舊迴路 (J12) & Var 本迴路 & 舊常數讀出的 $\ba_m$ 偏 \\
+\midrule
+遠場 22 R ($\ba = 1$) & 23.0 & 0.960 & 92.27 & 93.06 & $+0.9\%$ \\
+2.0 R ($\ba \approx 0.35$) & 8.0 & 0.899 & 32.86 & 33.59 & $+2.3\%$ \\
+谷底 1.10 R ($\ba = 0.087$) & 2.0 & 0.732 & 9.10 & 9.65 & $+7.0\%$ \\
+\bottomrule
+\end{tabular}}
+
+兩個迴路的熱力係數都是 $C_{dpmr} = 2 + 1/(1-\lc^2) = 3.961$；差別全在雜訊份：舊的 $\tfrac{2}{1+\lc} = 1.176$，
+新的 $1 + K_1$，而 $K_1$ 隨 $\ba$ 變（遠場 0.96、谷底 0.73）。所以 $C_n$ 必須在估計值 $\ah$ 取值，每步一次，
+和 $R_2$ 現在「在估計值取值」的做法一樣；不讀 $c(\bar h)$。
+
+還要重推的三個量（都是這個迴路的自相關的函數，主檔第 7 節末的 $A$、$B$、$\Sigma$）：
+(J9)(J10) 的 IIR 合成修正（現行把 3.961 修成 3.161、1.176 修成 1.109，$-20\%$ 量級，\texttt{calc\_ctrl\_params.m:154--174}）、
+$y_2$ 白化的顏色因子 IF、迴音 $S_T, S_n$（\texttt{formC\_b.m:610--634} 以有限差分算）。
+做法：一支工具在 $K_1 \in (0,1)$ 的格點上用 Lyapunov 精確算，controller 以 $K_1(\ah)$ 查表。零自由數字。
+工具已寫好：\texttt{model/controller/calc\_readout\_consts\_kfloop.m}（7 態 hold 迴路：位置三格、估計三格、IIR 均值一格），
+自檢 \texttt{test\_script/scratch/check\_readout\_consts\_kfloop.m} 10/10：$K_1 = 1$ 時迴路與現行式逐項相同，
+$C_T$、$C_N$、IF 三和、$S_T$、$S_n$ 對 production 常數差 $< 10^{-11}$。含 IIR 合成後的 house 數字（$\lc$ 0.7、$a_{pd} = a_{cov}$ 0.05）：
+
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+高度 & $K_1$ & $C_T$ & $C_N$ & $S_T$ & $S_n$ & 沿用 production 常數時 $\ba_m$ 偏 \\
+\midrule
+遠場 22 R & 0.960 & 3.184 & 1.105 & 0.327 & $-0.238$ & $+0.7\%$ \\
+2.0 R & 0.900 & 3.223 & 1.099 & 0.325 & $-0.229$ & $+2.0\%$ \\
+谷底 1.10 R & 0.732 & 3.356 & 1.083 & 0.319 & $-0.204$ & $+5.8\%$ \\
+production（$K_1 = 1$） & 1 & 3.161 & 1.109 & 0.328 & $-0.244$ & — \\
+\bottomrule
+\end{tabular}
+
+IIR 合成後熱力係數也隨 $K_1$ 動（3.16 $\to$ 3.36），因為 LP 拿掉的低頻份隨迴路的譜形變；所以查表要查全部五個量，不能只換 $C_n$。
+
+\section{穩定邊界}
+
+真增益 $\div$ 估計增益的上限（同一支驗算，10 態伴隨矩陣掃 $g$）：$\lc = 0.7$ 時本迴路 3.37、現行式 3.36；
+$\lc = 0.4$ 時 2.38／2.36。危險側 = 真增益比估的大（平面 init 遇到細胞牆）；細胞谷底 $\ba_{\rm true} \approx 0.5$、
+base 臂 $e_{\ba} = +0.131$ ⇒ 比值約 1.35，離邊界遠。
+
+\section{預登記的驗收（階段 2--4）}
+
+\begin{enumerate}
+\item 階段 2（接線）：旗標關 = 與階段 0 基準逐位相同（\texttt{run\_conly\_meng\_baseline('compare', true)}）；unit suite 全過；
+      旗標開：跑完、無 NaN、min $h_{\rm true} > 1.0$。
+\item 階段 3（迴路，$\ah$ 鎖真值，定高 22.2／2.0／1.10 R，各 3 s，10 seeds）：
+      （a）後驗 $\delta\hat{\bw}_3$ 的 lag-1 自相關 $= \lc = 0.70 \pm$ SEM（它恰是 AR(1)；混合版 0.73）。
+            不用 $\delta\bw_m$ 的自相關：正確迴路它是 0.775（谷底）／0.844（遠場），與混合版只差 0.03（複核 [B]）；
+      （b）Var$(\delta\bw_m)$ 對第 7 節閉式，差 $<$ seed SEM；
+      （c）$\ba_m$ 讀數對真值偏差在 SEM 內（複製線前例 $0 \pm 3\%$）；
+      （d）$y_1$ innovation lag 1--3 自相關 $|\rho| < 2/\sqrt{N}$，實測變異 $\div S_1 = 1 \pm 0.1$，且 \texttt{ma2\_aug}、\texttt{nw\_mcorr} 關。
+      任一不過：回推導，不進階段 4。
+\item 階段 4（三牆）：可觀性第 4、5 關（負控制）通過；ramp\_tri 1 Hz、plane init、10 seeds、三牆，新減舊配對差：
+      谷底 1／2／3 s、頂端 1.5／2.5 s、三角段 $|e_{\ba}|$ 均值，全部在 SEM 內 = 不變差；追蹤誤差 $\delta x_m$ 的 std 不變差。
+      目的是期刊一致，不預期變好；若變好另記。
+\end{enumerate}
+
+\section{code 落點（階段 2，已落地；行號 = 分支 test/conly-meng-law 的 \texttt{motion\_control\_law\_formC\_b.m}）}
+
+旗標 \texttt{ctrl\_const.control\_law = 'j6'}（預設 \texttt{'eq17'}），init 讀入與 assert 在 \texttt{:1252}（\texttt{ma2\_aug}、\texttt{nw\_mcorr}、
+\texttt{q33\_dc\_match}、\texttt{pred\_force\_step}、\texttt{pred\_mean2}、\texttt{law\_exact\_step}、\texttt{t2\_pure\_prop} 必關；只接 plaw 斜率式；$d = 2$），
+同處建讀數表 \texttt{calc\_readout\_consts\_kfloop}。旗標開時改七處：
+位置 $P[0]$ 閉式（\texttt{:1478}）；[1] 讀數 $C_T$、$C_N$ 查表（\texttt{:1758}）；[2] 的現行力作廢（\texttt{:1810}）；
+$Q_{33} = \kappa_T\ah$（\texttt{:2062}）；$R_2$、$\xi$、迴音 $S$ 查表（\texttt{:2086}）；$F_e(3,3) = 1$、$F_e(4,3)$ 去掉 $\ap(1-\lc)$（\texttt{:2151}）；
+[3b] update 之後出力 $\fd = M/\ah$、$\fdet = \Delta\bw_d/\ah$ 進下一拍的 $F_e$（\texttt{:2715}）。查表函數 \texttt{local\_j6\_consts}（\texttt{:2896}）。
+runner \texttt{run\_plaw\_walls.m} 加 \texttt{opts.cc\_extra}。
+現行 exact step 用 $\bw_d[k]$ 配 $\delta\hat{\bw}_3[k-1]$ 算 $\hh$，差一拍的 $\Delta\bw_d$，二階量，旗標開關都照舊，記下不改。
+
+\end{document}

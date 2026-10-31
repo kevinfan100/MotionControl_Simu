@@ -138,6 +138,9 @@ function out = run_plaw_walls(opts)
                 otherwise; error('unknown arm %s', arm);
             end
             cc = local_ctrl_const(c_seed, SIG, W_S, P0, opts.law, d_seed, SIG_D);
+            if isfield(opts, 'cc_extra')                                                                    % 10-07: controller flags on top of the law recipe (e.g. control_law 'j6'), applied right after the recipe
+                for fq = fieldnames(opts.cc_extra)'; cc.(fq{1}) = opts.cc_extra.(fq{1}); end
+            end
             if isfield(cc, 'plaw_dc_slope') || isfield(cc, 'plaw_dp_slope') || isfield(cc, 'plaw_cp_slope'); cc.plaw_seed_cross = opts.seed_cross; end
             if isfield(opts, 'Pf_a_floor'); cc.Pf_a_floor = opts.Pf_a_floor; end   % 09-23 lock control: constants pinned (sig ~ 0) with P44[0] kept at the free arm's value
             if isfield(opts, 'lambda_f_b'); cc.lambda_f_b = opts.lambda_f_b; end   % 09-23 user: fixed forgetting on slot 5 (= c here), R57's knob, reported as a sweep not a chosen value
@@ -281,6 +284,7 @@ function res = local_collect(Rr, plant_cperp, Ts, p, law)
         if isfield(S, 'S1_out'); res.S1(:, q) = S.S1_out(:, 3);  res.S2(:, q) = S.S2_out(:, 3); end
         if isfield(S, 'lam_b_out'); res.lam_b(:, q) = S.lam_b_out(:, 3); end   % 09-24: per-step slot-5 forgetting factor
         if isfield(S, 'a_xm_out'); res.a_m(:, q) = S.a_xm_out(:, 3) / S.a_nom; end   % 09-29: the measured gain a_m (y2 reading) in a/a_nom units
+        if isfield(S, 'dh_m_out'); res.dxm(:, q) = S.dh_m_out(:, 3); end             % 10-07: measured tracking error delta_x_m = p_d[k-2] - p_m [um] (figure row, 10-05 style)
         if isfield(S, 'q55a_q_out'); res.q55a_q(:, q) = S.q55a_q_out(:, 3);  res.q55a_stat(:, q) = S.q55a_stat_out(:, 3); end   % 09-29: adaptive Q55 added per step and its y1 statistic
     end
     hd = max(res.wd, 1.0);  dh = 1e-4;                                       % c_eff at the commanded height: 1 - h^p a'_plant(h)
