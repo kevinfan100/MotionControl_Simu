@@ -516,6 +516,7 @@ function r = local_run_loc(opts, seed)
             if strcmp(opts.k_ap_cut, 'y1'); K(14:15, 1:3) = 0; else; K(14:15, 4:7) = 0; end   %   ('y1' = position readings, 'ym' = gain readout); Joseph P update stays valid
         end
         xu = x + K * nu;                                        % estimates after the feedback: control law and log only
+        L.Pap(k) = Pk(15, 15);  L.da33(k, :) = K(11, :) .* nu';   % 11-01 log only: prior P(a'_33); 10-31 log only: update of a-hat_33 by each of the 7 innovations (same channels as L.dap)
         L.dap(k, :) = K(15, :) .* nu';  L.k15w(k) = K(15, 3);  L.nuw(k) = nu(3);  L.c15w(k) = Pk(15, 3) / sqrt(Pk(15, 15) * Pk(3, 3));   % 10-29 log: gain, innovation, correlation of a'_33 with the normal position   % 10-29 log: update of a'-hat_33 by each channel (y1 u v w | y4 four readouts), local of V-hat[k]
         IKH = eye(18) - K * H;  Pu = IKH * Pk * IKH' + K * Rm * K';  Pu = 0.5 * (Pu + Pu');
         I_ap = max(1 ./ diag(Pu(14:15, 14:15)) - 1 ./ diag(Pk(14:15, 14:15)), 0);  I_kap = max(1 / Pu(18, 18) - 1 / Pk(18, 18), 0);   % 10-30: information on kappa this step (kappa_pfix)
@@ -542,6 +543,7 @@ function r = local_run_loc(opts, seed)
         vAt = Vh' * A_true * Vh;  L.off_post(k, :) = [xu(12) xu(13)];  L.off_tr(k, :) = [vAt(1,3) vAt(2,3)];  L.gate(k) = go;  L.sgap(k) = sgap;
         % ---- motion control law in the local coordinate of V-hat[k] (estimates after the feedback) ----
         xa = xu;  if mk; xa(12:13) = 0; end
+        if isfield(opts, 'ctrl_no_off_from') && t(k) >= opts.ctrl_no_off_from; xa(12:13) = 0; end   % 11-01 diagnostic only: control law without a_uw-hat, a_vw-hat (plant no longer matches F_e)
         Ah = Vh * local_loc_A(xa) * Vh';  wh = Vh(:, 3);
         ev = min(eig(0.5 * (Ah + Ah')));
         Ac = local_floor(Ah, 0.02);  if ev < 0.02; n_floor = n_floor + 1; end
@@ -660,6 +662,8 @@ function r = local_run_loc(opts, seed)
         vF = Vh' * (a_o * (f_d + (1 - lc) * sum(fbuf, 2)));
         Ga = [vF(1) 0 vF(3) 0; vF(2) 0 0 vF(3); 0 vF(3) vF(1) vF(2)];
         L.vF(k, :) = vF';   % 10-29 log: force step in the local coordinate (a_o f, R units)
+        L.T15(k, :) = -[vF(3) * Pu(15, 11), vF(1) * Pu(15, 12), vF(2) * Pu(15, 13)];   % 10-31 log only: sources of P(a'_33, delta w_3) at k+1: F_w P(a', a_33), F_u P(a', a_uw), F_v P(a', a_vw)
+        L.c15(k, :) = Pu(15, [3 9 11 12 13]) ./ sqrt(Pu(15, 15) * diag(Pu([3 9 11 12 13], [3 9 11 12 13]))');   % 10-31 log only: corr of a'_33 with delta w_1, delta w_3, a_33, a_uw, a_vw (after the update)
         vMh = Vh' * (pd_kp1 - pd_k) / Rr + (1 - lc) * x(7:9);
         L.vMh(k, :) = vMh';  L.mk(k, :) = (Vh' * a_o * ((Ac - Ahx) * f_d + (1 - lc) * ((Abuf(:, :, 1) - Ahx) * fbuf(:, 1) + (Abuf(:, :, 2) - Ahx) * fbuf(:, 2))))';   % 10-29 log only: known term m missing from fx(7:9)
         rs = (x(14) - x(15)) / dgap;
@@ -671,7 +675,7 @@ function r = local_run_loc(opts, seed)
             Fe(rw, 7:9) = (1 - lc) * aq * nn;  Fe(rw, 10:13) = aq * Ga(3, :);  Fe(rw, rw) = Fe(rw, rw) + 1;
             Fe(rw, 13 + q) = vMh(3);  Fe(rw, 16:17) = aq * [-vMh(2), cos(x(16)) * vMh(1)];
             if th_out                                           % angle error written with the off-diagonal errors: e_thx = e_vw / gap, e_thy = -e_uw / (gap cos)
-                Fe(rw, 13) = Fe(rw, 13) - aq * vMh(2) / den;  Fe(rw, 12) = Fe(rw, 12) - aq * vMh(1) / den;  Fe(rw, 16:17) = 0;
+                if ~(isfield(opts, 'no_mu_term_from') && t(k) >= opts.no_mu_term_from); Fe(rw, 13) = Fe(rw, 13) - aq * vMh(2) / den;  Fe(rw, 12) = Fe(rw, 12) - aq * vMh(1) / den; end;  Fe(rw, 16:17) = 0;   % 11-01 diagnostic only: opts.no_mu_term_from drops a' M_(u,v) / gap, keeps a' G_a
                 if isfield(opts, 'no_ang_gain') && opts.no_ang_gain; Fe(rw, 12:13) = 0; end   % 10-28 test: drop the angle -> gain coupling (tangential motion x slope / gap)
             end
         end
@@ -707,6 +711,8 @@ function r = local_run_loc(opts, seed)
             if any(strcmp(opts.fe_cut, 'gainpos')); Fe(7:9, 10:11) = 0; end    %   gain error -> position error (force x a_11, a_33)
         end
         Q33 = Vh' * (kap * (Ac + (1 - lc)^2 * (Abuf(:, :, 1) + Abuf(:, :, 2))) + (1 - lc)^2 * Sn) * Vh;
+        cb = Pu(15, :) .* Fe(11, :);  ks11 = K(11, :)';   % 11-01 log only: budget of P(a'_33, a_33): prediction by F_e column (position, a_11, a_33 self, a_uw a_vw, slope) and update (y1 channels, gain readouts)
+        L.B15(k, :) = [sum(cb(7:9)), cb(10), cb(11) - Pu(15, 11), sum(cb(12:13)), cb(15), -K(15, 1:3) * Sy(1:3, :) * ks11, -K(15, 4:7) * Sy(4:7, :) * ks11, Pk(15, 11), sum(cb([1:6 14 16:18]))];
         g = zeros(18, 3);  g(7:9, :) = -eye(3);  g(10, :) = x(14) * nn;  g(11, :) = x(15) * nn;
         Q = g * Q33 * g';
         if kp_on && isfield(opts, 'kappa_pfix') && t(k) >= tsc   % 10-30 (user): curvature allowed to change (random walk), same Q/R-ratio design as the
@@ -730,6 +736,15 @@ function r = local_run_loc(opts, seed)
             Q(12, 12) = Q(12, 12) + (g2 * cos(x(16))^2 * Pft)^2 * I_off(1);  Q(13, 13) = Q(13, 13) + (g2 * Pft)^2 * I_off(2);
             if mk; Q(12, 12) = Pft^2 * I_off(1);  Q(13, 13) = Pft^2 * I_off(2); end   % angle units directly
         end
+        Rw9 = Pu * Fe(9, :)';   % 11-01 log only: sources of P(a_33, delta w_3)[k+1] by group of row 11 of F_e, Q term, K(11,w), P(a_33, delta w_1), P(a_33, delta w_3)
+        L.B119(k, :) = [Fe(11, 7:9) * Rw9(7:9), Fe(11, 10) * Rw9(10), Fe(11, 11) * Rw9(11), Fe(11, 12:13) * Rw9(12:13), Fe(11, 15) * Rw9(15), Q(11, 9), K(11, 3), Pk(11, 3), Pk(11, 9), Fe(11, [1:6 14 16:18]) * Rw9([1:6 14 16:18])];
+        HPk = H * Pk;  grp = {7:9, 11, 12:13, 15, [1:6 10 14 16:18]};  p6c = zeros(1, 5);  p3c = zeros(1, 5);   % 11-01 log only: chain budget of P(a_33, delta w_i): update of P(11,9), P(11,6) by channel, prediction of P(11,6), P(11,3) by group of row 11
+        for ig = 1:5; p6c(ig) = Fe(11, grp{ig}) * Pu(grp{ig}, 9);  p3c(ig) = Fe(11, grp{ig}) * Pu(grp{ig}, 6); end
+        L.C119(k, :) = [-K(11, :) .* HPk(:, 9)', -K(11, :) .* HPk(:, 6)', p6c, p3c, Pk(11, 6)];
+        fg = {11, 11, 7:9, 12:13, 15};  e12 = zeros(1, 5);  for ig = 1:5; cg = Fe(11, fg{ig});  if ig == 1; cg = 1; elseif ig == 2; cg = Fe(11, 11) - 1; end;  e12(ig) = cg * Pu(fg{ig}, 12); end   % 11-01 log only: budget of P(a_33, a_uw): update by channel, prediction by group (1, a' F_w, position, off-diagonal, slope), P before
+        L.E1112(k, :) = [-K(11, :) .* HPk(:, 12)', e12, Pk(11, 12)];
+        fi = zeros(5, 18);  fi(1, 11) = 1;  fi(2, 11) = Fe(11, 11) - 1;  fi(3, 7:9) = Fe(11, 7:9);  fi(4, 12:13) = Fe(11, 12:13);  fi(5, 15) = Fe(11, 15);   % 11-01 log only: P(11,9)[k+1] = sum over (row group of 11: 1, a' F_w, position, off-diagonal, slope) x (column group of 9: lc, -F_w, -F_u, -F_v)
+        fj = zeros(4, 18);  fj(1, 9) = Fe(9, 9);  fj(2, 11) = Fe(9, 11);  fj(3, 12) = Fe(9, 12);  fj(4, 13) = Fe(9, 13);  D119 = fi * Pu * fj';  L.D119(k, :) = D119(:)';  L.P1112(k, :) = [Pu(11, 11), Pu(11, 12), Pu(9, 9), Pu(12, 12)];
         fx = x;
         fx(1:3) = x(4:6);  fx(4:6) = x(7:9);  fx(7:9) = lc * x(7:9);
         fx(10) = x(10) + x(14) * vMh(3);  fx(11) = x(11) + x(15) * vMh(3);
@@ -742,6 +757,7 @@ function r = local_run_loc(opts, seed)
         fx(16:17) = x(16:17) + dth;
         if dt_on; fx(16:17) = x(16:17);  thx_k = x(16); end
         Lg = Fe * K;  kpk = x(18);
+        L.fb9(k, :) = [Fe(9, 9) * K(9, :) * nu, Fe(9, 11) * K(11, :) * nu, Fe(9, 12) * K(12, :) * nu, Fe(9, 13) * K(13, :) * nu, Lg(9, :) * nu, x(9)];   % 11-01 log only: feedback into delta-w-hat_3: lc K9, -F_w K11, -F_u K12, -F_v K13, total; state
         if isfield(opts, 'dump_k') && k == opts.dump_k             % one-step inputs for check_1026_local_wiring.m
             dump = struct('Fe', Fe, 'xk', x, 'fx', fx, 'vF', vF, 'dpd', Vh' * (pd_kp1 - pd_k) / Rr, 'lc', lc, 'go', go);
         end
@@ -757,6 +773,7 @@ function r = local_run_loc(opts, seed)
             if kp_on; x(17) = x(17) + kpk * vMh(1) / cos(thx_k);  x(16) = x(16) - kpk * vMh(2); end   % + predicted turn kappa-hat M (u, v)
         end
         Pk = Fe * Pu * Fe' + Q;  Pk = 0.5 * (Pk + Pk');
+        if isfield(opts, 'cut_p1112_from') && t(k) >= opts.cut_p1112_from; Pk(11, 12:13) = 0;  Pk(12:13, 11) = 0; end   % 11-01 diagnostic only: P(a_33, a_uw), P(a_33, a_vw) forced to 0
         if isfield(opts, 'lf_off') && (~isfield(opts, 'lf_from') || t(k) >= opts.lf_from)   % 10-28 (user, Meng diss. lambda_fh): forgetting factor
             sc = ones(18, 1);  sc(12:13) = 1 / sqrt(opts.lf_off);  Pk = diag(sc) * Pk * diag(sc);   %   on the off-diagonal (angle) slots: P_off / lambda,
         end                                                                                          %   cross terms / sqrt(lambda)
@@ -764,7 +781,9 @@ function r = local_run_loc(opts, seed)
         Vold = Vh;  Vh = local_Ry(x(17)) * local_Rx(x(16));  C = Vh' * Vold;
         Ca = C;  if kp_on && dt_on; Ca = Vone' * Vold; end      % the gain matrix turns with the predicted wall turn (only the measured step changes it)
         vAh = Ca * local_loc_A(x) * Ca';
-        x(10) = (vAh(1,1) + vAh(2,2)) / 2;  x(11) = vAh(3,3);  x(12) = vAh(1,3);  x(13) = vAh(2,3);
+        L.rot(k, :) = [(vAh(1,1) + vAh(2,2)) / 2 - x(10), vAh(3,3) - x(11)];   % 11-01 log only: change of a_11, a_33 a full matrix rotation would make
+        x(12) = vAh(1,3);  x(13) = vAh(2,3);                    % 11-01 fix: a_11, a_33 unchanged through the frame rotation (1026 tex:185, they are eigenvalues). local_loc_A is only the first-order matrix,
+        if isfield(opts, 'rot_diag_legacy') && opts.rot_diag_legacy; x(10) = (vAh(1,1) + vAh(2,2)) / 2;  x(11) = vAh(3,3); end   %   rotating it took a_uw^2 / gap off a_33 every step with no paired add; rot_diag_legacy restores the old rule for comparison
         if mk; x(12:13) = 0; end
         for i = 0:2; x(3*i+1:3*i+3) = C * x(3*i+1:3*i+3); end
         Cb = blkdiag(C, C, C, eye(9));  Pk = Cb * Pk * Cb';
