@@ -439,8 +439,12 @@ function r = local_run_loc(opts, seed)
     [aTt, aNt] = local_truth(h_true0);  A_true = V_true * diag([aTt aTt aNt]) * V_true';
     hd0 = opts.h0;   % 10-28 fix: commanded distance along the wall normal (was p(3)/Rr = z height, wrong on a tilted plane: 5 um at theta_x -70 gave 1.6 um)
     hd_int = hd0;  thT = [cfg.theta_x; cfg.theta_y];  s_scan = 0;   % 10-29 fix: plane wall logged true angles (were 0 for a tilted plane)
+    if ~isfield(opts, 'reg_pi')                                % 11-01 (user): PI regulation is the default of the local arm; opts.reg_pi = false gives the earlier P law
+        opts.reg_pi = true;  if ~isfield(opts, 'reg_pi_cond'); opts.reg_pi_cond = 'cross'; end;  if ~isfield(opts, 'tau_i'); opts.tau_i = 0.5; end
+    end
+    if ~isfield(opts, 'sP_fix_thx_deg') && isfield(opts, 'sP_fix_theta_deg'); opts.sP_fix_thx_deg = 2 * opts.sP_fix_theta_deg; end   % 11-01 (user): theta_x P_fix twice theta_y (hand-set until the angle Q is derived), 40 um/s bead 5/5
     eI = 0;  e_sgn0 = NaN;  pi_go = false;                     % PI regulation: running sum of a_d - a-hat_33 (opts.reg_pi); 'cross' gate state
-    rs_on = isfield(opts, 'raster') || isfield(opts, 'raster_disc');  rs_line = 1;  rs_dir = -1;  rs_mode = 0;  rs_y0 = 0;  rs_tend = NaN;   % 10-28 (user): raster [X_end um, dy um, n_lines]
+    rs_sl = 0;  rs_on = isfield(opts, 'raster') || isfield(opts, 'raster_disc');  rs_line = 1;  rs_dir = -1;  rs_mode = 0;  rs_y0 = 0;  rs_tend = NaN;   % 10-28 (user): raster [X_end um, dy um, n_lines]
     dsc_on = isfield(opts, 'descent_v');  dsc_done = false;  tsc = inf;  if isfield(opts, 't_scan'); tsc = opts.t_scan; end   % 10-28 (user): constant-speed descent
     if dsc_on; tsc = inf; end                                 %   after the hold, no regulation, until a-hat_33 <= a_d; then scan + regulation start
     ap_hold = NaN;                                            % 10-29 (user): opts.reg_ap_hold -- regulation slope frozen at a'-hat_33 of the scan start
@@ -450,7 +454,7 @@ function r = local_run_loc(opts, seed)
     if isfield(opts, 'gain0') && isnumeric(opts.gain0); x(10:11) = opts.gain0(:); end   % reference arm only (e.g. the true gains)
     if isfield(opts, 'th0_deg'); x(16:17) = opts.th0_deg(:) * pi / 180; end
     sPth = 10 * pi / 180;  if isfield(opts, 'sP_theta_deg'); sPth = opts.sP_theta_deg * pi / 180; end
-    sig2 = diag(Sn);  Vh = local_Ry(x(17)) * local_Rx(x(16));
+    sig2 = diag(Sn);  Vh = local_Ry(x(17)) * local_Rx(x(16));  V_dith0 = Vh;
     sPg = (9/8) / hd0;  if isfield(opts, 'sP_gain'); sPg = opts.sP_gain; end   % reference arm only: small gain prior
     Pk = diag([repmat(sig2, 3, 1); sPg^2 * [1; 1]; 0; 0; x(14)^2; x(15)^2; sPth^2 * [1; 1]]);
     Pk(1:9, 1:9) = kron(eye(3), Vh' * diag(sig2) * Vh);
@@ -515,6 +519,8 @@ function r = local_run_loc(opts, seed)
         if isfield(opts, 'k_ap_cut') && t(k) >= opts.k_ap_cut_from   % 10-29 test: the slopes (slots 14:15) not updated by one channel
             if strcmp(opts.k_ap_cut, 'y1'); K(14:15, 1:3) = 0; else; K(14:15, 4:7) = 0; end   %   ('y1' = position readings, 'ym' = gain readout); Joseph P update stays valid
         end
+        if isfield(opts, 'k_off_cut'); if strcmp(opts.k_off_cut, 'y1'); K(12:13, 1:3) = 0; else; K(12:13, 4:7) = 0; end; end   % 11-02 diagnostic only: off-diagonal slots not updated by one channel ('y1' position readings, 'ym' gain readout); Joseph P update stays valid
+        L.Sy3(k, :) = diag(Sy(1:3, 1:3))';  L.dof1(k, :) = (K(12:13, 1:3) * nu(1:3))';  L.dof4(k, :) = (K(12:13, 4:7) * nu(4:7))';  L.kof(k, :) = [norm(K(12, 1:3)), norm(K(12, 4:7))];   % 11-02 log only: update of a_uw, a_vw by position readings and by the gain readout, size of the gain
         xu = x + K * nu;                                        % estimates after the feedback: control law and log only
         L.Pap(k) = Pk(15, 15);  L.da33(k, :) = K(11, :) .* nu';   % 11-01 log only: prior P(a'_33); 10-31 log only: update of a-hat_33 by each of the 7 innovations (same channels as L.dap)
         L.dap(k, :) = K(15, :) .* nu';  L.k15w(k) = K(15, 3);  L.nuw(k) = nu(3);  L.c15w(k) = Pk(15, 3) / sqrt(Pk(15, 15) * Pk(3, 3));   % 10-29 log: gain, innovation, correlation of a'_33 with the normal position   % 10-29 log: update of a'-hat_33 by each channel (y1 u v w | y4 four readouts), local of V-hat[k]
@@ -536,6 +542,7 @@ function r = local_run_loc(opts, seed)
         go = ~isfield(opts, 'gap_gate') || abs(dgap) > opts.gap_gate * sgap;   %   angle step only when |a_par-hat - a_perp-hat| > n sqrt(P_gap)
         if isfield(opts, 'gap_gate') && isfield(opts, 'gate_one') && opts.gate_one; go = dgap > opts.gap_gate * sgap; end   % 10-26: one-sided (a_par > a_perp)
         if isfield(opts, 'gap_min'); go = abs(dgap) > opts.gap_min; end   % 10-26 (user test): fixed threshold on |a_par-hat - a_perp-hat|
+        if isfield(opts, 'gate_off_from') && t(k) >= opts.gate_off_from; go = true; end   % 11-02 diagnostic only (user): gate open from this time on (start-up keeps it: g-hat starts at 0)
         if isfield(opts, 'no_dth') && opts.no_dth; go = false; end
         if isfield(opts, 'freeze_angle') && opts.freeze_angle; go = false;  K(16:17, :) = 0; end   % 10-27 (explanation): angle and frame frozen, off-diagonal estimates kept   % 10-26 discriminator: delta-theta-hat = 0, angle rows of F_e = I
         if ~go; dth = [0; 0]; end
@@ -551,7 +558,8 @@ function r = local_run_loc(opts, seed)
         if isfield(opts, 'ramp')
             stp = min(opts.ramp(1) * Ts, opts.ramp(2) - s_ramp);  pd_kp1 = pd_k - stp * wh;  s_ramp = s_ramp + stp;
         elseif isfield(opts, 'dither') && (~isfield(opts, 'dither_win') || (t(k) >= opts.dither_win(1) && t(k) + Ts < opts.dither_win(2)))   % 10-29: optional window
-            pd_kp1 = pd_k + local_circle_step(opts.dither, t(k), Ts, Vh);
+            Vd = Vh;  if isfield(opts, 'dither_frame0') && opts.dither_frame0; Vd = V_dith0; end   % 11-04 (user flow): circle in the frame frozen at its start, so the closed circle returns p_d exactly (with V-hat moving the summed steps left p_d about .3 um low and the open-loop descent hit the wall)
+            pd_kp1 = pd_k + local_circle_step(opts.dither, t(k), Ts, Vd);
         elseif isfield(opts, 'wdither') && (~isfield(opts, 'wdither_win') || (t(k) >= opts.wdither_win(1) && t(k) + Ts < opts.wdither_win(2)))   % 10-28: optional time window [t0 t1]
             if isfield(opts, 'wdither_win'); tt0 = opts.wdither_win(1); else; tt0 = 0; end   %   (the ramp and phase start at t0)
             Af = @(tt) opts.wdither(1) * min((tt - tt0) / opts.wdither(3), 1);   %   10-27 (user): oscillation along the estimated normal w-hat, [amplitude um, f Hz, ramp s]
@@ -597,6 +605,7 @@ function r = local_run_loc(opts, seed)
             end
             pd_kp1 = pd_kp1 + dhr * Rr * whc;  hd_int = hd_int + dhr;
         end
+        sm = 1;
         if t(k) >= tsc && (~isfield(opts, 'scan_len') || s_scan < opts.scan_len)   % scan along u-hat, du_d [R] per step
             sdir = [1; 0];  if isfield(opts, 'scan_dir'); sdir = opts.scan_dir(:) / norm(opts.scan_dir); end   % 10-28: direction in the estimated (u, v) plane
             dsc = sdir(1) * Vh(:, 1) + sdir(2) * Vh(:, 2);
@@ -619,10 +628,21 @@ function r = local_run_loc(opts, seed)
                     dsc = (eye(3) - Vh(:, 3) * Vh(:, 3)') * [0; 1; 0];  dsc = dsc / norm(dsc);
                     if pd_kp1(2) >= -Rd + (rs_line + 0.5) * dyr; rs_mode = 0;  rs_line = rs_line + 1;  rs_dir = -rs_dir; end
                 end
+            elseif isfield(opts, 'raster_local')                   % 11-02 (user): Meng diss. 6.2 raster in the local coordinate: u triangular wave of path length L, v ramp at the edges, nothing held in x, y;
+                Lrl = opts.raster_local(1);  dvt = opts.raster_local(2);  nl = opts.raster_local(3);  dvs = opts.raster_local(4);   %   raster_local = [L um, v per line um, lines, dv step um]
+                if rs_mode == 0
+                    frl = 1;  if isfield(opts, 'scan_ramp'); frl = min((t(k) + Ts - tsc) / opts.scan_ramp, 1); end
+                    dsc = rs_dir * Vh(:, 1);  rs_sl = rs_sl + frl * opts.du_d * Rr;
+                    if rs_sl >= Lrl; rs_sl = 0;  if rs_line >= nl; dsc = zeros(3, 1);  s_scan = inf;  rs_tend = t(k); else; rs_mode = 1; end; end
+                else
+                    dsc = Vh(:, 2);  sm = dvs / (opts.du_d * Rr);  rs_sl = rs_sl + dvs;
+                    if rs_sl >= dvt; rs_sl = 0;  rs_mode = 0;  rs_line = rs_line + 1;  rs_dir = -rs_dir; end
+                end
             elseif rs_on                                           % raster: lines along +-x (direction n x w-hat, n = +-y, y kept), steps along +y
                 X_end = opts.raster(1);  dyr = opts.raster(2);  nl = opts.raster(3);
                 if rs_mode == 0                                    % line
-                    dsc = cross(rs_dir * [0; 1; 0], Vh(:, 3));  dsc = dsc / norm(dsc);
+                    wsc = Vh(:, 3);  if isfield(opts, 'cheat_w') && opts.cheat_w; wsc = w_true; end   % 11-01: reference arm, the raster line also follows the true tangent
+                    dsc = cross(rs_dir * [0; 1; 0], wsc);  dsc = dsc / norm(dsc);
                     if rs_dir * pd_kp1(1) >= X_end
                         if rs_line >= nl; dsc = zeros(3, 1);  s_scan = inf;  rs_tend = t(k); else; rs_mode = 1;  rs_y0 = pd_kp1(2); end
                     end
@@ -635,7 +655,7 @@ function r = local_run_loc(opts, seed)
                 dsc = cross(opts.scan_plane_n(:), wsc);  dsc = dsc / norm(dsc);
             end
             fr = 1;  if isfield(opts, 'scan_ramp'); fr = min((t(k) + Ts - tsc) / opts.scan_ramp, 1); end   % 10-29 (user): scan speed ramps up over scan_ramp s
-            if all(isfinite(dsc)); pd_kp1 = pd_kp1 + fr * opts.du_d * Rr * dsc; end;  s_scan = s_scan + fr * opts.du_d * Rr;   %   opts.scan_len [um]: stop after this path length
+            if all(isfinite(dsc)); pd_kp1 = pd_kp1 + fr * sm * opts.du_d * Rr * dsc; end;  s_scan = s_scan + fr * opts.du_d * Rr;   %   opts.scan_len [um]: stop after this path length
         end
         phat = pm + a_nom * (Abuf(:, :, 1) * fbuf(:, 1) + Abuf(:, :, 2) * fbuf(:, 2));
         f_d = (a_nom * Ac) \ (pd_kp1 - phat - lc * (pd_k - phat));
@@ -661,6 +681,7 @@ function r = local_run_loc(opts, seed)
         % ---- estimator (document Section 4): x[k+1] = f(x[k]) + L[k] e[k], L = F_e K, in the local coordinate of V-hat[k] ----
         vF = Vh' * (a_o * (f_d + (1 - lc) * sum(fbuf, 2)));
         Ga = [vF(1) 0 vF(3) 0; vF(2) 0 0 vF(3); 0 vF(3) vF(1) vF(2)];
+        L.nu1(k, :) = nu(1:3)';  L.fa(k, :) = (a_o * f_d)';   % 11-02 log only: force step of this sample in R units, measurement frame
         L.vF(k, :) = vF';   % 10-29 log: force step in the local coordinate (a_o f, R units)
         L.T15(k, :) = -[vF(3) * Pu(15, 11), vF(1) * Pu(15, 12), vF(2) * Pu(15, 13)];   % 10-31 log only: sources of P(a'_33, delta w_3) at k+1: F_w P(a', a_33), F_u P(a', a_uw), F_v P(a', a_vw)
         L.c15(k, :) = Pu(15, [3 9 11 12 13]) ./ sqrt(Pu(15, 15) * diag(Pu([3 9 11 12 13], [3 9 11 12 13]))');   % 10-31 log only: corr of a'_33 with delta w_1, delta w_3, a_33, a_uw, a_vw (after the update)
@@ -701,7 +722,10 @@ function r = local_run_loc(opts, seed)
         else
             Fe(16:17, 16:17) = eye(2);
         end
-        if kp_on                                                % off-diagonal error from the curvature error: the true wall turns by kappa M_u about v-hat
+        kp_held = kp_on && isfield(opts, 'kappa_from_scan') && opts.kappa_from_scan && t(k) < tsc && ~(isfield(opts, 'kappa_couple_always') && opts.kappa_couple_always);   % 11-02 fix (user): before the scan kappa-hat is held at 0 with P at the prior, no curvature -> off-diagonal coupling, it undid the angle information of any motion (check_1102_p_budget2.m); opts.kappa_couple_always restores the old form
+        flat_now = isfield(opts, 'cheat_flat_r') && hypot(p(1), p(2)) > opts.cheat_flat_r;   % 11-02 reference arm only (user, uses the true position): on the flat floor no angle Q, no kappa-hat, no curvature coupling
+        kp_held = kp_held || (kp_on && flat_now);
+        if kp_on && ~kp_held                                    % off-diagonal error from the curvature error: the true wall turns by kappa M_u about v-hat
             Fe(12, 18) = -dgap * vMh(1);  Fe(13, 18) = -dgap * vMh(2);   %   (theta_y up for +u) and by -kappa M_v about u-hat; e_13 = -gap e_rot_v, e_23 = gap e_rot_u
         end
         if isfield(opts, 'fe_cut') && t(k) >= opts.fe_cut_from      % 10-29 diagnostic only: drop F_e couplings from t >= fe_cut_from
@@ -715,7 +739,7 @@ function r = local_run_loc(opts, seed)
         L.B15(k, :) = [sum(cb(7:9)), cb(10), cb(11) - Pu(15, 11), sum(cb(12:13)), cb(15), -K(15, 1:3) * Sy(1:3, :) * ks11, -K(15, 4:7) * Sy(4:7, :) * ks11, Pk(15, 11), sum(cb([1:6 14 16:18]))];
         g = zeros(18, 3);  g(7:9, :) = -eye(3);  g(10, :) = x(14) * nn;  g(11, :) = x(15) * nn;
         Q = g * Q33 * g';
-        if kp_on && isfield(opts, 'kappa_pfix') && t(k) >= tsc   % 10-30 (user): curvature allowed to change (random walk), same Q/R-ratio design as the
+        if kp_on && isfield(opts, 'kappa_pfix') && t(k) >= tsc && ~flat_now   % 10-30 (user): curvature allowed to change (random walk), same Q/R-ratio design as the
             Q(18, 18) = opts.kappa_pfix^4 * I_kap;                %   slopes: Q = P_fix^2 I, sqrt P_fix = kappa_pfix [1/R] = curvature span of the probe-centre path
         end
         if isfield(opts, 'ap_q') && opts.ap_q
@@ -731,9 +755,13 @@ function r = local_run_loc(opts, seed)
             if isfield(opts, 'ap_q_off_from') && t(k) >= opts.ap_q_off_from; Q(14:15, 14:15) = 0; end   % 10-28 (user test): slope Q off (e.g. during the scan)
         end
         qtf = inf;  if isfield(opts, 'q_theta_from'); qtf = opts.q_theta_from; end;  if dsc_on && ~(isfield(opts, 'q_theta_off') && opts.q_theta_off); qtf = tsc;  if isfield(opts, 'q_theta_delay'); qtf = tsc + opts.q_theta_delay; end; end   % 10-29 opts.q_theta_off: no angle P_fix; descent mode: angle P_fix from the scan start
-        if t(k) >= qtf   % 10-28 (user): angle P_fix on the off-diagonal slots, P_off = (gap)^2 P_theta
+        if t(k) >= qtf && ~flat_now   % 10-28 (user): angle P_fix on the off-diagonal slots, P_off = (gap)^2 P_theta
             Pft = (opts.sP_fix_theta_deg * pi / 180)^2;  g2 = dgap^2;
-            Q(12, 12) = Q(12, 12) + (g2 * cos(x(16))^2 * Pft)^2 * I_off(1);  Q(13, 13) = Q(13, 13) + (g2 * Pft)^2 * I_off(2);
+            if isfield(opts, 'q_geo')                            % 11-01 (user) test: angle Q from the surface, not from P_fix: per-step turn = [dkappa_n dtau] [1/R] x step length (opts.q_geo), not multiplied by I
+                Mt2 = vMh(1)^2 + vMh(2)^2;  Q(12, 12) = Q(12, 12) + g2 * cos(x(16))^2 * opts.q_geo(1)^2 * Mt2;  Q(13, 13) = Q(13, 13) + g2 * opts.q_geo(2)^2 * Mt2;
+            else
+            Q(12, 12) = Q(12, 12) + (g2 * cos(x(16))^2 * Pft)^2 * I_off(1);  Pfx = Pft;  if isfield(opts, 'sP_fix_thx_deg'); Pfx = (opts.sP_fix_thx_deg * pi / 180)^2; end;  Q(13, 13) = Q(13, 13) + (g2 * Pfx)^2 * I_off(2);
+            end
             if mk; Q(12, 12) = Pft^2 * I_off(1);  Q(13, 13) = Pft^2 * I_off(2); end   % angle units directly
         end
         Rw9 = Pu * Fe(9, :)';   % 11-01 log only: sources of P(a_33, delta w_3)[k+1] by group of row 11 of F_e, Q term, K(11,w), P(a_33, delta w_1), P(a_33, delta w_3)
@@ -773,6 +801,9 @@ function r = local_run_loc(opts, seed)
             if kp_on; x(17) = x(17) + kpk * vMh(1) / cos(thx_k);  x(16) = x(16) - kpk * vMh(2); end   % + predicted turn kappa-hat M (u, v)
         end
         Pk = Fe * Pu * Fe' + Q;  Pk = 0.5 * (Pk + Pk');
+        if isfield(opts, 'p_off_kick') && t(k) < opts.p_off_kick(1) && t(k) + Ts >= opts.p_off_kick(1)   % 11-02 diagnostic only (user): at this time reset the angle uncertainty to opts.p_off_kick(2) deg, cross terms zero (is the angle locked by a small P)
+            vk = (dgap * opts.p_off_kick(2) * pi / 180)^2;  Pk(12:13, :) = 0;  Pk(:, 12:13) = 0;  Pk(12, 12) = vk;  Pk(13, 13) = vk;
+        end
         if isfield(opts, 'cut_p1112_from') && t(k) >= opts.cut_p1112_from; Pk(11, 12:13) = 0;  Pk(12:13, 11) = 0; end   % 11-01 diagnostic only: P(a_33, a_uw), P(a_33, a_vw) forced to 0
         if isfield(opts, 'lf_off') && (~isfield(opts, 'lf_from') || t(k) >= opts.lf_from)   % 10-28 (user, Meng diss. lambda_fh): forgetting factor
             sc = ones(18, 1);  sc(12:13) = 1 / sqrt(opts.lf_off);  Pk = diag(sc) * Pk * diag(sc);   %   on the off-diagonal (angle) slots: P_off / lambda,
@@ -787,7 +818,7 @@ function r = local_run_loc(opts, seed)
         if mk; x(12:13) = 0; end
         for i = 0:2; x(3*i+1:3*i+3) = C * x(3*i+1:3*i+3); end
         Cb = blkdiag(C, C, C, eye(9));  Pk = Cb * Pk * Cb';
-        if kp_on && isfield(opts, 'kappa_from_scan') && opts.kappa_from_scan && t(k) + Ts < tsc   % 10-29 (user): kappa-hat held at 0 (plane), P at the prior,
+        if kp_on && ((isfield(opts, 'kappa_from_scan') && opts.kappa_from_scan && t(k) + Ts < tsc) || flat_now)   % 10-29 (user): kappa-hat held at 0 (plane), P at the prior,
             x(18) = 0;  Pk(18, :) = 0;  Pk(:, 18) = 0;  Pk(18, 18) = sPk^2;                     %   until the scan starts (no curvature information before)
         end
         % ---- log (theta-hat[k+1]) ----
