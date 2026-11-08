@@ -1,0 +1,2 @@
+fo = fullfile(fileparts(fileparts(fileparts(mfilename('fullpath')))), 'test_results', 'temp_3d_wsonly');  load(fullfile(fo, 'temp_1105_flow_v10.mat'), 'r');  n = find(isfinite(r.thx), 1, 'last');
+for d = [600 300 100 30 10 2]; i = n - d;  fprintf('t %.3f p (%.2f %.2f %.2f) gap %.3f | th-hat (%.1f %.1f) true (%.1f %.1f) | a11 %.3f a33 %.3f\n', r.t(i), r.p(i, :), r.h(i) * 2.25, r.thx(i), r.thy(i), r.th_tr(i, :), r.aT(i), r.aN(i)); end

@@ -1,0 +1,11 @@
+% STATUS: SCRATCH -- 2026-11-04 (user): complete probe trajectory from start to end, circle flow seed 1 (temp_1104_flow_circle.mat): start (green), circle 0-5 s (orange), descent 5-6 s (red), scan (blue), end (black triangle), over the plain glass bead and floor. Saved as .fig (rotatable) and .png. Output fig_1104_flow_circle_full3d.fig/.png
+here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));  fo = fullfile(root, 'test_results', 'temp_3d_wsonly');  load(fullfile(fo, 'temp_1104_flow_circle.mat'), 'r');  rbd = 5;  MU = [char(956) 'm'];
+n = find(all(isfinite(r.p(1:r.kend, :)), 2), 1, 'last');  P = r.p(1:n, :);  t = r.t(1:n);  t = t(:);  m1 = t < 5;  m2 = t >= 5 & t < r.tsc;  m3 = t >= r.tsc;
+f = figure('Color', 'w', 'Position', [60 60 1400 950], 'Visible', 'off');  a = axes(f);  hold(a, 'on');  [Xs, Ys, Zs] = sphere(80);
+surf(a, rbd * Xs, rbd * Ys, rbd + rbd * Zs, 'FaceColor', [0.85 0.72 0.45], 'EdgeColor', 'none', 'AmbientStrength', 0.6, 'DiffuseStrength', 0.6, 'SpecularStrength', 0);  camlight(a);  lighting(a, 'gouraud');  patch(a, [-20 25 25 -20], [-18 -18 18 18], [-0.02 -0.02 -0.02 -0.02], [0.74 0.76 0.82], 'EdgeColor', 'none', 'FaceLighting', 'none');
+h1 = plot3(a, P(m1, 1), P(m1, 2), P(m1, 3), 'Color', [0.95 0.55 0], 'LineWidth', 1.0);  h2 = plot3(a, P(m2, 1), P(m2, 2), P(m2, 3), 'Color', [0.85 0 0], 'LineWidth', 2.2);  h3 = plot3(a, P(m3, 1), P(m3, 2), P(m3, 3), 'Color', [0 0 1], 'LineWidth', 0.8);
+h4 = plot3(a, P(1, 1), P(1, 2), P(1, 3), 'o', 'MarkerSize', 11, 'MarkerFaceColor', [0 0.6 0.2], 'MarkerEdgeColor', 'k');  h5 = plot3(a, P(end, 1), P(end, 2), P(end, 3), '^', 'MarkerSize', 11, 'MarkerFaceColor', 'k', 'MarkerEdgeColor', 'k');
+axis(a, 'equal');  xlim(a, [-20 25]);  ylim(a, [-18 18]);  zlim(a, [-0.2 16]);  view(a, -37.5, 25);  grid(a, 'off');  box(a, 'off');  xlabel(a, ['X (' MU ')']);  ylabel(a, ['Y (' MU ')']);  zlabel(a, ['Z (' MU ')']);  set(a, 'FontSize', 16, 'LineWidth', 1.1);
+legend(a, [h4 h1 h2 h3 h5], {'start', 'circle 0-5 s', 'descent', 'scan', 'end'}, 'Location', 'northoutside', 'Orientation', 'horizontal');
+fprintf('start (%.1f %.1f %.1f), end (%.1f %.1f %.1f) um, t end %.2f s\n', P(1, :), P(end, :), t(end));
+savefig(f, fullfile(fo, 'fig_1104_flow_circle_full3d.fig'));  exportgraphics(f, fullfile(fo, 'fig_1104_flow_circle_full3d.png'), 'Resolution', 130);  close(f);

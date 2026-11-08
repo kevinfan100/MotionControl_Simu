@@ -1,0 +1,13 @@
+% STATUS: SCRATCH -- 2026-11-04 (user): angle convergence before the scan of the square run with the circle flow (temp_1104_square_circle_s1.mat, seed 1), t 0-6 s: theta_x, theta_y (true red, estimate blue), numerators a_13, a_23 (estimator values), denominator a_11 - a_33 (true red, estimate blue), angle error of w-hat. Figure in Preview. Output fig_1104_square_circle_pre.png
+fo = fullfile(fileparts(fileparts(fileparts(mfilename('fullpath')))), 'test_results', 'temp_3d_wsonly');  load(fullfile(fo, 'temp_1104_square_circle_s1.mat'), 'r');  FS = 15;  cT = [0.85 0 0];  cE = [0 0.25 0.85];  th = char(952);  hc = char(770);
+k = find(r.t <= r.tsc);  k = k(1:2:end);  t = r.t(k);  t = t(:);  e = acosd(min(cosd(r.thx(k) - r.th_tr(k, 1)) .* cosd(r.thy(k) - r.th_tr(k, 2)), 1));
+for x = [1 2 3 5 6]; i = find(t >= x - 1e-6, 1);  if isempty(i); i = numel(t); end;  fprintf('t %.0f s: theta-hat (%+.2f %+.2f), angle error %.2f deg, g-hat %.3f (true %.3f)\n', x, r.thx(k(i)), r.thy(k(i)), e(i), r.dgap(k(i)), r.aT_tr(k(i)) - r.aN_tr(k(i))); end
+f = figure('Color', 'w', 'Position', [40 40 1500 1300], 'Visible', 'off');  tl = tiledlayout(6, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
+a1 = nexttile(tl);  hold(a1, 'on');  h1 = plot(a1, t, r.th_tr(k, 1), 'Color', cT, 'LineWidth', 1.5);  h2 = plot(a1, t, r.thx(k), 'Color', cE, 'LineWidth', 0.9);  ylim(a1, [-12 12]);  ylabel(a1, [th '_x  [deg]']);  lg = legend(a1, [h1 h2], {'True', 'Estimate'}, 'Location', 'northoutside', 'Orientation', 'horizontal');  title(lg, 'circle 0-5 s, descent 5-6 s, seed 1');
+a2 = nexttile(tl);  hold(a2, 'on');  plot(a2, t, r.th_tr(k, 2), 'Color', cT, 'LineWidth', 1.5);  plot(a2, t, r.thy(k), 'Color', cE, 'LineWidth', 0.9);  ylim(a2, [-12 12]);  ylabel(a2, [th '_y  [deg]']);
+a3 = nexttile(tl);  plot(a3, t, e, 'Color', cE, 'LineWidth', 0.9);  ylim(a3, [0 15]);  ylabel(a3, ['angle error of w' hc '  [deg]']);
+a4 = nexttile(tl);  plot(a4, t, r.off_k1(k, 1), 'Color', cE, 'LineWidth', 0.7);  ylim(a4, [-0.004 0.004]);  ylabel(a4, ['a' hc '_{13}']);
+a5 = nexttile(tl);  plot(a5, t, r.off_k1(k, 2), 'Color', cE, 'LineWidth', 0.7);  ylim(a5, [-0.004 0.004]);  ylabel(a5, ['a' hc '_{23}']);
+a6 = nexttile(tl);  hold(a6, 'on');  plot(a6, t, r.aT_tr(k) - r.aN_tr(k), 'Color', cT, 'LineWidth', 1.5);  plot(a6, t, r.dgap(k), 'Color', cE, 'LineWidth', 0.9);  ylim(a6, [0 0.5]);  ylabel(a6, ['a' hc '_{11} - a' hc '_{33}']);  xlabel(a6, 'Time (sec)');
+for a = [a1 a2 a3 a4 a5 a6]; xlim(a, [0 t(end)]);  box(a, 'on');  set(a, 'FontSize', FS, 'FontWeight', 'bold', 'LineWidth', 1.2); end
+fn = fullfile(fo, 'fig_1104_square_circle_pre.png');  exportgraphics(f, fn, 'Resolution', 130);  close(f);

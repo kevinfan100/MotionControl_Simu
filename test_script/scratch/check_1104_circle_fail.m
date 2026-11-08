@@ -1,0 +1,3 @@
+fo = fullfile(fileparts(fileparts(fileparts(mfilename('fullpath')))), 'test_results', 'temp_3d_wsonly');  load(fullfile(fo, 'temp_1104_flow_circle.mat'), 'r');
+n = find(isfinite(r.thx), 1, 'last');  fprintf('last finite step %d, t %.3f s, kend %d\n', n, r.t(n), r.kend);
+for d = [800 400 200 100 50 20 5 1]; i = n - d;  fprintf('t %.3f: p (%.2f %.2f %.2f) r %.2f | gap %.3f um | th-hat (%.1f %.1f) true (%.1f %.1f) | a11 %.3f a33 %.3f g %.3f | a''33 %.2f | kappa %.2f | mineig %.3g\n', r.t(i), r.p(i, :), hypot(r.p(i, 1), r.p(i, 2)), r.h(i) * 2.25, r.thx(i), r.thy(i), r.th_tr(i, :), r.aT(i), r.aN(i), r.dgap(i), r.apN(i), r.kap(i), r.mineig(i)); end

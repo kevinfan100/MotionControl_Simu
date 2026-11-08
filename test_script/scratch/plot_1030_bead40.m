@@ -3,7 +3,7 @@
 %   bead (r 5) and glass drawn; bottom: last 2 s of seed 1 and 3 -- a_33 true / estimate and theta true / estimate.
 %   Output test_results/temp_3d_wsonly/fig_1030_bead40.png
 here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));  fo = fullfile(root, 'test_results', 'temp_3d_wsonly');
-S = load(fullfile(fo, 'temp_fillet_opts_kq40.mat'));  rs = S.rs;  Rr = S.Rr;  ad = S.ad;  FS = 14;
+sfx40 = '_kq40';  if exist('sfx40_in', 'var'); sfx40 = sfx40_in; end;  S = load(fullfile(fo, ['temp_fillet_opts' sfx40 '.mat']));  rs = S.rs;  Rr = S.Rr;  ad = S.ad;  FS = 14;
 cT = [0.85 0 0];  cE = [0 0.25 0.85];  cG = [0 0.55 0.2];  hatc = char(770);  AB = char(257);  th = char(952);  [Xs, Ys, Zs] = sphere(50);
 f = figure('Color', 'w', 'Position', [20 20 2000 1300]);  tl = tiledlayout(2, 3, 'TileSpacing', 'compact', 'Padding', 'compact');
 for id = 1:3
@@ -23,4 +23,4 @@ for j = 1:2
     yyaxis right;  plot(t, r.th_tr(kz, 2), '--', 'Color', cT, 'LineWidth', 1.8);  plot(t, r.thy(kz), '--', 'Color', cE, 'LineWidth', 1);  ylabel(sprintf('%s_y  [\\circ]  (dashed)', th));  set(a1, 'YColor', 'k');
     xlabel('time before the end  (sec)');  title(sprintf('seed %d, last 2 s (red = true, blue = estimate)', id));  set(a1, 'FontSize', FS, 'FontWeight', 'bold');  set(a1.Toolbar, 'Visible', 'off');
 end
-fn = fullfile(fo, 'fig_1030_bead40.png');  exportgraphics(f, fn, 'Resolution', 120);  close(f);  system(['open ' fn]);
+fn = fullfile(fo, ['fig_1030_bead40' strrep(sfx40, '_kq40', '') '.png']);  exportgraphics(f, fn, 'Resolution', 120);  close(f);  system(['open ' fn]);

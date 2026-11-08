@@ -1,0 +1,18 @@
+% STATUS: SCRATCH -- 2026-11-03 (user): the wall overlay of fig_1101_wall_overlay.png (user 11-03: wall dark gray = bead and glass only (fillet not drawn, user 11-03), nominal probe-centre path light gray; bare-bead path and the dotted fillet removed) at the gap of a_d .07 (2.426 um), with one scan line of the current flow (temp_1103_flow.mat, seed 1, the line closest to the bead centre): probe centre (blue) and the wall recovered from it, p - R (1 + h*) w-hat with the estimated w-hat (red), no smoothing. Side view along the line, x signed. No legend. Figure in Preview. Output fig_1103_wall_overlay_line.png
+here = fileparts(mfilename('fullpath'));  root = fileparts(fileparts(here));  addpath(here);  addpath(genpath(fullfile(root, 'model')));
+fo = fullfile(root, 'test_results', 'temp_3d_wsonly');  load(fullfile(fo, 'temp_1103_flow.mat'), 'r');  Rr = 2.25;  ad = 0.07;  rb = 5;  rho = 4;  MU = [char(956) 'm'];
+hs = fzero(@(h) 1 / local_cp(h) - ad, [1.001 30]);  g = Rr * hs;  ok = find(isfinite(r.aN(1:r.kend)));  ks = ok(r.t(ok) >= r.tsc + 0.5 & r.t(ok) <= r.rs_tend);  p = r.p(ks, :);
+tx = r.thx(ks) * pi / 180;  ty = r.thy(ks) * pi / 180;  tx = tx(:);  ty = ty(:);  Wh = [sin(ty) .* cos(tx), -sin(tx), cos(ty) .* cos(tx)];  W = p - g * Wh;
+isv = movmean([0; diff(p(:, 2))], 21) > 0.012;  stepv = conv(double(isv), ones(61, 1), 'same') > 0;  id = cumsum(diff([0; stepv]) == 1) + 1;  id(stepv) = 0;
+L = unique(id(id > 0));  my = arrayfun(@(l) mean(p(id == l, 2)), L);  [~, j] = min(abs(my));  sel = id == L(j);  fprintf('line %d, mean y %.2f um, x %.1f..%.1f um\n', L(j), my(j), min(p(sel, 1)), max(p(sel, 1)));  ii = find(sel);  fprintf('  first point x %.2f z %.2f, last point x %.2f z %.2f, path length %.2f um\n', p(ii(1), 1), p(ii(1), 3), p(ii(end), 1), p(ii(end), 3), sum(vecnorm(diff(p(ii, :), 1, 1), 2, 2)));
+Rt = 2 * sqrt(rb * rho);  at = atan2(Rt, rho - rb);  b = linspace(0, at, 400);  c = linspace(at, 0, 400);  wx = [rb * sin(b), Rt - rho * sin(c), 20];  wz = [rb + rb * cos(b), rho - rho * cos(c), 0];
+px = [(rb + g) * sin(b), Rt - (rho - g) * sin(c), 20];  pz = [rb + (rb + g) * cos(b), rho - (rho - g) * cos(c), g];  ak = acos((g - rb) / (rb + g));  b3 = linspace(0, ak, 400);  bx = [(rb + g) * sin(b3), 20];  bz = [rb + (rb + g) * cos(b3), g];  th = linspace(0, 2 * pi, 400);
+f = figure('Color', 'w', 'Position', [40 40 1700 700], 'Visible', 'off');  a = axes(f);  hold(a, 'on');
+for sg = [-1 1]; plot(a, sg * px, pz, 'Color', [0.8 0.8 0.8], 'LineWidth', 5.0); end
+Rt2 = Rt;  plot(a, rb * sin(th), rb + rb * cos(th), 'Color', [0.25 0.25 0.25], 'LineWidth', 2.5);  plot(a, [-20 20], [0 0], 'Color', [0.25 0.25 0.25], 'LineWidth', 2.5);
+P = p(sel, :);  Q = W(sel, :);  plot(a, P(:, 1), P(:, 3), 'Color', [0 0.3 0.9], 'LineWidth', 2.2);  plot(a, Q(:, 1), Q(:, 3), 'Color', [0.9 0.1 0.1], 'LineWidth', 2.2);
+axis(a, 'equal');  xlim(a, [-20 20]);  ylim(a, [-0.5 13]);  box(a, 'on');  xlabel(a, ['x  [' MU ']']);  ylabel(a, ['z  [' MU ']']);  set(a, 'FontSize', 15, 'FontWeight', 'bold', 'LineWidth', 1.2);
+fn = fullfile(fo, 'fig_1103_wall_overlay_line.png');  exportgraphics(f, fn, 'Resolution', 140);  close(f);  system(['open -a Preview "' fn '"']);
+function c = local_cp(h)
+    [~, c] = calc_correction_functions(h);
+end
