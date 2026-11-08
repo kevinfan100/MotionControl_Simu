@@ -1,0 +1,285 @@
+% STATUS: ACTIVE -- 2026-11-06 (user): a-bar' as a state variable with the motion control law of Meng, Long & Menq, IEEE TIE 2025, (6):
+%   the law uses delta-x-hat_3[k] of the estimator (no past-input sum). z axis, one dimension, plane wall at x-bar = 0, no disturbed motion,
+%   d = 2. Written in the paper's predictor form (16) (x-hat[k+1] = model + l e[k]); the code runs predict/update and its control law reads the
+%   estimate after the update -- in that form the state is predicted from the updated estimate and P with F_e (row 3: state lc, error 1).
+%   y2 = a-bar_m from one sample (no a_cov, user 11-06); C_T, C_n are the constants of motion_ctrl Sec. 3 (closed loop of the past-input law,
+%   kept as in the paper, which cites [19]); with the sensor noise of canonical_scenario (3.31 nm z) the readout is high by about 3 % near the
+%   wall under this law (hold, steady-state K; 11-06 session estimate, not yet a repo script). Seed and prior not written (user 11-06).
+%   Notation from motion_ctrl/sec4_estimator.tex, sec3_am.tex, sec6_wall.tex and 1019_report.tex; no new symbol.
+%   Section 8 (user 11-06): the two control laws only (past-input law from motion_ctrl/sec1_model.tex).
+%   Sections 2, 5 independently checked 11-06 (rows PASS; L/P block of Sec. 5 is the filter gain, not the predictor gain -- not yet edited, user).
+% Compile: xelatex 1106_aprime_meng_law.tex (from reference/eq17_analysis/derivation/). Preamble from motion_ctrl.tex.
+\documentclass[11pt,a4paper]{ctexart}
+\usepackage[fleqn]{amsmath}
+\usepackage{amssymb,bm}
+\usepackage{array}
+\setlength{\mathindent}{0pt}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.2em}
+\setlength{\abovedisplayskip}{6pt}
+\setlength{\belowdisplayskip}{6pt}
+\setlength{\abovedisplayshortskip}{6pt}
+\setlength{\belowdisplayshortskip}{6pt}
+\newcommand{\lc}{\lambda_c}
+\newcommand{\bx}{\bar{x}}
+\newcommand{\ba}{\bar{a}}
+\newcommand{\Pfix}{P_{\mathrm{fix}}}
+\newcommand{\apd}{a_{\mathrm{pd}}}
+\newcommand{\IF}{\mathrm{IF}}
+\newcommand{\hd}[1]{\par\bigskip\noindent\underline{\textbf{#1}}}
+\usepackage{xcolor}
+\pagestyle{plain}
+
+\begin{document}
+
+\begin{center}\textbf{\large $\ba'$ as a state variable with the motion control law of TIE 2025}\\[2pt]
+\small 2026-11-06 \quad $z$ axis\end{center}
+
+%======================================================================
+\section{Motion model and control law}
+
+\hd{Normalized variables}
+\[
+\begin{aligned}
+\bx &= \frac{x}{R} \\
+\ba &= \frac{a_x}{a_{\mathrm{nom}}} \\
+\bar f &= a_o\, f \\
+a_{\mathrm{nom}} &= \frac{\Delta t}{\gamma_N} \\
+a_o &= \frac{a_{\mathrm{nom}}}{R}
+\end{aligned}
+\]
+
+\hd{Motion model}
+\[
+\bx[k+1] = \bx[k] + \ba[k]\,\big(\bar f_d[k] + \bar f_T[k]\big)
+\]
+
+\hd{Tracking error, control objective, measured tracking error}
+\[
+\begin{aligned}
+\delta\bx[k] &= \bx_d[k] - \bx[k] \\
+\delta\bx[k+1] &= \lc\,\delta\bx[k] \\
+\bx_m[k] &= \bx[k-d] + n_{\bx}[k] \\
+\delta\bx_m[k] &= \bx_d[k-d] - \bx_m[k] \qquad (d = 2)
+\end{aligned}
+\]
+
+\hd{Motion control law}
+\[
+\begin{aligned}
+\Delta\bx_d[k] &= \bx_d[k+1] - \bx_d[k] \\
+\bar f_d[k] &= \hat{\ba}^{-1}[k]\,\Big\{\Delta\bx_d[k] + (1-\lc)\,\delta\hat{\bx}_3[k]\Big\} \\
+\hat{M}[k] &= \Delta\bx_d[k] + (1-\lc)\,\delta\hat{\bx}_3[k] \\
+\hat{M}[k] &= \hat{\ba}[k]\,\bar f_d[k]
+\end{aligned}
+\]
+
+%======================================================================
+\section{Dynamics of tracking error}
+
+\[
+\begin{aligned}
+e_{\ba}[k] &= \ba[k] - \hat{\ba}[k] \\
+e_{\delta\bx_3}[k] &= \delta\bx[k] - \delta\hat{\bx}_3[k]
+\end{aligned}
+\]
+\[
+\begin{aligned}
+\delta\bx[k+1] &= \delta\bx[k] + \Delta\bx_d[k] - \ba[k]\,\bar f_d[k] - \ba[k]\,\bar f_T[k] \\
+\ba[k]\,\bar f_d[k] &= \hat{\ba}[k]\,\bar f_d[k] + e_{\ba}[k]\,\bar f_d[k] \\
+\ba[k]\,\bar f_d[k] &= \Delta\bx_d[k] + (1-\lc)\,\delta\hat{\bx}_3[k] + e_{\ba}[k]\,\bar f_d[k] \\
+\delta\bx[k+1] &= \delta\bx[k] - (1-\lc)\,\delta\hat{\bx}_3[k] - e_{\ba}[k]\,\bar f_d[k] - \ba[k]\,\bar f_T[k] \\
+\delta\bx[k+1] &= \lc\,\delta\bx[k] + (1-\lc)\,e_{\delta\bx_3}[k] - e_{\ba}[k]\,\bar f_d[k] - \ba[k]\,\bar f_T[k]
+\end{aligned}
+\]
+
+%======================================================================
+\section{True state of the process}
+
+\hd{State}
+\[
+\delta\bx_1[k] = \delta\bx[k-2], \qquad \delta\bx_2[k] = \delta\bx[k-1], \qquad \delta\bx_3[k] = \delta\bx[k] \qquad (d = 2)
+\]
+
+\hd{Change of the motion gain}
+\[
+\begin{aligned}
+\ba[k+1] &\approx \ba[k] + \ba'[k]\,\big(\bx[k+1] - \bx[k]\big) \\
+\bx[k+1] - \bx[k] &= \ba[k]\,\bar f_d[k] + \ba[k]\,\bar f_T[k] \\
+\bx[k+1] - \bx[k] &= \hat{M}[k] + e_{\ba}[k]\,\bar f_d[k] + \ba[k]\,\bar f_T[k]
+\end{aligned}
+\]
+
+\hd{True state}
+\[
+\begin{aligned}
+\delta\bx_1[k+1] &= \delta\bx_2[k] \\
+\delta\bx_2[k+1] &= \delta\bx_3[k] \\
+\delta\bx_3[k+1] &= \lc\,\delta\bx_3[k] + (1-\lc)\,e_{\delta\bx_3}[k] - \bar f_d[k]\,e_{\ba}[k] - \ba[k]\,\bar f_T[k] \\
+\ba[k+1] &= \ba[k] + \ba'[k]\,\hat{M}[k] + \ba'[k]\,\bar f_d[k]\,e_{\ba}[k] + \ba'[k]\,\ba[k]\,\bar f_T[k] \\
+\ba'[k+1] &= \ba'[k] + w_{\ba'}[k]
+\end{aligned}
+\]
+
+%======================================================================
+\section{Estimator}
+
+\[
+\begin{aligned}
+e_{x_1}[k] &= \delta\bx_m[k] - \delta\hat{\bx}_1[k] \\
+e_{a_m}[k] &= \ba_m[k] - \hat{\ba}[k]
+\end{aligned}
+\]
+\[
+\begin{aligned}
+\delta\hat{\bx}_1[k+1] &= \delta\hat{\bx}_2[k] + \big\{\ell_{11}[k]\,e_{x_1}[k] + \ell_{12}[k]\,e_{a_m}[k]\big\} \\
+\delta\hat{\bx}_2[k+1] &= \delta\hat{\bx}_3[k] + \big\{\ell_{21}[k]\,e_{x_1}[k] + \ell_{22}[k]\,e_{a_m}[k]\big\} \\
+\delta\hat{\bx}_3[k+1] &= \lc\,\delta\hat{\bx}_3[k] + \big\{\ell_{31}[k]\,e_{x_1}[k] + \ell_{32}[k]\,e_{a_m}[k]\big\} \\
+\hat{\ba}[k+1] &= \hat{\ba}[k] + \hat{\ba}'[k]\,\hat{M}[k] + \big\{\ell_{41}[k]\,e_{x_1}[k] + \ell_{42}[k]\,e_{a_m}[k]\big\} \\
+\hat{\ba}'[k+1] &= \hat{\ba}'[k] + \big\{\ell_{51}[k]\,e_{x_1}[k] + \ell_{52}[k]\,e_{a_m}[k]\big\}
+\end{aligned}
+\]
+
+%======================================================================
+\section{Dynamics of estimation errors}
+
+\[
+\mathbf{e}[k] = \begin{bmatrix} e_{\delta\bx_1}[k] \\ e_{\delta\bx_2}[k] \\ e_{\delta\bx_3}[k] \\ e_{\ba}[k] \\ e_{\ba'}[k] \end{bmatrix}
+= \begin{bmatrix} \delta\bx_1[k] - \delta\hat{\bx}_1[k] \\ \delta\bx_2[k] - \delta\hat{\bx}_2[k] \\ \delta\bx_3[k] - \delta\hat{\bx}_3[k] \\ \ba[k] - \hat{\ba}[k] \\ \ba'[k] - \hat{\ba}'[k] \end{bmatrix}
+\]
+
+\hd{Rows}
+{\small
+\[
+\begin{aligned}
+e_{\delta\bx_1}[k+1] &= e_{\delta\bx_2}[k] - \big\{\ell_{11}[k]\,e_{x_1}[k] + \ell_{12}[k]\,e_{a_m}[k]\big\} \\
+e_{\delta\bx_2}[k+1] &= e_{\delta\bx_3}[k] - \big\{\ell_{21}[k]\,e_{x_1}[k] + \ell_{22}[k]\,e_{a_m}[k]\big\} \\
+e_{\delta\bx_3}[k+1] &= \lc\,\delta\bx_3[k] + (1-\lc)\,e_{\delta\bx_3}[k] - \lc\,\delta\hat{\bx}_3[k] - \bar f_d[k]\,e_{\ba}[k] - \ba[k]\,\bar f_T[k] - \big\{\ell_{31}[k]\,e_{x_1}[k] + \ell_{32}[k]\,e_{a_m}[k]\big\} \\
+e_{\delta\bx_3}[k+1] &= e_{\delta\bx_3}[k] - \bar f_d[k]\,e_{\ba}[k] - \ba[k]\,\bar f_T[k] - \big\{\ell_{31}[k]\,e_{x_1}[k] + \ell_{32}[k]\,e_{a_m}[k]\big\} \\
+e_{\ba}[k+1] &= e_{\ba}[k] + \hat{M}[k]\,e_{\ba'}[k] + \ba'[k]\,\bar f_d[k]\,e_{\ba}[k] + \ba'[k]\,\ba[k]\,\bar f_T[k] - \big\{\ell_{41}[k]\,e_{x_1}[k] + \ell_{42}[k]\,e_{a_m}[k]\big\} \\
+e_{\ba}[k+1] &\approx \big(1 + \hat{\ba}'[k]\,\bar f_d[k]\big)\,e_{\ba}[k] + \hat{M}[k]\,e_{\ba'}[k] + \ba'[k]\,\ba[k]\,\bar f_T[k] - \big\{\ell_{41}[k]\,e_{x_1}[k] + \ell_{42}[k]\,e_{a_m}[k]\big\} \\
+e_{\ba'}[k+1] &= e_{\ba'}[k] + w_{\ba'}[k] - \big\{\ell_{51}[k]\,e_{x_1}[k] + \ell_{52}[k]\,e_{a_m}[k]\big\}
+\end{aligned}
+\]
+}
+
+\hd{Matrix form}
+\[
+\mathbf{e}[k+1] = \mathbf{F}_e[k]\,\mathbf{e}[k] - \mathbf{L}[k]\,\mathbf{H}\,\mathbf{e}[k] + \mathbf{q}[k]
+\]
+\[
+\mathbf{F}_e[k] =
+\begin{bmatrix}
+0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 \\
+0 & 0 & 1 & -\bar f_d[k] & 0 \\
+0 & 0 & 0 & 1 + \hat{\ba}'[k]\,\bar f_d[k] & \hat{M}[k] \\
+0 & 0 & 0 & 0 & 1
+\end{bmatrix},
+\qquad
+\mathbf{q}[k] = \begin{bmatrix} 0 \\ 0 \\ -\ba[k]\,\bar f_T[k] \\ \ba'[k]\,\ba[k]\,\bar f_T[k] \\ w_{\ba'}[k] \end{bmatrix}
+\]
+
+\hd{Estimator feedback matrix and error covariance}
+\[
+\begin{aligned}
+\mathbf{L}[k] &= \mathbf{P}^f[k]\,\mathbf{H}^T\big(\mathbf{H}\,\mathbf{P}^f[k]\,\mathbf{H}^T + \mathbf{R}[k]\big)^{-1} \\
+\mathbf{P}[k] &= \big(\mathbf{I} - \mathbf{L}[k]\,\mathbf{H}\big)\,\mathbf{P}^f[k] \\
+\mathbf{P}^f[k+1] &= \mathbf{F}_e[k]\,\mathbf{P}[k]\,\mathbf{F}_e^T[k] + \mathbf{Q}[k]
+\end{aligned}
+\]
+
+%======================================================================
+\section{Process outputs and output matrix}
+
+\hd{Deterministic and random components of the measured tracking error}
+\[
+\begin{aligned}
+\overline{\delta\bx_m}[k] &= \apd\cdot\delta\bx_m[k] + (1 - \apd)\,\overline{\delta\bx_m}[k-1] \\
+\delta\bx_r[k] &= \delta\bx_m[k] - \overline{\delta\bx_m}[k]
+\end{aligned}
+\]
+
+\hd{Measured input gain}
+\[
+\begin{aligned}
+\ba_m[k] &= \frac{\delta\bx_r^2[k] - C_n\,\sigma^2_{n}}{C_T\,\kappa_T} \\
+\kappa_T &= \frac{4 k_B T\, a_o}{R} \\
+C_T &= (1-\apd)^2\left[\frac{2\,(1-\apd)(1-\lc)}{1-(1-\apd)\lc} + \frac{2}{(2-\apd)(1+\lc)\big(1-(1-\apd)\lc\big)}\right] \\
+C_n &= \frac{2\,(1-\apd)^2}{2-\apd}\left[1 + \frac{(1-\apd)^2\,\apd\,(1-\lc)}{1-(1-\apd)\lc} + \frac{(1-\lc)^2}{(1+\lc)\big(1-(1-\apd)\lc\big)}\right]
+\end{aligned}
+\]
+
+\hd{Measurement and output matrix}
+\[
+\mathbf{y}[k] = \begin{bmatrix} \delta\bx_m[k] \\ \ba_m[k] \end{bmatrix},
+\qquad
+\hat{\mathbf{y}}[k] = \begin{bmatrix} \delta\hat{\bx}_1[k] \\ \hat{\ba}[k] \end{bmatrix},
+\qquad
+\mathbf{H} =
+\begin{bmatrix}
+1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 & 0
+\end{bmatrix}
+\]
+
+%======================================================================
+\section{Process noise and measurement noise}
+
+\hd{Process noise}
+\[
+\mathbf{Q}[k] =
+\begin{bmatrix}
+0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 \\
+0 & 0 & q_{33}[k] & q_{34}[k] & 0 \\
+0 & 0 & q_{43}[k] & q_{44}[k] & 0 \\
+0 & 0 & 0 & 0 & q_{55}[k]
+\end{bmatrix}
+\]
+\[
+\begin{aligned}
+q_{33}[k] &= \kappa_T\,\hat{\ba}[k] \\
+q_{34}[k] &= -\hat{\ba}'[k]\,q_{33}[k] \\
+q_{43}[k] &= -\hat{\ba}'[k]\,q_{33}[k] \\
+q_{44}[k] &= \hat{\ba}'^{\,2}[k]\,q_{33}[k] \\
+q_{55}[k] &= \Pfix^{2}\,I[k] \\
+I[k] &= \frac{1}{p_{55}[k]} - \frac{1}{p^f_{55}[k]} \\
+\sqrt{\Pfix} &= 0.4\,\big(1.1/\bx_d[k]\big)^{2}
+\end{aligned}
+\]
+
+\hd{Measurement noise}
+\[
+\mathbf{R}[k] = \mathrm{diag}\big(r_1,\ r_2[k]\big)
+\]
+\[
+\begin{aligned}
+r_1 &= \sigma^2_n \\
+r_2[k] &= \IF\cdot\sigma^2_{y_2}[k] \\
+\sigma^2_{y_2}[k] &= 2\,\big(\hat{\ba}[k] + \xi\big)^2 \\
+\xi &= \frac{C_n}{C_T}\,\frac{\sigma^2_n}{\kappa_T} \\
+\IF &= 1 + 2\sum_{\tau\ge1}\rho_{y_2}(\tau)
+\end{aligned}
+\]
+
+%======================================================================
+\clearpage
+\section{Past-input law and the law of TIE 2025}
+
+\hd{Past-input law}
+\[
+\begin{aligned}
+\hat{\bx}[k] &= \bx_m[k] + \sum_{i=1}^{d} \hat{\ba}[k-i]\,\bar f_d[k-i] \\
+\bar f_d[k] &= \hat{\ba}^{-1}[k]\,\Big\{\Delta\bx_d[k] + (1-\lc)\,\big(\bx_d[k] - \hat{\bx}[k]\big)\Big\}
+\end{aligned}
+\]
+
+\hd{Law of TIE 2025}
+\[
+\bar f_d[k] = \hat{\ba}^{-1}[k]\,\Big\{\Delta\bx_d[k] + (1-\lc)\,\delta\hat{\bx}_3[k]\Big\}
+\]
+
+\end{document}
